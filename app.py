@@ -1,4 +1,8 @@
 116 kB
+import streamlit as st
+
+st.title("IA Juridique")
+
 # Assistant Pénal des Affaires IA - Version Complète
 # Intégrant Multi-LLM, Multi-Victimes et Adaptation IA
 
