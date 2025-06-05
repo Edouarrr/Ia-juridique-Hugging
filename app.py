@@ -156,6 +156,7 @@ def initialize_session_state():
         st.session_state.vector_store = None  # Store de vecteurs
         st.session_state.azure_search_client = None
         st.session_state.azure_blob_manager = None
+        st.session_state.azure_search_manager = None
 
 # ================== ENUMERATIONS ==================
 
@@ -356,7 +357,13 @@ class AzureSearchManager:
         self.search_client = None
         self.index_client = None
         self.openai_client = None
-        self._init_clients()
+        try:
+            self._init_clients()
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation d'AzureSearchManager : {e}")
+            self.search_client = None
+            self.index_client = None
+            self.openai_client = None
     
     def _init_clients(self):
         """Initialise les clients Azure Search et OpenAI"""
@@ -591,7 +598,11 @@ class AzureBlobManager:
     def __init__(self):
         self.blob_service_client = None
         self.container_client = None
-        self._init_blob_client()
+        try:
+            self._init_blob_client()
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation d'AzureBlobManager : {e}")
+            self.blob_service_client = None
     
     def _init_blob_client(self):
         """Initialise le client Azure Blob"""
@@ -1414,10 +1425,10 @@ def main():
     initialize_session_state()
     
     # Initialiser les gestionnaires dans session state
-    if 'azure_blob_manager' not in st.session_state:
+    if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
         st.session_state.azure_blob_manager = AzureBlobManager()
     
-    if 'azure_search_manager' not in st.session_state:
+    if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
         st.session_state.azure_search_manager = AzureSearchManager()
     
     # Titre principal avec style
@@ -1453,13 +1464,13 @@ def main():
         # État Azure
         if AZURE_AVAILABLE:
             # Vérifier Azure Blob
-            if st.session_state.azure_blob_manager.is_connected():
+            if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.is_connected():
                 st.success("✅ Azure Blob connecté")
             else:
                 st.error("❌ Azure Blob non connecté")
             
             # Vérifier Azure Search
-            if st.session_state.azure_search_manager.search_client:
+            if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
                 st.success("✅ Azure Search connecté")
             else:
                 st.warning("⚠️ Azure Search non disponible")
@@ -1491,12 +1502,12 @@ def page_recherche_documents():
     st.header("🔍 Recherche de documents")
     
     # Vérifier la connexion Azure
-    if not st.session_state.azure_blob_manager.is_connected():
+    if not st.session_state.azure_blob_manager or not st.session_state.azure_blob_manager.is_connected():
         st.error("❌ Connexion Azure Blob non configurée. Veuillez vérifier vos variables d'environnement (AZURE_STORAGE_CONNECTION_STRING).")
         return
     
     # Section de recherche avec Azure Search
-    if st.session_state.azure_search_manager.search_client:
+    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
         with st.container():
             st.markdown('<div class="search-section">', unsafe_allow_html=True)
             
@@ -1741,7 +1752,7 @@ def page_recherche_documents():
                                                     st.session_state.azure_documents[doc_id] = doc
                                                     
                                                     # Indexer dans Azure Search si disponible
-                                                    if st.session_state.azure_search_manager.search_client:
+                                                    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
                                                         st.session_state.azure_search_manager.index_document(doc)
                                                     
                                                     st.success(f"✅ {item['name']} ajouté")
@@ -2619,7 +2630,7 @@ def page_configuration():
         st.markdown("### 🔗 État des connexions")
         
         # Azure Blob
-        if st.session_state.azure_blob_manager.is_connected():
+        if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.is_connected():
             st.success("✅ Azure Blob Storage : Connecté")
             
             # Test de connexion
@@ -2633,7 +2644,7 @@ def page_configuration():
             st.error("❌ Azure Blob Storage : Non connecté")
         
         # Azure Search
-        if st.session_state.azure_search_manager.search_client:
+        if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
             st.success("✅ Azure Search : Connecté")
             
             # Test de connexion
@@ -2723,7 +2734,7 @@ def page_configuration():
     with tabs[3]:
         st.markdown("### 🔍 Gestion de l'index de recherche")
         
-        if st.session_state.azure_search_manager.search_client:
+        if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
             # Réindexer tous les documents
             if st.button("🔄 Réindexer tous les documents", key="reindex_all"):
                 with st.spinner("Réindexation en cours..."):
