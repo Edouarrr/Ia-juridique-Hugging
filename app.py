@@ -1,6 +1,6 @@
 import streamlit as st
 
-# Configuration de la page EN PREMIER
+# PREMIÈRE commande Streamlit OBLIGATOIREMENT
 st.set_page_config(
     page_title="Assistant Pénal des Affaires IA", 
     page_icon="⚖️", 
@@ -8,23 +8,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Titre principal IMMÉDIATEMENT après
+# ENSUITE seulement le titre
 st.title("IA Juridique")
 
-# ENSUITE seulement, les autres imports
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-import os
-import io
-from typing import Dict, List, Set, Tuple, Optional, Any
-import json
-from datetime import datetime, timedelta
-# ... reste des imports
-st.title("IA Juridique")
+# Configuration de l'encodage pour les emojis
+import sys
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # Assistant Pénal des Affaires IA - Version Complète
 # Intégrant Multi-LLM, Multi-Victimes et Adaptation IA
@@ -48,7 +38,13 @@ try:
     print("🟢 AZURE DISPONIBLE")
 except ImportError:
     AZURE_AVAILABLE = False
-  
+    print("⚠️ Modules Azure non disponibles")
+
+import os
+import io
+from typing import Dict, List, Set, Tuple, Optional, Any
+import json
+from datetime import datetime, timedelta
 import re
 import pandas as pd
 import base64
@@ -63,22 +59,13 @@ import difflib
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Configuration Streamlit
-st.set_page_config(
-    page_title="Assistant Pénal des Affaires IA", 
-    page_icon="💼", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Imports conditionnels pour les IA
 try:
-    from openai import OpenAI
-    from azure.ai.openai import AzureOpenAI
+    from openai import OpenAI, AzureOpenAI
 except ImportError:
     OpenAI = None
     AzureOpenAI = None
@@ -457,54 +444,54 @@ class MultiLLMManager:
         # Azure OpenAI
         if self.configs[LLMProvider.AZURE_OPENAI]['key']:
             try:
-                from azure.ai.openai import AzureOpenAI
-                clients[LLMProvider.AZURE_OPENAI] = AzureOpenAI(
-                    azure_endpoint=self.configs[LLMProvider.AZURE_OPENAI]['endpoint'],
-                    api_key=self.configs[LLMProvider.AZURE_OPENAI]['key'],
-                    api_version=self.configs[LLMProvider.AZURE_OPENAI]['api_version']
-                )
+                if AzureOpenAI:
+                    clients[LLMProvider.AZURE_OPENAI] = AzureOpenAI(
+                        azure_endpoint=self.configs[LLMProvider.AZURE_OPENAI]['endpoint'],
+                        api_key=self.configs[LLMProvider.AZURE_OPENAI]['key'],
+                        api_version=self.configs[LLMProvider.AZURE_OPENAI]['api_version']
+                    )
             except Exception as e:
                 logger.warning(f"Azure OpenAI non disponible: {e}")
         
         # Claude
         if self.configs[LLMProvider.CLAUDE_OPUS]['api_key']:
             try:
-                import anthropic
-                clients[LLMProvider.CLAUDE_OPUS] = anthropic.Anthropic(
-                    api_key=self.configs[LLMProvider.CLAUDE_OPUS]['api_key']
-                )
+                if anthropic:
+                    clients[LLMProvider.CLAUDE_OPUS] = anthropic.Anthropic(
+                        api_key=self.configs[LLMProvider.CLAUDE_OPUS]['api_key']
+                    )
             except Exception as e:
                 logger.warning(f"Claude non disponible: {e}")
         
         # ChatGPT
         if self.configs[LLMProvider.CHATGPT_4O]['api_key']:
             try:
-                from openai import OpenAI
-                clients[LLMProvider.CHATGPT_4O] = OpenAI(
-                    api_key=self.configs[LLMProvider.CHATGPT_4O]['api_key']
-                )
+                if OpenAI:
+                    clients[LLMProvider.CHATGPT_4O] = OpenAI(
+                        api_key=self.configs[LLMProvider.CHATGPT_4O]['api_key']
+                    )
             except Exception as e:
                 logger.warning(f"ChatGPT non disponible: {e}")
         
         # Gemini
         if self.configs[LLMProvider.GEMINI]['api_key']:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=self.configs[LLMProvider.GEMINI]['api_key'])
-                clients[LLMProvider.GEMINI] = genai.GenerativeModel(
-                    self.configs[LLMProvider.GEMINI]['model']
-                )
+                if genai:
+                    genai.configure(api_key=self.configs[LLMProvider.GEMINI]['api_key'])
+                    clients[LLMProvider.GEMINI] = genai.GenerativeModel(
+                        self.configs[LLMProvider.GEMINI]['model']
+                    )
             except Exception as e:
                 logger.warning(f"Gemini non disponible: {e}")
         
         # Perplexity
         if self.configs[LLMProvider.PERPLEXITY]['api_key']:
             try:
-                from openai import OpenAI
-                clients[LLMProvider.PERPLEXITY] = OpenAI(
-                    api_key=self.configs[LLMProvider.PERPLEXITY]['api_key'],
-                    base_url="https://api.perplexity.ai"
-                )
+                if OpenAI:
+                    clients[LLMProvider.PERPLEXITY] = OpenAI(
+                        api_key=self.configs[LLMProvider.PERPLEXITY]['api_key'],
+                        base_url="https://api.perplexity.ai"
+                    )
             except Exception as e:
                 logger.warning(f"Perplexity non disponible: {e}")
         
@@ -545,7 +532,7 @@ class MultiLLMManager:
                     'provider': provider.value,
                     'success': True,
                     'response': response.choices[0].message.content,
-                    'usage': response.usage.dict() if response.usage else None
+                    'usage': response.usage.model_dump() if response.usage else None
                 }
             
             # Claude
@@ -585,7 +572,7 @@ class MultiLLMManager:
                     'provider': provider.value,
                     'success': True,
                     'response': response.choices[0].message.content,
-                    'usage': response.usage.dict() if response.usage else None
+                    'usage': response.usage.model_dump() if response.usage else None
                 }
             
             # Gemini
@@ -618,7 +605,7 @@ class MultiLLMManager:
                     'provider': provider.value,
                     'success': True,
                     'response': response.choices[0].message.content,
-                    'usage': response.usage.dict() if response.usage else None,
+                    'usage': response.usage.model_dump() if response.usage else None,
                     'citations': getattr(response, 'citations', [])  # Perplexity inclut des citations
                 }
             
