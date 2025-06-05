@@ -1,6 +1,29 @@
-116 kB
 import streamlit as st
 
+# Configuration de la page EN PREMIER
+st.set_page_config(
+    page_title="Assistant Pénal des Affaires IA", 
+    page_icon="⚖️", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Titre principal IMMÉDIATEMENT après
+st.title("IA Juridique")
+
+# ENSUITE seulement, les autres imports
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+import os
+import io
+from typing import Dict, List, Set, Tuple, Optional, Any
+import json
+from datetime import datetime, timedelta
+# ... reste des imports
 st.title("IA Juridique")
 
 # Assistant Pénal des Affaires IA - Version Complète
@@ -25,14 +48,7 @@ try:
     print("🟢 AZURE DISPONIBLE")
 except ImportError:
     AZURE_AVAILABLE = False
-    print("⚠️ Modules Azure non disponibles")
-
-import streamlit as st
-import os
-import io
-from typing import Dict, List, Set, Tuple, Optional, Any
-import json
-from datetime import datetime, timedelta
+  
 import re
 import pandas as pd
 import base64
