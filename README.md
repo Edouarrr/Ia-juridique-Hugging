@@ -1,159 +1,75 @@
-# 🤗 Guide de Déploiement sur Hugging Face Spaces
+---
+title: Assistant Pénal des Affaires IA
+emoji: 💼
+colorFrom: indigo
+colorTo: blue
+sdk: streamlit
+sdk_version: "1.29.0"
+app_file: ia-juridique.py
+pinned: false
+---
 
-## 🚀 Avantages par rapport à Streamlit Cloud
+# 💼 Assistant Pénal des Affaires IA
 
-- ✅ **Python 3.9/3.10** : Compatible avec `azure-ai-openai`
-- ✅ **Gratuit** et sans limites de temps
-- ✅ **GPU optionnel** pour les modèles lourds
-- ✅ **Contrôle total** de l'environnement
+Application spécialisée dans l'assistance juridique en droit pénal des affaires français, intégrant plusieurs LLMs et Azure Blob Storage.
 
-## 📋 Étapes de Déploiement
+## 🌟 Fonctionnalités Principales
 
-### 1. Créer un compte Hugging Face
+### 📂 Gestion de Dossiers
+- Création et suivi de dossiers pénaux complexes
+- Gestion multi-victimes avec adaptation automatique
+- Calcul automatique des délais de prescription
+- Analyse de risques spécialisée (ABS, corruption, etc.)
 
-1. Allez sur [huggingface.co](https://huggingface.co)
-2. Sign Up → Create Account
-3. Confirmez votre email
+### 🤖 IA Multi-LLM
+- **5 LLMs intégrés** : Azure OpenAI, Claude Opus 4, ChatGPT 4o, Gemini, Perplexity
+- Interrogation simple ou multiple avec comparaison
+- Fusion intelligente des réponses pour une analyse complète
+- Templates de prompts juridiques pré-configurés
 
-### 2. Créer un nouveau Space
+### ☁️ Azure Blob Storage
+- Navigation intuitive dans les dossiers
+- Extraction automatique de documents (PDF, DOCX, TXT)
+- Analyse groupée par IA de dossiers complets
+- Export en masse avec conservation de l'arborescence
 
-1. Cliquez sur votre profil → **"New Space"**
-2. Configurez :
-   - **Space name** : `assistant-penal-affaires`
-   - **Select SDK** : `Streamlit`
-   - **Space hardware** : `CPU basic` (gratuit)
-   - **Visibility** : `Private` (recommandé pour données sensibles)
-3. Cliquez **"Create Space"**
+### ✍️ Rédaction Assistée
+- Modèles d'actes juridiques (plaintes, conclusions, CJIP)
+- Adaptation automatique multi-victimes
+- Export Word avec en-tête personnalisé
+- Versement automatique aux débats
 
-### 3. Uploader vos fichiers
+## 🔐 Configuration
 
-#### Option A : Interface Web (Simple)
-1. Dans votre Space, cliquez **"Files"**
-2. **Drag & drop** ces fichiers :
-   - `app.py` (votre application principale)
-   - `requirements.txt` (celui pour HuggingFace)
-   - `README.md`
-   - `.gitignore`
-   - Tous vos autres fichiers Python
+Pour utiliser toutes les fonctionnalités, configurez vos clés API dans les Settings du Space :
 
-#### Option B : Git (Avancé)
-```bash
-# Cloner votre Space
-git clone https://huggingface.co/spaces/VOTRE_USERNAME/assistant-penal-affaires
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_KEY`
+- `AZURE_OPENAI_DEPLOYMENT`
+- `AZURE_STORAGE_CONNECTION_STRING`
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+- `GOOGLE_API_KEY`
+- `PERPLEXITY_API_KEY`
 
-# Copier vos fichiers
-cp app.py requirements.txt README.md .gitignore assistant-penal-affaires/
+## 📚 Guide d'Utilisation
 
-# Commit et push
-cd assistant-penal-affaires
-git add .
-git commit -m "Initial deployment"
-git push
-```
+1. **Créer un dossier** : Tab "Dossiers" → Nouveau dossier
+2. **Analyser avec l'IA** : Tab "IA Multi-LLM" → Sélectionner LLMs → Poser votre question
+3. **Explorer Azure Blob** : Tab "Azure Blob" → Naviguer → Extraire → Analyser
+4. **Adapter des plaintes** : Tab "Rédaction" → Charger plainte → Ajouter victimes → Générer
 
-### 4. Configurer les Secrets
+## 🛡️ Sécurité et Confidentialité
 
-1. Dans votre Space → **"Settings"**
-2. Scroll jusqu'à **"Variables and secrets"**
-3. Cliquez **"New secret"** pour chaque clé :
+- Les données ne sont pas stockées sur les serveurs
+- Les clés API sont sécurisées via Hugging Face Secrets
+- Chiffrement des communications
+- Respect du secret professionnel
 
-```
-AZURE_OPENAI_ENDPOINT → https://votre-resource.openai.azure.com/
-AZURE_OPENAI_KEY → votre-clé-azure
-AZURE_OPENAI_DEPLOYMENT → gpt-4
+## 🤝 À Propos
 
-AZURE_STORAGE_CONNECTION_STRING → DefaultEndpointsProtocol=https;...
-
-ANTHROPIC_API_KEY → sk-ant-api03-...
-OPENAI_API_KEY → sk-...
-GOOGLE_API_KEY → AIzaSy...
-PERPLEXITY_API_KEY → pplx-...
-```
-
-### 5. Vérifier le déploiement
-
-1. Le Space va **builder automatiquement** (2-5 minutes)
-2. Regardez les **logs** en cas d'erreur
-3. Une fois vert → Votre app est live !
-
-## 📁 Structure des Fichiers
-
-```
-assistant-penal-affaires/
-├── app.py                  # ✅ Votre code ORIGINAL (pas de modifications!)
-├── requirements.txt        # ✅ Version avec azure-ai-openai
-├── README.md              # ✅ Description du Space
-├── .gitignore             # ✅ Fichiers à ignorer
-└── [vos autres fichiers]   # Tous vos modules Python
-```
-
-## 🔧 Différences avec votre Code Original
-
-**AUCUNE !** 🎉
-
-Sur Hugging Face, vous pouvez utiliser :
-- ✅ `azure-ai-openai==1.10.0`
-- ✅ Votre code original sans modifications
-- ✅ Toutes vos fonctionnalités
-
-## 🧪 Test Rapide
-
-1. **D'abord**, uploadez `app_check_huggingface.py`
-2. Renommez temporairement :
-   - `app.py` → `app_original.py`
-   - `app_check_huggingface.py` → `app.py`
-3. Laissez builder et testez
-4. Si tout est ✅, revenez à votre app originale
-
-## 🛠️ Dépannage
-
-### Erreur de build
-- Vérifiez `requirements.txt`
-- Regardez les logs complets
-- Essayez avec moins de dépendances
-
-### Modules non trouvés
-- Assurez-vous que TOUS vos fichiers .py sont uploadés
-- Vérifiez la structure des imports
-
-### Secrets non reconnus
-- Les noms doivent être EXACTEMENT identiques
-- Pas d'espaces dans les noms
-- Redémarrez le Space après ajout
-
-## 🎯 Checklist Finale
-
-- [ ] Compte Hugging Face créé
-- [ ] Space créé en mode Streamlit
-- [ ] Fichiers uploadés :
-  - [ ] app.py (original)
-  - [ ] requirements.txt (avec azure-ai-openai)
-  - [ ] README.md
-  - [ ] .gitignore
-  - [ ] Tous vos modules
-- [ ] Secrets configurés (8 au total)
-- [ ] Build réussi (logs verts)
-- [ ] Application accessible
-
-## 🚀 URL de votre Application
-
-Une fois déployée :
-```
-https://huggingface.co/spaces/VOTRE_USERNAME/assistant-penal-affaires
-```
-
-Ou si embed :
-```
-https://VOTRE_USERNAME-assistant-penal-affaires.hf.space
-```
-
-## 💡 Astuces Pro
-
-1. **Logs en temps réel** : Settings → Logs
-2. **Restart rapide** : Settings → Restart Space
-3. **Backup** : Dupliquez le Space avant modifications majeures
-4. **Performance** : Passez à GPU si besoin (payant)
+Développé pour les avocats spécialisés en droit pénal des affaires, cet assistant combine l'expertise juridique avec les dernières avancées en IA pour optimiser la gestion des dossiers complexes.
 
 ---
 
-**C'est tout !** Votre application fonctionnera parfaitement sur Hugging Face avec toutes les fonctionnalités Azure ! 🎉
+Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
