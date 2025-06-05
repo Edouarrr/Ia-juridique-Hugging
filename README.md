@@ -4,7 +4,7 @@ emoji: 💼
 colorFrom: indigo
 colorTo: blue
 sdk: streamlit
-sdk_version: "1.29.0"
+sdk_version: 1.45.1
 app_file: ia-juridique.py
 pinned: false
 ---
