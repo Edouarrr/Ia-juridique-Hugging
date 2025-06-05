@@ -157,6 +157,8 @@ def initialize_session_state():
         st.session_state.azure_search_client = None
         st.session_state.azure_blob_manager = None
         st.session_state.azure_search_manager = None
+        st.session_state.dynamic_search_prompts = {}  # Cache pour les prompts générés
+        st.session_state.dynamic_templates = {}  # Cache pour les modèles générés
 
 # ================== ENUMERATIONS ==================
 
@@ -1344,50 +1346,211 @@ class MultiLLMManager:
         # Fallback: concatenation simple
         return "\n\n".join([f"### {r['provider']}\n{r['response']}" for r in valid_responses])
 
-# ================== PROMPTS PÉNAL DES AFFAIRES ==================
+# ================== GÉNÉRATEURS DYNAMIQUES ==================
 
-SEARCH_PROMPTS_AFFAIRES = {
-    "🔍 Infractions économiques": {
-        "Abus de biens sociaux": [
-            "abus biens sociaux élément intentionnel dirigeant",
-            "ABS intérêt personnel indirect jurisprudence",
-            "ABS contrariété intérêt social caractérisée",
-            "ABS groupe sociétés justification flux"
-        ],
-        "Corruption": [
-            "corruption élément matériel pacte preuve",
-            "corruption passive dirigeant public privé",
-            "corruption agent public étranger FCPA",
-            "corruption privée 445-1 code pénal"
-        ],
-        "Blanchiment": [
-            "blanchiment présomption origine frauduleuse",
-            "blanchiment auto-blanchiment dirigeant",
-            "blanchiment élément moral connaissance",
-            "blanchiment justification origine fonds"
-        ],
-        "Fraude fiscale": [
-            "fraude fiscale élément intentionnel preuve",
-            "fraude fiscale soustraction frauduleuse",
-            "fraude fiscale régularisation spontanée",
-            "fraude fiscale responsabilité dirigeant de fait"
-        ]
-    },
-    "⚖️ Responsabilité PM": {
-        "Imputation": [
-            "responsabilité pénale personne morale organe représentant",
-            "responsabilité PM pour compte critères jurisprudence",
-            "responsabilité PM défaut organisation prévention",
-            "responsabilité PM fusion absorption transmission"
-        ],
-        "Défenses": [
-            "délégation pouvoirs conditions cumulatives validité",
-            "délégation pouvoirs compétence autorité moyens",
-            "programme conformité atténuation responsabilité",
-            "CJIP conditions éligibilité négociation"
-        ]
+async def generate_dynamic_search_prompts(search_query: str, context: str = "") -> Dict[str, Dict[str, List[str]]]:
+    """Génère dynamiquement des prompts de recherche basés sur la requête"""
+    llm_manager = MultiLLMManager()
+    
+    # Utiliser Claude Opus 4 et ChatGPT 4o si disponibles
+    preferred_providers = []
+    if LLMProvider.CLAUDE_OPUS in llm_manager.clients:
+        preferred_providers.append(LLMProvider.CLAUDE_OPUS)
+    if LLMProvider.CHATGPT_4O in llm_manager.clients:
+        preferred_providers.append(LLMProvider.CHATGPT_4O)
+    
+    if not preferred_providers and llm_manager.clients:
+        preferred_providers = [list(llm_manager.clients.keys())[0]]
+    
+    if not preferred_providers:
+        # Retour aux prompts statiques si aucun LLM disponible
+        return {
+            "🔍 Recherches suggérées": {
+                "Générique": [
+                    f"{search_query} jurisprudence récente",
+                    f"{search_query} éléments constitutifs",
+                    f"{search_query} moyens de défense",
+                    f"{search_query} sanctions encourues"
+                ]
+            }
+        }
+    
+    prompt = f"""En tant qu'expert en droit pénal des affaires, génère des prompts de recherche juridique pertinents basés sur cette requête : "{search_query}"
+
+{f"Contexte supplémentaire : {context}" if context else ""}
+
+Crée une structure JSON avec des catégories et sous-catégories de prompts de recherche.
+Chaque prompt doit être concis (max 80 caractères) et cibler un aspect juridique précis.
+
+Format attendu :
+{{
+    "🔍 Éléments constitutifs": {{
+        "Élément matériel": ["prompt1", "prompt2", ...],
+        "Élément intentionnel": ["prompt1", "prompt2", ...]
+    }},
+    "⚖️ Jurisprudence": {{
+        "Décisions récentes": ["prompt1", "prompt2", ...],
+        "Arrêts de principe": ["prompt1", "prompt2", ...]
+    }},
+    "🛡️ Moyens de défense": {{
+        "Exceptions": ["prompt1", "prompt2", ...],
+        "Stratégies": ["prompt1", "prompt2", ...]
+    }}
+}}
+
+Génère au moins 3 catégories avec 2 sous-catégories chacune, et 4 prompts par sous-catégorie."""
+    
+    system_prompt = """Tu es un avocat spécialisé en droit pénal des affaires avec 20 ans d'expérience.
+Tu maîtrises parfaitement la recherche juridique et sais formuler des requêtes précises pour trouver
+la jurisprudence, la doctrine et les textes pertinents. Tes prompts sont toujours en français,
+techniquement précis et adaptés au contexte du droit pénal économique français."""
+    
+    try:
+        response = await llm_manager.query_single_llm(
+            preferred_providers[0],
+            prompt,
+            system_prompt
+        )
+        
+        if response['success']:
+            # Extraire le JSON de la réponse
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response['response'])
+            if json_match:
+                try:
+                    return json.loads(json_match.group(0))
+                except json.JSONDecodeError:
+                    pass
+        
+    except Exception as e:
+        logger.error(f"Erreur génération prompts dynamiques: {e}")
+    
+    # Fallback
+    return {
+        "🔍 Recherches suggérées": {
+            "Générique": [
+                f"{search_query} jurisprudence",
+                f"{search_query} éléments constitutifs",
+                f"{search_query} défense",
+                f"{search_query} sanctions"
+            ]
+        }
     }
-}
+
+async def generate_dynamic_templates(type_acte: str, context: Dict[str, Any] = None) -> Dict[str, str]:
+    """Génère dynamiquement des modèles d'actes juridiques"""
+    llm_manager = MultiLLMManager()
+    
+    # Utiliser Claude Opus 4 et ChatGPT 4o si disponibles
+    preferred_providers = []
+    if LLMProvider.CLAUDE_OPUS in llm_manager.clients:
+        preferred_providers.append(LLMProvider.CLAUDE_OPUS)
+    if LLMProvider.CHATGPT_4O in llm_manager.clients:
+        preferred_providers.append(LLMProvider.CHATGPT_4O)
+    
+    if not preferred_providers and llm_manager.clients:
+        preferred_providers = [list(llm_manager.clients.keys())[0]]
+    
+    if not preferred_providers:
+        return {}
+    
+    context_str = ""
+    if context:
+        context_str = f"""
+Contexte spécifique :
+- Client : {context.get('client', 'Non spécifié')}
+- Infraction : {context.get('infraction', 'Non spécifiée')}
+- Juridiction : {context.get('juridiction', 'Non spécifiée')}
+"""
+    
+    prompt = f"""Génère 3 modèles d'actes juridiques pour : "{type_acte}"
+{context_str}
+
+Pour chaque modèle, fournis :
+1. Un titre descriptif avec emoji (ex: "📨 Demande d'audition libre")
+2. Le contenu complet du modèle avec les balises [CHAMP] pour les éléments à personnaliser
+
+Utilise un style juridique professionnel, formel et conforme aux usages du barreau français.
+Les modèles doivent être immédiatement utilisables par un avocat.
+
+Format de réponse attendu (JSON) :
+{{
+    "📄 Modèle standard de {type_acte}": "Contenu du modèle...",
+    "⚖️ Modèle approfondi de {type_acte}": "Contenu du modèle...",
+    "🔍 Modèle détaillé de {type_acte}": "Contenu du modèle..."
+}}"""
+    
+    system_prompt = """Tu es un avocat au barreau de Paris, spécialisé en droit pénal des affaires.
+Tu rédiges des actes juridiques depuis 20 ans et maîtrises parfaitement les formules consacrées,
+la structure des actes et les mentions obligatoires. Tes modèles sont toujours conformes
+aux exigences procédurales et aux usages de la profession."""
+    
+    try:
+        # Interroger les LLMs
+        responses = await llm_manager.query_multiple_llms(
+            preferred_providers,
+            prompt,
+            system_prompt
+        )
+        
+        # Fusionner les réponses si plusieurs LLMs
+        if len(responses) > 1:
+            fusion_prompt = f"""Voici plusieurs propositions de modèles pour "{type_acte}".
+Fusionne-les intelligemment pour créer les 3 meilleurs modèles en gardant le meilleur de chaque proposition.
+
+{chr(10).join([f"Proposition {i+1}: {r['response']}" for i, r in enumerate(responses) if r['success']])}
+
+Retourne un JSON avec 3 modèles fusionnés."""
+            
+            fusion_response = await llm_manager.query_single_llm(
+                preferred_providers[0],
+                fusion_prompt,
+                "Tu es un expert en fusion de contenus juridiques."
+            )
+            
+            if fusion_response['success']:
+                response_text = fusion_response['response']
+            else:
+                response_text = responses[0]['response'] if responses[0]['success'] else ""
+        else:
+            response_text = responses[0]['response'] if responses and responses[0]['success'] else ""
+        
+        # Extraire le JSON
+        if response_text:
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(0))
+                except json.JSONDecodeError:
+                    pass
+        
+    except Exception as e:
+        logger.error(f"Erreur génération modèles dynamiques: {e}")
+    
+    # Fallback avec un modèle basique
+    return {
+        f"📄 Modèle standard de {type_acte}": f"""[EN-TÊTE AVOCAT]
+
+À l'attention de [DESTINATAIRE]
+
+Objet : {type_acte}
+Référence : [RÉFÉRENCE]
+
+[FORMULE D'APPEL],
+
+J'ai l'honneur de [OBJET DE LA DEMANDE].
+
+[DÉVELOPPEMENT]
+
+[CONCLUSION]
+
+Je vous prie d'agréer, [FORMULE DE POLITESSE].
+
+[SIGNATURE]"""
+    }
+
+# ================== ANALYSE PROMPTS PÉNAL DES AFFAIRES ==================
 
 ANALYSIS_PROMPTS_AFFAIRES = {
     "🎯 Analyse infractions économiques": [
@@ -1763,30 +1926,52 @@ def page_recherche_documents():
     else:
         st.warning("Aucun container disponible")
     
-    # Prompts de recherche suggérés
+    # Prompts de recherche suggérés dynamiques
     st.markdown("### 💡 Recherches suggérées")
     
-    for categorie, sous_categories in SEARCH_PROMPTS_AFFAIRES.items():
-        with st.expander(categorie):
-            for sous_cat, prompts in sous_categories.items():
-                st.markdown(f"**{sous_cat}**")
+    # Générer des prompts dynamiques si une recherche est active
+    if search_query:
+        # Vérifier le cache
+        cache_key = f"prompts_{clean_key(search_query)}"
+        
+        if cache_key not in st.session_state.dynamic_search_prompts:
+            with st.spinner("Génération de suggestions intelligentes..."):
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 
-                # Créer une grille de boutons
-                cols = st.columns(2)
-                for idx, prompt in enumerate(prompts):
-                    col = cols[idx % 2]
+                dynamic_prompts = loop.run_until_complete(
+                    generate_dynamic_search_prompts(search_query)
+                )
+                
+                st.session_state.dynamic_search_prompts[cache_key] = dynamic_prompts
+        else:
+            dynamic_prompts = st.session_state.dynamic_search_prompts[cache_key]
+        
+        # Afficher les prompts dynamiques
+        for categorie, sous_categories in dynamic_prompts.items():
+            with st.expander(categorie):
+                for sous_cat, prompts in sous_categories.items():
+                    st.markdown(f"**{sous_cat}**")
                     
-                    with col:
-                        # Clé unique pour chaque bouton
-                        button_key = f"prompt_{clean_key(categorie)}_{clean_key(sous_cat)}_{idx}"
+                    # Créer une grille de boutons
+                    cols = st.columns(2)
+                    for idx, prompt in enumerate(prompts):
+                        col = cols[idx % 2]
                         
-                        if st.button(
-                            prompt[:50] + "..." if len(prompt) > 50 else prompt,
-                            key=button_key,
-                            help=prompt
-                        ):
-                            st.session_state.search_query = prompt
-                            st.rerun()
+                        with col:
+                            # Clé unique pour chaque bouton
+                            button_key = f"dyn_prompt_{clean_key(categorie)}_{clean_key(sous_cat)}_{idx}"
+                            
+                            if st.button(
+                                prompt[:50] + "..." if len(prompt) > 50 else prompt,
+                                key=button_key,
+                                help=prompt
+                            ):
+                                st.session_state.search_query = prompt
+                                st.rerun()
+    else:
+        # Prompts statiques par défaut
+        st.info("💡 Entrez une recherche pour obtenir des suggestions personnalisées")
 
 def page_selection_pieces():
     """Page de sélection et organisation des pièces"""
@@ -2434,114 +2619,77 @@ Structure l'acte de manière professionnelle avec :
     with tabs[2]:
         st.markdown("### 📚 Bibliothèque de modèles")
         
-        # Modèles prédéfinis
-        templates = {
-            "📨 Demande d'audition libre": """Maître [NOM]
-Avocat au Barreau de [VILLE]
-
-À l'attention de [DESTINATAIRE]
-[SERVICE]
-
-Objet : Demande d'audition libre
-Procédure n° [NUMERO]
-
-Monsieur/Madame,
-
-J'ai l'honneur de vous informer que [CLIENT], souhaite être entendu(e) dans le cadre de l'enquête référencée ci-dessus.
-
-Mon client(e) se tient à votre disposition pour une audition libre et sollicite communication préalable des pièces de la procédure conformément à l'article 61-1 du Code de procédure pénale.
-
-Je vous prie d'agréer, Monsieur/Madame, l'expression de ma considération distinguée.
-
-Maître [NOM]""",
-            
-            "🚨 Plainte avec constitution de partie civile": """PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
-À Monsieur le Doyen des Juges d'Instruction
-Tribunal Judiciaire de [VILLE]
-
-POUR : [CLIENT]
-[ADRESSE]
-
-CONTRE : [MIS EN CAUSE]
-
-I. FAITS
-
-[Exposé détaillé des faits]
-
-II. ÉLÉMENTS CONSTITUTIFS DE L'INFRACTION
-
-[Analyse juridique]
-
-III. PRÉJUDICE
-
-[Description du préjudice subi]
-
-IV. CONSTITUTION DE PARTIE CIVILE
-
-Par les présents, [CLIENT] déclare se constituer partie civile et sollicite la désignation d'un juge d'instruction.
-
-PIÈCES JOINTES :
-[Liste des pièces]""",
-            
-            "📄 Conclusions aux fins de relaxe": """CONCLUSIONS AUX FINS DE RELAXE
-
-POUR : [CLIENT]
-CONTRE : LE MINISTÈRE PUBLIC
-
-PLAISE AU TRIBUNAL
-
-I. RAPPEL DES FAITS ET DE LA PROCÉDURE
-
-[Exposé]
-
-II. DISCUSSION
-
-A. Sur l'absence d'élément matériel
-
-[Développement]
-
-B. Sur l'absence d'élément intentionnel
-
-[Développement]
-
-III. SUR LA RELAXE
-
-[Arguments]
-
-PAR CES MOTIFS
-
-Il est demandé au Tribunal de :
-- CONSTATER l'absence d'éléments constitutifs de l'infraction
-- PRONONCER la relaxe de [CLIENT]
-- CONDAMNER toute partie civile aux dépens"""
-        }
+        # Options pour générer des modèles dynamiques
+        st.markdown("#### 🤖 Générer des modèles personnalisés")
         
-        # Afficher les modèles
-        for titre, contenu in templates.items():
-            with st.expander(titre):
-                st.text_area(
-                    "Modèle",
-                    value=contenu,
-                    height=300,
-                    key=f"template_view_{clean_key(titre)}"
-                )
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            type_modele_generer = st.text_input(
+                "Type d'acte pour lequel générer des modèles",
+                placeholder="Ex: Plainte avec constitution de partie civile, Mémoire en défense...",
+                key="type_modele_generer"
+            )
+        
+        with col2:
+            if st.button("🎯 Générer", key="generer_modeles_button"):
+                if type_modele_generer:
+                    with st.spinner("Génération de modèles intelligents..."):
+                        # Contexte optionnel
+                        context = {
+                            'client': st.session_state.get('client_nom_acte', ''),
+                            'infraction': st.session_state.get('infraction_acte', ''),
+                            'juridiction': ''
+                        }
+                        
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        
+                        modeles = loop.run_until_complete(
+                            generate_dynamic_templates(type_modele_generer, context)
+                        )
+                        
+                        # Stocker dans le cache
+                        cache_key = f"templates_{clean_key(type_modele_generer)}"
+                        st.session_state.dynamic_templates[cache_key] = modeles
+                        
+                        st.success("✅ Modèles générés avec succès!")
+        
+        # Afficher les modèles générés dynamiquement
+        if st.session_state.dynamic_templates:
+            st.markdown("#### 🎨 Modèles générés par IA")
+            
+            for cache_key, modeles in st.session_state.dynamic_templates.items():
+                type_clean = cache_key.replace("templates_", "").replace("_", " ").title()
                 
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if st.button(f"📋 Utiliser", key=f"use_template_{clean_key(titre)}"):
-                        st.session_state.template_to_use = contenu
-                        st.info("Modèle copié. Retournez à l'onglet Rédaction.")
-                
-                with col2:
-                    st.download_button(
-                        "💾 Télécharger",
-                        contenu,
-                        f"{clean_key(titre)}.txt",
-                        "text/plain",
-                        key=f"download_template_{clean_key(titre)}"
-                    )
+                with st.expander(f"📁 Modèles pour : {type_clean}"):
+                    for titre, contenu in modeles.items():
+                        st.markdown(f"**{titre}**")
+                        
+                        st.text_area(
+                            "Modèle",
+                            value=contenu,
+                            height=300,
+                            key=f"dyn_template_view_{clean_key(titre)}"
+                        )
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if st.button(f"📋 Utiliser", key=f"use_dyn_template_{clean_key(titre)}"):
+                                st.session_state.template_to_use = contenu
+                                st.info("Modèle copié. Retournez à l'onglet Rédaction.")
+                        
+                        with col2:
+                            st.download_button(
+                                "💾 Télécharger",
+                                contenu,
+                                f"{clean_key(titre)}.txt",
+                                "text/plain",
+                                key=f"download_dyn_template_{clean_key(titre)}"
+                            )
+                        
+                        st.markdown("---")
 
 def page_configuration():
     """Page de configuration"""
