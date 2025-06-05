@@ -5,7 +5,7 @@ colorFrom: indigo
 colorTo: blue
 sdk: streamlit
 sdk_version: 1.45.1
-app_file: ia-juridique.py
+app_file: app.py
 pinned: false
 ---
 
