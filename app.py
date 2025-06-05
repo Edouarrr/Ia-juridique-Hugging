@@ -2996,3 +2996,5 @@ def merge_vocabulary(vocab_list: List[Dict[str, int]]) -> Dict[str, int]:
 
 if __name__ == "__main__":
     main()
+    st.markdown("### 🔧 Variables d'environnement (DEBUG)")
+    st.code(os.getenv('AZURE_STORAGE_CONNECTION_STRING') or "❌ Variable non trouvée", language="bash")
