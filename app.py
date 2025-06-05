@@ -26,7 +26,7 @@ except ImportError:
 try:
     from azure.search.documents import SearchClient
     from azure.search.documents.indexes import SearchIndexClient
-    from azure.search.documents.models import VectorizedQuery, VectorQuery
+    from azure.search.documents.models import VectorizedQuery
     from azure.search.documents.indexes.models import (
         SearchIndex,
         SimpleField,
@@ -64,9 +64,6 @@ from functools import lru_cache, wraps
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import difflib
-import plotly.graph_objects as go
-import plotly.express as px
-import numpy as np
 from collections import defaultdict, Counter
 
 # Configuration du logging
@@ -94,7 +91,6 @@ try:
     from docx import Document as DocxDocument
     from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.style import WD_STYLE_TYPE
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
@@ -1781,6 +1777,324 @@ def page_recherche_documents():
                             st.session_state.search_query = prompt
                             st.rerun()
 
+def page_selection_pieces():
+    """Page de sélection et organisation des pièces"""
+    
+    st.header("📁 Sélection et organisation des pièces")
+    
+    # Gestionnaire de pièces
+    gestionnaire = GestionnairePiecesSelectionnees()
+    
+    # Charger les pièces depuis la session
+    if 'pieces_selectionnees' in st.session_state:
+        gestionnaire.pieces = st.session_state.pieces_selectionnees
+    
+    # Vue d'ensemble
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Documents disponibles", len(st.session_state.azure_documents))
+    
+    with col2:
+        st.metric("Pièces sélectionnées", len(gestionnaire.pieces))
+    
+    with col3:
+        if st.button("📋 Générer bordereau", key="generer_bordereau"):
+            bordereau = gestionnaire.generer_bordereau()
+            st.text_area("Bordereau", bordereau, height=400, key="bordereau_display")
+            
+            # Option de téléchargement
+            st.download_button(
+                "💾 Télécharger le bordereau",
+                bordereau,
+                "bordereau_pieces.txt",
+                "text/plain",
+                key="download_bordereau"
+            )
+    
+    # Deux colonnes : documents disponibles et pièces sélectionnées
+    col_docs, col_pieces = st.columns([1, 1])
+    
+    # Colonne des documents disponibles
+    with col_docs:
+        st.markdown("### 📄 Documents disponibles")
+        
+        # Filtre
+        filtre = st.text_input(
+            "Filtrer les documents",
+            placeholder="Rechercher par nom...",
+            key="filtre_docs_pieces"
+        )
+        
+        # Liste des documents
+        for doc_id, doc in st.session_state.azure_documents.items():
+            if filtre.lower() in doc.title.lower():
+                with st.container():
+                    st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                    
+                    # Titre et métadonnées
+                    st.markdown(f"**{doc.title}**")
+                    
+                    if doc.metadata.get('last_modified'):
+                        st.caption(f"Modifié: {doc.metadata['last_modified']}")
+                    
+                    # Si déjà sélectionné, afficher différemment
+                    if doc_id in gestionnaire.pieces:
+                        st.success("✅ Déjà sélectionné")
+                        
+                        if st.button(f"❌ Retirer", key=f"remove_{doc_id}"):
+                            gestionnaire.retirer_piece(doc_id)
+                            st.rerun()
+                    else:
+                        # Sélection avec catégorie
+                        col_cat, col_btn = st.columns([3, 1])
+                        
+                        with col_cat:
+                            categorie = st.selectbox(
+                                "Catégorie",
+                                gestionnaire.categories,
+                                key=f"cat_select_{doc_id}"
+                            )
+                        
+                        with col_btn:
+                            if st.button("➕", key=f"add_piece_{doc_id}"):
+                                gestionnaire.ajouter_piece(doc, categorie)
+                                st.rerun()
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Colonne des pièces sélectionnées
+    with col_pieces:
+        st.markdown("### ✅ Pièces sélectionnées")
+        
+        pieces_par_cat = gestionnaire.get_pieces_par_categorie()
+        
+        for categorie, pieces in pieces_par_cat.items():
+            if pieces:
+                with st.expander(f"{categorie} ({len(pieces)})", expanded=True):
+                    for piece in sorted(pieces, key=lambda x: x.pertinence, reverse=True):
+                        st.markdown('<div class="piece-selectionnee">', unsafe_allow_html=True)
+                        
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            st.markdown(f"**{piece.titre}**")
+                            
+                            # Notes
+                            notes = st.text_input(
+                                "Notes",
+                                value=piece.notes,
+                                key=f"notes_{piece.document_id}",
+                                placeholder="Ajouter des notes..."
+                            )
+                            
+                            # Pertinence
+                            pertinence = st.slider(
+                                "Pertinence",
+                                1, 10,
+                                value=piece.pertinence,
+                                key=f"pertinence_{piece.document_id}"
+                            )
+                            
+                            # Mettre à jour la pièce
+                            if notes != piece.notes or pertinence != piece.pertinence:
+                                piece.notes = notes
+                                piece.pertinence = pertinence
+                                st.session_state.pieces_selectionnees[piece.document_id] = piece
+                        
+                        with col2:
+                            if st.button("🗑️", key=f"delete_piece_{piece.document_id}"):
+                                gestionnaire.retirer_piece(piece.document_id)
+                                st.rerun()
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+def page_analyse_ia():
+    """Page d'analyse par IA"""
+    
+    st.header("🤖 Analyse IA des documents")
+    
+    # Vérifier qu'il y a des pièces sélectionnées
+    if not st.session_state.pieces_selectionnees:
+        st.warning("⚠️ Veuillez d'abord sélectionner des pièces dans l'onglet 'Sélection de pièces'")
+        return
+    
+    # Configuration de l'analyse
+    st.markdown("### ⚙️ Configuration de l'analyse")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Type d'infraction - Saisie libre avec suggestions
+        infractions_list = [inf.value for inf in InfractionAffaires]
+        
+        infraction = st.text_input(
+            "Type d'infraction",
+            placeholder="Ex: Abus de biens sociaux, corruption, fraude fiscale...",
+            key="infraction_input",
+            help="Saisissez librement l'infraction ou choisissez dans les suggestions"
+        )
+        
+        # Suggestions
+        if not infraction:
+            st.info("💡 Suggestions : " + ", ".join(infractions_list[:5]) + "...")
+        
+        # Client
+        client_nom = st.text_input(
+            "Nom du client",
+            placeholder="Personne physique ou morale",
+            key="client_nom_analyse"
+        )
+        
+        client_type = st.radio(
+            "Type de client",
+            ["Personne physique", "Personne morale"],
+            key="client_type_analyse"
+        )
+    
+    with col2:
+        # Providers IA à utiliser
+        llm_manager = MultiLLMManager()
+        available_providers = list(llm_manager.clients.keys())
+        
+        if available_providers:
+            selected_providers = st.multiselect(
+                "IA à utiliser",
+                [p.value for p in available_providers],
+                default=[available_providers[0].value] if available_providers else [],
+                key="selected_providers_analyse"
+            )
+            
+            # Mode de fusion
+            fusion_mode = st.radio(
+                "Mode de fusion des réponses",
+                ["Synthèse IA", "Concatenation simple"],
+                key="fusion_mode_analyse"
+            )
+        else:
+            st.error("❌ Aucune IA configurée")
+            return
+    
+    # Sélection des pièces à analyser
+    st.markdown("### 📄 Pièces à analyser")
+    
+    pieces_a_analyser = []
+    for piece_id, piece in st.session_state.pieces_selectionnees.items():
+        if st.checkbox(
+            f"{piece.titre} ({piece.categorie})",
+            value=True,
+            key=f"analyse_piece_{piece_id}"
+        ):
+            pieces_a_analyser.append(piece_id)
+    
+    # Type d'analyse
+    st.markdown("### 🎯 Type d'analyse")
+    
+    analyse_types = st.multiselect(
+        "Sélectionner les analyses à effectuer",
+        list(ANALYSIS_PROMPTS_AFFAIRES.keys()),
+        default=list(ANALYSIS_PROMPTS_AFFAIRES.keys())[:2],
+        key="analyse_types_select"
+    )
+    
+    # Bouton d'analyse
+    if st.button("🚀 Lancer l'analyse", type="primary", key="lancer_analyse"):
+        if not infraction or not client_nom or not pieces_a_analyser:
+            st.error("❌ Veuillez remplir tous les champs")
+            return
+        
+        # Préparer le contenu pour l'analyse
+        contenu_pieces = []
+        for piece_id in pieces_a_analyser:
+            if piece_id in st.session_state.azure_documents:
+                doc = st.session_state.azure_documents[piece_id]
+                piece = st.session_state.pieces_selectionnees[piece_id]
+                
+                contenu_pieces.append(f"""
+=== {doc.title} ({piece.categorie}) ===
+Pertinence: {piece.pertinence}/10
+Notes: {piece.notes}
+Contenu:
+{doc.content[:3000]}...
+""")
+        
+        # Construire le prompt
+        prompt_base = f"""Tu es un avocat expert en droit pénal des affaires.
+Client: {client_nom} ({client_type})
+Infraction reprochée: {infraction}
+Documents analysés:
+{chr(10).join(contenu_pieces)}
+
+Analyses demandées:
+"""
+        
+        # Lancer les analyses
+        with st.spinner("🔄 Analyse en cours..."):
+            resultats = {}
+            
+            # Pour chaque type d'analyse
+            for analyse_type in analyse_types:
+                prompts = ANALYSIS_PROMPTS_AFFAIRES[analyse_type]
+                
+                # Construire le prompt complet
+                prompt_complet = prompt_base + f"\n{analyse_type}:\n"
+                for p in prompts:
+                    prompt_complet += f"- {p}\n"
+                
+                # Convertir les providers
+                providers_enum = [
+                    p for p in LLMProvider 
+                    if p.value in selected_providers
+                ]
+                
+                # Interroger les IA
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                responses = loop.run_until_complete(
+                    llm_manager.query_multiple_llms(
+                        providers_enum,
+                        prompt_complet
+                    )
+                )
+                
+                # Fusionner les réponses
+                if fusion_mode == "Synthèse IA" and len(responses) > 1:
+                    fusion = llm_manager.fusion_responses(responses)
+                else:
+                    fusion = "\n\n".join([
+                        f"### {r['provider']}\n{r['response']}"
+                        for r in responses
+                        if r['success']
+                    ])
+                
+                resultats[analyse_type] = fusion
+            
+            # Afficher les résultats
+            st.markdown("## 📊 Résultats de l'analyse")
+            
+            for analyse_type, resultat in resultats.items():
+                with st.expander(analyse_type, expanded=True):
+                    st.markdown(resultat)
+                    
+                    # Options d'export
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            "💾 Télécharger",
+                            resultat,
+                            f"analyse_{clean_key(analyse_type)}.txt",
+                            "text/plain",
+                            key=f"download_analyse_{clean_key(analyse_type)}"
+                        )
+                    
+                    with col2:
+                        if st.button(
+                            "📋 Copier",
+                            key=f"copy_analyse_{clean_key(analyse_type)}"
+                        ):
+                            st.write("Contenu copié!")
+
 def page_redaction_assistee():
     """Page de rédaction assistée avec apprentissage de style"""
     
@@ -2218,6 +2532,234 @@ Il est demandé au Tribunal de :
                         key=f"download_template_{clean_key(titre)}"
                     )
 
+def page_configuration():
+    """Page de configuration"""
+    
+    st.header("⚙️ Configuration")
+    
+    tabs = st.tabs(["🔑 Clés API", "📊 État du système", "💾 Export/Import", "🔍 Index de recherche"])
+    
+    # Onglet Clés API
+    with tabs[0]:
+        st.markdown("### Configuration des clés API")
+        
+        st.info("""
+        ℹ️ Les clés API doivent être configurées dans les variables d'environnement ou dans un fichier .env
+        
+        Variables nécessaires:
+        - AZURE_OPENAI_KEY
+        - AZURE_OPENAI_ENDPOINT
+        - AZURE_SEARCH_KEY
+        - AZURE_SEARCH_ENDPOINT
+        - AZURE_STORAGE_CONNECTION_STRING
+        - ANTHROPIC_API_KEY
+        - OPENAI_API_KEY
+        - GOOGLE_API_KEY
+        - PERPLEXITY_API_KEY
+        """)
+        
+        # Vérifier l'état des clés
+        configs = LLMConfig.get_configs()
+        
+        st.markdown("#### 🤖 Providers IA")
+        for provider, config in configs.items():
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.text(provider.value)
+            
+            with col2:
+                if config.get('key') or config.get('api_key'):
+                    st.success("✅")
+                else:
+                    st.error("❌")
+        
+        # Services Azure
+        st.markdown("#### 🔷 Services Azure")
+        
+        services = {
+            "Azure Blob Storage": bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING')),
+            "Azure Search": bool(os.getenv('AZURE_SEARCH_ENDPOINT')),
+            "Azure OpenAI": bool(os.getenv('AZURE_OPENAI_ENDPOINT'))
+        }
+        
+        for service, configured in services.items():
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.text(service)
+            
+            with col2:
+                if configured:
+                    st.success("✅")
+                else:
+                    st.error("❌")
+    
+    # Onglet État du système
+    with tabs[1]:
+        st.markdown("### État du système")
+        
+        # Métriques
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Documents Azure", len(st.session_state.azure_documents))
+        
+        with col2:
+            st.metric("Pièces sélectionnées", len(st.session_state.pieces_selectionnees))
+        
+        with col3:
+            llm_manager = MultiLLMManager()
+            st.metric("IA disponibles", len(llm_manager.clients))
+        
+        with col4:
+            st.metric("Styles appris", len(st.session_state.get('learned_styles', {})))
+        
+        # État des connexions
+        st.markdown("### 🔗 État des connexions")
+        
+        # Azure Blob
+        if st.session_state.azure_blob_manager.is_connected():
+            st.success("✅ Azure Blob Storage : Connecté")
+            
+            # Test de connexion
+            if st.button("🧪 Tester la connexion Blob", key="test_blob"):
+                try:
+                    containers = st.session_state.azure_blob_manager.list_containers()
+                    st.success(f"✅ {len(containers)} containers trouvés")
+                except Exception as e:
+                    st.error(f"❌ Erreur : {str(e)}")
+        else:
+            st.error("❌ Azure Blob Storage : Non connecté")
+        
+        # Azure Search
+        if st.session_state.azure_search_manager.search_client:
+            st.success("✅ Azure Search : Connecté")
+            
+            # Test de connexion
+            if st.button("🧪 Tester la connexion Search", key="test_search"):
+                try:
+                    # Tester avec une recherche simple
+                    results = st.session_state.azure_search_manager.search_hybrid("test", top=1)
+                    st.success("✅ Connexion fonctionnelle")
+                except Exception as e:
+                    st.error(f"❌ Erreur : {str(e)}")
+        else:
+            st.warning("⚠️ Azure Search : Non configuré")
+    
+    # Onglet Export/Import
+    with tabs[2]:
+        st.markdown("### 💾 Export/Import de configuration")
+        
+        # Export
+        st.markdown("#### 📥 Export")
+        
+        export_data = {
+            'pieces_selectionnees': {
+                k: {
+                    'document_id': v.document_id,
+                    'titre': v.titre,
+                    'categorie': v.categorie,
+                    'notes': v.notes,
+                    'pertinence': v.pertinence
+                }
+                for k, v in st.session_state.pieces_selectionnees.items()
+            },
+            'learned_styles': st.session_state.get('learned_styles', {}),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        export_json = json.dumps(export_data, indent=2, ensure_ascii=False)
+        
+        st.download_button(
+            "💾 Exporter la configuration complète",
+            export_json,
+            f"config_penal_affaires_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            "application/json",
+            key="export_config"
+        )
+        
+        # Import
+        st.markdown("#### 📤 Import")
+        
+        uploaded_file = st.file_uploader(
+            "Charger une configuration",
+            type=['json'],
+            key="import_config_file"
+        )
+        
+        if uploaded_file:
+            try:
+                config_data = json.load(uploaded_file)
+                
+                # Prévisualisation
+                with st.expander("Voir le contenu"):
+                    st.json(config_data)
+                
+                if st.button("⬆️ Importer", key="import_config_button"):
+                    # Importer les pièces sélectionnées
+                    if 'pieces_selectionnees' in config_data:
+                        for piece_id, piece_data in config_data['pieces_selectionnees'].items():
+                            piece = PieceSelectionnee(
+                                document_id=piece_data['document_id'],
+                                titre=piece_data['titre'],
+                                categorie=piece_data['categorie'],
+                                notes=piece_data.get('notes', ''),
+                                pertinence=piece_data.get('pertinence', 5)
+                            )
+                            st.session_state.pieces_selectionnees[piece_id] = piece
+                    
+                    # Importer les styles appris
+                    if 'learned_styles' in config_data:
+                        st.session_state.learned_styles = config_data['learned_styles']
+                    
+                    st.success("✅ Configuration importée avec succès")
+                    st.rerun()
+                    
+            except Exception as e:
+                st.error(f"❌ Erreur lors de l'import: {str(e)}")
+    
+    # Onglet Index de recherche
+    with tabs[3]:
+        st.markdown("### 🔍 Gestion de l'index de recherche")
+        
+        if st.session_state.azure_search_manager.search_client:
+            # Réindexer tous les documents
+            if st.button("🔄 Réindexer tous les documents", key="reindex_all"):
+                with st.spinner("Réindexation en cours..."):
+                    success_count = 0
+                    error_count = 0
+                    
+                    for doc_id, doc in st.session_state.azure_documents.items():
+                        if st.session_state.azure_search_manager.index_document(doc):
+                            success_count += 1
+                        else:
+                            error_count += 1
+                    
+                    st.success(f"✅ {success_count} documents indexés")
+                    if error_count > 0:
+                        st.warning(f"⚠️ {error_count} erreurs")
+            
+            # Créer/Recréer l'index
+            if st.button("🏗️ Recréer l'index", key="recreate_index"):
+                if st.checkbox("Confirmer la suppression et recréation de l'index", key="confirm_recreate"):
+                    with st.spinner("Recréation de l'index..."):
+                        try:
+                            st.session_state.azure_search_manager._ensure_index_exists()
+                            st.success("✅ Index recréé avec succès")
+                        except Exception as e:
+                            st.error(f"❌ Erreur : {str(e)}")
+        else:
+            st.warning("⚠️ Azure Search non configuré")
+            
+            st.markdown("""
+            Pour utiliser la recherche vectorielle, configurez :
+            1. AZURE_SEARCH_ENDPOINT
+            2. AZURE_SEARCH_KEY
+            3. AZURE_OPENAI_ENDPOINT (pour les embeddings)
+            4. AZURE_OPENAI_KEY
+            """)
+
 # Fonctions auxiliaires pour la fusion des styles
 def merge_structures(structures: List[Dict]) -> Dict[str, Any]:
     """Fusionne plusieurs structures de documents"""
@@ -2235,7 +2777,6 @@ def merge_structures(structures: List[Dict]) -> Dict[str, Any]:
         all_sections.extend([s['titre'] for s in struct.get('sections', [])])
     
     # Compter les occurrences
-    from collections import Counter
     section_counts = Counter(all_sections)
     
     # Garder les sections présentes dans au moins 50% des documents
@@ -2254,7 +2795,6 @@ def merge_formules(formules_list: List[List[str]]) -> List[str]:
         all_formules.extend(formules)
     
     # Compter et garder les plus fréquentes
-    from collections import Counter
     formule_counts = Counter(all_formules)
     
     return [formule for formule, count in formule_counts.most_common(20)]
@@ -2278,7 +2818,6 @@ def merge_formatting(formats: List[Dict]) -> Dict[str, Any]:
             merged[key] = sum(values) / len(values)
         else:
             # Pour le reste, prendre la valeur la plus fréquente
-            from collections import Counter
             merged[key] = Counter(values).most_common(1)[0][0]
     
     return merged
@@ -2293,3 +2832,8 @@ def merge_vocabulary(vocab_list: List[Dict[str, int]]) -> Dict[str, int]:
     
     # Garder les 100 mots les plus fréquents
     return dict(sorted(merged.items(), key=lambda x: x[1], reverse=True)[:100])
+
+# ================== LANCEMENT DE L'APPLICATION ==================
+
+if __name__ == "__main__":
+    main()
