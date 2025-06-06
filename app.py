@@ -117,7 +117,7 @@ class AppConfig:
     EXPORT_FORMAT = "%Y%m%d_%H%M%S"
     
     # Azure Search
-    SEARCH_INDEX_NAME = "penal-affaires-index"
+    SEARCH_INDEX_NAME = "juridique-index-vector"
     VECTOR_DIMENSION = 1536  # OpenAI embeddings
     
     # Formats de citation
@@ -503,7 +503,7 @@ class AzureSearchManager:
                 "source": document.source,
                 "folder_path": document.folder_path or "",
                 "created_at": document.created_at.isoformat(),
-                "embedding": embedding,
+                "contentVector": embedding,
                 "metadata": json.dumps(document.metadata)
             }
             
@@ -534,7 +534,7 @@ class AzureSearchManager:
                     vector_query = VectorizedQuery(
                         vector=query_embedding,
                         k_nearest_neighbors=top,
-                        fields="embedding"
+                        fields="contentVector"
                     )
                     
                     if mode == SearchMode.VECTOR_ONLY:
