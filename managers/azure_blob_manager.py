@@ -1,63 +1,43 @@
 # managers/azure_blob_manager.py
-"""Gestionnaire pour Azure Blob Storage"""
+"""Gestionnaire Azure Blob Storage"""
 
 import os
-import io
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
+import streamlit as st
 
-logger = logging.getLogger(__name__)
-
-# Vérifier la disponibilité d'Azure
 try:
-    from azure.storage.blob import BlobServiceClient
+    from azure.storage.blob import BlobServiceClient, ContainerClient
+    from azure.core.exceptions import ResourceNotFoundError
     AZURE_AVAILABLE = True
 except ImportError:
     AZURE_AVAILABLE = False
-    logger.warning("Modules Azure non disponibles")
 
-# Import conditionnel pour docx
-try:
-    from docx import Document as DocxDocument
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
-    logger.warning("Module python-docx non disponible")
-
-from models.dataclasses import Document
-from utils.helpers import clean_env_for_azure
+logger = logging.getLogger(__name__)
 
 class AzureBlobManager:
-    """Gestionnaire pour Azure Blob Storage avec navigation dans les dossiers"""
+    """Gère les opérations avec Azure Blob Storage"""
     
     def __init__(self):
+        """Initialise le gestionnaire Azure Blob"""
         self.blob_service_client = None
-        self.container_client = None
-        try:
-            self._init_blob_client()
-        except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation d'AzureBlobManager : {e}")
-            self.blob_service_client = None
-    
-    def _init_blob_client(self):
-        """Initialise le client Azure Blob"""
-        try:
-            # Nettoyer l'environnement pour Hugging Face
-            clean_env_for_azure()
-            
-            connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-            if connection_string and AZURE_AVAILABLE:
-                self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-                logger.info("Client Azure Blob Storage initialisé avec succès")
+        self.connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        
+        if self.connection_string and AZURE_AVAILABLE:
+            try:
+                self.blob_service_client = BlobServiceClient.from_connection_string(
+                    self.connection_string
+                )
+                logger.info("✅ Connexion Azure Blob Storage établie")
+            except Exception as e:
+                logger.error(f"❌ Erreur connexion Azure Blob: {e}")
+                st.warning(f"Impossible de se connecter à Azure Blob Storage: {str(e)}")
+        else:
+            if not AZURE_AVAILABLE:
+                logger.warning("⚠️ Azure SDK non installé")
             else:
-                if not connection_string:
-                    logger.warning("AZURE_STORAGE_CONNECTION_STRING non définie")
-                if not AZURE_AVAILABLE:
-                    logger.warning("Modules Azure non disponibles")
-        except Exception as e:
-            logger.error(f"Erreur initialisation Azure Blob : {e}")
-            self.blob_service_client = None
+                logger.warning("⚠️ AZURE_STORAGE_CONNECTION_STRING non configuré")
     
     def is_connected(self) -> bool:
         """Vérifie si la connexion est établie"""
@@ -65,74 +45,101 @@ class AzureBlobManager:
     
     def list_containers(self) -> List[str]:
         """Liste tous les containers disponibles"""
-        if not self.blob_service_client:
+        if not self.is_connected():
             return []
         
         try:
-            containers = self.blob_service_client.list_containers()
-            container_list = [container.name for container in containers]
-            logger.info(f"Containers trouvés: {container_list}")
-            return container_list
+            containers = []
+            for container in self.blob_service_client.list_containers():
+                containers.append(container.name)
+            return containers
         except Exception as e:
-            logger.error(f"Erreur listing containers : {e}")
+            logger.error(f"Erreur listing containers: {e}")
             return []
     
-    def list_folders(self, container_name: str, prefix: str = "") -> List[Dict[str, Any]]:
-        """Liste les dossiers et fichiers dans un chemin donné"""
-        if not self.blob_service_client:
+    def list_blobs(self, container_name: str, prefix: str = "") -> List[Dict[str, Any]]:
+        """Liste les blobs dans un container avec un préfixe optionnel"""
+        if not self.is_connected():
+            return []
+        
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            blobs = []
+            
+            for blob in container_client.list_blobs(name_starts_with=prefix):
+                blobs.append({
+                    'name': blob.name,
+                    'size': blob.size,
+                    'last_modified': blob.last_modified,
+                    'content_type': blob.content_settings.content_type if blob.content_settings else None,
+                    'metadata': blob.metadata
+                })
+            
+            return blobs
+        except ResourceNotFoundError:
+            logger.error(f"Container '{container_name}' non trouvé")
+            return []
+        except Exception as e:
+            logger.error(f"Erreur listing blobs: {e}")
+            return []
+    
+    def list_folder_contents(self, container_name: str, folder_path: str = "") -> List[Dict[str, Any]]:
+        """Liste le contenu d'un dossier (blobs et sous-dossiers)"""
+        if not self.is_connected():
             return []
         
         try:
             container_client = self.blob_service_client.get_container_client(container_name)
             
+            # Ajouter le slash si nécessaire
+            prefix = folder_path
+            if prefix and not prefix.endswith('/'):
+                prefix += '/'
+            
+            items = []
             folders = set()
-            files = []
             
-            blobs = container_client.list_blobs(name_starts_with=prefix)
-            
-            for blob in blobs:
+            # Lister tous les blobs avec le préfixe
+            for blob in container_client.list_blobs(name_starts_with=prefix):
+                # Enlever le préfixe pour obtenir le chemin relatif
                 relative_path = blob.name[len(prefix):] if prefix else blob.name
-                parts = relative_path.split('/')
                 
-                if len(parts) > 1 and parts[0]:
-                    folders.add(parts[0])
-                elif len(parts) == 1 and parts[0]:
-                    files.append({
-                        'name': parts[0],
+                # Vérifier si c'est un sous-dossier
+                if '/' in relative_path:
+                    # C'est dans un sous-dossier
+                    folder_name = relative_path.split('/')[0]
+                    folders.add(folder_name)
+                else:
+                    # C'est un fichier direct
+                    items.append({
+                        'type': 'file',
+                        'name': relative_path,
+                        'path': blob.name,
                         'size': blob.size,
                         'last_modified': blob.last_modified,
-                        'content_type': blob.content_settings.content_type if blob.content_settings else None,
-                        'full_path': blob.name
+                        'content_type': blob.content_settings.content_type if blob.content_settings else None
                     })
             
-            result = []
-            
+            # Ajouter les dossiers
             for folder in sorted(folders):
-                result.append({
-                    'name': folder,
+                items.append({
                     'type': 'folder',
-                    'path': f"{prefix}{folder}/" if prefix else f"{folder}/"
+                    'name': folder,
+                    'path': prefix + folder
                 })
             
-            for file in sorted(files, key=lambda x: x['name']):
-                result.append({
-                    'name': file['name'],
-                    'type': 'file',
-                    'size': file['size'],
-                    'last_modified': file['last_modified'],
-                    'content_type': file['content_type'],
-                    'full_path': file['full_path']
-                })
+            # Trier : dossiers d'abord, puis fichiers
+            items.sort(key=lambda x: (x['type'] != 'folder', x['name']))
             
-            return result
+            return items
             
         except Exception as e:
-            logger.error(f"Erreur listing dossiers : {e}")
+            logger.error(f"Erreur listing dossier: {e}")
             return []
     
-    def download_file(self, container_name: str, blob_name: str) -> Optional[bytes]:
-        """Télécharge un fichier depuis Azure Blob"""
-        if not self.blob_service_client:
+    def download_blob(self, container_name: str, blob_name: str) -> Optional[bytes]:
+        """Télécharge un blob et retourne son contenu"""
+        if not self.is_connected():
             return None
         
         try:
@@ -141,56 +148,90 @@ class AzureBlobManager:
                 blob=blob_name
             )
             
-            return blob_client.download_blob().readall()
+            download_stream = blob_client.download_blob()
+            return download_stream.readall()
             
+        except ResourceNotFoundError:
+            logger.error(f"Blob '{blob_name}' non trouvé dans '{container_name}'")
+            return None
         except Exception as e:
-            logger.error(f"Erreur téléchargement blob : {e}")
+            logger.error(f"Erreur téléchargement blob: {e}")
             return None
     
-    def extract_text_from_blob(self, container_name: str, blob_name: str) -> Optional[str]:
-        """Extrait le texte d'un blob"""
-        content_bytes = self.download_file(container_name, blob_name)
-        
-        if not content_bytes:
-            return None
-        
-        file_ext = os.path.splitext(blob_name)[1].lower()
+    def upload_blob(self, container_name: str, blob_name: str, data: bytes, 
+                   metadata: Optional[Dict[str, str]] = None) -> bool:
+        """Upload un blob avec des métadonnées optionnelles"""
+        if not self.is_connected():
+            return False
         
         try:
-            if file_ext == '.txt':
-                return content_bytes.decode('utf-8', errors='ignore')
-            elif file_ext in ['.docx', '.doc'] and DOCX_AVAILABLE:
-                doc = DocxDocument(io.BytesIO(content_bytes))
-                return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-            else:
-                return f"[Format {file_ext} non supporté pour l'extraction de texte]"
+            blob_client = self.blob_service_client.get_blob_client(
+                container=container_name,
+                blob=blob_name
+            )
+            
+            blob_client.upload_blob(
+                data,
+                overwrite=True,
+                metadata=metadata
+            )
+            
+            logger.info(f"✅ Blob '{blob_name}' uploadé dans '{container_name}'")
+            return True
+            
         except Exception as e:
-            logger.error(f"Erreur extraction texte : {e}")
-            return None
+            logger.error(f"Erreur upload blob: {e}")
+            return False
     
-    def get_all_files_in_folder(self, container_name: str, folder_path: str) -> List[Dict[str, Any]]:
-        """Récupère récursivement tous les fichiers d'un dossier"""
-        if not self.blob_service_client:
-            return []
+    def delete_blob(self, container_name: str, blob_name: str) -> bool:
+        """Supprime un blob"""
+        if not self.is_connected():
+            return False
         
         try:
-            container_client = self.blob_service_client.get_container_client(container_name)
-            all_files = []
+            blob_client = self.blob_service_client.get_blob_client(
+                container=container_name,
+                blob=blob_name
+            )
             
-            blobs = container_client.list_blobs(name_starts_with=folder_path)
+            blob_client.delete_blob()
+            logger.info(f"✅ Blob '{blob_name}' supprimé de '{container_name}'")
+            return True
             
-            for blob in blobs:
-                if not blob.name.endswith('/'):
-                    all_files.append({
-                        'name': os.path.basename(blob.name),
-                        'full_path': blob.name,
-                        'size': blob.size,
-                        'last_modified': blob.last_modified,
-                        'folder': os.path.dirname(blob.name)
-                    })
+        except ResourceNotFoundError:
+            logger.warning(f"Blob '{blob_name}' non trouvé dans '{container_name}'")
+            return False
+        except Exception as e:
+            logger.error(f"Erreur suppression blob: {e}")
+            return False
+    
+    def create_container(self, container_name: str) -> bool:
+        """Crée un nouveau container"""
+        if not self.is_connected():
+            return False
+        
+        try:
+            container_client = self.blob_service_client.create_container(container_name)
+            logger.info(f"✅ Container '{container_name}' créé")
+            return True
+        except Exception as e:
+            logger.error(f"Erreur création container: {e}")
+            return False
+    
+    def get_blob_metadata(self, container_name: str, blob_name: str) -> Optional[Dict[str, str]]:
+        """Récupère les métadonnées d'un blob"""
+        if not self.is_connected():
+            return None
+        
+        try:
+            blob_client = self.blob_service_client.get_blob_client(
+                container=container_name,
+                blob=blob_name
+            )
             
-            return all_files
+            properties = blob_client.get_blob_properties()
+            return properties.metadata
             
         except Exception as e:
-            logger.error(f"Erreur récupération fichiers du dossier : {e}")
-            return []
+            logger.error(f"Erreur récupération métadonnées: {e}")
+            return None
