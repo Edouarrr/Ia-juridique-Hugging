@@ -12,58 +12,6 @@ from managers.llm_manager import LLMManager, display_model_selector, display_mod
 from utils.styles import load_custom_css, create_alert_box
 from utils.helpers import format_date, sanitize_text
 
-3. pages/recherche.py - Remplacez :
-python# ANCIEN
-from config import TYPES_INFRACTIONS, LEGAL_APIS
-from models import JurisprudenceSearch, JurisprudenceReference, TypeJuridiction, SourceJurisprudence
-from managers import LegalSearchManager, JurisprudenceVerifier, display_jurisprudence_verification
-from utils import load_custom_css, create_alert_box, create_badge, create_progress_bar
-
-# NOUVEAU
-from config.app_config import TYPES_INFRACTIONS, LEGAL_APIS
-from models.jurisprudence_models import JurisprudenceSearch, JurisprudenceReference, TypeJuridiction, SourceJurisprudence
-from managers.legal_search import LegalSearchManager
-from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
-from utils.styles import load_custom_css, create_alert_box, create_badge, create_progress_bar
-4. pages/visualisation.py - Remplacez :
-python# ANCIEN
-from config import TYPES_INFRACTIONS
-from utils import load_custom_css, create_section_divider, get_color_scheme
-
-# NOUVEAU
-from config.app_config import TYPES_INFRACTIONS
-from utils.styles import load_custom_css, create_section_divider, get_color_scheme
-5. pages/configuration.py - Remplacez :
-python# ANCIEN
-from config import (
-    LLM_CONFIGS, 
-    LEGAL_APIS, 
-    DEFAULT_SETTINGS,
-    APP_VERSION,
-    validate_api_key
-)
-from utils import load_custom_css, create_alert_box, create_section_divider
-
-# NOUVEAU
-from config.llm_config import LLM_CONFIGS, validate_api_key
-from config.app_config import LEGAL_APIS, DEFAULT_SETTINGS, APP_VERSION
-from utils.styles import load_custom_css, create_alert_box, create_section_divider
-🚀 Méthode la plus simple :
-
-Sur Hugging Face, cliquez sur "Files and versions"
-Pour chaque fichier dans pages/, cliquez sur le crayon ✏️ pour éditer
-Remplacez les imports comme indiqué ci-dessus
-Commitez les changements
-
-✅ Règle simple à retenir :
-
-from config import ... → from config.app_config import ...
-from models import ... → from models.dataclasses import ... ou from models.jurisprudence_models import ...
-from managers import ... → from managers.nom_du_fichier import ...
-from utils import ... → from utils.styles import ... ou from utils.helpers import ...
-
-Après ces changements, toutes vos pages devraient fonctionner ! 🎉RéessayerClaude peut faire des erreurs. Assurez-vous de vérifier ses réponses.
-
 def show():
     """Affiche la page d'assistant interactif"""
     load_custom_css()
