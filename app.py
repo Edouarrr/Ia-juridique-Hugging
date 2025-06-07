@@ -1,6 +1,4 @@
-# app.py
 import streamlit as st
-import sys
 
 # PREMIÈRE commande Streamlit OBLIGATOIREMENT
 st.set_page_config(
@@ -11,6 +9,7 @@ st.set_page_config(
 )
 
 # Configuration de l'encodage pour les emojis
+import sys
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
@@ -67,8 +66,16 @@ def main():
         
         page = st.selectbox(
             "Choisir une fonctionnalité",
-            list(APP_CONFIG['PAGES'].keys()),
-            format_func=lambda x: f"{APP_CONFIG['PAGES'][x]} {x}"
+            [
+                "Recherche de documents",
+                "Sélection de pièces", 
+                "Analyse IA",
+                "Rédaction assistée",
+                "Rédaction de courrier",
+                "Import/Export",
+                "Configuration"
+            ],
+            format_func=lambda x: f"{APP_CONFIG['PAGES'].get(x, '📥')} {x}"
         )
         
         st.markdown("---")
@@ -107,6 +114,9 @@ def main():
         show_page()
     elif page == "Rédaction de courrier":
         from pages.redaction_courrier import show_page
+        show_page()
+    elif page == "Import/Export":
+        from pages.import_export import show_page
         show_page()
     elif page == "Configuration":
         from pages.configuration import show_page
