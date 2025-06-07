@@ -1,152 +1,256 @@
+# models/dataclasses.py
+"""Modèles de données enrichis avec toutes les fonctionnalités"""
 
-# config/app_config.py
-"""Configuration centralisée de l'application"""
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Dict, List, Optional, Any, Set
+from enum import Enum
 
-# Informations application
-APP_TITLE = "Assistant Pénal des Affaires IA"
-APP_VERSION = "3.0.0"
-APP_ICON = "⚖️"
 
-# Configuration des pages
-PAGES = {
-    "Accueil": "🏠",
-    "Analyse juridique": "📋",
-    "Recherche de jurisprudence": "🔍",
-    "Visualisation": "📊", 
-    "Assistant interactif": "💬",
-    "Configuration": "⚙️"
-}
+class TypePersonne(Enum):
+    """Types de personnes"""
+    PHYSIQUE = "Personne physique"
+    MORALE = "Personne morale"
+    AVOCAT = "Avocat"
+    MAGISTRAT = "Magistrat"
+    EXPERT = "Expert"
+    TEMOIN = "Témoin"
+    AUTRE = "Autre"
 
-# Types d'infractions
-TYPES_INFRACTIONS = [
-    "Abus de biens sociaux",
-    "Abus de confiance", 
-    "Banqueroute",
-    "Blanchiment",
-    "Corruption",
-    "Délit d'initié",
-    "Escroquerie",
-    "Extorsion",
-    "Faux et usage de faux",
-    "Fraude fiscale",
-    "Harcèlement moral",
-    "Prise illégale d'intérêts",
-    "Recel",
-    "Trafic d'influence",
-    "Travail dissimulé",
-    "Vol",
-    "Entente et pratiques anticoncurrentielles",
-    "Contrefaçon"
-]
 
-# Configuration des modèles
-MODELS_CONFIG = {
-    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-    "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
-    "google": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"],
-    "mistral": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "open-mistral-7b"],
-    "groq": ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
-}
+class TypeSanction(Enum):
+    """Types de sanctions"""
+    AMENDE = "Amende"
+    EMPRISONNEMENT = "Emprisonnement"
+    INTERDICTION = "Interdiction"
+    CONFISCATION = "Confiscation"
+    PUBLICATION = "Publication"
+    AUTRE = "Autre"
 
-# Configuration des APIs juridiques
-LEGAL_APIS = {
-    "judilibre": {
-        "enabled": True,
-        "base_url": "https://api.piste.gouv.fr/cassation/judilibre/v1.0",
-        "api_key": "votre_cle_api_judilibre",  # À remplacer
-        "endpoints": {
-            "search": "/search",
-            "decision": "/decision",
-            "export": "/export"
+
+@dataclass
+class Personne:
+    """Représente une personne (physique ou morale)"""
+    nom: str
+    type: TypePersonne
+    role: str = ""
+    adresse: str = ""
+    telephone: str = ""
+    email: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Infraction:
+    """Représente une infraction pénale"""
+    type: str
+    description: str
+    articles: List[str] = field(default_factory=list)
+    date_faits: Optional[datetime] = None
+    lieu: str = ""
+    elements_constitutifs: Dict[str, str] = field(default_factory=dict)
+    sanctions_encourues: List['Sanction'] = field(default_factory=list)
+
+
+@dataclass
+class Document:
+    """Représente un document juridique enrichi"""
+    id: str
+    title: str
+    content: str
+    source: str = 'local'
+    page_number: int = 1
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.now)
+    folder_path: Optional[str] = None
+    selected: bool = False
+    embedding: Optional[List[float]] = None  # Vecteur pour la recherche
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit le document en dictionnaire"""
+        return {
+            'id': self.id,
+            'title': self.title,
+            'content': self.content,
+            'source': self.source,
+            'page_number': self.page_number,
+            'metadata': self.metadata,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'folder_path': self.folder_path,
+            'selected': self.selected,
+            'embedding': self.embedding
         }
-    },
-    "legifrance": {
-        "enabled": True,
-        "base_url": "https://api.aife.economie.gouv.fr/dila/legifrance-beta/lf-engine-app",
-        "oauth_url": "https://oauth.aife.economie.gouv.fr/api/oauth/token",
-        "client_id": "votre_client_id_legifrance",  # À remplacer
-        "client_secret": "votre_client_secret_legifrance",  # À remplacer
-        "endpoints": {
-            "search": "/search/all",
-            "consult": "/consult",
-            "juri": "/consult/juri"
+
+
+@dataclass
+class StylePattern:
+    """Modèle de style extrait d'un document"""
+    document_id: str
+    type_acte: str
+    structure: Dict[str, Any]  # Structure du document
+    formules: List[str]  # Formules types extraites
+    mise_en_forme: Dict[str, Any]  # Paramètres de mise en forme
+    vocabulaire: Dict[str, int]  # Fréquence des mots
+    paragraphes_types: List[str]  # Exemples de paragraphes
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit le pattern en dictionnaire"""
+        return {
+            'document_id': self.document_id,
+            'type_acte': self.type_acte,
+            'structure': self.structure,
+            'formules': self.formules,
+            'mise_en_forme': self.mise_en_forme,
+            'vocabulaire': self.vocabulaire,
+            'paragraphes_types': self.paragraphes_types
         }
-    }
-}
 
-# Paramètres par défaut
-DEFAULT_SETTINGS = {
-    "temperature": 0.7,
-    "max_tokens": 4000,
-    "top_p": 0.9,
-    "frequency_penalty": 0.0,
-    "presence_penalty": 0.0
-}
 
-# Formats d'export
-EXPORT_FORMATS = ["PDF", "DOCX", "XLSX", "JSON", "TXT"]
+@dataclass
+class LetterheadTemplate:
+    """Template de papier en-tête"""
+    name: str
+    header_content: str  # Contenu HTML/Markdown de l'en-tête
+    footer_content: str  # Contenu HTML/Markdown du pied de page
+    logo_path: Optional[str] = None
+    margins: Dict[str, float] = field(default_factory=lambda: {
+        'top': 2.5, 'bottom': 2.5, 'left': 2.5, 'right': 2.5
+    })
+    font_family: str = "Arial"
+    font_size: int = 11
+    line_spacing: float = 1.5
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-# Configuration du cache
-CACHE_CONFIG = {
-    "ttl": 3600,  # 1 heure
-    "max_size": 100
-}
 
-# Messages système
-MESSAGES = {
-    "welcome": "Bienvenue dans l'Assistant Pénal des Affaires IA ! 🎯",
-    "loading": "Traitement en cours...",
-    "error": "Une erreur est survenue. Veuillez réessayer.",
-    "success": "Opération réussie !",
-    "no_api_key": "Veuillez configurer votre clé API dans la page Configuration.",
-    "no_results": "Aucun résultat trouvé.",
-    "verification_in_progress": "Vérification des jurisprudences en cours..."
-}
+@dataclass
+class PieceSelectionnee:
+    """Pièce sélectionnée pour un dossier enrichie"""
+    document_id: str
+    titre: str
+    categorie: str
+    date_selection: datetime = field(default_factory=datetime.now)
+    notes: str = ""
+    pertinence: int = 5  # Score de 1 à 10
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit la pièce en dictionnaire"""
+        return {
+            'document_id': self.document_id,
+            'titre': self.titre,
+            'categorie': self.categorie,
+            'date_selection': self.date_selection.isoformat() if self.date_selection else None,
+            'notes': self.notes,
+            'pertinence': self.pertinence
+        }
 
-# Configuration Azure Search
-AZURE_SEARCH_CONFIG = {
-    'index_name': 'juridique-index',
-    'vector_dimension': 1536,  # OpenAI embeddings
-    'endpoint': None,  # Sera chargé depuis les variables d'environnement
-    'key': None  # Sera chargé depuis les variables d'environnement
-}
 
-# Container Azure par défaut
-DEFAULT_CONTAINER = "sharepoint-documents"
+@dataclass
+class AnalyseJuridique:
+    """Résultat d'une analyse juridique"""
+    id: str
+    date: datetime
+    type_analyse: str
+    infraction: Infraction
+    client: Personne
+    documents_analyses: List[str]  # IDs des documents
+    resultats: Dict[str, Any]
+    recommandations: List[str]
+    risques: List['AnalyseRisque']
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-# Formats de citation
-CITATION_FORMATS = {
-    'jurisprudence': "{juridiction}, {date}, n° {numero}",
-    'article_code': "Art. {numero} {code}",
-    'doctrine': "{auteur}, « {titre} », {revue} {annee}, n° {numero}, p. {page}",
-    'circulaire': "Circ. {reference} du {date}",
-    'reponse_ministerielle': "Rép. min. n° {numero}, {date}"
-}
 
-# Prompts d'analyse spécialisés
-ANALYSIS_PROMPTS_AFFAIRES = {
-    "🎯 Analyse infractions économiques": [
-        "Analysez précisément les éléments constitutifs de l'infraction reprochée",
-        "Identifiez l'élément intentionnel et les moyens de le contester",
-        "Recherchez les causes d'exonération ou d'atténuation",
-        "Proposez une stratégie axée sur la bonne foi et l'intérêt social"
-    ],
-    "🏢 Responsabilité personne morale": [
-        "Vérifiez les conditions d'imputation à la personne morale",
-        "Analysez si les faits ont été commis pour le compte de la PM",
-        "Examinez le rôle des organes et représentants",
-        "Évaluez l'impact d'une éventuelle délégation de pouvoirs"
-    ],
-    "🛡️ Moyens de défense affaires": [
-        "Valorisez le programme de conformité existant",
-        "Démontrez les mesures correctives prises",
-        "Argumentez sur l'absence d'enrichissement personnel",
-        "Mettez en avant la transparence et la bonne gouvernance"
-    ],
-    "💰 Enjeux financiers": [
-        "Calculez précisément le préjudice allégué",
-        "Contestez les méthodes de calcul du préjudice",
-        "Évaluez l'impact financier des sanctions encourues",
-        "Proposez des modalités de réparation adaptées"
-    ]
-}
+@dataclass
+class DocumentJuridique:
+    """Document juridique généré"""
+    type: str  # Plainte, conclusions, etc.
+    titre: str
+    contenu: str
+    destinataire: Optional[Personne] = None
+    expediteur: Optional[Personne] = None
+    date_creation: datetime = field(default_factory=datetime.now)
+    pieces_jointes: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RechercheJuridique:
+    """Résultat d'une recherche juridique"""
+    query: str
+    date: datetime
+    sources: List[str]
+    resultats: List[Dict[str, Any]]
+    nombre_resultats: int
+    filtres_appliques: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CasJuridique:
+    """Cas juridique complet"""
+    id: str
+    nom: str
+    client: Personne
+    infractions: List[Infraction]
+    parties: List[Personne]
+    documents: List[str]  # IDs des documents
+    analyses: List[str]  # IDs des analyses
+    statut: str = "En cours"
+    date_creation: datetime = field(default_factory=datetime.now)
+    date_modification: datetime = field(default_factory=datetime.now)
+    notes: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Sanction:
+    """Sanction pénale"""
+    type: TypeSanction
+    montant_min: Optional[float] = None
+    montant_max: Optional[float] = None
+    duree_min: Optional[int] = None  # En mois
+    duree_max: Optional[int] = None  # En mois
+    description: str = ""
+    articles: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ElementConstitutif:
+    """Élément constitutif d'une infraction"""
+    type: str  # matériel, intentionnel, légal
+    description: str
+    preuves_necessaires: List[str] = field(default_factory=list)
+    jurisprudences: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Prescription:
+    """Délais de prescription"""
+    type_infraction: str
+    delai_annees: int
+    point_depart: str
+    interruptions: List[str] = field(default_factory=list)
+    suspensions: List[str] = field(default_factory=list)
+
+
+@dataclass
+class AnalyseRisque:
+    """Analyse de risque juridique"""
+    type: str
+    niveau: str  # Faible, Moyen, Élevé, Critique
+    description: str
+    probabilite: float  # 0-1
+    impact: str
+    mesures_preventives: List[str] = field(default_factory=list)
+    mesures_correctives: List[str] = field(default_factory=list)
+
+
+# Types pour la recherche Azure
+@dataclass
+class SearchResult:
+    """Résultat de recherche Azure"""
+    id: str
+    title: str
+    content: str
+    score: float
+    source: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    highlights: List[str] = field(default_factory=list)
