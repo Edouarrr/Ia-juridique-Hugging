@@ -1,184 +1,194 @@
-# managers/azure_search_manager.py
-"""Gestionnaire Azure Cognitive Search avec diagnostics renforcés"""
+# managers/azure_blob_manager.py
+"""Gestionnaire Azure Blob Storage avec diagnostics renforcés"""
 
 import os
 import streamlit as st
 from typing import List, Dict, Optional, Any
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
 try:
-    from azure.search.documents import SearchClient
-    from azure.search.documents.indexes import SearchIndexClient
-    from azure.core.credentials import AzureKeyCredential
-    from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
-    AZURE_SEARCH_AVAILABLE = True
-    print("[AzureSearchManager] ✅ Azure Search SDK importé avec succès")
+    from azure.storage.blob import BlobServiceClient, ContainerClient
+    from azure.core.exceptions import ResourceNotFoundError, ClientAuthenticationError
+    AZURE_AVAILABLE = True
+    print("[AzureBlobManager] ✅ Azure SDK importé avec succès")
 except ImportError as e:
-    AZURE_SEARCH_AVAILABLE = False
-    print(f"[AzureSearchManager] ❌ Azure Search SDK non disponible: {e}")
+    AZURE_AVAILABLE = False
+    print(f"[AzureBlobManager] ❌ Azure SDK non disponible: {e}")
 
-class AzureSearchManager:
-    """Gestionnaire pour Azure Cognitive Search"""
+class AzureBlobManager:
+    """Gestionnaire pour Azure Blob Storage"""
     
     def __init__(self):
-        self.search_client = None
-        self.index_client = None
-        self.index_name = "juridique-index"
+        self.connected = False
+        self.blob_service_client = None
         self.connection_error = None
         
-        print("[AzureSearchManager] Initialisation...")
+        print(f"[AzureBlobManager] Initialisation - AZURE_AVAILABLE: {AZURE_AVAILABLE}")
         
-        if not AZURE_SEARCH_AVAILABLE:
-            self.connection_error = "SDK Azure Search non disponible"
+        if not AZURE_AVAILABLE:
+            self.connection_error = "SDK Azure non disponible"
             return
         
-        # Récupérer les paramètres de connexion
-        endpoint, key = self._get_connection_params()
+        # Récupérer la connection string
+        connection_string = self._get_connection_string()
         
-        if not endpoint or not key:
-            self.connection_error = "Paramètres de connexion manquants"
+        if not connection_string:
+            self.connection_error = "Connection string non trouvée"
+            return
+        
+        # Valider le format de la connection string
+        if not self._validate_connection_string(connection_string):
+            self.connection_error = "Format de connection string invalide"
             return
         
         try:
-            print(f"[AzureSearchManager] Connexion à {endpoint}")
-            credential = AzureKeyCredential(key)
-            
-            self.search_client = SearchClient(
-                endpoint=endpoint,
-                index_name=self.index_name,
-                credential=credential
-            )
-            
-            self.index_client = SearchIndexClient(
-                endpoint=endpoint,
-                credential=credential
-            )
+            print("[AzureBlobManager] Création du BlobServiceClient...")
+            self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
             
             # Test de connexion
+            print("[AzureBlobManager] Test de connexion...")
             self._test_connection()
             
-            print("[AzureSearchManager] ✅ Connexion Azure Search réussie")
-            
         except ClientAuthenticationError as e:
-            self.connection_error = f"Erreur d'authentification Azure Search: {str(e)}"
-            print(f"[AzureSearchManager] ❌ {self.connection_error}")
+            self.connection_error = f"Erreur d'authentification: {str(e)}"
+            print(f"[AzureBlobManager] ❌ {self.connection_error}")
         except Exception as e:
-            self.connection_error = f"Erreur connexion Azure Search: {str(e)}"
-            print(f"[AzureSearchManager] ❌ {self.connection_error}")
+            self.connection_error = f"Erreur de connexion: {str(e)}"
+            print(f"[AzureBlobManager] ❌ {self.connection_error}")
     
-    def _get_connection_params(self) -> tuple:
-        """Récupère les paramètres de connexion"""
+    def _get_connection_string(self) -> Optional[str]:
+        """Récupère la connection string depuis les variables d'environnement"""
         
-        # Endpoint
-        endpoint = (
-            os.getenv('AZURE_SEARCH_ENDPOINT') or
-            (st.secrets.get("AZURE_SEARCH_ENDPOINT") if hasattr(st, 'secrets') else None) or
-            os.getenv('azure_search_endpoint')
-        )
+        # Méthodes multiples pour récupérer la connection string
+        methods = [
+            lambda: os.getenv('AZURE_STORAGE_CONNECTION_STRING'),
+            lambda: st.secrets.get("AZURE_STORAGE_CONNECTION_STRING") if hasattr(st, 'secrets') else None,
+            lambda: os.getenv('azure_storage_connection_string'),
+            lambda: os.getenv('AZURE_STORAGE_CONN_STR')
+        ]
         
-        # Key
-        key = (
-            os.getenv('AZURE_SEARCH_KEY') or
-            (st.secrets.get("AZURE_SEARCH_KEY") if hasattr(st, 'secrets') else None) or
-            os.getenv('azure_search_key')
-        )
+        for i, method in enumerate(methods):
+            try:
+                conn_str = method()
+                if conn_str:
+                    print(f"[AzureBlobManager] ✅ Connection string trouvée (méthode {i+1})")
+                    print(f"[AzureBlobManager] Connection string: {conn_str[:50]}...")
+                    return conn_str
+            except Exception as e:
+                print(f"[AzureBlobManager] Méthode {i+1} échouée: {e}")
         
-        print(f"[AzureSearchManager] Endpoint: {'✅' if endpoint else '❌'}")
-        print(f"[AzureSearchManager] Key: {'✅' if key else '❌'}")
+        print("[AzureBlobManager] ❌ Aucune connection string trouvée")
+        return None
+    
+    def _validate_connection_string(self, conn_str: str) -> bool:
+        """Valide le format de la connection string"""
+        required_parts = ['DefaultEndpointsProtocol', 'AccountName', 'AccountKey', 'EndpointSuffix']
         
-        if endpoint:
-            print(f"[AzureSearchManager] Endpoint: {endpoint}")
-        if key:
-            print(f"[AzureSearchManager] Key: {key[:10]}...")
+        for part in required_parts:
+            if part not in conn_str:
+                print(f"[AzureBlobManager] ❌ Partie manquante dans connection string: {part}")
+                return False
         
-        return endpoint, key
+        print("[AzureBlobManager] ✅ Format de connection string valide")
+        return True
     
     def _test_connection(self):
-        """Teste la connexion"""
+        """Teste la connexion en listant les containers"""
         try:
-            # Tenter une requête simple
-            results = self.search_client.search("test", top=1)
-            list(results)  # Consommer l'itérateur pour déclencher la requête
-            print("[AzureSearchManager] ✅ Test de connexion réussi")
-        except ResourceNotFoundError:
-            print(f"[AzureSearchManager] ⚠️ Index '{self.index_name}' non trouvé, mais connexion OK")
+            containers = list(self.blob_service_client.list_containers())
+            self.connected = True
+            print(f"[AzureBlobManager] ✅ Connexion réussie! {len(containers)} containers trouvés")
+            
+            if containers:
+                container_names = [c.name for c in containers[:3]]
+                print(f"[AzureBlobManager] Premiers containers: {container_names}")
+                
         except Exception as e:
-            print(f"[AzureSearchManager] ❌ Test de connexion échoué: {e}")
+            self.connection_error = f"Test de connexion échoué: {str(e)}"
+            print(f"[AzureBlobManager] ❌ {self.connection_error}")
             raise
+    
+    def is_connected(self) -> bool:
+        """Vérifie si la connexion est active"""
+        return self.connected and self.blob_service_client is not None
     
     def get_connection_error(self) -> Optional[str]:
         """Retourne l'erreur de connexion si applicable"""
         return self.connection_error
     
-    def search_hybrid(self, query: str, top: int = 20, filters: Optional[str] = None) -> List[Dict]:
-        """Recherche hybride (textuelle + vectorielle)"""
-        if not self.search_client:
+    def list_containers(self) -> List[str]:
+        """Liste tous les containers disponibles"""
+        if not self.is_connected():
+            print(f"[AzureBlobManager] list_containers: Non connecté - {self.connection_error}")
             return []
         
         try:
-            results = self.search_client.search(
-                search_text=query,
-                top=top,
-                filter=filters,
-                include_total_count=True
-            )
-            
-            documents = []
-            for result in results:
-                documents.append({
-                    'id': result.get('id', ''),
-                    'title': result.get('title', ''),
-                    'content': result.get('content', ''),
-                    'score': result.get('@search.score', 0),
-                    'source': result.get('source', 'Azure Search')
-                })
-            
-            return documents
-            
+            containers = []
+            for container in self.blob_service_client.list_containers():
+                containers.append(container.name)
+            print(f"[AzureBlobManager] list_containers: {len(containers)} containers trouvés")
+            return containers
         except Exception as e:
-            print(f"[AzureSearchManager] Erreur recherche hybride: {e}")
+            print(f"[AzureBlobManager] Erreur listing containers: {e}")
             return []
     
-    def search_text(self, query: str, top: int = 20, filters: Optional[str] = None) -> List[Dict]:
-        """Recherche textuelle pure"""
-        if not self.search_client:
+    def list_folder_contents(self, container_name: str, folder_path: str = "") -> List[Dict]:
+        """Liste le contenu d'un dossier dans un container"""
+        if not self.is_connected():
             return []
         
         try:
-            results = self.search_client.search(
-                search_text=query,
-                top=top,
-                filter=filters,
-                search_mode="all"
-            )
+            container_client = self.blob_service_client.get_container_client(container_name)
             
-            documents = []
-            for result in results:
-                documents.append({
-                    'id': result.get('id', ''),
-                    'title': result.get('title', ''),
-                    'content': result.get('content', ''),
-                    'score': result.get('@search.score', 0),
-                    'source': 'Azure Search'
+            prefix = folder_path
+            if prefix and not prefix.endswith('/'):
+                prefix += '/'
+            
+            items = []
+            folders = set()
+            
+            for blob in container_client.list_blobs(name_starts_with=prefix):
+                relative_path = blob.name[len(prefix):] if prefix else blob.name
+                
+                if '/' in relative_path:
+                    folder_name = relative_path.split('/')[0]
+                    folders.add(folder_name)
+                else:
+                    items.append({
+                        'name': relative_path,
+                        'path': blob.name,
+                        'size': blob.size,
+                        'type': 'file',
+                        'last_modified': blob.last_modified
+                    })
+            
+            for folder in sorted(folders):
+                items.append({
+                    'name': folder,
+                    'path': prefix + folder,
+                    'type': 'folder'
                 })
             
-            return documents
+            return sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
             
         except Exception as e:
-            print(f"[AzureSearchManager] Erreur recherche textuelle: {e}")
+            print(f"[AzureBlobManager] Erreur listing dossier: {e}")
             return []
     
-    def search_vector(self, query_vector: List[float], top: int = 20) -> List[Dict]:
-        """Recherche vectorielle pure"""
-        if not self.search_client:
-            return []
+    def download_blob(self, container_name: str, blob_path: str) -> bytes:
+        """Télécharge un blob et retourne son contenu"""
+        if not self.is_connected():
+            return b""
         
         try:
-            print("[AzureSearchManager] ⚠️ Recherche vectorielle non implémentée complètement")
-            return []
-            
+            blob_client = self.blob_service_client.get_blob_client(
+                container=container_name,
+                blob=blob_path
+            )
+            return blob_client.download_blob().readall()
         except Exception as e:
-            print(f"[AzureSearchManager] Erreur recherche vectorielle: {e}")
-            return []
+            print(f"[AzureBlobManager] Erreur téléchargement blob: {e}")
+            return b""
