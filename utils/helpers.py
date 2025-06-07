@@ -231,3 +231,94 @@ def is_valid_jurisprudence_number(numero: str) -> bool:
     ]
     
     return any(re.match(pattern, clean_numero) for pattern in patterns)
+
+    python# Ajouter à la fin de utils/helpers.py
+
+from collections import Counter
+from typing import List, Dict, Any
+
+def merge_structures(structures: List[Dict]) -> Dict[str, Any]:
+    """Fusionne plusieurs structures de documents"""
+    if not structures:
+        return {}
+    
+    merged = {
+        'sections_communes': [],
+        'longueur_moyenne': 0
+    }
+    
+    # Trouver les sections communes
+    all_sections = []
+    for struct in structures:
+        all_sections.extend([s['titre'] for s in struct.get('sections', [])])
+    
+    # Compter les occurrences
+    section_counts = Counter(all_sections)
+    
+    # Garder les sections présentes dans au moins 50% des documents
+    threshold = len(structures) / 2
+    merged['sections_communes'] = [
+        section for section, count in section_counts.items()
+        if count >= threshold
+    ]
+    
+    # Ajouter les informations Word si présentes
+    word_styles = []
+    for struct in structures:
+        if 'word_styles' in struct:
+            word_styles.extend(struct['word_styles'])
+    
+    if word_styles:
+        merged['word_styles'] = list(set(word_styles))
+    
+    return merged
+
+
+def merge_formules(formules_list: List[List[str]]) -> List[str]:
+    """Fusionne les formules types"""
+    all_formules = []
+    for formules in formules_list:
+        all_formules.extend(formules)
+    
+    # Compter et garder les plus fréquentes
+    formule_counts = Counter(all_formules)
+    
+    return [formule for formule, count in formule_counts.most_common(20)]
+
+
+def merge_formatting(formats: List[Dict]) -> Dict[str, Any]:
+    """Fusionne les paramètres de mise en forme"""
+    if not formats:
+        return {}
+    
+    merged = {}
+    
+    # Moyennes et valeurs communes
+    for key in formats[0].keys():
+        values = [f.get(key) for f in formats if key in f]
+        
+        if all(isinstance(v, bool) for v in values):
+            # Pour les booléens, prendre la majorité
+            merged[key] = sum(values) > len(values) / 2
+        elif all(isinstance(v, (int, float)) for v in values):
+            # Pour les nombres, prendre la moyenne
+            merged[key] = sum(values) / len(values)
+        else:
+            # Pour le reste, prendre la valeur la plus fréquente
+            merged[key] = Counter(values).most_common(1)[0][0] if values else None
+    
+    return merged
+
+
+def merge_vocabulary(vocab_list: List[Dict[str, int]]) -> Dict[str, int]:
+    """Fusionne les vocabulaires"""
+    from collections import defaultdict
+    
+    merged = defaultdict(int)
+    
+    for vocab in vocab_list:
+        for word, count in vocab.items():
+            merged[word] += count
+    
+    # Garder les 100 mots les plus fréquents
+    return dict(sorted(merged.items(), key=lambda x: x[1], reverse=True)[:100])
