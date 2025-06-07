@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 
-# PREMIÈRE commande Streamlit OBLIGATOIREMENT
 st.set_page_config(
     page_title="Assistant Pénal des Affaires IA", 
     page_icon="⚖️", 
@@ -13,12 +12,6 @@ import sys
 import os
 import traceback
 
-# Force UTF-8
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
-
-print("Application démarrée avec succès")
-
 from config.app_config import APP_CONFIG
 from utils.helpers import initialize_session_state
 from utils.styles import load_custom_css
@@ -26,29 +19,40 @@ from utils.styles import load_custom_css
 def main():
     """Interface principale de l'application"""
     
-    # Initialisation
     initialize_session_state()
     load_custom_css()
     
-    # Initialiser les gestionnaires Azure
+    # Initialiser les gestionnaires Azure avec diagnostics détaillés
     if 'azure_blob_manager' not in st.session_state:
         try:
-            print("Initialisation Azure Blob Manager...")
+            print("=== INITIALISATION AZURE BLOB ===")
             from managers.azure_blob_manager import AzureBlobManager
             st.session_state.azure_blob_manager = AzureBlobManager()
-            print(f"Azure Blob Manager connecté: {st.session_state.azure_blob_manager.is_connected()}")
+            
+            if st.session_state.azure_blob_manager.is_connected():
+                print("✅ Azure Blob Manager connecté avec succès")
+            else:
+                error = st.session_state.azure_blob_manager.get_connection_error()
+                print(f"❌ Azure Blob Manager non connecté: {error}")
+                
         except Exception as e:
-            print(f"Erreur Azure Blob Manager: {traceback.format_exc()}")
+            print(f"❌ Erreur fatale Azure Blob Manager: {traceback.format_exc()}")
             st.session_state.azure_blob_manager = None
     
     if 'azure_search_manager' not in st.session_state:
         try:
-            print("Initialisation Azure Search Manager...")
+            print("=== INITIALISATION AZURE SEARCH ===")
             from managers.azure_search_manager import AzureSearchManager
             st.session_state.azure_search_manager = AzureSearchManager()
-            print("Azure Search Manager initialisé")
+            
+            if st.session_state.azure_search_manager.search_client:
+                print("✅ Azure Search Manager connecté avec succès")
+            else:
+                error = st.session_state.azure_search_manager.get_connection_error()
+                print(f"❌ Azure Search Manager non connecté: {error}")
+                
         except Exception as e:
-            print(f"Erreur Azure Search Manager: {traceback.format_exc()}")
+            print(f"❌ Erreur fatale Azure Search Manager: {traceback.format_exc()}")
             st.session_state.azure_search_manager = None
     
     # Titre principal
@@ -59,7 +63,7 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar
+    # Sidebar avec diagnostics Azure détaillés
     with st.sidebar:
         st.markdown("### 🎯 Navigation")
         
@@ -81,23 +85,37 @@ def main():
         st.markdown("---")
         st.markdown("### 📊 État du système")
         
-        # Azure Blob
-        if st.session_state.get('azure_blob_manager'):
-            if hasattr(st.session_state.azure_blob_manager, 'is_connected') and st.session_state.azure_blob_manager.is_connected():
+        # Azure Blob avec détails d'erreur
+        blob_manager = st.session_state.get('azure_blob_manager')
+        if blob_manager:
+            if blob_manager.is_connected():
                 st.success("✅ Azure Blob Storage")
+                containers = blob_manager.list_containers()
+                if containers:
+                    st.caption(f"{len(containers)} containers")
             else:
-                st.warning("⚠️ Azure Blob Storage")
+                st.error("❌ Azure Blob Storage")
+                error = blob_manager.get_connection_error()
+                if error:
+                    st.caption(error[:50] + "..." if len(error) > 50 else error)
         else:
             st.error("❌ Azure Blob Storage")
+            st.caption("Non initialisé")
         
-        # Azure Search  
-        if st.session_state.get('azure_search_manager'):
-            if hasattr(st.session_state.azure_search_manager, 'search_client') and st.session_state.azure_search_manager.search_client:
+        # Azure Search avec détails d'erreur
+        search_manager = st.session_state.get('azure_search_manager')
+        if search_manager:
+            if search_manager.search_client:
                 st.success("✅ Azure Search")
+                st.caption("Index: juridique-index")
             else:
-                st.warning("⚠️ Azure Search")
+                st.error("❌ Azure Search")
+                error = search_manager.get_connection_error()
+                if error:
+                    st.caption(error[:50] + "..." if len(error) > 50 else error)
         else:
             st.error("❌ Azure Search")
+            st.caption("Non initialisé")
         
         # Métriques
         st.markdown("---")
@@ -110,38 +128,48 @@ def main():
         with col2:
             st.metric("Pièces", nb_pieces)
     
-    # Charger la page sélectionnée avec gestion d'erreur
+    # Charger la page sélectionnée
     try:
         if page == "Recherche de documents":
-            print(f"Chargement de la page: {page}")
             from pages.recherche import show_page
             show_page()
             
         elif page == "Configuration":
             st.header("⚙️ Configuration")
-            st.markdown("### 🔑 Variables d'environnement")
             
-            vars_to_check = [
-                ("AZURE_STORAGE_CONNECTION_STRING", "Azure Blob Storage"),
-                ("AZURE_SEARCH_ENDPOINT", "Azure Search URL"),
-                ("AZURE_SEARCH_KEY", "Azure Search Key"),
-                ("ANTHROPIC_API_KEY", "Claude API"),
-                ("OPENAI_API_KEY", "OpenAI API"),
-                ("GOOGLE_API_KEY", "Google Gemini API")
-            ]
+            # Diagnostics Azure détaillés
+            st.subheader("🔍 Diagnostics Azure")
             
-            for var, desc in vars_to_check:
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.text(desc)
-                with col2:
-                    if os.getenv(var):
-                        st.success("✅")
+            # Azure Blob
+            with st.expander("Azure Blob Storage", expanded=True):
+                blob_manager = st.session_state.get('azure_blob_manager')
+                if blob_manager:
+                    if blob_manager.is_connected():
+                        st.success("✅ Connecté")
+                        containers = blob_manager.list_containers()
+                        st.write(f"Containers trouvés: {containers}")
                     else:
-                        st.error("❌")
+                        st.error("❌ Non connecté")
+                        error = blob_manager.get_connection_error()
+                        st.error(f"Erreur: {error}")
+                else:
+                    st.error("❌ Non initialisé")
+            
+            # Azure Search
+            with st.expander("Azure Search", expanded=True):
+                search_manager = st.session_state.get('azure_search_manager')
+                if search_manager:
+                    if search_manager.search_client:
+                        st.success("✅ Connecté")
+                        st.write(f"Index: {search_manager.index_name}")
+                    else:
+                        st.error("❌ Non connecté")
+                        error = search_manager.get_connection_error()
+                        st.error(f"Erreur: {error}")
+                else:
+                    st.error("❌ Non initialisé")
         
         else:
-            # Pages non implémentées
             st.info(f"📄 {page}")
             st.write("Cette fonctionnalité est en cours de développement")
             
@@ -149,15 +177,6 @@ def main():
         st.error(f"❌ Erreur lors du chargement de la page '{page}'")
         st.error(f"Détail: {str(e)}")
         st.code(traceback.format_exc())
-        print(f"ERREUR PAGE {page}:")
-        print(traceback.format_exc())
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        st.error("❌ ERREUR FATALE")
-        st.code(str(e))
-        st.code(traceback.format_exc())
-        print("ERREUR FATALE:")
-        print(traceback.format_exc())
+    main()
