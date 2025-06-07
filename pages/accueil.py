@@ -5,8 +5,8 @@ import streamlit as st
 from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
-from config import APP_TITLE, APP_VERSION, APP_ICON, TYPES_INFRACTIONS, MESSAGES
-from utils import load_custom_css, create_header, format_metric_card, create_alert_box
+from config.app_config import APP_TITLE, APP_VERSION, APP_ICON, TYPES_INFRACTIONS, MESSAGES
+from utils.styles import load_custom_css, create_header, format_metric_card, create_alert_box
 
 def show():
     """Affiche la page d'accueil"""
