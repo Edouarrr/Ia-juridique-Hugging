@@ -7,7 +7,7 @@ from datetime import datetime
 import uuid
 from typing import Optional
 
-from config import TYPES_INFRACTIONS, MESSAGES
+from config.app_config import TYPES_INFRACTIONS, MESSAGES
 from models import AnalyseJuridique, Infraction, Personne, TypePersonne
 from managers.llm_manager import LLMManager, display_model_selector
 from managers.document_manager import DocumentManager, display_import_interface, display_export_interface
