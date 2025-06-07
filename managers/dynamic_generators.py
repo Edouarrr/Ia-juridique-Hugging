@@ -56,6 +56,64 @@ Format attendu :
     "🛡️ Moyens de défense": {{
         "Exceptions": ["prompt1", "prompt2", ...],
         "Stratégies": ["prompt1", "prompt2", ...]
+    }}# managers/dynamic_generators.py
+"""Générateurs dynamiques pour prompts et templates"""
+
+import json
+import re
+import logging
+import asyncio
+from typing import Dict, List, Any
+
+logger = logging.getLogger(__name__)
+
+from managers.multi_llm_manager import MultiLLMManager
+from config.app_config import LLMProvider
+
+async def generate_dynamic_search_prompts(search_query: str, context: str = "") -> Dict[str, Dict[str, List[str]]]:
+    """Génère dynamiquement des prompts de recherche basés sur la requête"""
+    llm_manager = MultiLLMManager()
+    
+    # Utiliser Claude Opus 4 et ChatGPT 4o si disponibles
+    preferred_providers = []
+    if LLMProvider.CLAUDE_OPUS in llm_manager.clients:
+        preferred_providers.append(LLMProvider.CLAUDE_OPUS)
+    if LLMProvider.CHATGPT_4O in llm_manager.clients:
+        preferred_providers.append(LLMProvider.CHATGPT_4O)
+    
+    if not preferred_providers and llm_manager.clients:
+        preferred_providers = [list(llm_manager.clients.keys())[0]]
+    
+    if not preferred_providers:
+        # Retour aux prompts statiques si aucun LLM disponible
+        return {
+            "🔍 Recherches suggérées": {
+                "Générique": [
+                    f"{search_query} jurisprudence récente",
+                    f"{search_query} éléments constitutifs",
+                    f"{search_query} moyens de défense",
+                    f"{search_query} sanctions encourues"
+                ]
+            }
+        }
+    
+    prompt = f"""En tant qu'expert en droit pénal des affaires, génère des prompts de recherche juridique pertinents basés sur cette requête : "{search_query}"
+{f"Contexte supplémentaire : {context}" if context else ""}
+Crée une structure JSON avec des catégories et sous-catégories de prompts de recherche.
+Chaque prompt doit être concis (max 80 caractères) et cibler un aspect juridique précis.
+Format attendu :
+{{
+    "🔍 Éléments constitutifs": {{
+        "Élément matériel": ["prompt1", "prompt2", ...],
+        "Élément intentionnel": ["prompt1", "prompt2", ...]
+    }},
+    "⚖️ Jurisprudence": {{
+        "Décisions récentes": ["prompt1", "prompt2", ...],
+        "Arrêts de principe": ["prompt1", "prompt2", ...]
+    }},
+    "🛡️ Moyens de défense": {{
+        "Exceptions": ["prompt1", "prompt2", ...],
+        "Stratégies": ["prompt1", "prompt2", ...]
     }}
 }}
 Génère au moins 3 catégories avec 2 sous-catégories chacune, et 4 prompts par sous-catégorie."""
@@ -184,13 +242,21 @@ Retourne un JSON avec 3 modèles fusionnés."""
     # Fallback avec un modèle basique
     return {
         f"📄 Modèle standard de {type_acte}": f"""[EN-TÊTE AVOCAT]
+
 À l'attention de [DESTINATAIRE]
+
 Objet : {type_acte}
 Référence : [RÉFÉRENCE]
+
 [FORMULE D'APPEL],
+
 J'ai l'honneur de [OBJET DE LA DEMANDE].
+
 [DÉVELOPPEMENT]
+
 [CONCLUSION]
+
 Je vous prie d'agréer, [FORMULE DE POLITESSE].
+
 [SIGNATURE]"""
     }
