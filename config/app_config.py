@@ -26,7 +26,7 @@ APP_CONFIG = {
     'VECTOR_DIMENSION': 1536
 }
 
-# Configuration des APIs juridiques
+# Configuration des APIs juridiques avec clés intégrées
 LEGAL_APIS = {
     "judilibre": {
         "enabled": True,
