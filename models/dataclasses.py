@@ -54,3 +54,54 @@ class LetterheadTemplate:
     font_size: int = 11
     line_spacing: float = 1.5
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class InfractionIdentifiee:
+    """Représente une infraction identifiée dans l'analyse"""
+    nom: str
+    qualification: str
+    articles: List[str]
+    elements_constitutifs: List[str]
+    sanctions: Dict[str, str]
+    prescription: str
+    niveau_gravite: str = "Moyen"
+
+@dataclass
+class CasJuridique:
+    """Représente un cas juridique à analyser"""
+    id: str = field(default_factory=lambda: str(datetime.now().timestamp()))
+    titre: str = ""
+    description: str = ""
+    date_faits: Optional[datetime] = None
+    parties: Dict[str, str] = field(default_factory=dict)
+    contexte: str = ""
+    pieces_jointes: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class DocumentJuridique:
+    """Document juridique enrichi"""
+    id: str
+    titre: str
+    type_document: str
+    contenu: str
+    date_document: datetime
+    parties: Dict[str, str] = field(default_factory=dict)
+    references: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class AnalyseJuridique:
+    """Résultat complet d'une analyse juridique"""
+    id: str = field(default_factory=lambda: str(datetime.now().timestamp()))
+    description_cas: str = ""
+    qualification_juridique: str = ""
+    infractions_identifiees: List[InfractionIdentifiee] = field(default_factory=list)
+    regime_responsabilite: str = ""
+    sanctions_encourues: Dict[str, str] = field(default_factory=dict)
+    jurisprudences_citees: List[str] = field(default_factory=list)
+    recommandations: List[str] = field(default_factory=list)
+    niveau_risque: str = "Moyen"
+    date_analyse: datetime = field(default_factory=datetime.now)
+    model_used: str = ""
+    confidence_score: float = 0.0
