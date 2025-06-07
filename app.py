@@ -77,15 +77,10 @@ try:
     from docx import Document as DocxDocument
     from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.style import WD_STYLE_TYPE
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
-
-print("=== DEBUG AZURE ===")
-print(f"AZURE_STORAGE_CONNECTION_STRING: {'SET' if os.getenv('AZURE_STORAGE_CONNECTION_STRING') else 'NOT SET'}")
-print(f"AZURE_SEARCH_ENDPOINT: {os.getenv('AZURE_SEARCH_ENDPOINT')}")
-print(f"AZURE_SEARCH_KEY: {'SET' if os.getenv('AZURE_SEARCH_KEY') else 'NOT SET'}")
-print("==================")
 
 # ================== FIX POUR HUGGING FACE SPACES ==================
 def clean_env_for_azure():
@@ -112,6 +107,9 @@ class AppConfig:
     # UI
     PAGE_SIZE = 10
     MAX_FILE_SIZE = 10 * 1024 * 1024
+    
+    # Container Azure par défaut
+    DEFAULT_CONTAINER = "sharepoint-documents"
     
     # Prescription
     PRESCRIPTION_CONTRAVENTION = 1  # an
@@ -169,6 +167,8 @@ def initialize_session_state():
         st.session_state.dynamic_search_prompts = {}  # Cache pour les prompts générés
         st.session_state.dynamic_templates = {}  # Cache pour les modèles générés
         st.session_state.selected_folders = set()  # Dossiers sélectionnés
+        st.session_state.letterhead_template = None  # Template de papier en-tête
+        st.session_state.letterhead_image = None  # Image du papier en-tête
 
 # ================== ENUMERATIONS ==================
 
@@ -246,6 +246,21 @@ class StylePattern:
     mise_en_forme: Dict[str, Any]  # Paramètres de mise en forme
     vocabulaire: Dict[str, int]  # Fréquence des mots
     paragraphes_types: List[str]  # Exemples de paragraphes
+
+@dataclass
+class LetterheadTemplate:
+    """Template de papier en-tête"""
+    name: str
+    header_content: str  # Contenu HTML/Markdown de l'en-tête
+    footer_content: str  # Contenu HTML/Markdown du pied de page
+    logo_path: Optional[str] = None
+    margins: Dict[str, float] = field(default_factory=lambda: {
+        'top': 2.5, 'bottom': 2.5, 'left': 2.5, 'right': 2.5
+    })
+    font_family: str = "Arial"
+    font_size: int = 11
+    line_spacing: float = 1.5
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 # ================== CSS PERSONNALISÉ ==================
 
@@ -345,6 +360,15 @@ st.markdown("""
         margin: 0.5rem 0;
         border-radius: 0 8px 8px 0;
     }
+    
+    .letterhead-preview {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 2rem;
+        margin: 1rem 0;
+        min-height: 400px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -392,48 +416,48 @@ class AzureSearchManager:
             self.openai_client = None
     
     def _init_clients(self):
-    """Initialise les clients Azure Search et OpenAI"""
-    try:
-        # Nettoyer l'environnement pour Hugging Face
-        clean_env_for_azure()
-        
-        # Azure Search
-        search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-        search_key = os.getenv('AZURE_SEARCH_KEY')
-        
-        if search_endpoint and search_key and AZURE_AVAILABLE:
-            self.index_client = SearchIndexClient(
-                endpoint=search_endpoint,
-                credential=AzureKeyCredential(search_key)
-            )
+        """Initialise les clients Azure Search et OpenAI"""
+        try:
+            # Nettoyer l'environnement pour Hugging Face
+            clean_env_for_azure()
             
-            self.search_client = SearchClient(
-                endpoint=search_endpoint,
-                index_name=AppConfig.SEARCH_INDEX_NAME,
-                credential=AzureKeyCredential(search_key)
-            )
+            # Azure Search
+            search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+            search_key = os.getenv('AZURE_SEARCH_KEY')
             
-            logger.info("Client Azure Search initialisé")
-        
-        # OpenAI pour les embeddings
-        openai_key = os.getenv('AZURE_OPENAI_KEY')
-        openai_endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
-        
-        if openai_key and openai_endpoint and AzureOpenAI:
-            # Créer le client sans paramètres proxy
-            self.openai_client = AzureOpenAI(
-                azure_endpoint=openai_endpoint,
-                api_key=openai_key,
-                api_version="2024-02-01"
-            )
-            logger.info("Client OpenAI pour embeddings initialisé")
+            if search_endpoint and search_key and AZURE_AVAILABLE:
+                self.index_client = SearchIndexClient(
+                    endpoint=search_endpoint,
+                    credential=AzureKeyCredential(search_key)
+                )
+                
+                self.search_client = SearchClient(
+                    endpoint=search_endpoint,
+                    index_name=AppConfig.SEARCH_INDEX_NAME,
+                    credential=AzureKeyCredential(search_key)
+                )
+                
+                logger.info("Client Azure Search initialisé")
             
-    except Exception as e:
-        logger.error(f"Erreur initialisation Azure Search: {e}")
-        # Ne pas propager l'erreur pour permettre à l'app de continuer
-        self.search_client = None
-        self.index_client = None
-        self.openai_client = None
+            # OpenAI pour les embeddings
+            openai_key = os.getenv('AZURE_OPENAI_KEY')
+            openai_endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+            
+            if openai_key and openai_endpoint and AzureOpenAI:
+                # Créer le client sans paramètres proxy
+                self.openai_client = AzureOpenAI(
+                    azure_endpoint=openai_endpoint,
+                    api_key=openai_key,
+                    api_version="2024-02-01"
+                )
+                logger.info("Client OpenAI pour embeddings initialisé")
+                
+        except Exception as e:
+            logger.error(f"Erreur initialisation Azure Search: {e}")
+            # Ne pas propager l'erreur pour permettre à l'app de continuer
+            self.search_client = None
+            self.index_client = None
+            self.openai_client = None
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Génère un embedding pour un texte"""
@@ -848,6 +872,74 @@ class StyleAnalyzer:
         
         return pattern
     
+    def analyze_word_document(self, doc_bytes: bytes, type_acte: str) -> Optional[StylePattern]:
+        """Analyse un document Word pour en extraire le style"""
+        if not DOCX_AVAILABLE:
+            return None
+        
+        try:
+            doc = DocxDocument(io.BytesIO(doc_bytes))
+            
+            # Extraire le contenu et la structure
+            content = []
+            structure = {
+                'sections': [],
+                'styles_utilises': set(),
+                'mise_en_forme_paragraphes': []
+            }
+            
+            for paragraph in doc.paragraphs:
+                text = paragraph.text.strip()
+                if text:
+                    content.append(text)
+                    
+                    # Analyser le style du paragraphe
+                    para_style = {
+                        'style': paragraph.style.name if paragraph.style else 'Normal',
+                        'alignment': str(paragraph.alignment) if paragraph.alignment else 'LEFT',
+                        'first_line_indent': paragraph.paragraph_format.first_line_indent,
+                        'left_indent': paragraph.paragraph_format.left_indent,
+                        'right_indent': paragraph.paragraph_format.right_indent,
+                        'space_before': paragraph.paragraph_format.space_before,
+                        'space_after': paragraph.paragraph_format.space_after,
+                        'line_spacing': paragraph.paragraph_format.line_spacing
+                    }
+                    
+                    structure['mise_en_forme_paragraphes'].append(para_style)
+                    
+                    if paragraph.style:
+                        structure['styles_utilises'].add(paragraph.style.name)
+                    
+                    # Détecter les sections
+                    if paragraph.style and 'Heading' in paragraph.style.name:
+                        structure['sections'].append({
+                            'titre': text,
+                            'niveau': paragraph.style.name
+                        })
+            
+            # Créer un document temporaire pour l'analyse
+            temp_doc = Document(
+                id=f"word_doc_{datetime.now().timestamp()}",
+                title=type_acte,
+                content='\n'.join(content),
+                source='word'
+            )
+            
+            # Analyser avec la méthode standard
+            pattern = self.analyze_document(temp_doc, type_acte)
+            
+            # Enrichir avec les informations Word spécifiques
+            pattern.structure.update({
+                'word_styles': list(structure['styles_utilises']),
+                'word_formatting': structure['mise_en_forme_paragraphes'][:10]  # Garder un échantillon
+            })
+            
+            return pattern
+            
+        except Exception as e:
+            logger.error(f"Erreur analyse document Word: {e}")
+            return None
+    
     def _extract_structure(self, content: str) -> Dict[str, Any]:
         """Extrait la structure du document"""
         lines = content.split('\n')
@@ -899,7 +991,11 @@ class StyleAnalyzer:
             r"Force est de constater.*?[.!]",
             r"Il apparaît que.*?[.!]",
             r"Attendu que.*?[.!]",
-            r"Considérant que.*?[.!]"
+            r"Considérant que.*?[.!]",
+            r"Je vous prie d'agréer.*?[.!]",
+            r"Veuillez agréer.*?[.!]",
+            r"Dans l'attente de.*?[.!]",
+            r"Je reste à votre disposition.*?[.!]"
         ]
         
         for pattern in patterns:
@@ -1107,12 +1203,11 @@ class MultiLLMManager:
         self.executor = ThreadPoolExecutor(max_workers=5)
     
     def _initialize_clients(self) -> Dict[LLMProvider, Any]:
-    """Initialise les clients LLM"""
-    # Nettoyer l'environnement pour Hugging Face
-    clean_env_for_azure()
-    
-    clients = {}
-    # ... reste du code
+        """Initialise les clients LLM"""
+        # Nettoyer l'environnement pour Hugging Face
+        clean_env_for_azure()
+        
+        clients = {}
         
         # Azure OpenAI
         if self.configs[LLMProvider.AZURE_OPENAI]['key']:
@@ -1515,16 +1610,75 @@ Retourne un JSON avec 3 modèles fusionnés."""
     # Fallback avec un modèle basique
     return {
         f"📄 Modèle standard de {type_acte}": f"""[EN-TÊTE AVOCAT]
+
 À l'attention de [DESTINATAIRE]
+
 Objet : {type_acte}
 Référence : [RÉFÉRENCE]
+
 [FORMULE D'APPEL],
+
 J'ai l'honneur de [OBJET DE LA DEMANDE].
+
 [DÉVELOPPEMENT]
+
 [CONCLUSION]
+
 Je vous prie d'agréer, [FORMULE DE POLITESSE].
+
 [SIGNATURE]"""
     }
+
+# ================== GESTIONNAIRE DE PAPIER EN-TÊTE ==================
+
+def create_letterhead_from_template(template: LetterheadTemplate, content: str) -> str:
+    """Crée un document avec papier en-tête à partir d'un template"""
+    if not DOCX_AVAILABLE:
+        return content
+    
+    try:
+        doc = DocxDocument()
+        
+        # Définir les marges
+        sections = doc.sections
+        for section in sections:
+            section.top_margin = Inches(template.margins['top'])
+            section.bottom_margin = Inches(template.margins['bottom'])
+            section.left_margin = Inches(template.margins['left'])
+            section.right_margin = Inches(template.margins['right'])
+        
+        # Ajouter l'en-tête
+        if template.header_content:
+            header = doc.sections[0].header
+            header_para = header.paragraphs[0]
+            header_para.text = template.header_content
+            header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Ajouter le contenu principal
+        paragraphs = content.split('\n')
+        for para_text in paragraphs:
+            p = doc.add_paragraph(para_text)
+            p.style.font.name = template.font_family
+            p.style.font.size = Pt(template.font_size)
+            p.paragraph_format.line_spacing = template.line_spacing
+        
+        # Ajouter le pied de page
+        if template.footer_content:
+            footer = doc.sections[0].footer
+            footer_para = footer.paragraphs[0]
+            footer_para.text = template.footer_content
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Sauvegarder en mémoire
+        docx_buffer = io.BytesIO()
+        doc.save(docx_buffer)
+        docx_buffer.seek(0)
+        
+        return docx_buffer
+        
+    except Exception as e:
+        logger.error(f"Erreur création document avec papier en-tête: {e}")
+        return None
 
 # ================== ANALYSE PROMPTS PÉNAL DES AFFAIRES ==================
 
@@ -1560,84 +1714,23 @@ ANALYSIS_PROMPTS_AFFAIRES = {
 def main():
     """Interface principale de l'application"""
     
-    # DEBUG AZURE - Afficher dans la sidebar
-    with st.sidebar.expander("🔧 Debug Azure", expanded=True):
-        st.write("**1. Variables d'environnement:**")
-        
-        # Vérifier chaque variable
-        vars_check = {
-            "AZURE_STORAGE_CONNECTION_STRING": os.getenv('AZURE_STORAGE_CONNECTION_STRING'),
-            "AZURE_SEARCH_ENDPOINT": os.getenv('AZURE_SEARCH_ENDPOINT'),
-            "AZURE_SEARCH_KEY": os.getenv('AZURE_SEARCH_KEY'),
-        }
-        
-        all_vars_ok = True
-        for var_name, var_value in vars_check.items():
-            if var_value:
-                if "KEY" in var_name or "CONNECTION_STRING" in var_name:
-                    st.success(f"✅ {var_name}: ***")
-                else:
-                    st.success(f"✅ {var_name}: {var_value}")
-            else:
-                st.error(f"❌ {var_name}: NON DÉFINIE")
-                all_vars_ok = False
-        
-        if all_vars_ok:
-            st.write("**2. Test de connexion Blob:**")
-            try:
-                from azure.storage.blob import BlobServiceClient
-                conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-                blob_service = BlobServiceClient.from_connection_string(conn_str)
-                
-                # Lister les containers
-                containers = []
-                for container in blob_service.list_containers():
-                    containers.append(container.name)
-                
-                st.success(f"✅ Blob: {len(containers)} containers")
-                st.write("Containers:", containers)
-                
-            except Exception as e:
-                st.error(f"❌ Blob: {type(e).__name__}")
-                st.error(str(e))
-            
-            st.write("**3. Test Azure Search:**")
-            try:
-                from azure.search.documents import SearchClient
-                from azure.core.credentials import AzureKeyCredential
-                
-                search_client = SearchClient(
-                    endpoint=os.getenv('AZURE_SEARCH_ENDPOINT'),
-                    index_name="juridique-index",
-                    credential=AzureKeyCredential(os.getenv('AZURE_SEARCH_KEY'))
-                )
-                
-                # Test simple
-                results = list(search_client.search(search_text="test", top=1))
-                st.success(f"✅ Search: OK ({len(results)} résultats)")
-                
-            except Exception as e:
-                st.error(f"❌ Search: {type(e).__name__}")
-                st.error(str(e))
-    
-    # Initialisation normale...
-    initialize_session_state()
-    # ... reste du code
-    
-    # Initialisation normale...
-    initialize_session_state()
-    # ... reste du code
-    """Interface principale de l'application"""
-    
     # Initialisation
     initialize_session_state()
     
     # Initialiser les gestionnaires dans session state
     if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
-        st.session_state.azure_blob_manager = AzureBlobManager()
+        try:
+            st.session_state.azure_blob_manager = AzureBlobManager()
+        except Exception as e:
+            logger.error(f"Erreur création Blob Manager: {e}")
+            st.session_state.azure_blob_manager = None
     
     if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
-        st.session_state.azure_search_manager = AzureSearchManager()
+        try:
+            st.session_state.azure_search_manager = AzureSearchManager()
+        except Exception as e:
+            logger.error(f"Erreur création Search Manager: {e}")
+            st.session_state.azure_search_manager = None
     
     # Titre principal avec style
     st.markdown("""
@@ -1659,6 +1752,7 @@ def main():
                 "📁 Sélection de pièces",
                 "🤖 Analyse IA",
                 "📝 Rédaction assistée",
+                "✉️ Rédaction de courrier",
                 "⚙️ Configuration"
             ],
             key="main_navigation"
@@ -1701,6 +1795,8 @@ def main():
         page_analyse_ia()
     elif page == "📝 Rédaction assistée":
         page_redaction_assistee()
+    elif page == "✉️ Rédaction de courrier":
+        page_redaction_courrier()
     elif page == "⚙️ Configuration":
         page_configuration()
 
@@ -1878,13 +1974,15 @@ def page_recherche_documents():
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            # Définir la valeur par défaut
-            default_container = "sharepoint-documents" if "sharepoint-documents" in containers else (containers[0] if containers else None)
+            # Utiliser le container par défaut depuis la config
+            default_index = 0
+            if AppConfig.DEFAULT_CONTAINER in containers:
+                default_index = containers.index(AppConfig.DEFAULT_CONTAINER)
             
             selected_container = st.selectbox(
                 "Sélectionner un espace de stockage",
                 containers,
-                index=containers.index(default_container) if default_container else 0,
+                index=default_index,
                 key="container_select"
             )
             
@@ -2366,8 +2464,10 @@ Contenu:
         prompt_base = f"""Tu es un avocat expert en droit pénal des affaires.
 Client: {client_nom} ({client_type})
 Infraction reprochée: {infraction}
+
 Documents analysés:
 {chr(10).join(contenu_pieces)}
+
 Analyses demandées:
 """
         
@@ -2584,17 +2684,21 @@ def page_redaction_assistee():
             # Construire le prompt
             prompt = f"""Tu es un avocat expert en droit pénal des affaires.
 Rédige un(e) {type_acte} avec les informations suivantes :
+
 Destinataire : {destinataire or 'Non spécifié'}
 Client : {client_nom or 'Non spécifié'}
 Avocat : {avocat_nom or 'Non spécifié'}
 Référence : {reference or 'Non spécifiée'}
 Infraction(s) : {infraction or 'Non spécifiée'}
 Date des faits : {date_faits.strftime('%d/%m/%Y') if date_faits else 'Non spécifiée'}
+
 Points clés à développer :
 {points_cles}
+
 Ton souhaité : {ton}
 Longueur : {longueur}
 {"Inclure des références jurisprudentielles pertinentes" if inclure_jurisprudence else ""}
+
 Structure l'acte de manière professionnelle avec :
 - Un en-tête approprié
 - Une introduction claire
@@ -2700,18 +2804,20 @@ Structure l'acte de manière professionnelle avec :
         - Formules types utilisées
         - Mise en forme préférée
         - Vocabulaire spécifique
+        
+        **Nouveauté** : Vous pouvez maintenant analyser des documents Word (.docx) directement !
         """)
+        
+        # Type d'acte pour le style
+        type_style = st.text_input(
+            "Nom du style à apprendre",
+            placeholder="Ex: Plainte pénale, Conclusions de relaxe...",
+            key="type_style_learn"
+        )
         
         # Sélection des documents modèles
         if st.session_state.azure_documents:
-            st.markdown("#### 📚 Sélectionner les documents modèles")
-            
-            # Type d'acte pour le style
-            type_style = st.text_input(
-                "Nom du style à apprendre",
-                placeholder="Ex: Plainte pénale, Conclusions de relaxe...",
-                key="type_style_learn"
-            )
+            st.markdown("#### 📚 Sélectionner les documents modèles depuis Azure")
             
             # Sélection des documents
             docs_modeles = []
@@ -2722,19 +2828,47 @@ Structure l'acte de manière professionnelle avec :
                     help=f"Source: {doc.source}"
                 ):
                     docs_modeles.append(doc)
+        
+        # Upload de documents Word
+        st.markdown("#### 📤 Ou télécharger des documents Word")
+        
+        uploaded_files = st.file_uploader(
+            "Choisir des fichiers Word (.docx)",
+            type=['docx'],
+            accept_multiple_files=True,
+            key="upload_word_models"
+        )
+        
+        if st.button("🧠 Apprendre le style", key="learn_style") and type_style:
+            if not docs_modeles and not uploaded_files:
+                st.error("❌ Veuillez sélectionner au moins un document modèle")
+                return
             
-            if st.button("🧠 Apprendre le style", key="learn_style") and type_style and docs_modeles:
-                with st.spinner("Analyse en cours..."):
-                    # Initialiser l'analyseur
-                    if 'style_analyzer' not in st.session_state:
-                        st.session_state.style_analyzer = StyleAnalyzer()
-                    
-                    # Analyser chaque document
-                    patterns = []
-                    for doc in docs_modeles:
-                        pattern = st.session_state.style_analyzer.analyze_document(doc, type_style)
-                        patterns.append(pattern)
-                    
+            with st.spinner("Analyse en cours..."):
+                # Initialiser l'analyseur
+                if 'style_analyzer' not in st.session_state:
+                    st.session_state.style_analyzer = StyleAnalyzer()
+                
+                patterns = []
+                
+                # Analyser les documents Azure
+                for doc in docs_modeles:
+                    pattern = st.session_state.style_analyzer.analyze_document(doc, type_style)
+                    patterns.append(pattern)
+                
+                # Analyser les documents Word uploadés
+                if uploaded_files and DOCX_AVAILABLE:
+                    for uploaded_file in uploaded_files:
+                        # Lire le contenu du fichier
+                        doc_bytes = uploaded_file.read()
+                        
+                        # Analyser le document Word
+                        pattern = st.session_state.style_analyzer.analyze_word_document(doc_bytes, type_style)
+                        if pattern:
+                            patterns.append(pattern)
+                            st.success(f"✅ {uploaded_file.name} analysé")
+                
+                if patterns:
                     # Fusionner les patterns
                     merged_pattern = {
                         'nombre_documents': len(patterns),
@@ -2750,7 +2884,7 @@ Structure l'acte de manière professionnelle avec :
                     
                     st.session_state.learned_styles[type_style] = merged_pattern
                     
-                    st.success(f"✅ Style '{type_style}' appris avec succès!")
+                    st.success(f"✅ Style '{type_style}' appris avec succès à partir de {len(patterns)} documents!")
                     
                     # Afficher un résumé
                     with st.expander("Voir le résumé du style appris"):
@@ -2834,12 +2968,345 @@ Structure l'acte de manière professionnelle avec :
                         
                         st.markdown("---")
 
+def page_redaction_courrier():
+    """Page de rédaction de courrier avec papier en-tête"""
+    
+    st.header("✉️ Rédaction de courrier")
+    
+    # Vérifier si un papier en-tête est configuré
+    if 'letterhead_template' not in st.session_state or st.session_state.letterhead_template is None:
+        st.warning("⚠️ Aucun papier en-tête configuré. Veuillez d'abord configurer votre papier en-tête dans l'onglet Configuration.")
+        
+        # Option rapide pour créer un papier en-tête
+        if st.button("➕ Créer un papier en-tête rapide"):
+            with st.form("quick_letterhead"):
+                st.markdown("### Configuration rapide du papier en-tête")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    cabinet_nom = st.text_input("Nom du cabinet", placeholder="Cabinet d'avocats...")
+                    avocat_nom = st.text_input("Nom de l'avocat", placeholder="Maître...")
+                    barreau = st.text_input("Barreau", placeholder="Barreau de Paris")
+                
+                with col2:
+                    adresse = st.text_area("Adresse", placeholder="123 rue de la Justice\n75001 Paris")
+                    telephone = st.text_input("Téléphone", placeholder="01 23 45 67 89")
+                    email = st.text_input("Email", placeholder="contact@cabinet.fr")
+                
+                if st.form_submit_button("Créer le papier en-tête"):
+                    # Créer l'en-tête
+                    header_content = f"""{cabinet_nom}
+{avocat_nom}
+Avocat au {barreau}
+{adresse}
+Tél : {telephone}
+Email : {email}"""
+                    
+                    # Créer le pied de page
+                    footer_content = f"{cabinet_nom} - {adresse} - Tél : {telephone}"
+                    
+                    # Créer le template
+                    st.session_state.letterhead_template = LetterheadTemplate(
+                        name="Papier en-tête principal",
+                        header_content=header_content,
+                        footer_content=footer_content
+                    )
+                    
+                    st.success("✅ Papier en-tête créé avec succès!")
+                    st.rerun()
+        return
+    
+    # Afficher le papier en-tête actuel
+    with st.expander("📄 Papier en-tête actuel", expanded=False):
+        template = st.session_state.letterhead_template
+        st.text(template.header_content)
+        st.caption(f"Pied de page : {template.footer_content}")
+    
+    # Formulaire de rédaction du courrier
+    st.markdown("### 📝 Nouveau courrier")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Destinataire
+        destinataire_nom = st.text_input(
+            "Destinataire",
+            placeholder="Nom du destinataire",
+            key="courrier_destinataire_nom"
+        )
+        
+        destinataire_qualite = st.text_input(
+            "Qualité",
+            placeholder="Ex: Procureur de la République, Directeur...",
+            key="courrier_destinataire_qualite"
+        )
+        
+        destinataire_adresse = st.text_area(
+            "Adresse",
+            placeholder="Adresse complète du destinataire",
+            height=80,
+            key="courrier_destinataire_adresse"
+        )
+    
+    with col2:
+        # Informations courrier
+        objet = st.text_input(
+            "Objet",
+            placeholder="Objet du courrier",
+            key="courrier_objet"
+        )
+        
+        reference = st.text_input(
+            "Référence",
+            placeholder="Votre référence / Notre référence",
+            key="courrier_reference"
+        )
+        
+        date_courrier = st.date_input(
+            "Date",
+            value=datetime.now(),
+            key="courrier_date"
+        )
+        
+        pieces_jointes = st.text_area(
+            "Pièces jointes",
+            placeholder="Liste des pièces jointes (optionnel)",
+            height=60,
+            key="courrier_pj"
+        )
+    
+    # Type de courrier
+    st.markdown("### 📨 Type de courrier")
+    
+    type_courrier = st.selectbox(
+        "Sélectionner le type",
+        [
+            "Courrier simple",
+            "Demande d'information",
+            "Demande d'audition",
+            "Transmission de pièces",
+            "Réponse à courrier",
+            "Mise en demeure",
+            "Notification",
+            "Autre"
+        ],
+        key="courrier_type_select"
+    )
+    
+    # Contenu principal
+    st.markdown("### 📄 Contenu du courrier")
+    
+    # Option : rédaction manuelle ou assistée par IA
+    mode_redaction = st.radio(
+        "Mode de rédaction",
+        ["Rédaction assistée par IA", "Rédaction manuelle"],
+        key="courrier_mode"
+    )
+    
+    if mode_redaction == "Rédaction assistée par IA":
+        # Points clés pour l'IA
+        points_courrier = st.text_area(
+            "Points clés à développer",
+            placeholder="""Ex:
+- Demander un rendez-vous
+- Rappeler la procédure en cours
+- Solliciter la communication de pièces
+- Proposer des dates de disponibilité""",
+            height=150,
+            key="courrier_points"
+        )
+        
+        # Options de génération
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            ton_courrier = st.select_slider(
+                "Ton",
+                options=["Très formel", "Formel", "Courtois", "Direct"],
+                value="Formel",
+                key="courrier_ton"
+            )
+        
+        with col2:
+            style_courrier = st.select_slider(
+                "Style",
+                options=["Concis", "Standard", "Détaillé"],
+                value="Standard",
+                key="courrier_style"
+            )
+        
+        # Bouton de génération
+        if st.button("🤖 Générer le courrier", type="primary", key="generer_courrier_ia"):
+            if not destinataire_nom or not objet or not points_courrier:
+                st.error("❌ Veuillez remplir tous les champs obligatoires")
+                return
+            
+            # Construire le prompt
+            prompt = f"""Tu es un avocat rédigeant un courrier professionnel.
+
+Type de courrier : {type_courrier}
+Destinataire : {destinataire_nom} ({destinataire_qualite})
+Objet : {objet}
+Référence : {reference or 'Aucune'}
+Points à développer : {points_courrier}
+Ton : {ton_courrier}
+Style : {style_courrier}
+{"Pièces jointes : " + pieces_jointes if pieces_jointes else ""}
+
+Rédige un courrier professionnel complet avec :
+- Une formule d'appel appropriée
+- Une introduction claire
+- Le développement des points demandés
+- Une conclusion adaptée
+- Une formule de politesse conforme aux usages
+
+Ne pas inclure l'en-tête ni l'adresse (sera ajouté automatiquement)."""
+            
+            # Générer avec l'IA
+            llm_manager = MultiLLMManager()
+            
+            with st.spinner("🔄 Génération en cours..."):
+                if llm_manager.clients:
+                    provider = list(llm_manager.clients.keys())[0]
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                    response = loop.run_until_complete(
+                        llm_manager.query_single_llm(
+                            provider,
+                            prompt,
+                            "Tu es un avocat expert en rédaction de courriers professionnels. Tes courriers sont toujours clairs, courtois et efficaces."
+                        )
+                    )
+                    
+                    if response['success']:
+                        st.session_state.courrier_content = response['response']
+                        st.success("✅ Courrier généré avec succès!")
+                    else:
+                        st.error(f"❌ Erreur : {response['error']}")
+                else:
+                    st.error("❌ Aucune IA disponible")
+    
+    else:  # Rédaction manuelle
+        contenu_manuel = st.text_area(
+            "Contenu du courrier",
+            placeholder="Rédigez votre courrier ici...",
+            height=400,
+            key="courrier_contenu_manuel"
+        )
+        
+        if contenu_manuel:
+            st.session_state.courrier_content = contenu_manuel
+    
+    # Affichage et édition du courrier
+    if 'courrier_content' in st.session_state and st.session_state.courrier_content:
+        st.markdown("### ✏️ Courrier généré")
+        
+        # Édition possible
+        courrier_final = st.text_area(
+            "Vous pouvez modifier le courrier",
+            value=st.session_state.courrier_content,
+            height=400,
+            key="courrier_final_edit"
+        )
+        
+        # Prévisualisation avec papier en-tête
+        if st.button("👁️ Prévisualiser avec papier en-tête", key="preview_courrier"):
+            st.markdown("### 📄 Prévisualisation")
+            
+            # Construire le courrier complet
+            template = st.session_state.letterhead_template
+            
+            # Créer la structure complète
+            courrier_complet = f"""{template.header_content}
+
+{destinataire_nom}
+{destinataire_qualite}
+{destinataire_adresse}
+
+{date_courrier.strftime('%d %B %Y')}
+
+Objet : {objet}
+{"Réf : " + reference if reference else ""}
+
+{courrier_final}
+
+{template.footer_content}"""
+            
+            # Afficher dans un conteneur stylé
+            st.markdown('<div class="letterhead-preview">', unsafe_allow_html=True)
+            st.text(courrier_complet)
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Options d'export
+        st.markdown("### 💾 Export")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Export texte simple
+            courrier_complet_export = f"""{template.header_content}
+
+{destinataire_nom}
+{destinataire_qualite}
+{destinataire_adresse}
+
+{date_courrier.strftime('%d %B %Y')}
+
+Objet : {objet}
+{"Réf : " + reference if reference else ""}
+
+{courrier_final}
+
+{template.footer_content}"""
+            
+            st.download_button(
+                "💾 Télécharger (.txt)",
+                courrier_complet_export,
+                f"courrier_{clean_key(objet)}_{date_courrier.strftime('%Y%m%d')}.txt",
+                "text/plain",
+                key="download_courrier_txt"
+            )
+        
+        with col2:
+            if DOCX_AVAILABLE:
+                # Créer le document Word avec papier en-tête
+                docx_buffer = create_letterhead_from_template(
+                    template,
+                    f"""{destinataire_nom}
+{destinataire_qualite}
+{destinataire_adresse}
+
+{date_courrier.strftime('%d %B %Y')}
+
+Objet : {objet}
+{"Réf : " + reference if reference else ""}
+
+{courrier_final}"""
+                )
+                
+                if docx_buffer:
+                    st.download_button(
+                        "💾 Télécharger (.docx)",
+                        docx_buffer.getvalue(),
+                        f"courrier_{clean_key(objet)}_{date_courrier.strftime('%Y%m%d')}.docx",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="download_courrier_docx"
+                    )
+        
+        with col3:
+            if st.button("📧 Préparer l'envoi par email", key="prepare_email"):
+                st.info("📧 Copier le contenu ci-dessous dans votre client email")
+                st.code(courrier_final)
+
 def page_configuration():
     """Page de configuration"""
     
     st.header("⚙️ Configuration")
     
-    tabs = st.tabs(["🔑 Clés API", "📊 État du système", "💾 Export/Import"])
+    tabs = st.tabs(["🔑 Clés API", "📄 Papier en-tête", "📊 État du système", "💾 Export/Import"])
     
     # Onglet Clés API
     with tabs[0]:
@@ -2863,16 +3330,21 @@ def page_configuration():
         # Créer un fichier .env exemple
         env_example = """# Azure Search
 AZURE_SEARCH_ENDPOINT=https://search-rag-juridique.search.windows.net
-AZURE_SEARCH_KEY=IFf759DWAhLxjAgMQvVEHXJq8ZCis1CY4EWmmYtWddAzSeConn3E
+AZURE_SEARCH_KEY=Votre_Clé_Azure_Search
 
 # Azure OpenAI pour les embeddings
 AZURE_OPENAI_ENDPOINT=https://openai-juridique-rag2.openai.azure.com
-AZURE_OPENAI_KEY=7uhpXfQhmUnFzgbn8x7yMmuBezONcqH6uWhlLnEIjihBHMlgjiOzJQQJ99BFAC5T7U2XJ3w3AAABACOGF4Yd
+AZURE_OPENAI_KEY=Votre_Clé_Azure_OpenAI
 AZURE_OPENAI_DEPLOYMENT=text-embedding-ada-002
 
-# Azure Blob Storage (remplacer par vos vraies valeurs)
+# Azure Blob Storage
 AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE_COMPTE;AccountKey=VOTRE_CLE;EndpointSuffix=core.windows.net
-"""
+
+# Autres IA (optionnel)
+ANTHROPIC_API_KEY=Votre_Clé_Anthropic
+OPENAI_API_KEY=Votre_Clé_OpenAI
+GOOGLE_API_KEY=Votre_Clé_Google
+PERPLEXITY_API_KEY=Votre_Clé_Perplexity"""
         
         st.download_button(
             "📥 Télécharger un fichier .env exemple",
@@ -2919,8 +3391,175 @@ AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE
                 else:
                     st.error("❌")
     
-    # Onglet État du système
+    # Onglet Papier en-tête
     with tabs[1]:
+        st.markdown("### 📄 Configuration du papier en-tête")
+        
+        # Papier en-tête actuel
+        if 'letterhead_template' in st.session_state and st.session_state.letterhead_template:
+            current_template = st.session_state.letterhead_template
+            
+            with st.expander("Papier en-tête actuel", expanded=True):
+                st.text("En-tête :")
+                st.code(current_template.header_content)
+                st.text("Pied de page :")
+                st.code(current_template.footer_content)
+                
+                if st.button("🗑️ Supprimer le papier en-tête actuel"):
+                    st.session_state.letterhead_template = None
+                    st.success("✅ Papier en-tête supprimé")
+                    st.rerun()
+        
+        # Créer/Modifier papier en-tête
+        st.markdown("#### ➕ Créer/Modifier le papier en-tête")
+        
+        with st.form("letterhead_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                nom_template = st.text_input(
+                    "Nom du template",
+                    value=st.session_state.letterhead_template.name if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "Papier en-tête principal"
+                )
+                
+                header_content = st.text_area(
+                    "En-tête",
+                    value=st.session_state.letterhead_template.header_content if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "",
+                    height=150,
+                    placeholder="""Cabinet d'avocats XYZ
+Maître Jean DUPONT
+Avocat au Barreau de Paris
+123 rue de la Justice
+75001 PARIS
+Tél : 01 23 45 67 89
+Email : contact@cabinet-xyz.fr"""
+                )
+                
+                footer_content = st.text_area(
+                    "Pied de page",
+                    value=st.session_state.letterhead_template.footer_content if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "",
+                    height=80,
+                    placeholder="Cabinet XYZ - 123 rue de la Justice, 75001 PARIS - Tél : 01 23 45 67 89"
+                )
+            
+            with col2:
+                # Paramètres de mise en forme
+                st.markdown("**Mise en forme**")
+                
+                font_family = st.selectbox(
+                    "Police",
+                    ["Arial", "Times New Roman", "Calibri", "Garamond", "Helvetica"],
+                    index=0 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else ["Arial", "Times New Roman", "Calibri", "Garamond", "Helvetica"].index(st.session_state.letterhead_template.font_family)
+                )
+                
+                font_size = st.number_input(
+                    "Taille de police",
+                    min_value=8,
+                    max_value=16,
+                    value=11 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else st.session_state.letterhead_template.font_size
+                )
+                
+                line_spacing = st.number_input(
+                    "Interligne",
+                    min_value=1.0,
+                    max_value=2.0,
+                    step=0.1,
+                    value=1.5 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else st.session_state.letterhead_template.line_spacing
+                )
+                
+                st.markdown("**Marges (cm)**")
+                
+                margin_top = st.number_input("Haut", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+                margin_bottom = st.number_input("Bas", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+                margin_left = st.number_input("Gauche", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+                margin_right = st.number_input("Droite", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+            
+            # Upload logo (optionnel)
+            logo_file = st.file_uploader(
+                "Logo (optionnel)",
+                type=['png', 'jpg', 'jpeg'],
+                key="letterhead_logo"
+            )
+            
+            if st.form_submit_button("💾 Sauvegarder le papier en-tête", type="primary"):
+                # Créer le template
+                new_template = LetterheadTemplate(
+                    name=nom_template,
+                    header_content=header_content,
+                    footer_content=footer_content,
+                    font_family=font_family,
+                    font_size=font_size,
+                    line_spacing=line_spacing,
+                    margins={
+                        'top': margin_top,
+                        'bottom': margin_bottom,
+                        'left': margin_left,
+                        'right': margin_right
+                    }
+                )
+                
+                # Sauvegarder le logo si uploadé
+                if logo_file:
+                    st.session_state.letterhead_image = logo_file.read()
+                    new_template.logo_path = "logo_uploaded"
+                
+                st.session_state.letterhead_template = new_template
+                st.success("✅ Papier en-tête sauvegardé avec succès!")
+                st.rerun()
+        
+        # Import de papier en-tête depuis Word
+        st.markdown("#### 📤 Importer depuis un document Word")
+        
+        uploaded_letterhead = st.file_uploader(
+            "Charger un document Word avec papier en-tête",
+            type=['docx'],
+            key="upload_letterhead_word"
+        )
+        
+        if uploaded_letterhead and st.button("📥 Extraire le papier en-tête"):
+            if DOCX_AVAILABLE:
+                try:
+                    doc = DocxDocument(uploaded_letterhead)
+                    
+                    # Extraire l'en-tête
+                    header_text = ""
+                    if doc.sections:
+                        header = doc.sections[0].header
+                        for paragraph in header.paragraphs:
+                            if paragraph.text.strip():
+                                header_text += paragraph.text + "\n"
+                    
+                    # Extraire le pied de page
+                    footer_text = ""
+                    if doc.sections:
+                        footer = doc.sections[0].footer
+                        for paragraph in footer.paragraphs:
+                            if paragraph.text.strip():
+                                footer_text += paragraph.text + "\n"
+                    
+                    if header_text or footer_text:
+                        st.success("✅ Papier en-tête extrait avec succès!")
+                        st.text("En-tête extrait :")
+                        st.code(header_text)
+                        st.text("Pied de page extrait :")
+                        st.code(footer_text)
+                        
+                        if st.button("Utiliser ce papier en-tête"):
+                            st.session_state.letterhead_template = LetterheadTemplate(
+                                name="Papier en-tête importé",
+                                header_content=header_text.strip(),
+                                footer_content=footer_text.strip()
+                            )
+                            st.success("✅ Papier en-tête importé!")
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Aucun en-tête ou pied de page trouvé dans le document")
+                        
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de l'extraction : {str(e)}")
+    
+    # Onglet État du système
+    with tabs[2]:
         st.markdown("### État du système")
         
         # Métriques
@@ -2950,7 +3589,7 @@ AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE
             if st.button("🧪 Tester la connexion Blob", key="test_blob"):
                 try:
                     containers = st.session_state.azure_blob_manager.list_containers()
-                    st.success(f"✅ {len(containers)} containers trouvés")
+                    st.success(f"✅ {len(containers)} containers trouvés : {', '.join(containers)}")
                 except Exception as e:
                     st.error(f"❌ Erreur : {str(e)}")
         else:
@@ -2970,9 +3609,15 @@ AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE
                     st.error(f"❌ Erreur : {str(e)}")
         else:
             st.warning("⚠️ Azure Search : Non configuré")
+        
+        # Papier en-tête
+        if 'letterhead_template' in st.session_state and st.session_state.letterhead_template:
+            st.success("✅ Papier en-tête : Configuré")
+        else:
+            st.warning("⚠️ Papier en-tête : Non configuré")
     
     # Onglet Export/Import
-    with tabs[2]:
+    with tabs[3]:
         st.markdown("### 💾 Export/Import de configuration")
         
         # Export
@@ -2990,6 +3635,15 @@ AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE
                 for k, v in st.session_state.pieces_selectionnees.items()
             },
             'learned_styles': st.session_state.get('learned_styles', {}),
+            'letterhead_template': {
+                'name': st.session_state.letterhead_template.name,
+                'header_content': st.session_state.letterhead_template.header_content,
+                'footer_content': st.session_state.letterhead_template.footer_content,
+                'font_family': st.session_state.letterhead_template.font_family,
+                'font_size': st.session_state.letterhead_template.font_size,
+                'line_spacing': st.session_state.letterhead_template.line_spacing,
+                'margins': st.session_state.letterhead_template.margins
+            } if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else None,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -3037,6 +3691,19 @@ AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE
                     if 'learned_styles' in config_data:
                         st.session_state.learned_styles = config_data['learned_styles']
                     
+                    # Importer le papier en-tête
+                    if 'letterhead_template' in config_data and config_data['letterhead_template']:
+                        lt = config_data['letterhead_template']
+                        st.session_state.letterhead_template = LetterheadTemplate(
+                            name=lt['name'],
+                            header_content=lt['header_content'],
+                            footer_content=lt['footer_content'],
+                            font_family=lt.get('font_family', 'Arial'),
+                            font_size=lt.get('font_size', 11),
+                            line_spacing=lt.get('line_spacing', 1.5),
+                            margins=lt.get('margins', {'top': 2.5, 'bottom': 2.5, 'left': 2.5, 'right': 2.5})
+                        )
+                    
                     st.success("✅ Configuration importée avec succès")
                     st.rerun()
                     
@@ -3068,6 +3735,15 @@ def merge_structures(structures: List[Dict]) -> Dict[str, Any]:
         section for section, count in section_counts.items()
         if count >= threshold
     ]
+    
+    # Ajouter les informations Word si présentes
+    word_styles = []
+    for struct in structures:
+        if 'word_styles' in struct:
+            word_styles.extend(struct['word_styles'])
+    
+    if word_styles:
+        merged['word_styles'] = list(set(word_styles))
     
     return merged
 
@@ -3101,7 +3777,7 @@ def merge_formatting(formats: List[Dict]) -> Dict[str, Any]:
             merged[key] = sum(values) / len(values)
         else:
             # Pour le reste, prendre la valeur la plus fréquente
-            merged[key] = Counter(values).most_common(1)[0][0]
+            merged[key] = Counter(values).most_common(1)[0][0] if values else None
     
     return merged
 
