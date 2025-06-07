@@ -4,7 +4,7 @@
 import re
 import io
 import logging
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, Any  # Import Any ajouté ici
 from collections import defaultdict, Counter
 from datetime import datetime
 
