@@ -15,30 +15,29 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
 import os
+import traceback
 
-# DIAGNOSTIC TEMPORAIRE - À RETIRER APRÈS TEST
+# DIAGNOSTIC TEMPORAIRE
 print("=== DIAGNOSTIC AU DÉMARRAGE ===")
 print(f"AZURE_STORAGE_CONNECTION_STRING: {bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING'))}")
 print(f"AZURE_SEARCH_ENDPOINT: {bool(os.getenv('AZURE_SEARCH_ENDPOINT'))}")
 print(f"AZURE_SEARCH_KEY: {bool(os.getenv('AZURE_SEARCH_KEY'))}")
 
-# Afficher les premières lettres pour vérifier
-conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-if conn_str:
-    print(f"Connection string commence par: {conn_str[:30]}...")
-
 from config.app_config import APP_CONFIG
 from utils.styles import load_custom_css
 from utils.helpers import initialize_session_state
-from managers.azure_blob_manager import AzureBlobManager
-from managers.azure_search_manager import AzureSearchManager
 
 def main():
     """Interface principale de l'application"""
     
     # Initialisation
     initialize_session_state()
-    load_custom_css()
+    
+    # Charger les styles CSS
+    try:
+        load_custom_css()
+    except Exception as e:
+        print(f"Erreur chargement CSS: {e}")
     
     # Diagnostic visible dans l'interface
     with st.expander("🔧 Diagnostic des connexions", expanded=False):
@@ -63,19 +62,21 @@ def main():
             else:
                 st.error("❌ AZURE_SEARCH_KEY")
     
-    # Initialiser les gestionnaires Azure dans session state
+    # Initialiser les gestionnaires Azure AVEC GESTION D'ERREUR ROBUSTE
     if 'azure_blob_manager' not in st.session_state:
         try:
+            from managers.azure_blob_manager import AzureBlobManager
             st.session_state.azure_blob_manager = AzureBlobManager()
         except Exception as e:
-            st.warning(f"Azure Blob non disponible: {e}")
+            print(f"Erreur Azure Blob Manager: {traceback.format_exc()}")
             st.session_state.azure_blob_manager = None
     
     if 'azure_search_manager' not in st.session_state:
         try:
+            from managers.azure_search_manager import AzureSearchManager
             st.session_state.azure_search_manager = AzureSearchManager()
         except Exception as e:
-            st.warning(f"Azure Search non disponible: {e}")
+            print(f"Erreur Azure Search Manager: {traceback.format_exc()}")
             st.session_state.azure_search_manager = None
     
     # Titre principal
@@ -108,31 +109,32 @@ def main():
         st.markdown("---")
         st.markdown("### 📊 État du système")
         
-        # État Azure avec plus de détails
         st.markdown("**Connexions Azure:**")
         
         # Azure Blob
         if st.session_state.get('azure_blob_manager'):
-            if st.session_state.azure_blob_manager.is_connected():
-                st.success("✅ Azure Blob Storage")
-                containers = st.session_state.azure_blob_manager.list_containers()
-                if containers:
-                    st.caption(f"{len(containers)} containers trouvés")
-            else:
+            try:
+                if hasattr(st.session_state.azure_blob_manager, 'is_connected') and st.session_state.azure_blob_manager.is_connected():
+                    st.success("✅ Azure Blob Storage")
+                else:
+                    st.warning("⚠️ Azure Blob Storage")
+                    st.caption("Non connecté")
+            except:
                 st.error("❌ Azure Blob Storage")
-                st.caption("Non connecté")
         else:
             st.warning("⚠️ Azure Blob Storage")
             st.caption("Non initialisé")
         
         # Azure Search
         if st.session_state.get('azure_search_manager'):
-            if st.session_state.azure_search_manager.search_client:
-                st.success("✅ Azure Search")
-                st.caption("Index: juridique-index")
-            else:
+            try:
+                if hasattr(st.session_state.azure_search_manager, 'search_client') and st.session_state.azure_search_manager.search_client:
+                    st.success("✅ Azure Search")
+                else:
+                    st.warning("⚠️ Azure Search")
+                    st.caption("Non connecté")
+            except:
                 st.error("❌ Azure Search")
-                st.caption("Non connecté")
         else:
             st.warning("⚠️ Azure Search")
             st.caption("Non initialisé")
@@ -150,11 +152,6 @@ def main():
         with col2:
             st.metric("Pièces", nb_pieces)
         
-        # Informations supplémentaires
-        if st.session_state.get('dossier_actif'):
-            st.markdown("### 📁 Dossier actif")
-            st.info(st.session_state.dossier_actif)
-        
         # Bouton de réinitialisation
         st.markdown("---")
         if st.button("🔄 Réinitialiser", key="reset_app"):
@@ -166,79 +163,46 @@ def main():
         # Info version
         st.markdown("---")
         st.caption(f"Version {APP_CONFIG['VERSION']}")
-        st.caption("© 2024 Assistant Juridique IA")
     
-    # Charger la page sélectionnée
-    if page == "Recherche de documents":
-        from pages.recherche import show_page
-        show_page()
-    
-    elif page == "Sélection de pièces":
-        # Vérifier qu'il y a des documents
-        if not st.session_state.get('azure_documents'):
-            st.warning("⚠️ Aucun document disponible. Commencez par rechercher des documents.")
-            if st.button("🔍 Aller à la recherche"):
-                st.session_state.navigation = "Recherche de documents"
-                st.rerun()
-        else:
-            # Importer et afficher la page si elle existe
-            try:
-                from pages.selection_pieces import show_page
-                show_page()
-            except ImportError:
-                st.error("❌ Module 'selection_pieces' non disponible")
-                st.info("Cette fonctionnalité est en cours de développement")
-    
-    elif page == "Analyse IA":
-        # Vérifier qu'il y a des pièces sélectionnées
-        if not st.session_state.get('pieces_selectionnees'):
-            st.warning("⚠️ Aucune pièce sélectionnée. Sélectionnez d'abord des pièces.")
-            if st.button("📁 Aller à la sélection"):
-                st.session_state.navigation = "Sélection de pièces"
-                st.rerun()
-        else:
-            try:
-                from pages.analyse_ia import show_page
-                show_page()
-            except ImportError:
-                st.error("❌ Module 'analyse_ia' non disponible")
-                st.info("Cette fonctionnalité est en cours de développement")
-    
-    elif page == "Rédaction assistée":
-        try:
-            from pages.redaction_assistee import show_page
+    # CHARGER LES PAGES AVEC GESTION D'ERREUR ROBUSTE
+    try:
+        if page == "Recherche de documents":
+            from pages.recherche import show_page
             show_page()
-        except ImportError:
-            st.error("❌ Module 'redaction_assistee' non disponible")
-            st.info("Cette fonctionnalité est en cours de développement")
-    
-    elif page == "Rédaction de courrier":
-        try:
-            from pages.redaction_courrier import show_page
-            show_page()
-        except ImportError:
-            st.error("❌ Module 'redaction_courrier' non disponible")
-            st.info("Cette fonctionnalité est en cours de développement")
-    
-    elif page == "Import/Export":
-        try:
-            from pages.import_export import show_page
-            show_page()
-        except ImportError:
-            st.error("❌ Module 'import_export' non disponible")
-            st.info("Cette fonctionnalité est en cours de développement")
-    
-    elif page == "Configuration":
-        try:
-            from pages.configuration import show_page
-            show_page()
-        except ImportError:
-            st.error("❌ Module 'configuration' non disponible")
-            # Afficher une configuration basique
+        
+        elif page == "Sélection de pièces":
+            if not st.session_state.get('azure_documents'):
+                st.warning("⚠️ Aucun document disponible. Commencez par rechercher des documents.")
+                if st.button("🔍 Aller à la recherche"):
+                    st.session_state.navigation = "Recherche de documents"
+                    st.rerun()
+            else:
+                st.info("📁 Page de sélection des pièces")
+                st.write("Fonctionnalité en cours de développement")
+        
+        elif page == "Analyse IA":
+            if not st.session_state.get('pieces_selectionnees'):
+                st.warning("⚠️ Aucune pièce sélectionnée. Sélectionnez d'abord des pièces.")
+            else:
+                st.info("🤖 Page d'analyse IA")
+                st.write("Fonctionnalité en cours de développement")
+        
+        elif page == "Rédaction assistée":
+            st.info("📝 Page de rédaction assistée")
+            st.write("Fonctionnalité en cours de développement")
+        
+        elif page == "Rédaction de courrier":
+            st.info("✉️ Page de rédaction de courrier")
+            st.write("Fonctionnalité en cours de développement")
+        
+        elif page == "Import/Export":
+            st.info("📥 Page d'import/export")
+            st.write("Fonctionnalité en cours de développement")
+        
+        elif page == "Configuration":
             st.header("⚙️ Configuration")
             st.markdown("### 🔑 Variables d'environnement")
             
-            # Vérifier les variables
             vars_to_check = [
                 ("AZURE_STORAGE_CONNECTION_STRING", "Connexion Azure Blob Storage"),
                 ("AZURE_SEARCH_ENDPOINT", "URL Azure Search"),
@@ -247,12 +211,11 @@ def main():
                 ("AZURE_OPENAI_KEY", "Clé Azure OpenAI"),
                 ("ANTHROPIC_API_KEY", "Clé Anthropic Claude"),
                 ("OPENAI_API_KEY", "Clé OpenAI"),
-                ("GOOGLE_API_KEY", "Clé Google Gemini"),
-                ("PERPLEXITY_API_KEY", "Clé Perplexity")
+                ("GOOGLE_API_KEY", "Clé Google Gemini")
             ]
             
-            col1, col2 = st.columns([3, 1])
             for var, description in vars_to_check:
+                col1, col2 = st.columns([3, 1])
                 with col1:
                     st.text(description)
                 with col2:
@@ -260,15 +223,11 @@ def main():
                         st.success("✅")
                     else:
                         st.error("❌")
-            
-            # Instructions pour Hugging Face
-            st.markdown("---")
-            st.info("""
-            **Pour configurer les variables sur Hugging Face Spaces:**
-            1. Allez dans Settings > Variables and secrets
-            2. Ajoutez chaque variable avec sa valeur
-            3. Redémarrez le Space
-            """)
+                        
+    except Exception as e:
+        st.error(f"❌ Erreur lors du chargement de la page '{page}'")
+        st.error(f"Détail: {str(e)}")
+        st.code(traceback.format_exc())
 
 if __name__ == "__main__":
     main()
