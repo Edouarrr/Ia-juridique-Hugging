@@ -1,172 +1,38 @@
 # config/app_config.py
-"""Configuration centralisée de l'application avec toutes les fonctionnalités"""
+"""Configuration centralisée de l'application"""
 
 import os
 from enum import Enum
 
-# Informations application
-APP_TITLE = "Assistant Pénal des Affaires IA"
-APP_VERSION = "3.0.0"
-APP_ICON = "⚖️"
-
-# Configuration des pages
-PAGES = {
-    "Accueil": "🏠",
-    "Analyse juridique": "📋",
-    "Recherche de jurisprudence": "🔍",
-    "Visualisation": "📊", 
-    "Assistant interactif": "💬",
-    "Configuration": "⚙️"
+# Configuration de l'application
+APP_CONFIG = {
+    'TITLE': 'Assistant Pénal des Affaires IA',
+    'VERSION': '3.0.0',
+    'ICON': '⚖️',
+    'PAGES': {
+        'Recherche de documents': '🔍',
+        'Sélection de pièces': '📁',
+        'Analyse IA': '🤖',
+        'Rédaction assistée': '📝',
+        'Rédaction de courrier': '✉️',
+        'Configuration': '⚙️'
+    },
+    'PAGE_SIZE': 10,
+    'MAX_FILE_SIZE': 10 * 1024 * 1024,
+    'DEFAULT_CONTAINER': 'sharepoint-documents',
+    'EXPORT_FORMAT': '%Y%m%d_%H%M%S',
+    'SEARCH_INDEX_NAME': 'juridique-index',
+    'VECTOR_DIMENSION': 1536
 }
 
-# Types d'infractions en droit pénal des affaires
-TYPES_INFRACTIONS = [
-    "Abus de biens sociaux",
-    "Abus de confiance",
-    "Corruption",
-    "Trafic d'influence",
-    "Prise illégale d'intérêts",
-    "Favoritisme",
-    "Blanchiment",
-    "Fraude fiscale",
-    "Escroquerie",
-    "Faux et usage de faux",
-    "Banqueroute",
-    "Délit d'initié",
-    "Manipulation de cours",
-    "Entrave",
-    "Travail dissimulé",
-    "Harcèlement moral/sexuel",
-    "Mise en danger d'autrui",
-    "Blessures involontaires",
-    "Atteinte à l'environnement",
-    "Autre infraction"
-]
-
-# Configuration des modèles LLM
-MODELS_CONFIG = {
-    "OpenAI": {
-        "models": ["gpt-4", "gpt-3.5-turbo"],
-        "default": "gpt-4"
-    },
-    "Anthropic": {
-        "models": ["claude-3-opus-20240229", "claude-3-sonnet-20240229"],
-        "default": "claude-3-opus-20240229"
-    },
-    "Google": {
-        "models": ["gemini-pro"],
-        "default": "gemini-pro"
-    },
-    "Mistral": {
-        "models": ["mistral-large-latest", "mistral-medium-latest"],
-        "default": "mistral-large-latest"
-    },
-    "Groq": {
-        "models": ["mixtral-8x7b-32768", "llama2-70b-4096"],
-        "default": "mixtral-8x7b-32768"
-    }
+# Délais de prescription
+PRESCRIPTION_CONFIG = {
+    'CONTRAVENTION': 1,  # an
+    'DELIT': 6,  # ans
+    'CRIME': 20,  # ans
+    'FRAUDE_FISCALE': 6,  # ans
+    'TRAVAIL_DISSIMULE': 6  # ans
 }
-
-# Configuration des LLMs pour MultiLLMManager
-class LLMProvider(str):
-    AZURE_OPENAI = "Azure OpenAI (GPT-4)"
-    CLAUDE_OPUS = "Claude Opus 4"
-    CHATGPT_4O = "ChatGPT 4o"
-    GEMINI = "Google Gemini"
-    PERPLEXITY = "Perplexity AI"
-
-LLM_CONFIGS = {
-    LLMProvider.AZURE_OPENAI: {
-        'endpoint': os.getenv('AZURE_OPENAI_ENDPOINT', ''),
-        'key': os.getenv('AZURE_OPENAI_KEY', ''),
-        'deployment': os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4'),
-        'api_version': '2024-02-01'
-    },
-    LLMProvider.CLAUDE_OPUS: {
-        'api_key': os.getenv('ANTHROPIC_API_KEY', ''),
-        'model': 'claude-3-opus-20240229'
-    },
-    LLMProvider.CHATGPT_4O: {
-        'api_key': os.getenv('OPENAI_API_KEY', ''),
-        'model': 'gpt-4-turbo-preview'
-    },
-    LLMProvider.GEMINI: {
-        'api_key': os.getenv('GOOGLE_API_KEY', ''),
-        'model': 'gemini-pro'
-    },
-    LLMProvider.PERPLEXITY: {
-        'api_key': os.getenv('PERPLEXITY_API_KEY', ''),
-        'model': 'pplx-70b-online'
-    }
-}
-
-# APIs juridiques
-LEGAL_APIS = {
-    "Légifrance": {
-        "base_url": "https://www.legifrance.gouv.fr/",
-        "search_url": "https://www.legifrance.gouv.fr/search/all?tab=all&query=",
-        "enabled": True
-    },
-    "Judilibre": {
-        "base_url": "https://www.courdecassation.fr/",
-        "search_url": "https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext=",
-        "enabled": True
-    },
-    "Conseil d'État": {
-        "base_url": "https://www.conseil-etat.fr/",
-        "search_url": "https://www.conseil-etat.fr/arianeweb/",
-        "enabled": True
-    },
-    "EUR-Lex": {
-        "base_url": "https://eur-lex.europa.eu/",
-        "search_url": "https://eur-lex.europa.eu/search.html?scope=EURLEX&text=",
-        "enabled": True
-    }
-}
-
-# Configuration par défaut
-DEFAULT_SETTINGS = {
-    "max_tokens": 4000,
-    "temperature": 0.7,
-    "top_p": 0.9,
-    "presence_penalty": 0.0,
-    "frequency_penalty": 0.0
-}
-
-# Formats d'export
-EXPORT_FORMATS = {
-    "PDF": {"extension": ".pdf", "mime": "application/pdf"},
-    "DOCX": {"extension": ".docx", "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-    "TXT": {"extension": ".txt", "mime": "text/plain"},
-    "JSON": {"extension": ".json", "mime": "application/json"}
-}
-
-# Configuration du cache
-CACHE_CONFIG = {
-    "ttl": 3600,
-    "max_entries": 1000,
-    "persist": True
-}
-
-# Messages système
-MESSAGES = {
-    "welcome": "Bienvenue dans l'Assistant Pénal des Affaires IA",
-    "no_documents": "Aucun document sélectionné",
-    "analysis_complete": "Analyse terminée avec succès",
-    "error_generic": "Une erreur s'est produite",
-    "loading": "Chargement en cours..."
-}
-
-# Configuration Azure Search
-AZURE_SEARCH_CONFIG = {
-    'index_name': 'juridique-index',
-    'vector_dimension': 1536,
-    'endpoint': os.getenv('AZURE_SEARCH_ENDPOINT', ''),
-    'key': os.getenv('AZURE_SEARCH_KEY', '')
-}
-
-# Container Azure par défaut
-DEFAULT_CONTAINER = "sharepoint-documents"
 
 # Formats de citation
 CITATION_FORMATS = {
@@ -177,7 +43,76 @@ CITATION_FORMATS = {
     'reponse_ministerielle': "Rép. min. n° {numero}, {date}"
 }
 
-# Prompts d'analyse spécialisés
+# Types d'infractions
+class InfractionAffaires(Enum):
+    """Types d'infractions en droit pénal des affaires"""
+    ABS = "Abus de biens sociaux"
+    ABUS_CONFIANCE = "Abus de confiance"
+    CORRUPTION = "Corruption"
+    TRAFIC_INFLUENCE = "Trafic d'influence"
+    PRISE_ILLEGALE = "Prise illégale d'intérêts"
+    FAVORITISME = "Favoritisme"
+    BLANCHIMENT = "Blanchiment"
+    FRAUDE_FISCALE = "Fraude fiscale"
+    ESCROQUERIE = "Escroquerie"
+    FAUX_USAGE_FAUX = "Faux et usage de faux"
+    BANQUEROUTE = "Banqueroute"
+    DELIT_INITIE = "Délit d'initié"
+    MANIPULATION_COURS = "Manipulation de cours"
+    ENTRAVE = "Entrave"
+    TRAVAIL_DISSIMULE = "Travail dissimulé"
+    HARCELEMENT = "Harcèlement moral/sexuel"
+    MISE_DANGER = "Mise en danger d'autrui"
+    BLESSURES_INVOLONTAIRES = "Blessures involontaires"
+    POLLUTION = "Atteinte à l'environnement"
+    AUTRE = "Autre infraction"
+
+# Modes de recherche
+class SearchMode(Enum):
+    """Modes de recherche disponibles"""
+    HYBRID = "Recherche hybride (textuelle + sémantique)"
+    TEXT_ONLY = "Recherche textuelle uniquement"
+    VECTOR_ONLY = "Recherche vectorielle uniquement"
+    LOCAL = "Recherche locale uniquement"
+
+# Providers LLM
+class LLMProvider(Enum):
+    """Providers LLM disponibles"""
+    AZURE_OPENAI = "Azure OpenAI (GPT-4)"
+    CLAUDE_OPUS = "Claude Opus 4"
+    CHATGPT_4O = "ChatGPT 4o"
+    GEMINI = "Google Gemini"
+    PERPLEXITY = "Perplexity AI"
+
+# Configuration des LLMs
+def get_llm_configs():
+    """Retourne la configuration des LLMs"""
+    return {
+        LLMProvider.AZURE_OPENAI: {
+            'endpoint': os.getenv('AZURE_OPENAI_ENDPOINT'),
+            'key': os.getenv('AZURE_OPENAI_KEY'),
+            'deployment': os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4'),
+            'api_version': '2024-02-01'
+        },
+        LLMProvider.CLAUDE_OPUS: {
+            'api_key': os.getenv('ANTHROPIC_API_KEY'),
+            'model': 'claude-3-opus-20240229'
+        },
+        LLMProvider.CHATGPT_4O: {
+            'api_key': os.getenv('OPENAI_API_KEY'),
+            'model': 'gpt-4-turbo-preview'
+        },
+        LLMProvider.GEMINI: {
+            'api_key': os.getenv('GOOGLE_API_KEY'),
+            'model': 'gemini-pro'
+        },
+        LLMProvider.PERPLEXITY: {
+            'api_key': os.getenv('PERPLEXITY_API_KEY'),
+            'model': 'pplx-70b-online'
+        }
+    }
+
+# Prompts d'analyse
 ANALYSIS_PROMPTS_AFFAIRES = {
     "🎯 Analyse infractions économiques": [
         "Analysez précisément les éléments constitutifs de l'infraction reprochée",
@@ -203,17 +138,4 @@ ANALYSIS_PROMPTS_AFFAIRES = {
         "Évaluez l'impact financier des sanctions encourues",
         "Proposez des modalités de réparation adaptées"
     ]
-}
-
-# Configuration de la pagination
-PAGE_SIZE = 10
-MAX_FILE_SIZE = 10 * 1024 * 1024
-
-# Délais de prescription
-PRESCRIPTION_CONFIG = {
-    "contravention": 1,
-    "délit": 6,
-    "crime": 20,
-    "fraude_fiscale": 6,
-    "travail_dissimulé": 6
 }
