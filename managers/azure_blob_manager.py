@@ -20,6 +20,26 @@ class AzureBlobManager:
     """Gère les opérations avec Azure Blob Storage"""
     
     def __init__(self):
+    self.connected = False
+    self.blob_service_client = None
+    
+    print(f"[AzureBlobManager] AZURE_AVAILABLE: {AZURE_AVAILABLE}")
+    
+    if AZURE_AVAILABLE:
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        print(f"[AzureBlobManager] Connection string present: {bool(connection_string)}")
+        
+        if connection_string:
+            try:
+                self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+                # Tester la connexion
+                containers = list(self.blob_service_client.list_containers())
+                self.connected = True
+                print(f"[AzureBlobManager] Connexion réussie, {len(containers)} containers trouvés")
+            except Exception as e:
+                print(f"[AzureBlobManager] Erreur connexion: {type(e).__name__}: {str(e)}")
+        else:
+            print("[AzureBlobManager] Pas de connection string")
         """Initialise le gestionnaire Azure Blob"""
         self.blob_service_client = None
         self.connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
