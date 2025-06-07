@@ -1,44 +1,97 @@
-# app.py
-"""Application principale modulaire avec toutes les fonctionnalités"""
+# pages/recherche.py
+"""Page de recherche enrichie avec toutes les fonctionnalités d'Azure"""
 
 import streamlit as st
+import asyncio
 import os
-import sys
+from datetime import datetime
+from typing import List, Dict, Any
 
-# Configuration de l'encodage pour les emojis
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
-
-from config.app_config import APP_TITLE, APP_ICON, PAGES
-from utils.styles import load_custom_css
-
-# Configuration de la page - DOIT être la première commande Streamlit
-st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon=APP_ICON,
-    layout="wide",
-    initial_sidebar_state="expanded"
+from config.app_config import (
+    TYPES_INFRACTIONS, 
+    LEGAL_APIS, 
+    DEFAULT_CONTAINER,
+    AZURE_SEARCH_CONFIG
 )
+from models.dataclasses import Document, SearchResult
+from utils.styles import load_custom_css, create_alert_box, create_section_divider
+from utils.helpers import clean_key
 
 
-def initialize_session_state():
-    """Initialise toutes les variables de session"""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = True
-        st.session_state.azure_documents = {}
-        st.session_state.pieces_selectionnees = {}
-        st.session_state.search_query = ""
-        st.session_state.current_folder_path = ""
-        st.session_state.learned_styles = {}
-        st.session_state.letterhead_template = None
-        st.session_state.selected_container = None
-        st.session_state.dossier_actif = None
-        st.session_state.dynamic_search_prompts = {}
-        st.session_state.dynamic_templates = {}
+def show():
+    """Affiche la page de recherche complète avec Azure Blob et Search"""
+    load_custom_css()
+    
+    st.title("🔍 Recherche de documents")
+    
+    # Initialiser les gestionnaires Azure s'ils ne sont pas déjà présents
+    initialize_azure_managers()
+    
+    # Vérifier la connexion Azure
+    if not st.session_state.get('azure_blob_manager') or not st.session_state.azure_blob_manager.is_connected():
+        st.error("❌ Connexion Azure Blob non configurée.")
+        st.info("💡 Variable requise : AZURE_STORAGE_CONNECTION_STRING")
+        return
+    
+    # Section de recherche principale
+    with st.container():
+        st.markdown('<div class="search-section">', unsafe_allow_html=True)
+        
+        # Barre de recherche
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            search_query = st.text_input(
+                "Rechercher dans tous les documents",
+                value=st.session_state.get('search_query', ''),
+                placeholder="Ex: abus de biens sociaux, délégation de pouvoirs, fraude fiscale...",
+                key="search_input_main"
+            )
+        
+        with col2:
+            search_clicked = st.button("🔍 Rechercher", type="primary", key="search_button")
+        
+        # Options de recherche avancée
+        with st.expander("⚙️ Options avancées"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                search_mode = st.selectbox(
+                    "Mode de recherche",
+                    ["Recherche dans mes documents", "Recherche jurisprudence (Légifrance)", "Recherche complète"],
+                    key="search_mode_select"
+                )
+            
+            with col2:
+                # Mode de recherche Azure si disponible
+                if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
+                    from managers.azure_search_manager import SearchMode
+                    azure_search_mode = st.selectbox(
+                        "Type de recherche Azure",
+                        [mode.value for mode in SearchMode],
+                        key="azure_search_mode"
+                    )
+                else:
+                    st.info("🔍 Recherche vectorielle non configurée")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Effectuer la recherche
+        if search_clicked and search_query:
+            st.session_state.search_query = search_query
+            perform_search(search_query, search_mode)
+    
+    # Navigation Azure Blob
+    st.markdown("### 📂 Explorer les documents SharePoint")
+    
+    display_azure_navigation()
+    
+    # Suggestions de recherche dynamiques
+    if st.session_state.get('search_query'):
+        display_search_suggestions()
 
 
 def initialize_azure_managers():
-    """Initialise les gestionnaires Azure dans la session"""
+    """Initialise les gestionnaires Azure s'ils ne sont pas déjà présents"""
     # Azure Blob Manager
     if 'azure_blob_manager' not in st.session_state:
         try:
@@ -57,200 +110,421 @@ def initialize_azure_managers():
             st.error(f"Erreur initialisation Azure Search: {e}")
             st.session_state.azure_search_manager = None
     
-    # Multi-LLM Manager
-    if 'multi_llm_manager' not in st.session_state:
-        try:
-            from managers.multi_llm_manager import MultiLLMManager
-            st.session_state.multi_llm_manager = MultiLLMManager()
-        except Exception as e:
-            st.error(f"Erreur initialisation Multi-LLM: {e}")
-            st.session_state.multi_llm_manager = None
-    
-    # Style Analyzer
-    if 'style_analyzer' not in st.session_state:
-        try:
-            from managers.style_analyzer import StyleAnalyzer
-            st.session_state.style_analyzer = StyleAnalyzer()
-        except Exception as e:
-            st.error(f"Erreur initialisation Style Analyzer: {e}")
-            st.session_state.style_analyzer = None
+    # Initialiser le stockage des documents
+    if 'azure_documents' not in st.session_state:
+        st.session_state.azure_documents = {}
 
 
-def display_system_status():
-    """Affiche l'état du système dans la sidebar"""
-    st.markdown("### 📊 État du système")
-    
-    # État Azure Blob
-    if st.session_state.get('azure_blob_manager') and st.session_state.azure_blob_manager.is_connected():
-        st.success("✅ Azure Blob connecté")
-    else:
-        st.error("❌ Azure Blob non connecté")
-    
-    # État Azure Search
-    if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
-        st.success("✅ Azure Search actif")
-    else:
-        st.warning("⚠️ Azure Search non disponible")
-    
-    # État Multi-LLM
-    if st.session_state.get('multi_llm_manager'):
-        nb_llms = len(st.session_state.multi_llm_manager.clients)
-        if nb_llms > 0:
-            st.success(f"✅ {nb_llms} IA disponibles")
-        else:
-            st.warning("⚠️ Aucune IA configurée")
-    else:
-        st.error("❌ Multi-LLM non disponible")
-    
-    # Métriques
-    st.markdown("### 📈 Métriques")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        nb_docs = len(st.session_state.get('azure_documents', {}))
-        st.metric("Documents", nb_docs)
+def perform_search(search_query: str, search_mode: str):
+    """Effectue la recherche selon le mode sélectionné"""
+    with st.spinner("Recherche en cours..."):
+        # Si recherche Légifrance
+        if search_mode == "Recherche jurisprudence (Légifrance)":
+            display_legifrance_search(search_query)
         
-        nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
-        st.metric("Pièces", nb_pieces)
-    
-    with col2:
-        nb_styles = len(st.session_state.get('learned_styles', {}))
-        st.metric("Styles", nb_styles)
+        # Si Azure Search disponible
+        elif st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
+            perform_azure_search(search_query)
         
-        # Papier en-tête
-        if st.session_state.get('letterhead_template'):
-            st.metric("Papier en-tête", "✅")
+        # Recherche locale
         else:
-            st.metric("Papier en-tête", "❌")
+            perform_local_search(search_query)
 
 
-def main():
-    """Application principale"""
-    # Initialisation
-    initialize_session_state()
+def display_legifrance_search(search_query: str):
+    """Affiche les liens de recherche Légifrance"""
+    st.info("🏛️ Recherche sur les sources juridiques officielles")
     
-    # Charger les styles CSS
-    load_custom_css()
+    # Construire les URLs de recherche
+    legifrance_url = f"https://www.legifrance.gouv.fr/search/all?tab=all&query={search_query}"
+    judilibre_url = f"https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext={search_query}"
+    conseil_etat_url = "https://www.conseil-etat.fr/arianeweb/"
     
-    # Initialiser les managers Azure
-    initialize_azure_managers()
-    
-    # Titre principal avec style
     st.markdown(f"""
-    <div style='text-align: center; padding: 2rem 0; background-color: #f0f2f6; border-radius: 10px; margin-bottom: 2rem;'>
-        <h1 style='color: #1a237e; font-size: 3rem; margin-bottom: 0.5rem;'>{APP_ICON} {APP_TITLE}</h1>
-        <p style='color: #666; font-size: 1.2rem; margin: 0;'>Intelligence artificielle au service du droit pénal économique</p>
-    </div>
-    """, unsafe_allow_html=True)
+    📎 **Liens utiles pour votre recherche :**
+    - [🏛️ Rechercher sur Légifrance]({legifrance_url})
+    - [⚖️ Jurisprudence judiciaire (Judilibre)]({judilibre_url})
+    - [🏛️ Jurisprudence administrative (Conseil d'État)]({conseil_etat_url})
+    - [📚 Doctrine.fr](https://www.doctrine.fr/search?q={search_query})
     
-    # Sidebar avec navigation
-    with st.sidebar:
-        st.markdown("### 🎯 Navigation")
+    💡 **Conseils pour une recherche efficace :**
+    - Utilisez des références précises (articles de loi, numéros de pourvoi)
+    - Employez les mots-clés juridiques exacts
+    - Utilisez les opérateurs de recherche (ET, OU, SAUF)
+    """)
+
+
+def perform_azure_search(search_query: str):
+    """Effectue une recherche avec Azure Search"""
+    from managers.azure_search_manager import SearchMode
+    
+    # Mapper le mode sélectionné
+    mode_str = st.session_state.get('azure_search_mode', SearchMode.HYBRID.value)
+    mode_map = {
+        "Recherche hybride (textuelle + sémantique)": SearchMode.HYBRID,
+        "Recherche textuelle uniquement": SearchMode.TEXT_ONLY,
+        "Recherche vectorielle uniquement": SearchMode.VECTOR_ONLY,
+        "Recherche locale uniquement": SearchMode.LOCAL
+    }
+    
+    selected_mode = mode_map.get(mode_str, SearchMode.HYBRID)
+    
+    # Effectuer la recherche
+    results = st.session_state.azure_search_manager.search_hybrid(
+        search_query,
+        mode=selected_mode,
+        top=20
+    )
+    
+    # Afficher les résultats
+    if results:
+        st.success(f"✅ {len(results)} résultats trouvés")
         
-        # Définir les modules de pages
-        page_modules = {
-            "Accueil": "pages.accueil",
-            "Analyse juridique": "pages.analyse",
-            "Recherche de jurisprudence": "pages.recherche",
-            "Visualisation": "pages.visualisation",
-            "Assistant interactif": "pages.assistant",
-            "Configuration": "pages.configuration"
-        }
+        for result in results:
+            display_search_result(result)
+    else:
+        st.info("Aucun résultat trouvé dans l'index Azure Search")
         
-        # Sélection de la page
-        selected_page = st.selectbox(
-            "Choisir une fonctionnalité",
-            list(page_modules.keys()),
-            format_func=lambda x: f"{PAGES[x]} {x}"
+        # Proposer d'effectuer une recherche locale
+        if st.button("🔍 Rechercher dans les documents locaux"):
+            perform_local_search(search_query)
+
+
+def perform_local_search(search_query: str):
+    """Effectue une recherche dans les documents locaux"""
+    st.info("🔍 Recherche dans les documents chargés...")
+    
+    results = []
+    query_lower = search_query.lower()
+    
+    # Rechercher dans tous les documents
+    for doc_id, doc in st.session_state.get('azure_documents', {}).items():
+        if query_lower in doc.title.lower() or query_lower in doc.content.lower():
+            # Calculer un score simple basé sur le nombre d'occurrences
+            title_score = doc.title.lower().count(query_lower) * 2
+            content_score = doc.content.lower().count(query_lower)
+            total_score = title_score + content_score
+            
+            results.append({
+                'document': doc,
+                'score': total_score
+            })
+    
+    # Trier par score
+    results.sort(key=lambda x: x['score'], reverse=True)
+    
+    if results:
+        st.success(f"✅ {len(results)} résultats trouvés dans les documents locaux")
+        
+        for result in results[:20]:  # Limiter à 20 résultats
+            doc = result['document']
+            score = result['score']
+            
+            with st.container():
+                st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                
+                col1, col2 = st.columns([4, 1])
+                
+                with col1:
+                    st.markdown(f"**{doc.title}**")
+                    st.caption(f"Score de pertinence: {score}")
+                    
+                    # Extraire un extrait pertinent
+                    content_lower = doc.content.lower()
+                    idx = content_lower.find(query_lower)
+                    if idx != -1:
+                        start = max(0, idx - 150)
+                        end = min(len(doc.content), idx + 150)
+                        excerpt = "..." + doc.content[start:end] + "..."
+                        
+                        # Surligner le terme recherché
+                        excerpt = excerpt.replace(
+                            search_query,
+                            f"**{search_query}**"
+                        )
+                        st.markdown(excerpt)
+                    else:
+                        # Afficher le début du document
+                        excerpt = doc.content[:300] + "..." if len(doc.content) > 300 else doc.content
+                        st.text(excerpt)
+                
+                with col2:
+                    st.caption(f"Source: {doc.source}")
+                    if doc.metadata.get('last_modified'):
+                        st.caption(f"Modifié: {doc.metadata['last_modified']}")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.info("Aucun résultat trouvé dans les documents chargés")
+
+
+def display_search_result(result: Dict[str, Any]):
+    """Affiche un résultat de recherche"""
+    with st.container():
+        st.markdown('<div class="document-card">', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([4, 1])
+        
+        with col1:
+            st.markdown(f"**{result['title']}**")
+            st.caption(f"Score: {result['score']:.2f}")
+            
+            # Extrait du contenu
+            excerpt = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
+            st.text(excerpt)
+        
+        with col2:
+            doc_id = result['id']
+            
+            if doc_id in st.session_state.get('azure_documents', {}):
+                st.success("✅ Déjà ajouté")
+            else:
+                if st.button("➕ Ajouter", key=f"add_search_{doc_id}"):
+                    # Créer un document à partir du résultat
+                    doc = Document(
+                        id=doc_id,
+                        title=result['title'],
+                        content=result['content'],
+                        source=result.get('source', 'search'),
+                        metadata=result.get('metadata', {})
+                    )
+                    st.session_state.azure_documents[doc.id] = doc
+                    st.success("✅ Document ajouté")
+                    st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+def display_azure_navigation():
+    """Affiche la navigation dans Azure Blob Storage"""
+    azure_manager = st.session_state.get('azure_blob_manager')
+    
+    if not azure_manager:
+        st.warning("⚠️ Gestionnaire Azure Blob non initialisé")
+        return
+    
+    # Container par défaut
+    selected_container = DEFAULT_CONTAINER
+    
+    # Vérifier que le container existe
+    containers = azure_manager.list_containers()
+    
+    if not containers:
+        st.warning("⚠️ Aucun container Azure trouvé")
+        return
+    
+    if selected_container not in containers:
+        st.error(f"❌ Le container '{selected_container}' n'existe pas.")
+        
+        # Proposer de sélectionner un autre container
+        selected_container = st.selectbox(
+            "Sélectionner un container",
+            containers,
+            key="select_container"
+        )
+    else:
+        st.info(f"📁 Container actif : **{selected_container}**")
+    
+    # Navigation dans les dossiers
+    if selected_container:
+        display_folder_navigation(azure_manager, selected_container)
+
+
+def display_folder_navigation(azure_manager, container_name: str):
+    """Affiche la navigation dans les dossiers"""
+    st.markdown('<div class="folder-nav">', unsafe_allow_html=True)
+    
+    # Fil d'Ariane
+    current_path = st.session_state.get('current_folder_path', '')
+    if current_path:
+        display_breadcrumb(current_path)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Lister le contenu
+    with st.spinner("Chargement des documents..."):
+        items = azure_manager.list_folders(container_name, current_path)
+    
+    if items:
+        folders = [item for item in items if item['type'] == 'folder']
+        files = [item for item in items if item['type'] == 'file']
+        
+        st.caption(f"📁 {len(folders)} dossiers, 📄 {len(files)} fichiers")
+        
+        # Afficher les dossiers
+        if folders:
+            display_folders(folders, azure_manager, container_name)
+        
+        # Afficher les fichiers
+        if files:
+            display_files(files, azure_manager, container_name, current_path)
+    else:
+        st.info("📭 Aucun document dans ce dossier")
+
+
+def display_breadcrumb(current_path: str):
+    """Affiche le fil d'Ariane"""
+    path_parts = current_path.split('/')
+    path_parts = [p for p in path_parts if p]
+    
+    cols = st.columns(len(path_parts) + 1)
+    
+    with cols[0]:
+        if st.button("🏠 Racine", key="breadcrumb_root"):
+            st.session_state.current_folder_path = ""
+            st.rerun()
+    
+    for i, part in enumerate(path_parts):
+        with cols[i + 1]:
+            partial_path = '/'.join(path_parts[:i+1]) + '/'
+            if st.button(f"📁 {part}", key=f"breadcrumb_{clean_key(part)}_{i}"):
+                st.session_state.current_folder_path = partial_path
+                st.rerun()
+
+
+def display_folders(folders: List[Dict], azure_manager, container_name: str):
+    """Affiche les dossiers"""
+    st.markdown("#### 📁 Dossiers")
+    
+    for item in folders:
+        with st.container():
+            st.markdown('<div class="folder-card">', unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                st.markdown(f"📁 **{item['name']}**")
+            
+            with col2:
+                # Compter les fichiers dans le dossier
+                sub_items = azure_manager.list_folders(container_name, item['path'])
+                sub_files = [i for i in sub_items if i['type'] == 'file']
+                st.caption(f"{len(sub_files)} fichiers")
+            
+            with col3:
+                col_open, col_add = st.columns(2)
+                
+                with col_open:
+                    if st.button("📂", key=f"open_folder_{clean_key(item['name'])}", help="Ouvrir"):
+                        st.session_state.current_folder_path = item['path']
+                        st.rerun()
+                
+                with col_add:
+                    if st.button("➕", key=f"add_folder_all_{clean_key(item['path'])}", help="Ajouter tout le dossier"):
+                        add_entire_folder(azure_manager, container_name, item)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+def display_files(files: List[Dict], azure_manager, container_name: str, current_path: str):
+    """Affiche les fichiers"""
+    st.markdown("#### 📄 Fichiers")
+    
+    for item in files:
+        with st.container():
+            st.markdown('<div class="document-card">', unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                # Icône selon le type de fichier
+                file_ext = os.path.splitext(item['name'])[1].lower()
+                icon = get_file_icon(file_ext)
+                
+                st.markdown(f"{icon} **{item['name']}**")
+                
+                if item.get('size'):
+                    size_mb = item['size'] / (1024 * 1024)
+                    st.caption(f"Taille: {size_mb:.2f} MB")
+            
+            with col2:
+                if item.get('last_modified'):
+                    st.caption(f"Modifié: {item['last_modified'].strftime('%d/%m/%Y')}")
+            
+            with col3:
+                col_view, col_select = st.columns(2)
+                
+                with col_view:
+                    if st.button("👁️", key=f"view_file_{clean_key(item['full_path'])}", help="Aperçu"):
+                        display_file_preview(azure_manager, container_name, item)
+                
+                with col_select:
+                    doc_id = f"azure_{clean_key(item['full_path'])}"
+                    
+                    if doc_id in st.session_state.get('azure_documents', {}):
+                        st.success("✅")
+                    else:
+                        if st.button("➕", key=f"add_doc_{doc_id}", help="Ajouter"):
+                            add_file_to_documents(azure_manager, container_name, item, current_path)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+def get_file_icon(file_ext: str) -> str:
+    """Retourne l'icône appropriée selon l'extension du fichier"""
+    return {
+        '.pdf': '📄',
+        '.docx': '📝',
+        '.doc': '📝',
+        '.txt': '📃',
+        '.xlsx': '📊',
+        '.xls': '📊',
+        '.pptx': '📽️',
+        '.ppt': '📽️',
+        '.csv': '📈',
+        '.json': '🔧',
+        '.xml': '🔧'
+    }.get(file_ext, '📎')
+
+
+def display_file_preview(azure_manager, container_name: str, file_info: Dict):
+    """Affiche un aperçu du fichier"""
+    with st.spinner("Chargement de l'aperçu..."):
+        content = azure_manager.extract_text_from_blob(
+            container_name,
+            file_info['full_path']
         )
         
-        st.markdown("---")
-        
-        # État du système
-        display_system_status()
-        
-        # Informations supplémentaires
-        st.markdown("---")
-        st.markdown("### ℹ️ Informations")
-        st.info("""
-        **Version**: 3.0.0
-        **Dernière mise à jour**: Juin 2025
-        
-        📧 **Support**: contact@assistant-penal.ai
-        📚 **Documentation**: [Voir la doc](https://docs.assistant-penal.ai)
-        """)
-    
-    # Zone principale - Afficher la page sélectionnée
-    try:
-        # Import dynamique du module de la page
-        module = __import__(page_modules[selected_page], fromlist=['show'])
-        
-        # Appeler la fonction show() du module
-        module.show()
-        
-    except ImportError as e:
-        st.error(f"❌ Impossible de charger la page '{selected_page}'")
-        st.error(f"Erreur d'import : {str(e)}")
-        
-        # Afficher les détails de l'erreur en mode debug
-        with st.expander("🐛 Détails de l'erreur"):
-            st.exception(e)
-            
-            # Vérifier les imports
-            st.markdown("**Vérification des imports :**")
-            
-            # Essayer d'importer chaque module individuellement
-            modules_to_check = [
-                "config.app_config",
-                "utils.styles",
-                "utils.helpers",
-                "models.dataclasses",
-                page_modules[selected_page]
-            ]
-            
-            for module_name in modules_to_check:
-                try:
-                    __import__(module_name)
-                    st.success(f"✅ {module_name}")
-                except ImportError as import_error:
-                    st.error(f"❌ {module_name}: {str(import_error)}")
-    
-    except AttributeError as e:
-        st.error(f"❌ La page '{selected_page}' n'a pas de fonction 'show()'")
-        st.error(f"Erreur : {str(e)}")
-    
-    except Exception as e:
-        st.error(f"❌ Erreur lors du chargement de la page : {str(e)}")
-        
-        # Afficher plus de détails
-        with st.expander("🐛 Détails de l'erreur"):
-            st.exception(e)
-            
-            # Essayer d'afficher une page de secours
-            st.markdown("### 🏠 Page d'accueil de secours")
-            st.info("""
-            Il semble y avoir un problème avec le chargement de la page.
-            
-            **Actions possibles :**
-            1. Vérifiez que tous les modules sont correctement installés
-            2. Consultez les logs pour plus de détails
-            3. Essayez une autre page depuis le menu
-            4. Redémarrez l'application
-            """)
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style='text-align: center; color: #666; padding: 1rem;'>
-            <p>© 2025 Assistant Pénal des Affaires IA - Tous droits réservés</p>
-            <p style='font-size: 0.9rem;'>Développé avec ❤️ pour les professionnels du droit</p>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
+        if content:
+            st.text_area(
+                f"Aperçu de {file_info['name']}",
+                content[:2000] + "..." if len(content) > 2000 else content,
+                height=300,
+                key=f"preview_{clean_key(file_info['full_path'])}"
+            )
+        else:
+            st.warning("⚠️ Impossible d'extraire le contenu de ce fichier")
 
 
-if __name__ == "__main__":
-    main()
+def add_file_to_documents(azure_manager, container_name: str, file_info: Dict, current_path: str):
+    """Ajoute un fichier aux documents"""
+    with st.spinner("Ajout du document..."):
+        content = azure_manager.extract_text_from_blob(
+            container_name,
+            file_info['full_path']
+        )
+        
+        if content:
+            doc_id = f"azure_{clean_key(file_info['full_path'])}"
+            doc = Document(
+                id=doc_id,
+                title=file_info['name'],
+                content=content,
+                source='azure',
+                metadata={
+                    'container': container_name,
+                    'path': file_info['full_path'],
+                    'size': file_info.get('size'),
+                    'last_modified': file_info.get('last_modified')
+                },
+                folder_path=current_path
+            )
+            
+            if 'azure_documents' not in st.session_state:
+                st.session_state.azure_documents = {}
+            
+            st.session_state.azure_documents[doc_id] = doc
+            
+            # Indexer dans Azure Search si disponible
+            if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
+                success = st.session_state.azure_search_manager.index_doc
