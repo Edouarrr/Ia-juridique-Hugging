@@ -1,2 +1,2 @@
 # models/__init__.py
-# Ce fichier doit rester vide pour éviter les imports circulaires
+# Fichier vide pour faire du dossier un module Python
