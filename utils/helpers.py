@@ -291,4 +291,27 @@ class GestionnairePiecesSelectionnees:
         
         return pieces_par_cat
     
-    def gen
+    def generer_bordereau(self) -> str:
+        """Génère un bordereau des pièces sélectionnées"""
+        from datetime import datetime
+        
+        bordereau = "BORDEREAU DES PIÈCES SÉLECTIONNÉES\n"
+        bordereau += "=" * 50 + "\n\n"
+        bordereau += f"Date : {datetime.now().strftime('%d/%m/%Y')}\n\n"
+        
+        pieces_par_cat = self.get_pieces_par_categorie()
+        numero = 1
+        
+        for categorie, pieces in pieces_par_cat.items():
+            if pieces:
+                bordereau += f"\n{categorie}\n{'-' * len(categorie)}\n"
+                for piece in sorted(pieces, key=lambda x: x.pertinence, reverse=True):
+                    bordereau += f"{numero}. {piece.titre}"
+                    if piece.notes:
+                        bordereau += f" - {piece.notes}"
+                    bordereau += f" (Pertinence: {piece.pertinence}/10)\n"
+                    numero += 1
+        
+        bordereau += f"\n\nTOTAL : {len(self.pieces)} pièces\n"
+        
+        return bordereau
