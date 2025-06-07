@@ -153,8 +153,17 @@ def generate_intelligent_searches(topic: str, context: dict):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
+        # Convertir le contexte dict en string pour la fonction
+        context_str = ""
+        if context.get('client'):
+            context_str += f"Client: {context['client']}. "
+        if context.get('juridiction'):
+            context_str += f"Juridiction: {context['juridiction']}. "
+        if context.get('date'):
+            context_str += f"Date: {context['date']}. "
+        
         search_prompts = loop.run_until_complete(
-            generate_dynamic_search_prompts(topic, context)
+            generate_dynamic_search_prompts(topic, context_str)
         )
         
         # Stocker dans session state
@@ -166,24 +175,44 @@ def generate_intelligent_searches(topic: str, context: dict):
             st.success("✅ Requêtes de recherche générées avec succès!")
             
             # Pour chaque catégorie
-            for category, queries in search_prompts.items():
-                with st.expander(f"{category} ({len(queries)} requêtes)", expanded=True):
-                    for i, query in enumerate(queries):
-                        col1, col2 = st.columns([4, 1])
-                        
-                        with col1:
-                            st.text(query)
-                        
-                        with col2:
-                            if st.button("🔍", key=f"search_query_{clean_key(category)}_{i}"):
-                                # Lancer la recherche
-                                perform_search(query, SearchMode.HYBRID.value, 10)
+            for category, subcategories in search_prompts.items():
+                with st.expander(f"{category}", expanded=True):
+                    # Si c'est un dictionnaire avec sous-catégories
+                    if isinstance(subcategories, dict):
+                        for subcat, queries in subcategories.items():
+                            st.markdown(f"**{subcat}**")
+                            for i, query in enumerate(queries):
+                                col1, col2 = st.columns([4, 1])
+                                
+                                with col1:
+                                    st.text(query)
+                                
+                                with col2:
+                                    if st.button("🔍", key=f"search_query_{clean_key(category)}_{clean_key(subcat)}_{i}"):
+                                        # Lancer la recherche
+                                        perform_search(query, SearchMode.HYBRID.value, 10)
+                    # Si c'est directement une liste de requêtes
+                    elif isinstance(subcategories, list):
+                        for i, query in enumerate(subcategories):
+                            col1, col2 = st.columns([4, 1])
+                            
+                            with col1:
+                                st.text(query)
+                            
+                            with col2:
+                                if st.button("🔍", key=f"search_query_{clean_key(category)}_{i}"):
+                                    # Lancer la recherche
+                                    perform_search(query, SearchMode.HYBRID.value, 10)
             
             # Bouton pour rechercher tout
             if st.button("🚀 Lancer toutes les recherches", type="primary", key="search_all"):
                 all_queries = []
-                for queries in search_prompts.values():
-                    all_queries.extend(queries)
+                for subcategories in search_prompts.values():
+                    if isinstance(subcategories, dict):
+                        for queries in subcategories.values():
+                            all_queries.extend(queries)
+                    elif isinstance(subcategories, list):
+                        all_queries.extend(subcategories)
                 
                 # Limiter à 20 requêtes max
                 for query in all_queries[:20]:
