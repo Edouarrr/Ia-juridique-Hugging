@@ -1,4 +1,4 @@
-# managers/document_manager.py
+# managers/document_manager.py (fonction display_import_interface)
 """Gestionnaire de documents - Import, export et traitement"""
 
 import streamlit as st
@@ -10,6 +10,65 @@ import io
 import base64
 from pathlib import Path
 import logging
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def display_import_interface():
+    """Affiche l'interface d'import de documents"""
+    st.markdown("### 📤 Import de documents")
+    
+    # Zone de drag & drop
+    uploaded_files = st.file_uploader(
+        "Glissez vos fichiers ici ou cliquez pour parcourir",
+        type=['pdf', 'docx', 'txt', 'xlsx', 'xls', 'json', 'csv'],
+        accept_multiple_files=True,
+        help="Formats supportés : PDF, Word, Excel, TXT, JSON, CSV"
+    )
+    
+    if uploaded_files:
+        st.success(f"✅ {len(uploaded_files)} fichier(s) sélectionné(s)")
+        
+        # Prévisualisation et options
+        for file in uploaded_files:
+            with st.expander(f"📄 {file.name} ({file.size / 1024:.2f} KB)"):
+                file_type = file.type
+                
+                # Aperçu selon le type
+                if file_type == "text/plain":
+                    content = file.read().decode('utf-8')
+                    st.text_area("Aperçu", content[:1000], height=200)
+                    
+                elif file_type == "application/json":
+                    content = json.load(file)
+                    st.json(content)
+                    
+                elif file_type in ["application/vnd.ms-excel", 
+                                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
+                    df = pd.read_excel(file)
+                    st.dataframe(df.head(10))
+                    st.caption(f"Dimensions : {df.shape[0]} lignes × {df.shape[1]} colonnes")
+                    
+                elif file_type == "text/csv":
+                    df = pd.read_csv(file)
+                    st.dataframe(df.head(10))
+                    
+                else:
+                    st.info(f"Type : {file_type}")
+                    st.info("Prévisualisation non disponible pour ce type de fichier")
+                
+                # Options d'import
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"Importer", key=f"import_{file.name}"):
+                        # Ici on pourrait traiter le fichier
+                        st.session_state.imported_content = file.read()
+                        st.success(f"✅ {file.name} importé")
+                
+                with col2:
+                    if st.button(f"Ignorer", key=f"ignore_{file.name}"):
+                        st.info(f"❌ {file.name} ignoré")
 
 # Import des bibliothèques de traitement de documents
 from docx import Document
