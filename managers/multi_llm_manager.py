@@ -1,12 +1,11 @@
 # managers/multi_llm_manager.py
-"""Gestionnaire pour interroger plusieurs LLMs en parallèle"""
+"""Gestionnaire pour interroger plusieurs LLMs"""
 
 import os
 import logging
 import asyncio
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
-from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +31,21 @@ except ImportError:
     GEMINI_AVAILABLE = False
     logger.warning("Gemini non disponible")
 
-from config.app_config import LLMProvider, LLM_CONFIGS
-
+from config.app_config import LLMProvider, get_llm_configs
+from utils.helpers import clean_env_for_azure
 
 class MultiLLMManager:
     """Gestionnaire pour interroger plusieurs LLMs"""
     
     def __init__(self):
-        self.configs = LLM_CONFIGS
+        self.configs = get_llm_configs()
         self.clients = self._initialize_clients()
         self.executor = ThreadPoolExecutor(max_workers=5)
     
-    def _initialize_clients(self) -> Dict[Any, Any]:
+    def _initialize_clients(self) -> Dict[LLMProvider, Any]:
         """Initialise les clients LLM"""
+        clean_env_for_azure()
+        
         clients = {}
         
         # Azure OpenAI
@@ -99,14 +100,14 @@ class MultiLLMManager:
         return clients
     
     async def query_single_llm(self, 
-                              provider: str, 
+                              provider: LLMProvider, 
                               prompt: str,
                               system_prompt: str = None) -> Dict[str, Any]:
         """Interroge un seul LLM"""
         
         if provider not in self.clients:
             return {
-                'provider': provider,
+                'provider': provider.value,
                 'success': False,
                 'error': 'Provider non configuré',
                 'response': None
@@ -130,7 +131,7 @@ class MultiLLMManager:
                 )
                 
                 return {
-                    'provider': provider,
+                    'provider': provider.value,
                     'success': True,
                     'response': response.choices[0].message.content,
                     'usage': response.usage.model_dump() if response.usage else None
@@ -149,7 +150,7 @@ class MultiLLMManager:
                 )
                 
                 return {
-                    'provider': provider,
+                    'provider': provider.value,
                     'success': True,
                     'response': response.content[0].text,
                     'usage': {'total_tokens': response.usage.input_tokens + response.usage.output_tokens}
@@ -170,7 +171,7 @@ class MultiLLMManager:
                 )
                 
                 return {
-                    'provider': provider,
+                    'provider': provider.value,
                     'success': True,
                     'response': response.choices[0].message.content,
                     'usage': response.usage.model_dump() if response.usage else None
@@ -182,7 +183,7 @@ class MultiLLMManager:
                 response = client.generate_content(full_prompt)
                 
                 return {
-                    'provider': provider,
+                    'provider': provider.value,
                     'success': True,
                     'response': response.text,
                     'usage': None
@@ -203,7 +204,7 @@ class MultiLLMManager:
                 )
                 
                 return {
-                    'provider': provider,
+                    'provider': provider.value,
                     'success': True,
                     'response': response.choices[0].message.content,
                     'usage': response.usage.model_dump() if response.usage else None,
@@ -211,15 +212,15 @@ class MultiLLMManager:
                 }
             
         except Exception as e:
-            logger.error(f"Erreur {provider}: {str(e)}")
+            logger.error(f"Erreur {provider.value}: {str(e)}")
             return {
-                'provider': provider,
+                'provider': provider.value,
                 'success': False,
                 'error': str(e),
                 'response': None
             }
     
-    async def query_multiple_llms(self, providers: List[str], prompt: str, 
+    async def query_multiple_llms(self, providers: List[LLMProvider], prompt: str, 
                                  system_prompt: str = None) -> List[Dict[str, Any]]:
         """Interroge plusieurs LLMs en parallèle"""
         tasks = []
