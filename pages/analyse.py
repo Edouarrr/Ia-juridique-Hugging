@@ -8,11 +8,12 @@ import uuid
 from typing import Optional
 
 from config.app_config import TYPES_INFRACTIONS, MESSAGES
-from models import AnalyseJuridique, Infraction, Personne, TypePersonne
+from models.dataclasses import AnalyseJuridique, Infraction, Personne, TypePersonne
 from managers.llm_manager import LLMManager, display_model_selector
 from managers.document_manager import DocumentManager, display_import_interface, display_export_interface
 from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
-from utils import load_custom_css, create_alert_box, create_section_divider, format_date
+from utils.styles import load_custom_css, create_alert_box, create_section_divider
+from utils.helpers import format_date
 
 def show():
     """Affiche la page d'analyse juridique"""
