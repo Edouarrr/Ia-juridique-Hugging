@@ -9,7 +9,8 @@ from typing import List, Dict
 
 from config import TYPES_INFRACTIONS, LEGAL_APIS
 from models import JurisprudenceSearch, JurisprudenceReference, TypeJuridiction, SourceJurisprudence
-from managers import LegalSearchManager, JurisprudenceVerifier, display_jurisprudence_verification
+from managers.legal_search import LegalSearchManager
+from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
 from utils import load_custom_css, create_alert_box, create_badge, create_progress_bar
 
 def show():
