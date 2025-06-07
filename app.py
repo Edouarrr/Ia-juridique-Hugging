@@ -9,75 +9,102 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Configuration de l'encodage pour les emojis
 import sys
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
-
 import os
 import traceback
 
-# DIAGNOSTIC TEMPORAIRE
-print("=== DIAGNOSTIC AU DÉMARRAGE ===")
-print(f"AZURE_STORAGE_CONNECTION_STRING: {bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING'))}")
-print(f"AZURE_SEARCH_ENDPOINT: {bool(os.getenv('AZURE_SEARCH_ENDPOINT'))}")
-print(f"AZURE_SEARCH_KEY: {bool(os.getenv('AZURE_SEARCH_KEY'))}")
+# Force UTF-8
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
-from config.app_config import APP_CONFIG
-from utils.styles import load_custom_css
-from utils.helpers import initialize_session_state
+# DIAGNOSTIC COMPLET AU DÉMARRAGE
+print("="*50)
+print("DIAGNOSTIC DÉMARRAGE APPLICATION")
+print("="*50)
+print(f"Python version: {sys.version}")
+print(f"Streamlit version: {st.__version__}")
+print(f"Working directory: {os.getcwd()}")
+print(f"Files in current directory: {os.listdir('.')}")
+
+# Vérifier les imports critiques
+try:
+    import config.app_config
+    print("✓ config.app_config importé")
+except Exception as e:
+    print(f"✗ Erreur import config.app_config: {e}")
+    st.error(f"Impossible d'importer config.app_config: {e}")
+
+try:
+    import utils.helpers
+    print("✓ utils.helpers importé")
+except Exception as e:
+    print(f"✗ Erreur import utils.helpers: {e}")
+    st.error(f"Impossible d'importer utils.helpers: {e}")
+
+try:
+    import utils.styles
+    print("✓ utils.styles importé")
+except Exception as e:
+    print(f"✗ Erreur import utils.styles: {e}")
+
+# Variables d'environnement
+print("\nVARIABLES D'ENVIRONNEMENT AZURE:")
+print(f"AZURE_STORAGE_CONNECTION_STRING: {'✓' if os.getenv('AZURE_STORAGE_CONNECTION_STRING') else '✗'}")
+print(f"AZURE_SEARCH_ENDPOINT: {'✓' if os.getenv('AZURE_SEARCH_ENDPOINT') else '✗'}")
+print(f"AZURE_SEARCH_KEY: {'✓' if os.getenv('AZURE_SEARCH_KEY') else '✗'}")
+
+def safe_import(module_path, display_name=None):
+    """Import sécurisé avec gestion d'erreur"""
+    try:
+        module = __import__(module_path, fromlist=[''])
+        print(f"✓ {display_name or module_path} importé")
+        return module
+    except Exception as e:
+        print(f"✗ Erreur import {display_name or module_path}: {e}")
+        print(traceback.format_exc())
+        return None
 
 def main():
     """Interface principale de l'application"""
     
+    # Imports sécurisés
+    app_config = safe_import('config.app_config', 'Configuration')
+    helpers = safe_import('utils.helpers', 'Helpers')
+    styles = safe_import('utils.styles', 'Styles')
+    
+    # Si les imports critiques échouent, afficher une page d'erreur
+    if not app_config or not helpers:
+        st.error("❌ Erreur critique : Impossible de charger les modules de base")
+        st.code(f"""
+Modules dans le répertoire actuel:
+{os.listdir('.')}
+
+Contenu du dossier config:
+{os.listdir('config') if os.path.exists('config') else 'Dossier config non trouvé'}
+
+Contenu du dossier utils:
+{os.listdir('utils') if os.path.exists('utils') else 'Dossier utils non trouvé'}
+
+Contenu du dossier pages:
+{os.listdir('pages') if os.path.exists('pages') else 'Dossier pages non trouvé'}
+        """)
+        return
+    
     # Initialisation
-    initialize_session_state()
-    
-    # Charger les styles CSS
     try:
-        load_custom_css()
+        helpers.initialize_session_state()
+        print("✓ Session state initialisé")
     except Exception as e:
-        print(f"Erreur chargement CSS: {e}")
+        print(f"✗ Erreur initialisation session state: {e}")
+        st.error(f"Erreur initialisation: {e}")
     
-    # Diagnostic visible dans l'interface
-    with st.expander("🔧 Diagnostic des connexions", expanded=False):
-        st.write("**Variables d'environnement:**")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
-                st.success("✅ AZURE_STORAGE_CONNECTION_STRING")
-            else:
-                st.error("❌ AZURE_STORAGE_CONNECTION_STRING")
-        
-        with col2:
-            if os.getenv('AZURE_SEARCH_ENDPOINT'):
-                st.success("✅ AZURE_SEARCH_ENDPOINT")
-            else:
-                st.error("❌ AZURE_SEARCH_ENDPOINT")
-        
-        with col3:
-            if os.getenv('AZURE_SEARCH_KEY'):
-                st.success("✅ AZURE_SEARCH_KEY")
-            else:
-                st.error("❌ AZURE_SEARCH_KEY")
-    
-    # Initialiser les gestionnaires Azure AVEC GESTION D'ERREUR ROBUSTE
-    if 'azure_blob_manager' not in st.session_state:
+    # Charger les styles
+    if styles and hasattr(styles, 'load_custom_css'):
         try:
-            from managers.azure_blob_manager import AzureBlobManager
-            st.session_state.azure_blob_manager = AzureBlobManager()
+            styles.load_custom_css()
+            print("✓ CSS chargé")
         except Exception as e:
-            print(f"Erreur Azure Blob Manager: {traceback.format_exc()}")
-            st.session_state.azure_blob_manager = None
-    
-    if 'azure_search_manager' not in st.session_state:
-        try:
-            from managers.azure_search_manager import AzureSearchManager
-            st.session_state.azure_search_manager = AzureSearchManager()
-        except Exception as e:
-            print(f"Erreur Azure Search Manager: {traceback.format_exc()}")
-            st.session_state.azure_search_manager = None
+            print(f"✗ Erreur chargement CSS: {e}")
     
     # Titre principal
     st.markdown("""
@@ -87,147 +114,86 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar
-    with st.sidebar:
-        st.markdown("### 🎯 Navigation")
+    # Diagnostic dans l'interface
+    with st.expander("🔧 Diagnostic système", expanded=True):
+        col1, col2, col3 = st.columns(3)
         
-        page = st.selectbox(
-            "Choisir une fonctionnalité",
-            [
-                "Recherche de documents",
-                "Sélection de pièces", 
-                "Analyse IA",
-                "Rédaction assistée",
-                "Rédaction de courrier",
-                "Import/Export",
-                "Configuration"
-            ],
-            format_func=lambda x: f"{APP_CONFIG['PAGES'].get(x, '📄')} {x}",
-            key="navigation"
-        )
-        
-        st.markdown("---")
-        st.markdown("### 📊 État du système")
-        
-        st.markdown("**Connexions Azure:**")
-        
-        # Azure Blob
-        if st.session_state.get('azure_blob_manager'):
-            try:
-                if hasattr(st.session_state.azure_blob_manager, 'is_connected') and st.session_state.azure_blob_manager.is_connected():
-                    st.success("✅ Azure Blob Storage")
-                else:
-                    st.warning("⚠️ Azure Blob Storage")
-                    st.caption("Non connecté")
-            except:
-                st.error("❌ Azure Blob Storage")
-        else:
-            st.warning("⚠️ Azure Blob Storage")
-            st.caption("Non initialisé")
-        
-        # Azure Search
-        if st.session_state.get('azure_search_manager'):
-            try:
-                if hasattr(st.session_state.azure_search_manager, 'search_client') and st.session_state.azure_search_manager.search_client:
-                    st.success("✅ Azure Search")
-                else:
-                    st.warning("⚠️ Azure Search")
-                    st.caption("Non connecté")
-            except:
-                st.error("❌ Azure Search")
-        else:
-            st.warning("⚠️ Azure Search")
-            st.caption("Non initialisé")
-        
-        # Métriques
-        st.markdown("---")
-        st.markdown("### 📈 Métriques")
-        
-        nb_docs = len(st.session_state.get('azure_documents', {}))
-        nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
-        
-        col1, col2 = st.columns(2)
         with col1:
-            st.metric("Documents", nb_docs)
+            st.metric("Modules", f"{len([m for m in sys.modules if m.startswith('pages')])}")
+        
         with col2:
-            st.metric("Pièces", nb_pieces)
+            st.metric("Azure vars", f"{sum(1 for v in ['AZURE_STORAGE_CONNECTION_STRING', 'AZURE_SEARCH_ENDPOINT', 'AZURE_SEARCH_KEY'] if os.getenv(v))}/3")
         
-        # Bouton de réinitialisation
-        st.markdown("---")
-        if st.button("🔄 Réinitialiser", key="reset_app"):
-            for key in list(st.session_state.keys()):
-                if key != 'initialized':
-                    del st.session_state[key]
-            st.rerun()
-        
-        # Info version
-        st.markdown("---")
-        st.caption(f"Version {APP_CONFIG['VERSION']}")
+        with col3:
+            st.metric("Session state", len(st.session_state))
     
-    # CHARGER LES PAGES AVEC GESTION D'ERREUR ROBUSTE
-    try:
-        if page == "Recherche de documents":
-            from pages.recherche import show_page
-            show_page()
-        
-        elif page == "Sélection de pièces":
-            if not st.session_state.get('azure_documents'):
-                st.warning("⚠️ Aucun document disponible. Commencez par rechercher des documents.")
-                if st.button("🔍 Aller à la recherche"):
-                    st.session_state.navigation = "Recherche de documents"
-                    st.rerun()
+    # Navigation simplifiée
+    pages = ["Recherche", "Configuration", "Test"]
+    page = st.selectbox("Page", pages)
+    
+    if page == "Recherche":
+        try:
+            # Tentative d'import de la page recherche
+            recherche = safe_import('pages.recherche', 'Page Recherche')
+            if recherche and hasattr(recherche, 'show_page'):
+                recherche.show_page()
             else:
-                st.info("📁 Page de sélection des pièces")
-                st.write("Fonctionnalité en cours de développement")
+                st.error("❌ Impossible de charger la page recherche")
+                st.info("Vérifiez que le fichier pages/recherche.py existe et contient une fonction show_page()")
+        except Exception as e:
+            st.error(f"Erreur page recherche: {e}")
+            st.code(traceback.format_exc())
+    
+    elif page == "Configuration":
+        st.header("⚙️ Configuration")
         
-        elif page == "Analyse IA":
-            if not st.session_state.get('pieces_selectionnees'):
-                st.warning("⚠️ Aucune pièce sélectionnée. Sélectionnez d'abord des pièces.")
+        # Liste tous les fichiers Python trouvés
+        st.subheader("📁 Structure des fichiers")
+        
+        for root, dirs, files in os.walk('.'):
+            # Ignorer les dossiers cachés et __pycache__
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__']
+            
+            level = root.replace('.', '').count(os.sep)
+            indent = ' ' * 2 * level
+            st.text(f"{indent}{os.path.basename(root)}/")
+            
+            subindent = ' ' * 2 * (level + 1)
+            for file in files:
+                if file.endswith('.py'):
+                    st.text(f"{subindent}{file}")
+    
+    elif page == "Test":
+        st.header("🧪 Page de test")
+        st.success("✅ L'application Streamlit fonctionne!")
+        
+        # Test d'import des managers
+        st.subheader("Test des imports managers")
+        
+        managers_to_test = [
+            'managers.azure_blob_manager',
+            'managers.azure_search_manager',
+            'managers.multi_llm_manager',
+            'managers.document_manager',
+            'managers.dynamic_generators',
+            'managers.legal_search'
+        ]
+        
+        for manager in managers_to_test:
+            result = safe_import(manager)
+            if result:
+                st.success(f"✅ {manager}")
             else:
-                st.info("🤖 Page d'analyse IA")
-                st.write("Fonctionnalité en cours de développement")
-        
-        elif page == "Rédaction assistée":
-            st.info("📝 Page de rédaction assistée")
-            st.write("Fonctionnalité en cours de développement")
-        
-        elif page == "Rédaction de courrier":
-            st.info("✉️ Page de rédaction de courrier")
-            st.write("Fonctionnalité en cours de développement")
-        
-        elif page == "Import/Export":
-            st.info("📥 Page d'import/export")
-            st.write("Fonctionnalité en cours de développement")
-        
-        elif page == "Configuration":
-            st.header("⚙️ Configuration")
-            st.markdown("### 🔑 Variables d'environnement")
-            
-            vars_to_check = [
-                ("AZURE_STORAGE_CONNECTION_STRING", "Connexion Azure Blob Storage"),
-                ("AZURE_SEARCH_ENDPOINT", "URL Azure Search"),
-                ("AZURE_SEARCH_KEY", "Clé Azure Search"),
-                ("AZURE_OPENAI_ENDPOINT", "URL Azure OpenAI"),
-                ("AZURE_OPENAI_KEY", "Clé Azure OpenAI"),
-                ("ANTHROPIC_API_KEY", "Clé Anthropic Claude"),
-                ("OPENAI_API_KEY", "Clé OpenAI"),
-                ("GOOGLE_API_KEY", "Clé Google Gemini")
-            ]
-            
-            for var, description in vars_to_check:
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.text(description)
-                with col2:
-                    if os.getenv(var):
-                        st.success("✅")
-                    else:
-                        st.error("❌")
-                        
-    except Exception as e:
-        st.error(f"❌ Erreur lors du chargement de la page '{page}'")
-        st.error(f"Détail: {str(e)}")
-        st.code(traceback.format_exc())
+                st.error(f"❌ {manager}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        st.error("❌ ERREUR FATALE")
+        st.code(str(e))
+        st.code(traceback.format_exc())
+        
+        # Log complet
+        print("ERREUR FATALE:")
+        print(traceback.format_exc())
