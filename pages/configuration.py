@@ -1,617 +1,448 @@
 # pages/configuration.py
-"""Page de configuration - Gestion des APIs et paramètres"""
+"""Page de configuration de l'application"""
 
 import streamlit as st
 import json
+import io
 from datetime import datetime
-import os
-from typing import Dict, Optional
 
-from config.llm_config import LLM_CONFIGS, validate_api_key
-from config.app_config import LEGAL_APIS, DEFAULT_SETTINGS, APP_VERSION
-from utils.styles import load_custom_css, create_alert_box, create_section_divider
+from config.app_config import LLMProvider, get_llm_configs
+from models.dataclasses import LetterheadTemplate, PieceSelectionnee
+from managers.multi_llm_manager import MultiLLMManager
+from utils.helpers import create_env_example
 
-def show():
+try:
+    from docx import Document as DocxDocument
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+def show_page():
     """Affiche la page de configuration"""
-    load_custom_css()
+    st.header("⚙️ Configuration")
     
-    st.title("⚙️ Configuration")
-    st.markdown("Gérez vos clés API, paramètres et préférences")
+    tabs = st.tabs(["🔑 Clés API", "📄 Papier en-tête", "📊 État du système", "💾 Export/Import"])
     
-    # Tabs de configuration
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🔑 APIs IA",
-        "⚖️ APIs Juridiques", 
-        "🎨 Préférences",
-        "💾 Sauvegarde",
-        "ℹ️ À propos"
-    ])
+    with tabs[0]:
+        show_api_keys_tab()
     
-    with tab1:
-        show_llm_apis_config()
+    with tabs[1]:
+        show_letterhead_tab()
     
-    with tab2:
-        show_legal_apis_config()
+    with tabs[2]:
+        show_system_status_tab()
     
-    with tab3:
-        show_preferences()
-    
-    with tab4:
-        show_backup_restore()
-    
-    with tab5:
-        show_about()
+    with tabs[3]:
+        show_export_import_tab()
 
-def show_llm_apis_config():
-    """Configuration des APIs des modèles de langage"""
-    st.markdown("### Configuration des modèles d'IA")
-    st.info("Les clés API sont stockées localement et chiffrées dans votre navigateur")
+def show_api_keys_tab():
+    """Affiche l'onglet de configuration des clés API"""
+    st.markdown("### Configuration des clés API")
     
-    # Pour chaque provider
-    for provider, config in LLM_CONFIGS.items():
-        with st.expander(f"{provider} API", expanded=False):
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                # Récupérer la clé existante
-                current_key = st.session_state.get(f"{provider.lower()}_api_key", "")
-                masked_key = mask_api_key(current_key) if current_key else ""
-                
-                # Input pour la clé API
-                api_key = st.text_input(
-                    f"Clé API {provider}",
-                    value=masked_key,
-                    type="password",
-                    key=f"input_{provider}_key",
-                    help=f"Entrez votre clé API {provider}"
-                )
-                
-                # Si une nouvelle clé est entrée
-                if api_key and api_key != masked_key:
-                    st.session_state[f"{provider.lower()}_api_key"] = api_key
-            
-            with col2:
-                # Bouton de test
-                if st.button(f"Tester", key=f"test_{provider}"):
-                    test_api_key(provider, st.session_state.get(f"{provider.lower()}_api_key"))
-            
-            # Informations sur le provider
-            st.markdown(f"**Modèles disponibles :** {', '.join(config['models'][:3])}...")
-            st.markdown(f"**Modèle par défaut :** {config['default']}")
-            
-            # Lien vers la documentation
-            doc_links = {
-                "OpenAI": "https://platform.openai.com/api-keys",
-                "Anthropic": "https://console.anthropic.com/api-keys",
-                "Google": "https://makersuite.google.com/app/apikey",
-                "Mistral": "https://console.mistral.ai/api-keys",
-                "Groq": "https://console.groq.com/keys"
-            }
-            
-            if provider in doc_links:
-                st.caption(f"[Obtenir une clé API {provider}]({doc_links[provider]})")
+    st.info("""
+    ℹ️ Les clés API doivent être configurées dans les variables d'environnement ou dans un fichier .env
     
-    # Statut global
-    st.markdown(create_section_divider(), unsafe_allow_html=True)
-    show_api_status()
-
-def show_legal_apis_config():
-    """Configuration des APIs juridiques"""
-    st.markdown("### APIs Juridiques")
-    st.warning("⚠️ Les APIs Judilibre et Légifrance nécessitent une inscription préalable")
+    Variables nécessaires:
+    - AZURE_OPENAI_KEY
+    - AZURE_OPENAI_ENDPOINT
+    - AZURE_SEARCH_KEY
+    - AZURE_SEARCH_ENDPOINT
+    - AZURE_STORAGE_CONNECTION_STRING
+    - ANTHROPIC_API_KEY
+    - OPENAI_API_KEY
+    - GOOGLE_API_KEY
+    - PERPLEXITY_API_KEY
+    """)
     
-    # Judilibre
-    with st.expander("🏛️ API Judilibre", expanded=True):
-        st.markdown("#### Configuration Judilibre")
-        
-        # Clé API
-        current_judilibre_key = LEGAL_APIS['judilibre']['api_key']
-        masked_judilibre = mask_api_key(current_judilibre_key) if current_judilibre_key != 'votre_cle_api_judilibre' else ""
-        
-        judilibre_key = st.text_input(
-            "Clé API Judilibre",
-            value=masked_judilibre,
-            type="password",
-            help="Clé obtenue sur https://api.piste.gouv.fr"
-        )
-        
-        if judilibre_key and judilibre_key != masked_judilibre:
-            LEGAL_APIS['judilibre']['api_key'] = judilibre_key
-            st.success("Clé Judilibre mise à jour")
-        
-        # Options
-        col1, col2 = st.columns(2)
-        with col1:
-            LEGAL_APIS['judilibre']['enabled'] = st.checkbox(
-                "Activer Judilibre",
-                value=LEGAL_APIS['judilibre']['enabled']
-            )
-        
-        with col2:
-            if st.button("Tester Judilibre"):
-                test_judilibre_api()
-        
-        st.info("""
-        **Pour obtenir une clé Judilibre :**
-        1. Rendez-vous sur [PISTE](https://api.piste.gouv.fr)
-        2. Créez un compte développeur
-        3. Demandez l'accès à l'API Judilibre
-        4. Copiez votre clé API ici
-        """)
+    # Créer un fichier .env exemple
+    env_example = create_env_example()
     
-    # Légifrance
-    with st.expander("📚 API Légifrance", expanded=True):
-        st.markdown("#### Configuration Légifrance")
-        
-        # Client ID
-        current_client_id = LEGAL_APIS['legifrance']['client_id']
-        masked_client_id = mask_api_key(current_client_id) if current_client_id != 'votre_client_id_legifrance' else ""
-        
-        client_id = st.text_input(
-            "Client ID",
-            value=masked_client_id,
-            type="password"
-        )
-        
-        # Client Secret
-        current_secret = LEGAL_APIS['legifrance']['client_secret']
-        masked_secret = mask_api_key(current_secret) if current_secret != 'votre_client_secret_legifrance' else ""
-        
-        client_secret = st.text_input(
-            "Client Secret",
-            value=masked_secret,
-            type="password"
-        )
-        
-        if client_id and client_id != masked_client_id:
-            LEGAL_APIS['legifrance']['client_id'] = client_id
-        
-        if client_secret and client_secret != masked_secret:
-            LEGAL_APIS['legifrance']['client_secret'] = client_secret
-            
-        if (client_id and client_id != masked_client_id) or (client_secret and client_secret != masked_secret):
-            st.success("Identifiants Légifrance mis à jour")
-        
-        # Options
-        col1, col2 = st.columns(2)
-        with col1:
-            LEGAL_APIS['legifrance']['enabled'] = st.checkbox(
-                "Activer Légifrance",
-                value=LEGAL_APIS['legifrance']['enabled']
-            )
-        
-        with col2:
-            if st.button("Tester Légifrance"):
-                test_legifrance_api()
-        
-        st.info("""
-        **Pour obtenir des identifiants Légifrance :**
-        1. Inscrivez-vous sur [AIFE](https://developer.aife.economie.gouv.fr)
-        2. Créez une application
-        3. Demandez l'accès à l'API Légifrance
-        4. Récupérez vos identifiants OAuth2
-        """)
-    
-    # Résumé de configuration
-    st.markdown("### État des APIs juridiques")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if LEGAL_APIS['judilibre']['api_key'] != 'votre_cle_api_judilibre':
-            st.success("✅ Judilibre configuré")
-        else:
-            st.error("❌ Judilibre non configuré")
-    
-    with col2:
-        if LEGAL_APIS['legifrance']['client_id'] != 'votre_client_id_legifrance':
-            st.success("✅ Légifrance configuré")
-        else:
-            st.error("❌ Légifrance non configuré")
-
-def show_preferences():
-    """Affiche les préférences utilisateur"""
-    st.markdown("### Préférences de l'application")
-    
-    # Paramètres par défaut des modèles
-    with st.expander("🤖 Paramètres IA par défaut"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            temperature = st.slider(
-                "Temperature",
-                min_value=0.0,
-                max_value=1.0,
-                value=DEFAULT_SETTINGS['temperature'],
-                step=0.1,
-                help="Contrôle la créativité des réponses"
-            )
-            
-            max_tokens = st.number_input(
-                "Tokens maximum",
-                min_value=100,
-                max_value=8000,
-                value=DEFAULT_SETTINGS['max_tokens'],
-                step=100
-            )
-        
-        with col2:
-            top_p = st.slider(
-                "Top P",
-                min_value=0.0,
-                max_value=1.0,
-                value=DEFAULT_SETTINGS['top_p'],
-                step=0.1
-            )
-            
-            frequency_penalty = st.slider(
-                "Pénalité de fréquence",
-                min_value=0.0,
-                max_value=2.0,
-                value=DEFAULT_SETTINGS['frequency_penalty'],
-                step=0.1
-            )
-        
-        if st.button("Sauvegarder les paramètres IA"):
-            DEFAULT_SETTINGS.update({
-                'temperature': temperature,
-                'max_tokens': max_tokens,
-                'top_p': top_p,
-                'frequency_penalty': frequency_penalty
-            })
-            st.success("Paramètres sauvegardés")
-    
-    # Préférences d'interface
-    with st.expander("🎨 Interface utilisateur"):
-        theme = st.selectbox(
-            "Thème",
-            ["Clair", "Sombre", "Auto"],
-            index=0
-        )
-        
-        language = st.selectbox(
-            "Langue",
-            ["Français", "English"],
-            index=0
-        )
-        
-        show_tips = st.checkbox(
-            "Afficher les conseils",
-            value=True
-        )
-        
-        auto_save = st.checkbox(
-            "Sauvegarde automatique",
-            value=True
-        )
-        
-        st.session_state['ui_preferences'] = {
-            'theme': theme,
-            'language': language,
-            'show_tips': show_tips,
-            'auto_save': auto_save
-        }
-    
-    # Notifications
-    with st.expander("🔔 Notifications"):
-        notify_analysis_complete = st.checkbox(
-            "Notification fin d'analyse",
-            value=True
-        )
-        
-        notify_verification_complete = st.checkbox(
-            "Notification fin de vérification",
-            value=True
-        )
-        
-        email_reports = st.checkbox(
-            "Rapports par email",
-            value=False
-        )
-        
-        if email_reports:
-            email = st.text_input(
-                "Adresse email",
-                placeholder="votre@email.com"
-            )
-
-def show_backup_restore():
-    """Gestion des sauvegardes et restaurations"""
-    st.markdown("### Sauvegarde et restauration")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### 💾 Exporter la configuration")
-        st.info("Sauvegardez toute votre configuration (sans les clés API)")
-        
-        if st.button("Générer une sauvegarde", use_container_width=True):
-            backup_data = create_backup()
-            
-            st.download_button(
-                label="📥 Télécharger la sauvegarde",
-                data=json.dumps(backup_data, indent=2),
-                file_name=f"config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
-    
-    with col2:
-        st.markdown("#### 📂 Importer une configuration")
-        st.warning("L'import écrasera la configuration actuelle")
-        
-        uploaded_file = st.file_uploader(
-            "Choisir un fichier de sauvegarde",
-            type=['json']
-        )
-        
-        if uploaded_file:
-            try:
-                backup_data = json.load(uploaded_file)
-                
-                if st.button("Restaurer la configuration", use_container_width=True):
-                    restore_backup(backup_data)
-                    st.success("Configuration restaurée avec succès !")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Erreur lors de la lecture du fichier : {str(e)}")
-    
-    # Réinitialisation
-    st.markdown("#### 🔄 Réinitialisation")
-    
-    with st.expander("⚠️ Zone dangereuse", expanded=False):
-        st.error("Ces actions sont irréversibles !")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("Effacer l'historique", type="secondary"):
-                if st.session_state.get('confirm_clear_history'):
-                    clear_history()
-                    st.success("Historique effacé")
-                else:
-                    st.session_state['confirm_clear_history'] = True
-                    st.warning("Cliquez à nouveau pour confirmer")
-        
-        with col2:
-            if st.button("Réinitialiser les préférences", type="secondary"):
-                if st.session_state.get('confirm_reset_prefs'):
-                    reset_preferences()
-                    st.success("Préférences réinitialisées")
-                else:
-                    st.session_state['confirm_reset_prefs'] = True
-                    st.warning("Cliquez à nouveau pour confirmer")
-        
-        with col3:
-            if st.button("Réinitialisation complète", type="secondary"):
-                if st.session_state.get('confirm_full_reset'):
-                    full_reset()
-                    st.success("Application réinitialisée")
-                    st.rerun()
-                else:
-                    st.session_state['confirm_full_reset'] = True
-                    st.warning("Cliquez à nouveau pour confirmer")
-
-def show_about():
-    """Affiche les informations sur l'application"""
-    st.markdown("### À propos")
-    
-    # Logo et titre
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown(f"""
-        <div style='text-align: center'>
-            <h1>⚖️</h1>
-            <h2>Assistant Pénal des Affaires IA</h2>
-            <p>Version {APP_VERSION}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Informations
-    st.markdown(create_section_divider(), unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("""
-        #### 🎯 Fonctionnalités
-        - Analyse juridique approfondie
-        - Vérification de jurisprudences
-        - Recherche multi-sources
-        - Assistant interactif
-        - Visualisations avancées
-        """)
-        
-        st.markdown("""
-        #### 🔧 Technologies
-        - Streamlit
-        - OpenAI / Anthropic / Google
-        - Judilibre & Légifrance APIs
-        - Plotly & NetworkX
-        """)
-    
-    with col2:
-        st.markdown("""
-        #### 📊 Statistiques d'utilisation
-        """)
-        
-        stats = {
-            "Analyses réalisées": st.session_state.get('analyses_count', 0),
-            "Jurisprudences vérifiées": st.session_state.get('verifications_count', 0),
-            "Messages échangés": st.session_state.get('messages_count', 0),
-            "Documents traités": st.session_state.get('documents_count', 0)
-        }
-        
-        for label, value in stats.items():
-            st.metric(label, value)
-    
-    # Mentions légales
-    with st.expander("📜 Mentions légales"):
-        st.markdown("""
-        **Avertissement :** Cette application est un outil d'aide à la décision juridique. 
-        Elle ne remplace pas le conseil d'un avocat qualifié. Les analyses fournies sont 
-        à titre informatif uniquement.
-        
-        **Protection des données :** Vos données sont traitées localement et ne sont pas 
-        stockées sur nos serveurs. Les clés API sont chiffrées dans votre navigateur.
-        
-        **Propriété intellectuelle :** Les jurisprudences citées proviennent de sources 
-        publiques (Judilibre, Légifrance). Leur utilisation est soumise aux conditions 
-        de ces plateformes.
-        """)
-    
-    # Support
-    with st.expander("🆘 Support et contact"):
-        st.markdown("""
-        **Besoin d'aide ?**
-        
-        - 📧 Email : support@assistant-juridique.ai
-        - 📚 Documentation : [docs.assistant-juridique.ai](https://docs.assistant-juridique.ai)
-        - 🐛 Signaler un bug : [GitHub Issues](https://github.com/assistant-juridique/issues)
-        - 💡 Suggestions : [Feedback Form](https://forms.gle/xxx)
-        
-        **FAQ :**
-        - [Comment obtenir une clé API ?](#)
-        - [Limites de l'analyse juridique](#)
-        - [Sécurité des données](#)
-        """)
-    
-    # Changelog
-    with st.expander("📝 Historique des versions"):
-        st.markdown("""
-        **Version 3.0.0** (Actuelle)
-        - ✨ Nouvelle interface modulaire
-        - 🔍 Vérification automatique des jurisprudences
-        - 🤖 Support multi-modèles IA
-        - 📊 Visualisations avancées
-        
-        **Version 2.5.0**
-        - 🔐 Chiffrement des clés API
-        - 📈 Tableaux de bord améliorés
-        - 🌐 Support Légifrance
-        
-        **Version 2.0.0**
-        - 💬 Assistant interactif
-        - 📑 Export multi-formats
-        - 🎨 Nouveau design
-        """)
-
-# Fonctions utilitaires
-
-def mask_api_key(key: str) -> str:
-    """Masque une clé API pour l'affichage"""
-    if not key or len(key) < 8:
-        return key
-    return key[:4] + "*" * (len(key) - 8) + key[-4:]
-
-def test_api_key(provider: str, api_key: Optional[str]):
-    """Teste une clé API"""
-    if not api_key:
-        st.error("Aucune clé API fournie")
-        return
-    
-    with st.spinner(f"Test de la clé {provider}..."):
-        try:
-            is_valid = validate_api_key(provider, api_key)
-            
-            if is_valid:
-                st.success(f"✅ Clé {provider} valide et fonctionnelle !")
-            else:
-                st.error(f"❌ Clé {provider} invalide ou erreur de connexion")
-        except Exception as e:
-            st.error(f"Erreur lors du test : {str(e)}")
-
-def test_judilibre_api():
-    """Teste l'API Judilibre"""
-    # Implémentation simplifiée
-    st.info("Test de connexion à Judilibre...")
-    # Ici, implémenter un vrai test
-    st.success("✅ Connexion Judilibre réussie !")
-
-def test_legifrance_api():
-    """Teste l'API Légifrance"""
-    # Implémentation simplifiée
-    st.info("Test de connexion à Légifrance...")
-    # Ici, implémenter un vrai test
-    st.success("✅ Connexion Légifrance réussie !")
-
-def show_api_status():
-    """Affiche le statut global des APIs"""
-    configured_llms = sum(
-        1 for provider in LLM_CONFIGS 
-        if st.session_state.get(f"{provider.lower()}_api_key")
+    st.download_button(
+        "📥 Télécharger un fichier .env exemple",
+        env_example,
+        ".env.example",
+        "text/plain",
+        key="download_env_example"
     )
     
-    total_llms = len(LLM_CONFIGS)
+    # Vérifier l'état des clés
+    configs = get_llm_configs()
     
-    if configured_llms == 0:
-        st.error(f"❌ Aucun modèle IA configuré (0/{total_llms})")
-    elif configured_llms < total_llms:
-        st.warning(f"⚠️ {configured_llms}/{total_llms} modèles IA configurés")
-    else:
-        st.success(f"✅ Tous les modèles IA sont configurés ({total_llms}/{total_llms})")
-
-def create_backup() -> Dict:
-    """Crée une sauvegarde de la configuration"""
-    return {
-        'version': APP_VERSION,
-        'date': datetime.now().isoformat(),
-        'preferences': st.session_state.get('ui_preferences', {}),
-        'default_settings': DEFAULT_SETTINGS,
-        'stats': {
-            'analyses_count': st.session_state.get('analyses_count', 0),
-            'verifications_count': st.session_state.get('verifications_count', 0),
-            'messages_count': st.session_state.get('messages_count', 0),
-            'documents_count': st.session_state.get('documents_count', 0)
-        }
+    st.markdown("#### 🤖 Providers IA")
+    for provider in LLMProvider:
+        col1, col2 = st.columns([3, 1])
+        
+        config = configs.get(provider, {})
+        
+        with col1:
+            st.text(provider.value)
+        
+        with col2:
+            if config.get('key') or config.get('api_key'):
+                st.success("✅")
+            else:
+                st.error("❌")
+    
+    # Services Azure
+    st.markdown("#### 🔷 Services Azure")
+    
+    services = {
+        "Azure Blob Storage": bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING')),
+        "Azure Search": bool(os.getenv('AZURE_SEARCH_ENDPOINT')),
+        "Azure OpenAI": bool(os.getenv('AZURE_OPENAI_ENDPOINT'))
     }
-
-def restore_backup(backup_data: Dict):
-    """Restaure une configuration depuis une sauvegarde"""
-    if 'preferences' in backup_data:
-        st.session_state['ui_preferences'] = backup_data['preferences']
     
-    if 'default_settings' in backup_data:
-        DEFAULT_SETTINGS.update(backup_data['default_settings'])
-    
-    if 'stats' in backup_data:
-        for key, value in backup_data['stats'].items():
-            st.session_state[key] = value
+    for service, configured in services.items():
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.text(service)
+        
+        with col2:
+            if configured:
+                st.success("✅")
+            else:
+                st.error("❌")
 
-def clear_history():
-    """Efface l'historique"""
-    keys_to_clear = [
-        'chat_history', 'chat_sessions', 'analyses_history',
-        'search_results', 'current_analysis'
-    ]
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.session_state['confirm_clear_history'] = False
-
-def reset_preferences():
-    """Réinitialise les préférences"""
-    if 'ui_preferences' in st.session_state:
-        del st.session_state['ui_preferences']
-    st.session_state['confirm_reset_prefs'] = False
-
-def full_reset():
-    """Réinitialisation complète"""
-    # Garder seulement les clés API
-    api_keys = {}
-    for provider in LLM_CONFIGS:
-        key_name = f"{provider.lower()}_api_key"
-        if key_name in st.session_state:
-            api_keys[key_name] = st.session_state[key_name]
+def show_letterhead_tab():
+    """Affiche l'onglet de configuration du papier en-tête"""
+    st.markdown("### 📄 Configuration du papier en-tête")
     
-    # Clear tout
-    st.session_state.clear()
+    # Papier en-tête actuel
+    if 'letterhead_template' in st.session_state and st.session_state.letterhead_template:
+        show_current_letterhead()
     
-    # Restaurer les clés API
-    for key, value in api_keys.items():
-        st.session_state[key] = value
+    # Créer/Modifier papier en-tête
+    show_letterhead_form()
     
-    st.session_state['confirm_full_reset'] = False
+    # Import de papier en-tête depuis Word
+    show_letterhead_import()
 
-# Point d'entrée
-if __name__ == "__main__":
-    show()
+def show_current_letterhead():
+    """Affiche le papier en-tête actuel"""
+    current_template = st.session_state.letterhead_template
+    
+    with st.expander("Papier en-tête actuel", expanded=True):
+        st.text("En-tête :")
+        st.code(current_template.header_content)
+        st.text("Pied de page :")
+        st.code(current_template.footer_content)
+        
+        if st.button("🗑️ Supprimer le papier en-tête actuel"):
+            st.session_state.letterhead_template = None
+            st.success("✅ Papier en-tête supprimé")
+            st.rerun()
+
+def show_letterhead_form():
+    """Affiche le formulaire de création/modification du papier en-tête"""
+    st.markdown("#### ➕ Créer/Modifier le papier en-tête")
+    
+    with st.form("letterhead_form"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            nom_template = st.text_input(
+                "Nom du template",
+                value=st.session_state.letterhead_template.name if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "Papier en-tête principal"
+            )
+            
+            header_content = st.text_area(
+                "En-tête",
+                value=st.session_state.letterhead_template.header_content if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "",
+                height=150,
+                placeholder="""Cabinet d'avocats XYZ
+Maître Jean DUPONT
+Avocat au Barreau de Paris
+123 rue de la Justice
+75001 PARIS
+Tél : 01 23 45 67 89
+Email : contact@cabinet-xyz.fr"""
+            )
+            
+            footer_content = st.text_area(
+                "Pied de page",
+                value=st.session_state.letterhead_template.footer_content if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "",
+                height=80,
+                placeholder="Cabinet XYZ - 123 rue de la Justice, 75001 PARIS - Tél : 01 23 45 67 89"
+            )
+        
+        with col2:
+            # Paramètres de mise en forme
+            st.markdown("**Mise en forme**")
+            
+            font_family = st.selectbox(
+                "Police",
+                ["Arial", "Times New Roman", "Calibri", "Garamond", "Helvetica"],
+                index=0 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else ["Arial", "Times New Roman", "Calibri", "Garamond", "Helvetica"].index(st.session_state.letterhead_template.font_family)
+            )
+            
+            font_size = st.number_input(
+                "Taille de police",
+                min_value=8,
+                max_value=16,
+                value=11 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else st.session_state.letterhead_template.font_size
+            )
+            
+            line_spacing = st.number_input(
+                "Interligne",
+                min_value=1.0,
+                max_value=2.0,
+                step=0.1,
+                value=1.5 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else st.session_state.letterhead_template.line_spacing
+            )
+            
+            st.markdown("**Marges (cm)**")
+            
+            margin_top = st.number_input("Haut", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+            margin_bottom = st.number_input("Bas", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+            margin_left = st.number_input("Gauche", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+            margin_right = st.number_input("Droite", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
+        
+        # Upload logo (optionnel)
+        logo_file = st.file_uploader(
+            "Logo (optionnel)",
+            type=['png', 'jpg', 'jpeg'],
+            key="letterhead_logo"
+        )
+        
+        if st.form_submit_button("💾 Sauvegarder le papier en-tête", type="primary"):
+            # Créer le template
+            new_template = LetterheadTemplate(
+                name=nom_template,
+                header_content=header_content,
+                footer_content=footer_content,
+                font_family=font_family,
+                font_size=font_size,
+                line_spacing=line_spacing,
+                margins={
+                    'top': margin_top,
+                    'bottom': margin_bottom,
+                    'left': margin_left,
+                    'right': margin_right
+                }
+            )
+            
+            # Sauvegarder le logo si uploadé
+            if logo_file:
+                st.session_state.letterhead_image = logo_file.read()
+                new_template.logo_path = "logo_uploaded"
+            
+            st.session_state.letterhead_template = new_template
+            st.success("✅ Papier en-tête sauvegardé avec succès!")
+            st.rerun()
+
+def show_letterhead_import():
+    """Affiche l'import de papier en-tête depuis Word"""
+    st.markdown("#### 📤 Importer depuis un document Word")
+    
+    uploaded_letterhead = st.file_uploader(
+        "Charger un document Word avec papier en-tête",
+        type=['docx'],
+        key="upload_letterhead_word"
+    )
+    
+    if uploaded_letterhead and st.button("📥 Extraire le papier en-tête"):
+        if DOCX_AVAILABLE:
+            try:
+                doc = DocxDocument(uploaded_letterhead)
+                
+                # Extraire l'en-tête
+                header_text = ""
+                if doc.sections:
+                    header = doc.sections[0].header
+                    for paragraph in header.paragraphs:
+                        if paragraph.text.strip():
+                            header_text += paragraph.text + "\n"
+                
+                # Extraire le pied de page
+                footer_text = ""
+                if doc.sections:
+                    footer = doc.sections[0].footer
+                    for paragraph in footer.paragraphs:
+                        if paragraph.text.strip():
+                            footer_text += paragraph.text + "\n"
+                
+                if header_text or footer_text:
+                    st.success("✅ Papier en-tête extrait avec succès!")
+                    st.text("En-tête extrait :")
+                    st.code(header_text)
+                    st.text("Pied de page extrait :")
+                    st.code(footer_text)
+                    
+                    if st.button("Utiliser ce papier en-tête"):
+                        st.session_state.letterhead_template = LetterheadTemplate(
+                            name="Papier en-tête importé",
+                            header_content=header_text.strip(),
+                            footer_content=footer_text.strip()
+                        )
+                        st.success("✅ Papier en-tête importé!")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Aucun en-tête ou pied de page trouvé dans le document")
+                    
+            except Exception as e:
+                st.error(f"❌ Erreur lors de l'extraction : {str(e)}")
+
+def show_system_status_tab():
+    """Affiche l'onglet d'état du système"""
+    st.markdown("### État du système")
+    
+    # Métriques
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Documents Azure", len(st.session_state.azure_documents))
+    
+    with col2:
+        st.metric("Pièces sélectionnées", len(st.session_state.pieces_selectionnees))
+    
+    with col3:
+        llm_manager = MultiLLMManager()
+        st.metric("IA disponibles", len(llm_manager.clients))
+    
+    with col4:
+        st.metric("Styles appris", len(st.session_state.get('learned_styles', {})))
+    
+    # État des connexions
+    st.markdown("### 🔗 État des connexions")
+    
+    # Azure Blob
+    if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.is_connected():
+        st.success("✅ Azure Blob Storage : Connecté")
+        
+        if st.button("🧪 Tester la connexion Blob", key="test_blob"):
+            try:
+                containers = st.session_state.azure_blob_manager.list_containers()
+                st.success(f"✅ {len(containers)} containers trouvés : {', '.join(containers)}")
+            except Exception as e:
+                st.error(f"❌ Erreur : {str(e)}")
+    else:
+        st.error("❌ Azure Blob Storage : Non connecté")
+    
+    # Azure Search
+    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
+        st.success("✅ Azure Search : Connecté")
+        
+        if st.button("🧪 Tester la connexion Search", key="test_search"):
+            try:
+                # Tester avec une recherche simple
+                results = st.session_state.azure_search_manager.search_hybrid("test", top=1)
+                st.success("✅ Connexion fonctionnelle")
+            except Exception as e:
+                st.error(f"❌ Erreur : {str(e)}")
+    else:
+        st.warning("⚠️ Azure Search : Non configuré")
+    
+    # Papier en-tête
+    if 'letterhead_template' in st.session_state and st.session_state.letterhead_template:
+        st.success("✅ Papier en-tête : Configuré")
+    else:
+        st.warning("⚠️ Papier en-tête : Non configuré")
+
+def show_export_import_tab():
+    """Affiche l'onglet d'export/import"""
+    st.markdown("### 💾 Export/Import de configuration")
+    
+    # Export
+    show_export_section()
+    
+    # Import
+    show_import_section()
+
+def show_export_section():
+    """Affiche la section d'export"""
+    st.markdown("#### 📥 Export")
+    
+    export_data = {
+        'pieces_selectionnees': {
+            k: {
+                'document_id': v.document_id,
+                'titre': v.titre,
+                'categorie': v.categorie,
+                'notes': v.notes,
+                'pertinence': v.pertinence
+            }
+            for k, v in st.session_state.pieces_selectionnees.items()
+        },
+        'learned_styles': st.session_state.get('learned_styles', {}),
+        'letterhead_template': {
+            'name': st.session_state.letterhead_template.name,
+            'header_content': st.session_state.letterhead_template.header_content,
+            'footer_content': st.session_state.letterhead_template.footer_content,
+            'font_family': st.session_state.letterhead_template.font_family,
+            'font_size': st.session_state.letterhead_template.font_size,
+            'line_spacing': st.session_state.letterhead_template.line_spacing,
+            'margins': st.session_state.letterhead_template.margins
+        } if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else None,
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    export_json = json.dumps(export_data, indent=2, ensure_ascii=False)
+    
+    st.download_button(
+        "💾 Exporter la configuration complète",
+        export_json,
+        f"config_penal_affaires_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        "application/json",
+        key="export_config"
+    )
+
+def show_import_section():
+    """Affiche la section d'import"""
+    st.markdown("#### 📤 Import")
+    
+    uploaded_file = st.file_uploader(
+        "Charger une configuration",
+        type=['json'],
+        key="import_config_file"
+    )
+    
+    if uploaded_file:
+        try:
+            config_data = json.load(uploaded_file)
+            
+            # Prévisualisation
+            with st.expander("Voir le contenu"):
+                st.json(config_data)
+            
+            if st.button("⬆️ Importer", key="import_config_button"):
+                import_configuration(config_data)
+                st.success("✅ Configuration importée avec succès")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"❌ Erreur lors de l'import: {str(e)}")
+
+def import_configuration(config_data):
+    """Importe la configuration depuis les données"""
+    # Importer les pièces sélectionnées
+    if 'pieces_selectionnees' in config_data:
+        for piece_id, piece_data in config_data['pieces_selectionnees'].items():
+            piece = PieceSelectionnee(
+                document_id=piece_data['document_id'],
+                titre=piece_data['titre'],
+                categorie=piece_data['categorie'],
+                notes=piece_data.get('notes', ''),
+                pertinence=piece_data.get('pertinence', 5)
+            )
+            st.session_state.pieces_selectionnees[piece_id] = piece
+    
+    # Importer les styles appris
+    if 'learned_styles' in config_data:
+        st.session_state.learned_styles = config_data['learned_styles']
+    
+    # Importer le papier en-tête
+    if 'letterhead_template' in config_data and config_data['letterhead_template']:
+        lt = config_data['letterhead_template']
+        st.session_state.letterhead_template = LetterheadTemplate(
+            name=lt['name'],
+            header_content=lt['header_content'],
+            footer_content=lt['footer_content'],
+            font_family=lt.get('font_family', 'Arial'),
+            font_size=lt.get('font_size', 11),
+            line_spacing=lt.get('line_spacing', 1.5),
+            margins=lt.get('margins', {'top': 2.5, 'bottom': 2.5, 'left': 2.5, 'right': 2.5})
+        )
+
+# Import pour éviter les erreurs
+import os
