@@ -81,8 +81,13 @@ try:
 except ImportError:
     DOCX_AVAILABLE = False
 
-# ================== CONFIGURATION CENTRALISÉE ==================
+print("=== DEBUG AZURE ===")
+print(f"AZURE_STORAGE_CONNECTION_STRING: {'SET' if os.getenv('AZURE_STORAGE_CONNECTION_STRING') else 'NOT SET'}")
+print(f"AZURE_SEARCH_ENDPOINT: {os.getenv('AZURE_SEARCH_ENDPOINT')}")
+print(f"AZURE_SEARCH_KEY: {'SET' if os.getenv('AZURE_SEARCH_KEY') else 'NOT SET'}")
+print("==================")
 
+# ================== CONFIGURATION CENTRALISÉE ==================
 class AppConfig:
     """Configuration centralisée de l'application"""
     
