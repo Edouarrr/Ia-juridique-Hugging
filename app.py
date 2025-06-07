@@ -29,11 +29,13 @@ logger = logging.getLogger(__name__)
 root_dir = Path(__file__).parent
 sys.path.insert(0, str(root_dir))
 
-# Imports des modules
+# Imports directs des modules nécessaires
 try:
-    from config import APP_TITLE, APP_ICON, PAGES
-    from managers import LLMManager, DocumentManager, JurisprudenceVerifier
-    from utils import load_custom_css
+    from config.app_config import APP_TITLE, APP_ICON, PAGES
+    from managers.llm_manager import LLMManager
+    from managers.document_manager import DocumentManager
+    from managers.jurisprudence_verifier import JurisprudenceVerifier
+    from utils.styles import load_custom_css
 except ImportError as e:
     st.error(f"""
     ❌ Erreur d'import des modules : {str(e)}
