@@ -7,14 +7,9 @@ from datetime import datetime
 import os
 from typing import Dict, Optional
 
-from config import (
-    LLM_CONFIGS, 
-    LEGAL_APIS, 
-    DEFAULT_SETTINGS,
-    APP_VERSION,
-    validate_api_key
-)
-from utils import load_custom_css, create_alert_box, create_section_divider
+from config.llm_config import LLM_CONFIGS, validate_api_key
+from config.app_config import LEGAL_APIS, DEFAULT_SETTINGS, APP_VERSION
+from utils.styles import load_custom_css, create_alert_box, create_section_divider
 
 def show():
     """Affiche la page de configuration"""
