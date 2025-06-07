@@ -18,21 +18,47 @@ from models.jurisprudence_models import (
     JurisprudenceReference, 
     JurisprudenceSearch,
     DocumentJuridique,
-    SourceJurisprudence
+    SourceJurisprudence,
+    TypeJuridiction
 )
-from config.app_config import LEGAL_APIS
-from managers.llm_manager import LLMManager
+from managers.multi_llm_manager import MultiLLMManager
 
 logger = logging.getLogger(__name__)
 
 class LegalSearchManager:
     """Gestionnaire unifié de recherche juridique"""
     
-    def __init__(self, llm_manager: Optional[LLMManager] = None):
-        self.llm_manager = llm_manager
+    def __init__(self, llm_manager: Optional[MultiLLMManager] = None):
+        self.llm_manager = llm_manager or MultiLLMManager()
         self.session = None
-        self.judilibre_config = LEGAL_APIS["judilibre"]
-        self.legifrance_config = LEGAL_APIS["legifrance"]
+        
+        # Configuration Judilibre avec clés intégrées
+        self.judilibre_config = {
+            "enabled": True,
+            "base_url": "https://api.piste.gouv.fr/cassation/judilibre/v1",
+            "api_key": "ac72ad69-ef21-4af2-b3e2-6fa1132a8348",
+            "client_secret": "ec344bdb-c1f0-482c-ac1e-bb9254ae6adb",
+            "endpoints": {
+                "search": "/search",
+                "decision": "/decision",
+                "export": "/export"
+            }
+        }
+        
+        # Configuration Légifrance avec clés intégrées
+        self.legifrance_config = {
+            "enabled": True,
+            "base_url": "https://api.piste.gouv.fr/dila/legifrance/v1",
+            "oauth_url": "https://oauth.piste.gouv.fr/api/oauth/token",
+            "client_id": "ac72ad69-ef21-4af2-b3e2-6fa1132a8348",
+            "client_secret": "ec344bdb-c1f0-482c-ac1e-bb9254ae6adb",
+            "endpoints": {
+                "search": "/search",
+                "consult": "/consult",
+                "download": "/download"
+            }
+        }
+        
         self.legifrance_token = None
         self.token_expiry = None
         
@@ -61,7 +87,7 @@ class LegalSearchManager:
             tasks['legifrance'] = self.search_legifrance(search_params)
             
         # IA (si demandé et disponible)
-        if include_ai and self.llm_manager:
+        if include_ai and self.llm_manager and self.llm_manager.clients:
             tasks['ai'] = self.search_with_ai(search_params)
         
         # Exécuter toutes les recherches en parallèle
@@ -148,7 +174,7 @@ class LegalSearchManager:
         
         try:
             url = f"{self.judilibre_config['base_url']}{self.judilibre_config['endpoints']['search']}"
-            async with self.session.get(url, headers=headers, params=params) as response:
+            async with self.session.get(url, headers=headers, params=params, timeout=30) as response:
                 if response.status == 200:
                     data = await response.json()
                     return self._parse_judilibre_results(data.get('results', []))
@@ -200,7 +226,7 @@ class LegalSearchManager:
         
         try:
             url = f"{self.legifrance_config['base_url']}{self.legifrance_config['endpoints']['search']}"
-            async with self.session.post(url, headers=headers, json=search_data) as response:
+            async with self.session.post(url, headers=headers, json=search_data, timeout=30) as response:
                 if response.status == 200:
                     data = await response.json()
                     return self._parse_legifrance_results(data.get('results', []))
@@ -213,7 +239,7 @@ class LegalSearchManager:
     
     async def search_with_ai(self, search_params: JurisprudenceSearch) -> List[DocumentJuridique]:
         """Recherche via IA avec génération de jurisprudences"""
-        if not self.llm_manager:
+        if not self.llm_manager or not self.llm_manager.clients:
             return []
             
         # Construire le prompt
@@ -232,8 +258,19 @@ Fournis une liste de jurisprudences pertinentes avec pour chaque décision :
 Format attendu : Une jurisprudence par paragraphe avec tous les éléments."""
 
         try:
-            response = await self.llm_manager.generate_response(prompt)
-            return self._parse_ai_results(response, search_params)
+            # Utiliser le premier LLM disponible
+            provider = list(self.llm_manager.clients.keys())[0]
+            
+            response = await self.llm_manager.query_single_llm(
+                provider,
+                prompt,
+                "Tu es un expert en recherche juridique française."
+            )
+            
+            if response['success']:
+                return self._parse_ai_results(response['response'], search_params)
+            else:
+                return []
         except Exception as e:
             logger.error(f"Erreur recherche IA: {e}")
             return []
@@ -260,16 +297,15 @@ Format attendu : Une jurisprudence par paragraphe avec tous les éléments."""
                     id=result.get('id', ''),
                     titre=ref.to_citation(),
                     type_document='jurisprudence',
-                    date=datetime.now(),
                     contenu=result.get('sommaire', ''),
+                    date_document=datetime.now(),
                     source='Judilibre',
                     url=ref.url_source,
                     mots_cles=result.get('themes', []),
-                    pertinence=result.get('score', 0.8)
+                    pertinence=result.get('score', 0.8),
+                    reference=ref
                 )
                 
-                # Ajouter la référence au document
-                doc.reference = ref
                 documents.append(doc)
                 
             except Exception as e:
@@ -302,15 +338,15 @@ Format attendu : Une jurisprudence par paragraphe avec tous les éléments."""
                     id=result.get('id', ''),
                     titre=titre,
                     type_document='jurisprudence',
-                    date=datetime.now(),
                     contenu=result.get('texte', result.get('sommaire', '')),
+                    date_document=datetime.now(),
                     source='Légifrance',
                     url=ref.url_source,
                     mots_cles=result.get('mots_cles', []),
-                    pertinence=result.get('pertinence', 0.8)
+                    pertinence=result.get('pertinence', 0.8),
+                    reference=ref
                 )
                 
-                doc.reference = ref
                 documents.append(doc)
                 
             except Exception as e:
@@ -337,15 +373,15 @@ Format attendu : Une jurisprudence par paragraphe avec tous les éléments."""
                 id=f"ai_{i}_{datetime.now().timestamp()}",
                 titre=ref.to_citation(),
                 type_document='jurisprudence',
-                date=datetime.now(),
                 contenu=self._extract_principle_for_reference(response, ref),
+                date_document=datetime.now(),
                 source='IA',
                 url=None,
                 mots_cles=search_params.keywords,
-                pertinence=0.7  # Score par défaut pour l'IA
+                pertinence=0.7,  # Score par défaut pour l'IA
+                reference=ref
             )
             
-            doc.reference = ref
             documents.append(doc)
             
         return documents
@@ -424,7 +460,11 @@ Format attendu : Une jurisprudence par paragraphe avec tous les éléments."""
 # Fonction d'intégration Streamlit
 def display_legal_search_interface():
     """Interface de recherche juridique intégrée"""
-    st.markdown("### 🔍 Recherche de jurisprudence")
+    st.markdown("### 🔍 Recherche de jurisprudence multi-sources")
+    
+    # Initialiser le gestionnaire si nécessaire
+    if 'legal_search_manager' not in st.session_state:
+        st.session_state.legal_search_manager = LegalSearchManager()
     
     # Paramètres de recherche
     col1, col2 = st.columns(2)
@@ -432,7 +472,8 @@ def display_legal_search_interface():
     with col1:
         keywords = st.text_input(
             "Mots-clés",
-            placeholder="Ex: abus biens sociaux dirigeant"
+            placeholder="Ex: abus biens sociaux dirigeant",
+            key="legal_search_keywords"
         )
         
         infractions = st.multiselect(
@@ -442,54 +483,73 @@ def display_legal_search_interface():
                 "Corruption",
                 "Blanchiment",
                 "Escroquerie",
-                "Délit d'initié"
-            ]
+                "Délit d'initié",
+                "Fraude fiscale",
+                "Trafic d'influence",
+                "Prise illégale d'intérêts"
+            ],
+            key="legal_search_infractions"
         )
         
     with col2:
         juridictions = st.multiselect(
             "Juridictions",
             options=[
-                "Cass. crim.",
-                "Cass. com.",
-                "CE",
-                "CA"
-            ]
+                TypeJuridiction.CASS_CRIM,
+                TypeJuridiction.CASS_COM,
+                TypeJuridiction.CASS_CIV,
+                TypeJuridiction.CASS_SOC,
+                TypeJuridiction.CE,
+                TypeJuridiction.CA
+            ],
+            format_func=lambda x: x.value,
+            key="legal_search_juridictions"
         )
         
         date_range = st.date_input(
             "Période",
             value=[],
-            help="Laisser vide pour toutes les dates"
+            help="Laisser vide pour toutes les dates",
+            key="legal_search_dates"
         )
     
     # Options avancées
-    with st.expander("Options avancées"):
+    with st.expander("⚙️ Options avancées"):
         col3, col4 = st.columns(2)
         
         with col3:
-            sources = st.multiselect(
+            sources_map = {
+                "Judilibre": SourceJurisprudence.JUDILIBRE,
+                "Légifrance": SourceJurisprudence.LEGIFRANCE
+            }
+            
+            selected_sources_names = st.multiselect(
                 "Sources",
-                options=["Judilibre", "Légifrance", "IA"],
-                default=["Judilibre", "Légifrance"]
+                options=list(sources_map.keys()),
+                default=list(sources_map.keys()),
+                key="legal_search_sources"
             )
+            
+            sources = [sources_map[name] for name in selected_sources_names]
             
         with col4:
             max_results = st.slider(
                 "Nombre de résultats",
                 min_value=10,
                 max_value=100,
-                value=30
+                value=30,
+                key="legal_search_max_results"
             )
             
         include_ai = st.checkbox(
             "Inclure les suggestions IA",
             value=True,
-            help="L'IA peut proposer des jurisprudences qui seront vérifiées"
+            help="L'IA peut proposer des jurisprudences qui seront vérifiées",
+            key="legal_search_include_ai"
         )
     
     # Bouton de recherche
-    if st.button("🔎 Rechercher", type="primary"):
+    if st.button("🔎 Rechercher", type="primary", key="legal_search_button"):
         if not keywords and not infractions:
             st.error("Veuillez saisir au moins un mot-clé ou sélectionner une infraction")
             return
@@ -498,40 +558,145 @@ def display_legal_search_interface():
         search_params = JurisprudenceSearch(
             keywords=keywords.split() if keywords else [],
             infractions=infractions,
-            juridictions=[],  # À implémenter
+            juridictions=juridictions,
             date_debut=date_range[0] if len(date_range) == 2 else None,
             date_fin=date_range[1] if len(date_range) == 2 else None,
-            sources=[],  # À implémenter
+            sources=sources,
             max_results=max_results
         )
         
         # Effectuer la recherche
-        st.info("Recherche en cours sur les bases juridiques...")
-        
-        # Ici, intégrer l'appel async au gestionnaire de recherche
-        # Pour l'exemple, on simule des résultats
+        with st.spinner("🔄 Recherche en cours sur les bases juridiques..."):
+            # Exécuter la recherche asynchrone
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            async def run_search():
+                async with st.session_state.legal_search_manager as manager:
+                    return await manager.search_all_sources(search_params, include_ai)
+            
+            results = loop.run_until_complete(run_search())
+            
+            # Stocker les résultats
+            st.session_state.legal_search_results = results
         
         # Afficher les résultats
-        st.success("Recherche terminée !")
+        display_search_results(results)
+
+def display_search_results(results: Dict[str, List[DocumentJuridique]]):
+    """Affiche les résultats de recherche"""
+    # Fusionner et dédupliquer
+    manager = st.session_state.legal_search_manager
+    all_results = manager.merge_and_deduplicate_results(results)
+    
+    # Compter les résultats
+    total = len(all_results)
+    counts = {source: len(docs) for source, docs in results.items()}
+    
+    st.success(f"✅ Recherche terminée : {total} résultats uniques")
+    
+    # Métriques
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total", total)
+    with col2:
+        st.metric("Judilibre", counts.get('judilibre', 0))
+    with col3:
+        st.metric("Légifrance", counts.get('legifrance', 0))
+    with col4:
+        st.metric("IA", counts.get('ai', 0))
+    
+    # Tabs pour les résultats
+    tabs = st.tabs(["🔍 Tous", "⚖️ Judilibre", "📚 Légifrance", "🤖 IA"])
+    
+    with tabs[0]:
+        st.markdown("#### Résultats consolidés (sans doublons)")
+        display_documents_list(all_results)
         
-        # Tabs pour les résultats par source
-        tabs = st.tabs(["Tous", "Judilibre", "Légifrance", "IA"])
-        
-        with tabs[0]:
-            st.markdown("#### Résultats consolidés")
-            # Afficher tous les résultats fusionnés
+    with tabs[1]:
+        st.markdown("#### Résultats Judilibre")
+        if 'judilibre' in results:
+            display_documents_list(results['judilibre'])
+        else:
+            st.info("Aucun résultat Judilibre")
             
-        with tabs[1]:
-            st.markdown("#### Résultats Judilibre")
-            # Afficher résultats Judilibre
+    with tabs[2]:
+        st.markdown("#### Résultats Légifrance")
+        if 'legifrance' in results:
+            display_documents_list(results['legifrance'])
+        else:
+            st.info("Aucun résultat Légifrance")
             
-        with tabs[2]:
-            st.markdown("#### Résultats Légifrance")
-            # Afficher résultats Légifrance
+    with tabs[3]:
+        st.markdown("#### Suggestions IA (à vérifier)")
+        if 'ai' in results:
+            st.warning("⚠️ Ces jurisprudences sont suggérées par l'IA et doivent être vérifiées")
+            display_documents_list(results['ai'])
+        else:
+            st.info("Aucune suggestion IA")
+
+def display_documents_list(documents: List[DocumentJuridique]):
+    """Affiche une liste de documents juridiques"""
+    for doc in documents:
+        with st.container():
+            col1, col2 = st.columns([4, 1])
             
-        with tabs[3]:
-            st.markdown("#### Suggestions IA (à vérifier)")
-            # Afficher suggestions IA
+            with col1:
+                # Titre avec indicateur de vérification
+                if hasattr(doc, 'reference') and doc.reference:
+                    if doc.reference.verified:
+                        st.markdown(f"✅ **{doc.titre}**")
+                    else:
+                        st.markdown(f"⚠️ **{doc.titre}** *(à vérifier)*")
+                else:
+                    st.markdown(f"**{doc.titre}**")
+                
+                # Contenu
+                if doc.contenu:
+                    st.caption(doc.contenu[:300] + "..." if len(doc.contenu) > 300 else doc.contenu)
+                
+                # Métadonnées
+                meta_parts = []
+                if doc.source:
+                    meta_parts.append(f"Source: {doc.source}")
+                if doc.pertinence:
+                    meta_parts.append(f"Pertinence: {doc.pertinence:.0%}")
+                if doc.mots_cles:
+                    meta_parts.append(f"Mots-clés: {', '.join(doc.mots_cles[:3])}")
+                
+                st.caption(" | ".join(meta_parts))
+            
+            with col2:
+                if doc.url:
+                    st.link_button("📄 Consulter", doc.url)
+                
+                # Bouton pour ajouter aux documents
+                if st.button("➕", key=f"add_juris_{doc.id}", help="Ajouter aux documents"):
+                    add_jurisprudence_to_documents(doc)
+            
+            st.markdown("---")
+
+def add_jurisprudence_to_documents(doc: DocumentJuridique):
+    """Ajoute une jurisprudence aux documents de l'affaire"""
+    from models.dataclasses import Document
+    
+    # Créer un document à partir de la jurisprudence
+    new_doc = Document(
+        id=f"juris_{doc.id}",
+        title=doc.titre,
+        content=f"{doc.titre}\n\n{doc.contenu}",
+        source=f"Jurisprudence - {doc.source}",
+        metadata={
+            'type': 'jurisprudence',
+            'source': doc.source,
+            'url': doc.url,
+            'verified': doc.reference.verified if hasattr(doc, 'reference') and doc.reference else False
+        }
+    )
+    
+    # Ajouter aux documents
+    st.session_state.azure_documents[new_doc.id] = new_doc
+    st.success(f"✅ Jurisprudence ajoutée aux documents")
 
 
 # Export
