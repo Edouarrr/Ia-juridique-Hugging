@@ -1810,362 +1810,353 @@ def page_recherche_documents():
         st.error("❌ Connexion Azure Blob non configurée. Veuillez vérifier vos variables d'environnement (AZURE_STORAGE_CONNECTION_STRING).")
         return
     
-    # Section de recherche avec Azure Search
-    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
-        with st.container():
-            st.markdown('<div class="search-section">', unsafe_allow_html=True)
-            
-            # Barre de recherche principale simplifiée
-            with st.form(key="search_form"):
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    search_query = st.text_input(
-                        "Rechercher dans tous les documents",
-                        value=st.session_state.search_query,
-                        placeholder="Ex: abus de biens sociaux, délégation de pouvoirs, fraude fiscale...",
-                        key="search_input_main"
-                    )
-                
-                with col2:
-                    search_clicked = st.form_submit_button("🔍 Rechercher", type="primary")
-            
-            # Options de recherche avancée (masquées par défaut)
-            with st.expander("Options avancées"):
-                search_mode = st.selectbox(
-                    "Mode de recherche",
-                    [mode.value for mode in SearchMode],
-                    key="search_mode_select"
+    # Section de recherche principale (toujours affichée)
+    with st.container():
+        st.markdown('<div class="search-section">', unsafe_allow_html=True)
+        
+        # Barre de recherche principale simplifiée
+        with st.form(key="search_form"):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                search_query = st.text_input(
+                    "Rechercher dans tous les documents",
+                    value=st.session_state.search_query,
+                    placeholder="Ex: abus de biens sociaux, délégation de pouvoirs, fraude fiscale...",
+                    key="search_input_main"
                 )
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            with col2:
+                search_clicked = st.form_submit_button("🔍 Rechercher", type="primary")
+        
+        # Options de recherche avancée (masquées par défaut)
+        with st.expander("Options avancées"):
+            search_mode = st.selectbox(
+                "Mode de recherche",
+                ["Recherche dans mes documents", "Recherche jurisprudence (Légifrance)", "Recherche complète"],
+                key="search_mode_select"
+            )
             
-            # Effectuer la recherche
-            if search_clicked and search_query:
-                st.session_state.search_query = search_query
+            if search_mode == "Recherche jurisprudence (Légifrance)":
+                st.info("🏛️ La recherche privilégiera les sources officielles (Légifrance, Cour de cassation, Conseil d'État)")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+            
+        
+        # Effectuer la recherche
+        if search_clicked and search_query:
+            st.session_state.search_query = search_query
+            
+            with st.spinner("Recherche en cours..."):
+                # Si recherche Légifrance
+                if search_mode == "Recherche jurisprudence (Légifrance)":
+                    st.info("🏛️ Recherche sur Légifrance...")
+                    
+                    # Construire l'URL de recherche Légifrance
+                    legifrance_url = f"https://www.legifrance.gouv.fr/search/all?tab=all&query={search_query}"
+                    
+                    st.markdown(f"""
+                    📎 **Liens utiles pour votre recherche :**
+                    - [Rechercher sur Légifrance]({legifrance_url})
+                    - [Jurisprudence judiciaire](https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext={search_query})
+                    - [Jurisprudence administrative](https://www.conseil-etat.fr/arianeweb/)
+                    
+                    💡 **Conseil :** Pour une recherche efficace sur Légifrance, utilisez :
+                    - Les références précises (articles de loi, numéros de pourvoi)
+                    - Les mots-clés juridiques exacts
+                    - Les opérateurs de recherche (ET, OU, SAUF)
+                    """)
                 
-                with st.spinner("Recherche en cours..."):
+                # Si Azure Search disponible
+                elif st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
                     # Mode de recherche
                     mode_enum = SearchMode.HYBRID
-                    for mode in SearchMode:
-                        if mode.value == search_mode:
-                            mode_enum = mode
-                            break
                     
                     results = st.session_state.azure_search_manager.search_hybrid(
                         search_query,
                         mode=mode_enum
                     )
                     
-                    # Organiser les résultats : dossiers d'abord
-                    folders_results = []
-                    files_results = []
-                    
-                    # Simuler des dossiers basés sur les chemins
-                    folder_paths = set()
-                    for result in results:
-                        if 'folder_path' in result and result['folder_path']:
-                            # Extraire tous les niveaux de dossiers
-                            parts = result['folder_path'].split('/')
-                            for i in range(1, len(parts)):
-                                folder_paths.add('/'.join(parts[:i]))
-                    
-                    # Créer des résultats pour les dossiers
-                    for folder_path in sorted(folder_paths):
-                        folders_results.append({
-                            'type': 'folder',
-                            'path': folder_path,
-                            'name': folder_path.split('/')[-1],
-                            'count': len([r for r in results if r.get('folder_path', '').startswith(folder_path)])
-                        })
-                    
-                    # Ajouter les fichiers
-                    for result in results:
-                        result['type'] = 'file'
-                        files_results.append(result)
-                    
                     # Afficher les résultats
-                    total_results = len(folders_results) + len(files_results)
-                    if total_results > 0:
-                        st.success(f"✅ {total_results} résultats trouvés ({len(folders_results)} dossiers, {len(files_results)} fichiers)")
+                    if results:
+                        st.success(f"✅ {len(results)} résultats trouvés")
                         
-                        # Afficher les dossiers en premier
-                        if folders_results:
-                            st.markdown("### 📁 Dossiers")
-                            for folder in folders_results:
-                                with st.container():
-                                    st.markdown('<div class="folder-card">', unsafe_allow_html=True)
+                        for result in results[:20]:  # Limiter à 20 résultats
+                            with st.container():
+                                st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                                
+                                col1, col2 = st.columns([4, 1])
+                                
+                                with col1:
+                                    st.markdown(f"**{result['title']}**")
+                                    st.caption(f"Score: {result['score']:.2f}")
                                     
-                                    col1, col2 = st.columns([4, 1])
-                                    
-                                    with col1:
-                                        st.markdown(f"📁 **{folder['name']}**")
-                                        st.caption(f"Chemin: {folder['path']} | {folder['count']} documents")
-                                    
-                                    with col2:
-                                        if st.button("➕ Ajouter tout", key=f"add_folder_{clean_key(folder['path'])}"):
-                                            # Ajouter tous les fichiers du dossier
-                                            added_count = 0
-                                            with st.spinner(f"Ajout des documents du dossier {folder['name']}..."):
-                                                for result in files_results:
-                                                    if result.get('folder_path', '').startswith(folder['path']):
-                                                        doc = Document(
-                                                            id=result['id'],
-                                                            title=result['title'],
-                                                            content=result['content'],
-                                                            source=result['source'],
-                                                            folder_path=result.get('folder_path')
-                                                        )
-                                                        st.session_state.azure_documents[doc.id] = doc
-                                                        added_count += 1
-                                            
-                                            if added_count > 0:
-                                                st.success(f"✅ {added_count} documents ajoutés du dossier {folder['name']}")
-                                    
-                                    st.markdown('</div>', unsafe_allow_html=True)
-                        
-                        # Afficher les fichiers
-                        if files_results:
-                            st.markdown("### 📄 Documents")
-                            for result in files_results:
-                                with st.container():
-                                    st.markdown('<div class="document-card">', unsafe_allow_html=True)
-                                    
-                                    col1, col2 = st.columns([4, 1])
-                                    
-                                    with col1:
-                                        st.markdown(f"**{result['title']}**")
-                                        st.caption(f"Score: {result['score']:.2f} | Source: {result['source']}")
-                                        
-                                        # Extrait du contenu
-                                        excerpt = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
-                                        st.text(excerpt)
-                                    
-                                    with col2:
-                                        if result['id'] in st.session_state.azure_documents:
-                                            st.success("✅ Déjà ajouté")
-                                        else:
-                                            if st.button("➕ Ajouter", key=f"add_search_{result['id']}"):
-                                                # Créer un document
-                                                doc = Document(
-                                                    id=result['id'],
-                                                    title=result['title'],
-                                                    content=result['content'],
-                                                    source=result['source'],
-                                                    folder_path=result.get('folder_path')
-                                                )
-                                                
-                                                st.session_state.azure_documents[doc.id] = doc
-                                                st.success(f"✅ {doc.title} ajouté")
-                                                st.rerun()
-                                    
-                                    st.markdown('</div>', unsafe_allow_html=True)
+                                    # Extrait du contenu
+                                    excerpt = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
+                                    st.text(excerpt)
+                                
+                                with col2:
+                                    if result['id'] in st.session_state.azure_documents:
+                                        st.success("✅ Déjà ajouté")
+                                    else:
+                                        if st.button("➕ Ajouter", key=f"add_search_{result['id']}"):
+                                            doc = Document(
+                                                id=result['id'],
+                                                title=result['title'],
+                                                content=result['content'],
+                                                source=result['source']
+                                            )
+                                            st.session_state.azure_documents[doc.id] = doc
+                                            st.success(f"✅ Ajouté")
+                                            st.rerun()
+                                
+                                st.markdown('</div>', unsafe_allow_html=True)
                     else:
                         st.info("Aucun résultat trouvé")
+                
+                # Recherche locale dans les documents chargés
+                else:
+                    st.info("🔍 Recherche dans les documents locaux...")
+                    results = []
+                    
+                    for doc_id, doc in st.session_state.azure_documents.items():
+                        if search_query.lower() in doc.title.lower() or search_query.lower() in doc.content.lower():
+                            results.append(doc)
+                    
+                    if results:
+                        st.success(f"✅ {len(results)} résultats trouvés dans les documents chargés")
+                        
+                        for doc in results[:20]:
+                            with st.container():
+                                st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                                st.markdown(f"**{doc.title}**")
+                                
+                                # Extrait avec le terme recherché
+                                content_lower = doc.content.lower()
+                                query_lower = search_query.lower()
+                                
+                                if query_lower in content_lower:
+                                    idx = content_lower.find(query_lower)
+                                    start = max(0, idx - 150)
+                                    end = min(len(doc.content), idx + 150)
+                                    excerpt = "..." + doc.content[start:end] + "..."
+                                    st.text(excerpt)
+                                
+                                st.markdown('</div>', unsafe_allow_html=True)
+                    else:
+                        st.info("Aucun résultat trouvé dans les documents chargés")
     
     # Navigation Azure Blob
     st.markdown("### 📂 Explorer les documents SharePoint")
     
     azure_manager = st.session_state.azure_blob_manager
     
-    # Sélection du container
+    # Utiliser directement le container par défaut
+    selected_container = AppConfig.DEFAULT_CONTAINER
+    
+    # Vérifier que le container existe
     containers = azure_manager.list_containers()
     
-    if containers:
-        col1, col2 = st.columns([3, 1])
+    if selected_container not in containers:
+        st.error(f"❌ Le container '{selected_container}' n'existe pas. Containers disponibles : {', '.join(containers)}")
+        return
+    
+    # Afficher le container actif
+    st.info(f"📁 Container actif : **{selected_container}**")
         
-        with col1:
-            # Utiliser le container par défaut depuis la config
-            default_index = 0
-            if AppConfig.DEFAULT_CONTAINER in containers:
-                default_index = containers.index(AppConfig.DEFAULT_CONTAINER)
-            
-            selected_container = st.selectbox(
-                "Sélectionner un espace de stockage",
-                containers,
-                index=default_index,
-                key="container_select"
-            )
-            
-            st.session_state.selected_container = selected_container
+    
+    # Navigation dans les dossiers
+    if selected_container:
+        st.markdown('<div class="folder-nav">', unsafe_allow_html=True)
         
-        with col2:
-            if st.button("🔄 Actualiser", key="refresh_containers"):
+        # Fil d'Ariane
+        current_path = st.session_state.get('current_folder_path', '')
+        if current_path:
+            path_parts = current_path.split('/')
+            path_parts = [p for p in path_parts if p]  # Enlever les parties vides
+            
+            breadcrumb = "📁 "
+            if st.button("Racine", key="breadcrumb_root"):
+                st.session_state.current_folder_path = ""
                 st.rerun()
-        
-        # Navigation dans les dossiers
-        if selected_container:
-            st.markdown('<div class="folder-nav">', unsafe_allow_html=True)
             
-            # Fil d'Ariane
-            current_path = st.session_state.get('current_folder_path', '')
-            if current_path:
-                path_parts = current_path.split('/')
-                path_parts = [p for p in path_parts if p]  # Enlever les parties vides
-                
-                breadcrumb = "📁 "
-                if st.button("Racine", key="breadcrumb_root"):
-                    st.session_state.current_folder_path = ""
+            for i, part in enumerate(path_parts):
+                breadcrumb += f" > "
+                partial_path = '/'.join(path_parts[:i+1]) + '/'
+                if st.button(part, key=f"breadcrumb_{clean_key(part)}_{i}"):
+                    st.session_state.current_folder_path = partial_path
                     st.rerun()
-                
-                for i, part in enumerate(path_parts):
-                    breadcrumb += f" > "
-                    partial_path = '/'.join(path_parts[:i+1]) + '/'
-                    if st.button(part, key=f"breadcrumb_{clean_key(part)}_{i}"):
-                        st.session_state.current_folder_path = partial_path
-                        st.rerun()
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Lister le contenu du dossier actuel
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Lister le contenu du dossier actuel
+        with st.spinner("Chargement des documents..."):
             items = azure_manager.list_folders(selected_container, current_path)
+        
+        if items:
+            # Compter les éléments
+            folders = [item for item in items if item['type'] == 'folder']
+            files = [item for item in items if item['type'] == 'file']
             
-            if items:
-                # Séparer dossiers et fichiers
-                folders = [item for item in items if item['type'] == 'folder']
-                files = [item for item in items if item['type'] == 'file']
-                
-                # Afficher les dossiers en premier
-                for item in folders + files:
+            st.caption(f"📁 {len(folders)} dossiers, 📄 {len(files)} fichiers")
+            
+            # Afficher les dossiers en premier
+            if folders:
+                st.markdown("#### 📁 Dossiers")
+                for item in folders:
                     with st.container():
-                        if item['type'] == 'folder':
-                            st.markdown('<div class="folder-card">', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="folder-card">', unsafe_allow_html=True)
                         
                         col1, col2, col3 = st.columns([3, 1, 1])
                         
                         with col1:
-                            if item['type'] == 'folder':
-                                st.markdown(f"📁 **{item['name']}**")
-                            else:
-                                # Icône selon le type de fichier
-                                file_ext = os.path.splitext(item['name'])[1].lower()
-                                icon = {
-                                    '.pdf': '📄',
-                                    '.docx': '📝',
-                                    '.doc': '📝',
-                                    '.txt': '📃',
-                                    '.xlsx': '📊',
-                                    '.xls': '📊'
-                                }.get(file_ext, '📎')
-                                
-                                st.markdown(f"{icon} **{item['name']}**")
-                                
-                                if item.get('size'):
-                                    size_mb = item['size'] / (1024 * 1024)
-                                    st.caption(f"Taille: {size_mb:.2f} MB")
+                            st.markdown(f"📁 **{item['name']}**")
+                        
+                        with col2:
+                            # Compter les fichiers dans le dossier
+                            sub_items = azure_manager.list_folders(selected_container, item['path'])
+                            sub_files = [i for i in sub_items if i['type'] == 'file']
+                            st.caption(f"{len(sub_files)} fichiers")
+                        
+                        with col3:
+                            col_open, col_add = st.columns(2)
+                            
+                            with col_open:
+                                if st.button("📂", key=f"open_folder_{clean_key(item['name'])}", help="Ouvrir"):
+                                    st.session_state.current_folder_path = item['path']
+                                    st.rerun()
+                            
+                            with col_add:
+                                if st.button("➕", key=f"add_folder_all_{clean_key(item['path'])}", help="Ajouter tout le dossier"):
+                                    # Ajouter tous les fichiers du dossier
+                                    with st.spinner(f"Ajout du dossier {item['name']}..."):
+                                        all_files = azure_manager.get_all_files_in_folder(selected_container, item['path'])
+                                        
+                                        added_count = 0
+                                        for file_info in all_files:
+                                            # Extraire le texte
+                                            content = azure_manager.extract_text_from_blob(
+                                                selected_container,
+                                                file_info['full_path']
+                                            )
+                                            
+                                            if content:
+                                                doc_id = f"azure_{clean_key(file_info['full_path'])}"
+                                                doc = Document(
+                                                    id=doc_id,
+                                                    title=file_info['name'],
+                                                    content=content,
+                                                    source='azure',
+                                                    metadata={
+                                                        'container': selected_container,
+                                                        'path': file_info['full_path'],
+                                                        'size': file_info.get('size'),
+                                                        'last_modified': file_info.get('last_modified')
+                                                    },
+                                                    folder_path=file_info['folder']
+                                                )
+                                                
+                                                st.session_state.azure_documents[doc_id] = doc
+                                                
+                                                # Indexer dans Azure Search
+                                                if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
+                                                    st.session_state.azure_search_manager.index_document(doc)
+                                                
+                                                added_count += 1
+                                        
+                                        if added_count > 0:
+                                            st.success(f"✅ {added_count} documents ajoutés du dossier {item['name']}")
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Afficher les fichiers
+            if files:
+                st.markdown("#### 📄 Fichiers")
+                for item in files:
+                    with st.container():
+                        st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                        
+                        col1, col2, col3 = st.columns([3, 1, 1])
+                        
+                        with col1:
+                            # Icône selon le type de fichier
+                            file_ext = os.path.splitext(item['name'])[1].lower()
+                            icon = {
+                                '.pdf': '📄',
+                                '.docx': '📝',
+                                '.doc': '📝',
+                                '.txt': '📃',
+                                '.xlsx': '📊',
+                                '.xls': '📊'
+                            }.get(file_ext, '📎')
+                            
+                            st.markdown(f"{icon} **{item['name']}**")
+                            
+                            if item.get('size'):
+                                size_mb = item['size'] / (1024 * 1024)
+                                st.caption(f"Taille: {size_mb:.2f} MB")
                         
                         with col2:
                             if item.get('last_modified'):
                                 st.caption(f"Modifié: {item['last_modified'].strftime('%d/%m/%Y')}")
                         
                         with col3:
-                            if item['type'] == 'folder':
-                                col_open, col_add = st.columns(2)
+                            col_view, col_select = st.columns(2)
+                            
+                            with col_view:
+                                if st.button("👁️", key=f"view_file_{clean_key(item['full_path'])}"):
+                                    # Extraire et afficher le contenu
+                                    with st.spinner("Chargement..."):
+                                        content = azure_manager.extract_text_from_blob(
+                                            selected_container,
+                                            item['full_path']
+                                        )
+                                        
+                                        if content:
+                                            st.text_area(
+                                                f"Contenu de {item['name']}",
+                                                content[:2000] + "..." if len(content) > 2000 else content,
+                                                height=300,
+                                                key=f"content_view_{clean_key(item['full_path'])}"
+                                            )
+                            
+                            with col_select:
+                                # Créer un document et l'ajouter à la session
+                                doc_id = f"azure_{clean_key(item['full_path'])}"
                                 
-                                with col_open:
-                                    if st.button("📂", key=f"open_folder_{clean_key(item['name'])}", help="Ouvrir"):
-                                        st.session_state.current_folder_path = item['path']
-                                        st.rerun()
-                                
-                                with col_add:
-                                    if st.button("➕", key=f"add_folder_all_{clean_key(item['path'])}", help="Ajouter tout le dossier"):
-                                        # Ajouter tous les fichiers du dossier
-                                        with st.spinner(f"Ajout du dossier {item['name']}..."):
-                                            all_files = azure_manager.get_all_files_in_folder(selected_container, item['path'])
-                                            
-                                            added_count = 0
-                                            for file_info in all_files:
-                                                # Extraire le texte
-                                                content = azure_manager.extract_text_from_blob(
-                                                    selected_container,
-                                                    file_info['full_path']
-                                                )
-                                                
-                                                if content:
-                                                    doc_id = f"azure_{clean_key(file_info['full_path'])}"
-                                                    doc = Document(
-                                                        id=doc_id,
-                                                        title=file_info['name'],
-                                                        content=content,
-                                                        source='azure',
-                                                        metadata={
-                                                            'container': selected_container,
-                                                            'path': file_info['full_path'],
-                                                            'size': file_info.get('size'),
-                                                            'last_modified': file_info.get('last_modified')
-                                                        },
-                                                        folder_path=file_info['folder']
-                                                    )
-                                                    
-                                                    st.session_state.azure_documents[doc_id] = doc
-                                                    
-                                                    # Indexer dans Azure Search
-                                                    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
-                                                        st.session_state.azure_search_manager.index_document(doc)
-                                                    
-                                                    added_count += 1
-                                            
-                                            if added_count > 0:
-                                                st.success(f"✅ {added_count} documents ajoutés du dossier {item['name']}")
-                            else:
-                                col_view, col_select = st.columns(2)
-                                
-                                with col_view:
-                                    if st.button("👁️", key=f"view_file_{clean_key(item['full_path'])}"):
-                                        # Extraire et afficher le contenu
-                                        with st.spinner("Chargement..."):
+                                if doc_id in st.session_state.azure_documents:
+                                    st.success("✅")
+                                else:
+                                    if st.button("➕", key=f"add_doc_{doc_id}", help="Ajouter à la sélection"):
+                                        # Télécharger le contenu si pas déjà fait
+                                        with st.spinner("Ajout..."):
                                             content = azure_manager.extract_text_from_blob(
                                                 selected_container,
                                                 item['full_path']
                                             )
                                             
                                             if content:
-                                                st.text_area(
-                                                    f"Contenu de {item['name']}",
-                                                    content[:2000] + "..." if len(content) > 2000 else content,
-                                                    height=300,
-                                                    key=f"content_view_{clean_key(item['full_path'])}"
-                                                )
-                                
-                                with col_select:
-                                    # Créer un document et l'ajouter à la session
-                                    doc_id = f"azure_{clean_key(item['full_path'])}"
-                                    
-                                    if doc_id in st.session_state.azure_documents:
-                                        st.success("✅")
-                                    else:
-                                        if st.button("➕", key=f"add_doc_{doc_id}", help="Ajouter à la sélection"):
-                                            # Télécharger le contenu si pas déjà fait
-                                            with st.spinner("Ajout..."):
-                                                content = azure_manager.extract_text_from_blob(
-                                                    selected_container,
-                                                    item['full_path']
+                                                doc = Document(
+                                                    id=doc_id,
+                                                    title=item['name'],
+                                                    content=content,
+                                                    source='azure',
+                                                    metadata={
+                                                        'container': selected_container,
+                                                        'path': item['full_path'],
+                                                        'size': item.get('size'),
+                                                        'last_modified': item.get('last_modified')
+                                                    },
+                                                    folder_path=current_path
                                                 )
                                                 
-                                                if content:
-                                                    doc = Document(
-                                                        id=doc_id,
-                                                        title=item['name'],
-                                                        content=content,
-                                                        source='azure',
-                                                        metadata={
-                                                            'container': selected_container,
-                                                            'path': item['full_path'],
-                                                            'size': item.get('size'),
-                                                            'last_modified': item.get('last_modified')
-                                                        },
-                                                        folder_path=current_path
-                                                    )
-                                                    
-                                                    st.session_state.azure_documents[doc_id] = doc
-                                                    
-                                                    # Indexer dans Azure Search si disponible
-                                                    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
-                                                        st.session_state.azure_search_manager.index_document(doc)
-                                                    
-                                                    st.success(f"✅ {item['name']} ajouté")
-                                                    st.rerun()
+                                                st.session_state.azure_documents[doc_id] = doc
+                                                
+                                                # Indexer dans Azure Search si disponible
+                                                if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
+                                                    st.session_state.azure_search_manager.index_document(doc)
+                                                
+                                                st.success(f"✅ {item['name']} ajouté")
+                                                st.rerun()
                         
                         st.markdown('</div>', unsafe_allow_html=True)
             else:
@@ -2173,51 +2164,42 @@ def page_recherche_documents():
     else:
         st.warning("Aucun container disponible")
     
-    # Prompts de recherche suggérés dynamiques
+    # Suggestions de recherche
     if st.session_state.search_query:
-        st.markdown("### 💡 Recherches suggérées")
+        st.markdown("### 💡 Affiner votre recherche")
         
-        # Générer des prompts dynamiques si une recherche est active
         search_query = st.session_state.search_query
         
-        # Vérifier le cache
-        cache_key = f"prompts_{clean_key(search_query)}"
+        # Suggestions contextuelles
+        col1, col2 = st.columns(2)
         
-        if cache_key not in st.session_state.dynamic_search_prompts:
-            with st.spinner("Génération de suggestions intelligentes..."):
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                dynamic_prompts = loop.run_until_complete(
-                    generate_dynamic_search_prompts(search_query)
-                )
-                
-                st.session_state.dynamic_search_prompts[cache_key] = dynamic_prompts
-        else:
-            dynamic_prompts = st.session_state.dynamic_search_prompts[cache_key]
+        with col1:
+            st.markdown("#### 📚 Recherches complémentaires")
+            suggestions = [
+                f"{search_query} jurisprudence récente",
+                f"{search_query} Cour de cassation",
+                f"{search_query} éléments constitutifs",
+                f"{search_query} moyens de défense",
+                f"{search_query} prescription",
+                f"{search_query} sanctions"
+            ]
+            
+            for suggestion in suggestions[:4]:
+                if st.button(suggestion, key=f"sugg_{clean_key(suggestion)}", use_container_width=True):
+                    st.session_state.search_query = suggestion
+                    st.rerun()
         
-        # Afficher les prompts dynamiques
-        for categorie, sous_categories in dynamic_prompts.items():
-            with st.expander(categorie):
-                for sous_cat, prompts in sous_categories.items():
-                    st.markdown(f"**{sous_cat}**")
-                    
-                    # Créer une grille de boutons
-                    cols = st.columns(2)
-                    for idx, prompt in enumerate(prompts):
-                        col = cols[idx % 2]
-                        
-                        with col:
-                            # Clé unique pour chaque bouton
-                            button_key = f"dyn_prompt_{clean_key(categorie)}_{clean_key(sous_cat)}_{idx}"
-                            
-                            if st.button(
-                                prompt[:50] + "..." if len(prompt) > 50 else prompt,
-                                key=button_key,
-                                help=prompt
-                            ):
-                                st.session_state.search_query = prompt
-                                st.rerun()
+        with col2:
+            st.markdown("#### 🏛️ Sources juridiques")
+            
+            # Liens directs vers les sources
+            st.markdown(f"""
+            **Rechercher "{search_query}" sur :**
+            - [📖 Légifrance](https://www.legifrance.gouv.fr/search/all?tab=all&query={search_query})
+            - [⚖️ Cour de cassation](https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext={search_query})
+            - [🏛️ Conseil d'État](https://www.conseil-etat.fr/arianeweb/)
+            - [📊 Doctrine](https://www.doctrine.fr/search?q={search_query})
+            """)
 
 def page_selection_pieces():
     """Page de sélection et organisation des pièces"""
@@ -2543,6 +2525,94 @@ def page_redaction_assistee():
     
     st.header("📝 Rédaction assistée par IA")
     
+    # Boutons d'accès rapide
+    st.markdown("### ⚡ Accès rapide")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📜 Créer des conclusions", key="quick_conclusions", use_container_width=True):
+            st.session_state.type_acte_input = "Conclusions"
+            st.session_state.quick_action = "conclusions"
+    
+    with col2:
+        if st.button("⚖️ Créer une plainte simple", key="quick_plainte_simple", use_container_width=True):
+            st.session_state.type_acte_input = "Plainte simple"
+            st.session_state.quick_action = "plainte_simple"
+    
+    with col3:
+        if st.button("🏛️ Plainte avec constitution PC", key="quick_plainte_pc", use_container_width=True):
+            st.session_state.type_acte_input = "Plainte avec constitution de partie civile"
+            st.session_state.quick_action = "plainte_pc"
+    
+    # Si une action rapide est sélectionnée, pré-remplir et suggérer l'apprentissage
+    if 'quick_action' in st.session_state and st.session_state.quick_action:
+        st.info(f"💡 Mode rapide : {st.session_state.type_acte_input}")
+        
+        # Suggérer l'apprentissage automatique
+        if st.button("🎓 Apprendre le style depuis mes modèles SharePoint", key="auto_learn_style"):
+            with st.spinner("Recherche et analyse des modèles dans SharePoint..."):
+                # Rechercher les documents modèles
+                modeles_trouves = []
+                
+                # Parcourir les documents SharePoint
+                for doc_id, doc in st.session_state.azure_documents.items():
+                    doc_title_lower = doc.title.lower()
+                    
+                    # Identifier les modèles selon le type d'acte
+                    if st.session_state.quick_action == "conclusions":
+                        if any(term in doc_title_lower for term in ["conclusion", "mémoire", "réponse"]):
+                            modeles_trouves.append(doc)
+                    elif st.session_state.quick_action == "plainte_simple":
+                        if "plainte" in doc_title_lower and "constitution" not in doc_title_lower:
+                            modeles_trouves.append(doc)
+                    elif st.session_state.quick_action == "plainte_pc":
+                        if "plainte" in doc_title_lower and "constitution" in doc_title_lower:
+                            modeles_trouves.append(doc)
+                
+                if modeles_trouves:
+                    st.success(f"✅ {len(modeles_trouves)} modèles trouvés !")
+                    
+                    # Analyser automatiquement
+                    if 'style_analyzer' not in st.session_state:
+                        st.session_state.style_analyzer = StyleAnalyzer()
+                    
+                    patterns = []
+                    for doc in modeles_trouves[:5]:  # Limiter à 5 modèles
+                        pattern = st.session_state.style_analyzer.analyze_document(doc, st.session_state.type_acte_input)
+                        patterns.append(pattern)
+                        st.caption(f"✓ {doc.title} analysé")
+                    
+                    # Fusionner et sauvegarder
+                    merged_pattern = {
+                        'nombre_documents': len(patterns),
+                        'structure_commune': merge_structures([p.structure for p in patterns]),
+                        'formules_frequentes': merge_formules([p.formules for p in patterns]),
+                        'mise_en_forme_type': merge_formatting([p.mise_en_forme for p in patterns]),
+                        'vocabulaire_cle': merge_vocabulary([p.vocabulaire for p in patterns])
+                    }
+                    
+                    if 'learned_styles' not in st.session_state:
+                        st.session_state.learned_styles = {}
+                    
+                    style_name = f"Style {st.session_state.type_acte_input} (auto)"
+                    st.session_state.learned_styles[style_name] = merged_pattern
+                    st.session_state.auto_learned_style = style_name
+                    
+                    st.success(f"🎨 Style appris et prêt à être utilisé !")
+                    
+                    # Afficher un aperçu du style
+                    with st.expander("Aperçu du style appris"):
+                        st.write("**Structure identifiée :**")
+                        for section in merged_pattern['structure_commune'].get('sections_communes', [])[:5]:
+                            st.write(f"- {section}")
+                        
+                        st.write("\n**Formules types détectées :**")
+                        for formule in merged_pattern['formules_frequentes'][:5]:
+                            st.write(f"- {formule[:100]}...")
+                else:
+                    st.warning("⚠️ Aucun modèle trouvé dans SharePoint. Chargez d'abord des documents modèles.")
+    
     # Onglets pour organiser la fonctionnalité
     tabs = st.tabs(["✍️ Rédaction", "🎨 Apprentissage de style", "📚 Modèles"])
     
@@ -2554,78 +2624,165 @@ def page_redaction_assistee():
         col1, col2 = st.columns([2, 1])
         
         with col1:
+            # Utiliser la valeur pré-remplie si elle existe
+            default_type = st.session_state.get('type_acte_input', '')
+            
             type_acte = st.text_input(
                 "Type d'acte à rédiger",
+                value=default_type,
                 placeholder="Ex: Plainte avec constitution de partie civile, Conclusions, Demande d'audition...",
-                key="type_acte_input"
+                key="type_acte_input_field"
             )
         
         with col2:
             # Utiliser un style appris ?
             if 'learned_styles' in st.session_state and st.session_state.learned_styles:
-                use_style = st.checkbox("Utiliser un style appris", key="use_learned_style")
+                use_style = st.checkbox(
+                    "Utiliser un style appris", 
+                    value='auto_learned_style' in st.session_state,
+                    key="use_learned_style"
+                )
             else:
                 use_style = False
                 st.info("Aucun style appris")
         
         # Sélection du style si activé
         if use_style and st.session_state.learned_styles:
+            # Utiliser le style auto-appris par défaut s'il existe
+            default_style_idx = 0
+            if 'auto_learned_style' in st.session_state:
+                style_list = list(st.session_state.learned_styles.keys())
+                if st.session_state.auto_learned_style in style_list:
+                    default_style_idx = style_list.index(st.session_state.auto_learned_style)
+            
             selected_style = st.selectbox(
                 "Choisir un style",
                 list(st.session_state.learned_styles.keys()),
+                index=default_style_idx,
                 key="select_style_redaction"
             )
         else:
             selected_style = None
         
-        # Informations de base
-        st.markdown("### 📋 Informations essentielles")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            destinataire = st.text_input(
-                "Destinataire",
-                placeholder="Ex: Monsieur le Procureur de la République",
-                key="destinataire_acte"
-            )
+        # Template spécifique selon le type d'acte
+        if type_acte:
+            # Informations spécifiques selon le type
+            if "plainte" in type_acte.lower():
+                st.markdown("#### 📋 Informations pour la plainte")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    plaignant = st.text_input("Plaignant (votre client)", key="plaignant_nom")
+                    qualite_plaignant = st.text_input("Qualité du plaignant", placeholder="Personne physique/morale, fonction...", key="plaignant_qualite")
+                    
+                    if "constitution" in type_acte.lower():
+                        avocat_nom = st.text_input("Avocat", placeholder="Maître...", key="avocat_plainte")
+                        constitution_pc = st.checkbox("Demander des dommages-intérêts", value=True, key="demande_di")
+                
+                with col2:
+                    mis_en_cause = st.text_input("Personne(s) mise(s) en cause", key="mis_en_cause")
+                    faits_date = st.date_input("Date des faits", key="date_faits_plainte")
+                    juridiction = st.text_input(
+                        "Juridiction compétente",
+                        value="Tribunal judiciaire de Paris - Pôle économique et financier",
+                        key="juridiction_plainte"
+                    )
+                
+                # Infractions spécifiques
+                infractions = st.multiselect(
+                    "Infractions visées",
+                    [inf.value for inf in InfractionAffaires],
+                    key="infractions_plainte"
+                )
+                
+                # Résumé des faits
+                resume_faits = st.text_area(
+                    "Résumé des faits",
+                    placeholder="Décrivez brièvement les faits reprochés...",
+                    height=150,
+                    key="resume_faits_plainte"
+                )
+                
+            elif "conclusion" in type_acte.lower():
+                st.markdown("#### 📋 Informations pour les conclusions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    client_nom = st.text_input("Client défendu", key="client_conclusions")
+                    numero_procedure = st.text_input("N° de procédure", key="num_procedure")
+                    juridiction = st.text_input("Juridiction", key="juridiction_conclusions")
+                
+                with col2:
+                    partie_adverse = st.text_input("Partie adverse", key="partie_adverse")
+                    date_audience = st.date_input("Date d'audience", key="date_audience")
+                    type_conclusions = st.selectbox(
+                        "Type de conclusions",
+                        ["Conclusions en défense", "Conclusions en demande", "Conclusions récapitulatives"],
+                        key="type_conclusions_select"
+                    )
+                
+                # Moyens de défense/demande
+                moyens = st.text_area(
+                    "Moyens principaux",
+                    placeholder="""Ex:
+- Sur la prescription des faits
+- Sur l'absence d'élément intentionnel
+- Sur le défaut de préjudice""",
+                    height=150,
+                    key="moyens_conclusions"
+                )
             
-            client_nom = st.text_input(
-                "Client",
-                placeholder="Nom du client",
-                key="client_nom_acte"
-            )
-            
-            avocat_nom = st.text_input(
-                "Avocat",
-                placeholder="Maître...",
-                key="avocat_nom_acte"
-            )
-        
-        with col2:
-            reference = st.text_input(
-                "Référence",
-                placeholder="N° de procédure, dossier...",
-                key="reference_acte"
-            )
-            
-            infraction = st.text_input(
-                "Infraction(s)",
-                placeholder="Ex: Abus de biens sociaux",
-                key="infraction_acte"
-            )
-            
-            date_faits = st.date_input(
-                "Date des faits",
-                key="date_faits_acte"
-            )
+            else:
+                # Formulaire générique
+                st.markdown("### 📋 Informations essentielles")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    destinataire = st.text_input(
+                        "Destinataire",
+                        placeholder="Ex: Monsieur le Procureur de la République",
+                        key="destinataire_acte"
+                    )
+                    
+                    client_nom = st.text_input(
+                        "Client",
+                        placeholder="Nom du client",
+                        key="client_nom_acte"
+                    )
+                    
+                    avocat_nom = st.text_input(
+                        "Avocat",
+                        placeholder="Maître...",
+                        key="avocat_nom_acte"
+                    )
+                
+                with col2:
+                    reference = st.text_input(
+                        "Référence",
+                        placeholder="N° de procédure, dossier...",
+                        key="reference_acte"
+                    )
+                    
+                    infraction = st.text_input(
+                        "Infraction(s)",
+                        placeholder="Ex: Abus de biens sociaux",
+                        key="infraction_acte"
+                    )
+                    
+                    date_faits = st.date_input(
+                        "Date des faits",
+                        key="date_faits_acte"
+                    )
         
         # Contenu principal
-        st.markdown("### 📝 Contenu de l'acte")
+        st.markdown("### 📝 Points clés à développer")
         
         # Points clés à inclure
         points_cles = st.text_area(
-            "Points clés à développer",
+            "Points clés",
             placeholder="""Ex:
 - Absence d'élément intentionnel
 - Actions réalisées dans l'intérêt de la société
@@ -2674,6 +2831,14 @@ def page_redaction_assistee():
                 value=True,
                 key="inclure_juris"
             )
+            
+            if inclure_jurisprudence:
+                sources_juris = st.multiselect(
+                    "Sources privilégiées",
+                    ["Légifrance", "Cour de cassation", "Conseil d'État", "CJUE", "CEDH"],
+                    default=["Légifrance", "Cour de cassation"],
+                    key="sources_juris"
+                )
         
         # Bouton de génération
         if st.button("🚀 Générer l'acte", type="primary", key="generer_acte"):
@@ -2681,30 +2846,71 @@ def page_redaction_assistee():
                 st.error("❌ Veuillez spécifier le type d'acte")
                 return
             
-            # Construire le prompt
-            prompt = f"""Tu es un avocat expert en droit pénal des affaires.
+            # Construire le prompt selon le type d'acte
+            if "plainte" in type_acte.lower():
+                prompt = f"""Tu es un avocat expert en droit pénal des affaires.
+Rédige une {type_acte} avec les informations suivantes :
+
+Plaignant : {plaignant if 'plaignant' in locals() else 'Non spécifié'}
+Qualité : {qualite_plaignant if 'qualite_plaignant' in locals() else 'Non spécifiée'}
+{"Avocat : " + avocat_nom if 'avocat_nom' in locals() and avocat_nom else ""}
+Mis en cause : {mis_en_cause if 'mis_en_cause' in locals() else 'Non spécifié'}
+Date des faits : {faits_date.strftime('%d/%m/%Y') if 'faits_date' in locals() else 'Non spécifiée'}
+Juridiction : {juridiction if 'juridiction' in locals() else 'Non spécifiée'}
+Infractions : {', '.join(infractions) if 'infractions' in locals() and infractions else 'Non spécifiées'}
+
+Résumé des faits :
+{resume_faits if 'resume_faits' in locals() else 'Non fourni'}
+
+{"Avec constitution de partie civile et demande de dommages-intérêts" if 'constitution_pc' in locals() and constitution_pc else ""}
+
+Points clés supplémentaires :
+{points_cles}"""
+                
+            elif "conclusion" in type_acte.lower():
+                prompt = f"""Tu es un avocat expert en droit pénal des affaires.
+Rédige des {type_acte} avec les informations suivantes :
+
+Type : {type_conclusions if 'type_conclusions' in locals() else 'Conclusions'}
+Client : {client_nom if 'client_nom' in locals() else 'Non spécifié'}
+Procédure n° : {numero_procedure if 'numero_procedure' in locals() else 'Non spécifié'}
+Juridiction : {juridiction if 'juridiction' in locals() else 'Non spécifiée'}
+Partie adverse : {partie_adverse if 'partie_adverse' in locals() else 'Non spécifiée'}
+Audience : {date_audience.strftime('%d/%m/%Y') if 'date_audience' in locals() else 'Non spécifiée'}
+
+Moyens développés :
+{moyens if 'moyens' in locals() else points_cles}"""
+                
+            else:
+                # Prompt générique
+                prompt = f"""Tu es un avocat expert en droit pénal des affaires.
 Rédige un(e) {type_acte} avec les informations suivantes :
 
-Destinataire : {destinataire or 'Non spécifié'}
-Client : {client_nom or 'Non spécifié'}
-Avocat : {avocat_nom or 'Non spécifié'}
-Référence : {reference or 'Non spécifiée'}
-Infraction(s) : {infraction or 'Non spécifiée'}
-Date des faits : {date_faits.strftime('%d/%m/%Y') if date_faits else 'Non spécifiée'}
+Destinataire : {destinataire if 'destinataire' in locals() else 'Non spécifié'}
+Client : {client_nom if 'client_nom' in locals() else 'Non spécifié'}
+Avocat : {avocat_nom if 'avocat_nom' in locals() else 'Non spécifié'}
+Référence : {reference if 'reference' in locals() else 'Non spécifiée'}
+Infraction(s) : {infraction if 'infraction' in locals() else 'Non spécifiée'}
+Date des faits : {date_faits.strftime('%d/%m/%Y') if 'date_faits' in locals() else 'Non spécifiée'}
 
 Points clés à développer :
-{points_cles}
+{points_cles}"""
+            
+            # Ajouter les options communes
+            prompt += f"""
 
 Ton souhaité : {ton}
 Longueur : {longueur}
-{"Inclure des références jurisprudentielles pertinentes" if inclure_jurisprudence else ""}
+{"Inclure des références jurisprudentielles pertinentes (privilégier : " + ", ".join(sources_juris) + ")" if inclure_jurisprudence and 'sources_juris' in locals() else ""}
 
 Structure l'acte de manière professionnelle avec :
 - Un en-tête approprié
 - Une introduction claire
 - Un développement structuré des arguments
 - Une conclusion percutante
-- Les formules de politesse adaptées"""
+- Les formules de politesse adaptées
+
+{"Cite les pièces suivantes : " + ", ".join([f"Pièce n°{i+1} : {p.titre}" for i, p in enumerate(pieces_a_citer)]) if 'pieces_a_citer' in locals() and pieces_a_citer else ""}"""
             
             # Si un style est sélectionné, l'ajouter au prompt
             if selected_style and selected_style in st.session_state.learned_styles:
@@ -2725,7 +2931,7 @@ Structure l'acte de manière professionnelle avec :
                         llm_manager.query_single_llm(
                             provider,
                             prompt,
-                            "Tu es un avocat spécialisé en droit pénal des affaires, expert en rédaction d'actes juridiques."
+                            "Tu es un avocat spécialisé en droit pénal des affaires, expert en rédaction d'actes juridiques. Tu connais parfaitement la jurisprudence française et européenne."
                         )
                     )
                     
@@ -2815,9 +3021,63 @@ Structure l'acte de manière professionnelle avec :
             key="type_style_learn"
         )
         
-        # Sélection des documents modèles
+        # Apprentissage automatique depuis SharePoint
+        if st.button("🎓 Apprendre automatiquement depuis SharePoint", key="auto_learn_from_sharepoint"):
+            if not type_style:
+                st.error("❌ Veuillez spécifier un nom de style")
+            else:
+                with st.spinner("Recherche de modèles dans SharePoint..."):
+                    # Rechercher les documents pertinents
+                    modeles_auto = []
+                    
+                    for doc_id, doc in st.session_state.azure_documents.items():
+                        doc_title_lower = doc.title.lower()
+                        type_style_lower = type_style.lower()
+                        
+                        # Recherche intelligente de modèles
+                        if any(term in type_style_lower for term in ["plainte", "conclusion", "mémoire", "demande", "requête"]):
+                            if any(term in doc_title_lower for term in type_style_lower.split()):
+                                modeles_auto.append(doc)
+                    
+                    if modeles_auto:
+                        st.success(f"✅ {len(modeles_auto)} modèles potentiels trouvés")
+                        
+                        # Analyser automatiquement
+                        if st.button("Analyser ces modèles", key="analyze_auto_models"):
+                            if 'style_analyzer' not in st.session_state:
+                                st.session_state.style_analyzer = StyleAnalyzer()
+                            
+                            patterns = []
+                            for doc in modeles_auto[:10]:  # Limiter à 10
+                                pattern = st.session_state.style_analyzer.analyze_document(doc, type_style)
+                                patterns.append(pattern)
+                                st.caption(f"✓ {doc.title} analysé")
+                            
+                            # Fusionner et sauvegarder
+                            merged_pattern = {
+                                'nombre_documents': len(patterns),
+                                'structure_commune': merge_structures([p.structure for p in patterns]),
+                                'formules_frequentes': merge_formules([p.formules for p in patterns]),
+                                'mise_en_forme_type': merge_formatting([p.mise_en_forme for p in patterns]),
+                                'vocabulaire_cle': merge_vocabulary([p.vocabulaire for p in patterns])
+                            }
+                            
+                            if 'learned_styles' not in st.session_state:
+                                st.session_state.learned_styles = {}
+                            
+                            st.session_state.learned_styles[type_style] = merged_pattern
+                            
+                            st.success(f"✅ Style '{type_style}' appris avec succès!")
+                            
+                            # Afficher un résumé
+                            with st.expander("Voir le résumé du style appris"):
+                                st.json(merged_pattern)
+                    else:
+                        st.warning("⚠️ Aucun modèle trouvé. Essayez avec un nom plus précis.")
+        
+        # Sélection manuelle des documents
         if st.session_state.azure_documents:
-            st.markdown("#### 📚 Sélectionner les documents modèles depuis Azure")
+            st.markdown("#### 📚 Ou sélectionner manuellement les documents modèles")
             
             # Sélection des documents
             docs_modeles = []
@@ -2890,7 +3150,8 @@ Structure l'acte de manière professionnelle avec :
                     with st.expander("Voir le résumé du style appris"):
                         st.json(merged_pattern)
         else:
-            st.warning("⚠️ Aucun document disponible. Chargez d'abord des documents.")
+            if not type_style and (docs_modeles or uploaded_files):
+                st.warning("⚠️ Veuillez spécifier un nom de style")
     
     # Onglet Modèles
     with tabs[2]:
