@@ -1,2 +1,2 @@
 # config/__init__.py
-# Import simple pour éviter les dépendances circulaires
+# Fichier vide pour faire du dossier un module Python
