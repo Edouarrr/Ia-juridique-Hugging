@@ -1,20 +1,21 @@
 # pages/redaction_assistee.py
-"""Page de rédaction assistée"""
+"""Page de rédaction assistée par IA avec analyse de style"""
 
 import streamlit as st
-import asyncio
 import io
-import json
+import asyncio
 from datetime import datetime
 
-from config.app_config import InfractionAffaires
+from config.app_config import LLMProvider
+from models.dataclasses import StylePattern
 from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
 from managers.dynamic_generators import generate_dynamic_templates
-from utils.helpers import clean_key, merge_structures, merge_formules, merge_formatting, merge_vocabulary
+from utils.helpers import clean_key
 
 try:
     from docx import Document as DocxDocument
+    from docx.shared import Pt
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
@@ -23,11 +24,12 @@ def show_page():
     """Affiche la page de rédaction assistée"""
     st.header("📝 Rédaction assistée par IA")
     
-    # Boutons d'accès rapide
-    show_quick_actions()
+    # Initialiser l'analyseur de style
+    if 'style_analyzer' not in st.session_state:
+        st.session_state.style_analyzer = StyleAnalyzer()
     
     # Onglets
-    tabs = st.tabs(["✍️ Rédaction", "🎨 Apprentissage de style", "📚 Modèles"])
+    tabs = st.tabs(["✍️ Rédaction", "📚 Apprentissage de style", "📚 Modèles"])
     
     with tabs[0]:
         show_redaction_tab()
@@ -38,639 +40,221 @@ def show_page():
     with tabs[2]:
         show_templates_tab()
 
-def show_quick_actions():
-    """Affiche les boutons d'accès rapide"""
-    st.markdown("### ⚡ Accès rapide")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("📜 Créer des conclusions", key="quick_conclusions", use_container_width=True):
-            st.session_state.type_acte_input = "Conclusions"
-            st.session_state.quick_action = "conclusions"
-    
-    with col2:
-        if st.button("⚖️ Créer une plainte simple", key="quick_plainte_simple", use_container_width=True):
-            st.session_state.type_acte_input = "Plainte simple"
-            st.session_state.quick_action = "plainte_simple"
-    
-    with col3:
-        if st.button("🏛️ Plainte avec constitution PC", key="quick_plainte_pc", use_container_width=True):
-            st.session_state.type_acte_input = "Plainte avec constitution de partie civile"
-            st.session_state.quick_action = "plainte_pc"
-    
-    # Auto-apprentissage si action rapide
-    if 'quick_action' in st.session_state and st.session_state.quick_action:
-        show_auto_learn_suggestion()
-
-def show_auto_learn_suggestion():
-    """Suggère l'apprentissage automatique de style"""
-    st.info(f"💡 Mode rapide : {st.session_state.type_acte_input}")
-    
-    if st.button("🎓 Apprendre le style depuis mes modèles SharePoint", key="auto_learn_style"):
-        with st.spinner("Recherche et analyse des modèles dans SharePoint..."):
-            learn_style_from_sharepoint()
-
-def learn_style_from_sharepoint():
-    """Apprend le style depuis les documents SharePoint"""
-    modeles_trouves = []
-    
-    # Parcourir les documents SharePoint
-    for doc_id, doc in st.session_state.azure_documents.items():
-        doc_title_lower = doc.title.lower()
-        
-        # Identifier les modèles selon le type d'acte
-        if st.session_state.quick_action == "conclusions":
-            if any(term in doc_title_lower for term in ["conclusion", "mémoire", "réponse"]):
-                modeles_trouves.append(doc)
-        elif st.session_state.quick_action == "plainte_simple":
-            if "plainte" in doc_title_lower and "constitution" not in doc_title_lower:
-                modeles_trouves.append(doc)
-        elif st.session_state.quick_action == "plainte_pc":
-            if "plainte" in doc_title_lower and "constitution" in doc_title_lower:
-                modeles_trouves.append(doc)
-    
-    if modeles_trouves:
-        st.success(f"✅ {len(modeles_trouves)} modèles trouvés !")
-        
-        # Analyser automatiquement
-        if 'style_analyzer' not in st.session_state:
-            st.session_state.style_analyzer = StyleAnalyzer()
-        
-        patterns = []
-        for doc in modeles_trouves[:5]:  # Limiter à 5 modèles
-            pattern = st.session_state.style_analyzer.analyze_document(doc, st.session_state.type_acte_input)
-            patterns.append(pattern)
-            st.caption(f"✓ {doc.title} analysé")
-        
-        # Fusionner et sauvegarder
-        merged_pattern = {
-            'nombre_documents': len(patterns),
-            'structure_commune': merge_structures([p.structure for p in patterns]),
-            'formules_frequentes': merge_formules([p.formules for p in patterns]),
-            'mise_en_forme_type': merge_formatting([p.mise_en_forme for p in patterns]),
-            'vocabulaire_cle': merge_vocabulary([p.vocabulaire for p in patterns])
-        }
-        
-        if 'learned_styles' not in st.session_state:
-            st.session_state.learned_styles = {}
-        
-        style_name = f"Style {st.session_state.type_acte_input} (auto)"
-        st.session_state.learned_styles[style_name] = merged_pattern
-        st.session_state.auto_learned_style = style_name
-        
-        st.success(f"🎨 Style appris et prêt à être utilisé !")
-        
-        # Afficher un aperçu
-        with st.expander("Aperçu du style appris"):
-            st.write("**Structure identifiée :**")
-            for section in merged_pattern['structure_commune'].get('sections_communes', [])[:5]:
-                st.write(f"- {section}")
-            
-            st.write("\n**Formules types détectées :**")
-            for formule in merged_pattern['formules_frequentes'][:5]:
-                st.write(f"- {formule[:100]}...")
-    else:
-        st.warning("⚠️ Aucun modèle trouvé dans SharePoint.")
-
 def show_redaction_tab():
-    """Affiche l'onglet de rédaction"""
-    st.markdown("### 📄 Créer un nouvel acte")
+    """Onglet de rédaction"""
+    st.markdown("### ✍️ Créer un nouvel acte")
     
     # Type d'acte
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns(2)
     
     with col1:
-        default_type = st.session_state.get('type_acte_input', '')
-        
         type_acte = st.text_input(
-            "Type d'acte à rédiger",
-            value=default_type,
-            placeholder="Ex: Plainte avec constitution de partie civile, Conclusions...",
-            key="type_acte_input_field"
+            "Type d'acte",
+            placeholder="Ex: Conclusions en défense, Plainte, Assignation...",
+            key="type_acte_redaction"
+        )
+        
+        client_nom = st.text_input(
+            "Client",
+            placeholder="Nom du client",
+            key="client_nom_acte"
+        )
+        
+        partie_adverse = st.text_input(
+            "Partie adverse",
+            placeholder="Nom de la partie adverse",
+            key="partie_adverse_acte"
         )
     
     with col2:
-        # Utiliser un style appris
-        if 'learned_styles' in st.session_state and st.session_state.learned_styles:
-            use_style = st.checkbox(
-                "Utiliser un style appris", 
-                value='auto_learned_style' in st.session_state,
-                key="use_learned_style"
-            )
-        else:
-            use_style = False
-            st.info("Aucun style appris")
-    
-    # Sélection du style
-    selected_style = None
-    if use_style and st.session_state.learned_styles:
-        default_style_idx = 0
-        if 'auto_learned_style' in st.session_state:
-            style_list = list(st.session_state.learned_styles.keys())
-            if st.session_state.auto_learned_style in style_list:
-                default_style_idx = style_list.index(st.session_state.auto_learned_style)
+        juridiction = st.text_input(
+            "Juridiction",
+            placeholder="Ex: Tribunal judiciaire de Paris",
+            key="juridiction_acte"
+        )
         
-        selected_style = st.selectbox(
-            "Choisir un style",
-            list(st.session_state.learned_styles.keys()),
-            index=default_style_idx,
-            key="select_style_redaction"
+        numero_affaire = st.text_input(
+            "N° RG / Référence",
+            placeholder="Ex: 23/00123",
+            key="numero_affaire_acte"
+        )
+        
+        infraction = st.text_input(
+            "Infraction/Objet",
+            placeholder="Ex: Abus de biens sociaux",
+            key="infraction_acte"
         )
     
-    # Informations spécifiques selon le type
-    if type_acte:
-        show_specific_form(type_acte)
+    # Éléments à inclure
+    st.markdown("### 📋 Éléments à développer")
     
-    # Options de génération
-    show_generation_options()
-    
-    # Bouton de génération
-    if st.button("🚀 Générer l'acte", type="primary", key="generer_acte"):
-        generate_document(type_acte, selected_style)
-
-def show_specific_form(type_acte):
-    """Affiche le formulaire spécifique selon le type d'acte"""
-    if "plainte" in type_acte.lower():
-        show_plainte_form(type_acte)
-    elif "conclusion" in type_acte.lower():
-        show_conclusions_form()
-    else:
-        show_generic_form()
-
-def show_plainte_form(type_acte):
-    """Affiche le formulaire pour une plainte"""
-    st.markdown("#### 📋 Informations pour la plainte")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.session_state.plaignant = st.text_input("Plaignant (votre client)", key="plaignant_nom")
-        st.session_state.qualite_plaignant = st.text_input("Qualité du plaignant", key="plaignant_qualite")
-        
-        if "constitution" in type_acte.lower():
-            st.session_state.avocat_nom = st.text_input("Avocat", placeholder="Maître...", key="avocat_plainte")
-            st.session_state.constitution_pc = st.checkbox("Demander des dommages-intérêts", value=True, key="demande_di")
-    
-    with col2:
-        st.session_state.mis_en_cause = st.text_input("Personne(s) mise(s) en cause", key="mis_en_cause")
-        st.session_state.faits_date = st.date_input("Date des faits", key="date_faits_plainte")
-        st.session_state.juridiction = st.text_input(
-            "Juridiction compétente",
-            value="Tribunal judiciaire de Paris - Pôle économique et financier",
-            key="juridiction_plainte"
-        )
-    
-    # Infractions
-    st.session_state.infractions = st.multiselect(
-        "Infractions visées",
-        [inf.value for inf in InfractionAffaires],
-        key="infractions_plainte"
-    )
-    
-    # Résumé des faits
-    st.session_state.resume_faits = st.text_area(
+    # Faits
+    faits = st.text_area(
         "Résumé des faits",
-        placeholder="Décrivez brièvement les faits reprochés...",
+        placeholder="Décrivez brièvement les faits principaux...",
         height=150,
-        key="resume_faits_plainte"
+        key="faits_acte"
     )
-
-def show_conclusions_form():
-    """Affiche le formulaire pour des conclusions"""
-    st.markdown("#### 📋 Informations pour les conclusions")
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.session_state.client_nom = st.text_input("Client défendu", key="client_conclusions")
-        st.session_state.numero_procedure = st.text_input("N° de procédure", key="num_procedure")
-        st.session_state.juridiction = st.text_input("Juridiction", key="juridiction_conclusions")
-    
-    with col2:
-        st.session_state.partie_adverse = st.text_input("Partie adverse", key="partie_adverse")
-        st.session_state.date_audience = st.date_input("Date d'audience", key="date_audience")
-        st.session_state.type_conclusions = st.selectbox(
-            "Type de conclusions",
-            ["Conclusions en défense", "Conclusions en demande", "Conclusions récapitulatives"],
-            key="type_conclusions_select"
-        )
-    
-    # Moyens
-    st.session_state.moyens = st.text_area(
-        "Moyens principaux",
-        placeholder="""Ex:
-- Sur la prescription des faits
-- Sur l'absence d'élément intentionnel
-- Sur le défaut de préjudice""",
-        height=150,
-        key="moyens_conclusions"
-    )
-
-def show_generic_form():
-    """Affiche un formulaire générique"""
-    st.markdown("### 📋 Informations essentielles")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.session_state.destinataire = st.text_input("Destinataire", key="destinataire_acte")
-        st.session_state.client_nom = st.text_input("Client", key="client_nom_acte")
-        st.session_state.avocat_nom = st.text_input("Avocat", key="avocat_nom_acte")
-    
-    with col2:
-        st.session_state.reference = st.text_input("Référence", key="reference_acte")
-        st.session_state.infraction = st.text_input("Infraction(s)", key="infraction_acte")
-        st.session_state.date_faits = st.date_input("Date des faits", key="date_faits_acte")
-
-def show_generation_options():
-    """Affiche les options de génération"""
-    st.markdown("### 📝 Points clés à développer")
-    
-    st.session_state.points_cles = st.text_area(
-        "Points clés",
+    # Arguments
+    arguments = st.text_area(
+        "Points clés à développer",
         placeholder="""Ex:
 - Absence d'élément intentionnel
-- Actions réalisées dans l'intérêt de la société
-- Bonne foi du dirigeant
-- Préjudice non caractérisé""",
+- Prescription acquise
+- Nullité de la procédure
+- Bonne foi du client""",
         height=150,
-        key="points_cles_acte"
+        key="arguments_acte"
     )
     
-    # Pièces à mentionner
+    # Pièces à citer
     if st.session_state.pieces_selectionnees:
-        st.markdown("#### 📎 Pièces à citer")
+        st.markdown("### 📎 Pièces sélectionnées à citer")
+        pieces_a_citer = []
         
-        st.session_state.pieces_a_citer = []
         for piece_id, piece in st.session_state.pieces_selectionnees.items():
             if st.checkbox(
-                f"Pièce n°{len(st.session_state.pieces_a_citer)+1} : {piece.titre}",
+                f"{piece.titre} ({piece.categorie})",
+                value=True,
                 key=f"cite_piece_{piece_id}"
             ):
-                st.session_state.pieces_a_citer.append(piece)
+                pieces_a_citer.append(piece)
+        
+        st.session_state.pieces_a_citer = pieces_a_citer
     
-    # Options de style
-    st.markdown("### ⚙️ Options de génération")
+    # Style à appliquer
+    st.markdown("### 🎨 Style de rédaction")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.session_state.ton = st.select_slider(
+        # Styles appris disponibles
+        styles_disponibles = ["Style standard"] + list(st.session_state.get('learned_styles', {}).keys())
+        
+        style_choisi = st.selectbox(
+            "Style à appliquer",
+            styles_disponibles,
+            key="style_choisi_acte"
+        )
+        
+        ton_redaction = st.select_slider(
             "Ton",
-            options=["Très formel", "Formel", "Neutre", "Direct", "Combatif"],
+            options=["Très formel", "Formel", "Équilibré", "Direct", "Combatif"],
             value="Formel",
-            key="ton_generation"
+            key="ton_redaction_acte"
         )
     
     with col2:
-        st.session_state.longueur = st.select_slider(
+        longueur_cible = st.select_slider(
             "Longueur",
             options=["Concis", "Standard", "Détaillé", "Très détaillé"],
             value="Standard",
-            key="longueur_generation"
+            key="longueur_acte"
         )
-    
-    with col3:
-        st.session_state.inclure_jurisprudence = st.checkbox(
-            "Inclure des références jurisprudentielles",
-            value=True,
-            key="inclure_juris"
-        )
-
-def generate_document(type_acte, selected_style):
-    """Génère le document avec l'IA"""
-    if not type_acte:
-        st.error("❌ Veuillez spécifier le type d'acte")
-        return
-    
-    # Construire le prompt
-    prompt = build_generation_prompt(type_acte)
-    
-    # Si un style est sélectionné, l'ajouter
-    if selected_style and selected_style in st.session_state.learned_styles:
-        style_info = st.session_state.learned_styles[selected_style]
-        prompt += f"\n\nApplique le style suivant :\n{json.dumps(style_info, ensure_ascii=False, indent=2)}"
-    
-    # Générer avec l'IA
-    llm_manager = MultiLLMManager()
-    
-    with st.spinner("🔄 Génération en cours..."):
-        if llm_manager.clients:
-            provider = list(llm_manager.clients.keys())[0]
+        
+        # Modèle à utiliser
+        if st.checkbox("Utiliser un modèle", key="use_template_check"):
+            modeles_disponibles = list(st.session_state.get('custom_templates', {}).keys())
+            if 'template_to_use' in st.session_state:
+                modeles_disponibles.append("Modèle importé")
             
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            response = loop.run_until_complete(
-                llm_manager.query_single_llm(
-                    provider,
-                    prompt,
-                    "Tu es un avocat spécialisé en droit pénal des affaires, expert en rédaction d'actes juridiques."
+            if modeles_disponibles:
+                modele_choisi = st.selectbox(
+                    "Modèle",
+                    modeles_disponibles,
+                    key="modele_choisi"
                 )
-            )
-            
-            if response['success']:
-                # Appliquer le style si nécessaire
-                contenu_genere = response['response']
-                
-                if selected_style and 'style_analyzer' in st.session_state:
-                    contenu_genere = st.session_state.style_analyzer.generate_with_style(
-                        selected_style,
-                        contenu_genere
-                    )
-                
-                # Afficher le résultat
-                show_generated_document(contenu_genere, type_acte)
             else:
-                st.error(f"❌ Erreur : {response['error']}")
-        else:
-            st.error("❌ Aucune IA disponible")
-
-def build_generation_prompt(type_acte):
-    """Construit le prompt de génération selon le type d'acte"""
-    if "plainte" in type_acte.lower():
-        return build_plainte_prompt(type_acte)
-    elif "conclusion" in type_acte.lower():
-        return build_conclusions_prompt(type_acte)
-    else:
-        return build_generic_prompt(type_acte)
-
-def build_plainte_prompt(type_acte):
-    """Construit le prompt pour une plainte"""
-    prompt = f"""Tu es un avocat expert en droit pénal des affaires.
-Rédige une {type_acte} avec les informations suivantes :
-Plaignant : {st.session_state.get('plaignant', 'Non spécifié')}
-Qualité : {st.session_state.get('qualite_plaignant', 'Non spécifiée')}
-{"Avocat : " + st.session_state.get('avocat_nom', '') if st.session_state.get('avocat_nom') else ""}
-Mis en cause : {st.session_state.get('mis_en_cause', 'Non spécifié')}
-Date des faits : {st.session_state.get('faits_date', 'Non spécifiée')}
-Juridiction : {st.session_state.get('juridiction', 'Non spécifiée')}
-Infractions : {', '.join(st.session_state.get('infractions', [])) if st.session_state.get('infractions') else 'Non spécifiées'}
-Résumé des faits :
-{st.session_state.get('resume_faits', 'Non fourni')}
-{"Avec constitution de partie civile et demande de dommages-intérêts" if st.session_state.get('constitution_pc') else ""}
-Points clés supplémentaires :
-{st.session_state.get('points_cles', '')}"""
+                st.info("Aucun modèle disponible. Créez-en dans l'onglet Modèles.")
     
-    return prompt + build_common_prompt_suffix()
-
-def build_conclusions_prompt(type_acte):
-    """Construit le prompt pour des conclusions"""
-    prompt = f"""Tu es un avocat expert en droit pénal des affaires.
-Rédige des {type_acte} avec les informations suivantes :
-Type : {st.session_state.get('type_conclusions', 'Conclusions')}
-Client : {st.session_state.get('client_nom', 'Non spécifié')}
-Procédure n° : {st.session_state.get('numero_procedure', 'Non spécifié')}
-Juridiction : {st.session_state.get('juridiction', 'Non spécifiée')}
-Partie adverse : {st.session_state.get('partie_adverse', 'Non spécifiée')}
-Audience : {st.session_state.get('date_audience', 'Non spécifiée')}
-Moyens développés :
-{st.session_state.get('moyens', st.session_state.get('points_cles', ''))}"""
-    
-    return prompt + build_common_prompt_suffix()
-
-def build_generic_prompt(type_acte):
-    """Construit un prompt générique"""
-    prompt = f"""Tu es un avocat expert en droit pénal des affaires.
-Rédige un(e) {type_acte} avec les informations suivantes :
-Destinataire : {st.session_state.get('destinataire', 'Non spécifié')}
-Client : {st.session_state.get('client_nom', 'Non spécifié')}
-Avocat : {st.session_state.get('avocat_nom', 'Non spécifié')}
-Référence : {st.session_state.get('reference', 'Non spécifiée')}
-Infraction(s) : {st.session_state.get('infraction', 'Non spécifiée')}
-Date des faits : {st.session_state.get('date_faits', 'Non spécifiée')}
-Points clés à développer :
-{st.session_state.get('points_cles', '')}"""
-    
-    return prompt + build_common_prompt_suffix()
-
-def build_common_prompt_suffix():
-    """Construit la partie commune du prompt"""
-    suffix = f"""
-Ton souhaité : {st.session_state.get('ton', 'Formel')}
-Longueur : {st.session_state.get('longueur', 'Standard')}
-{"Inclure des références jurisprudentielles pertinentes" if st.session_state.get('inclure_jurisprudence') else ""}
-Structure l'acte de manière professionnelle avec :
-- Un en-tête approprié
-- Une introduction claire
-- Un développement structuré des arguments
-- Une conclusion percutante
-- Les formules de politesse adaptées"""
-    
-    if st.session_state.get('pieces_a_citer'):
-        pieces_str = ", ".join([f"Pièce n°{i+1} : {p.titre}" for i, p in enumerate(st.session_state.pieces_a_citer)])
-        suffix += f"\nCite les pièces suivantes : {pieces_str}"
-    
-    return suffix
-
-def show_generated_document(contenu_genere, type_acte):
-    """Affiche le document généré"""
-    st.markdown("### 📄 Acte généré")
-    
-    st.text_area(
-        "Contenu",
-        value=contenu_genere,
-        height=600,
-        key="acte_genere_content"
-    )
-    
-    # Options d'export
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.download_button(
-            "💾 Télécharger (.txt)",
-            contenu_genere,
-            f"{clean_key(type_acte)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            "text/plain",
-            key="download_txt_acte"
-        )
-    
-    with col2:
-        if DOCX_AVAILABLE:
-            # Créer un document Word
-            doc = DocxDocument()
+    # Documents de référence à analyser
+    if st.session_state.azure_documents:
+        with st.expander("📄 Documents de référence (optionnel)"):
+            st.info("Sélectionnez des documents similaires pour guider le style")
+            docs_reference = []
             
-            for paragraph in contenu_genere.split('\n'):
-                doc.add_paragraph(paragraph)
+            for doc_id, doc in list(st.session_state.azure_documents.items())[:10]:
+                if st.checkbox(
+                    doc.title[:80],
+                    key=f"ref_doc_{doc_id}"
+                ):
+                    docs_reference.append(doc_id)
             
-            # Sauvegarder en mémoire
-            docx_buffer = io.BytesIO()
-            doc.save(docx_buffer)
-            docx_buffer.seek(0)
-            
-            st.download_button(
-                "💾 Télécharger (.docx)",
-                docx_buffer.getvalue(),
-                f"{clean_key(type_acte)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="download_docx_acte"
-            )
+            st.session_state.docs_reference_acte = docs_reference
     
-    with col3:
-        if st.button("📧 Préparer l'envoi", key="prepare_send"):
-            st.info("Fonctionnalité d'envoi à implémenter")
+    # Bouton de génération
+    if st.button("🚀 Générer l'acte", type="primary", key="generer_acte"):
+        generate_acte(type_acte, style_choisi)
 
 def show_style_learning_tab():
-    """Affiche l'onglet d'apprentissage de style"""
-    st.markdown("### 🎨 Apprendre un style de rédaction")
+    """Onglet d'apprentissage de style"""
+    st.markdown("### 📚 Apprentissage de style")
     
     st.info("""
-    Cette fonctionnalité analyse vos documents modèles pour apprendre votre style de rédaction :
-    - Structure des documents
-    - Formules types utilisées
-    - Mise en forme préférée
-    - Vocabulaire spécifique
-    
-    **Nouveauté** : Vous pouvez maintenant analyser des documents Word (.docx) directement !
+    Cette fonctionnalité analyse vos documents pour apprendre votre style de rédaction
+    et l'appliquer automatiquement aux nouveaux actes.
     """)
     
-    # Type d'acte pour le style
-    type_style = st.text_input(
-        "Nom du style à apprendre",
-        placeholder="Ex: Plainte pénale, Conclusions de relaxe...",
-        key="type_style_learn"
-    )
+    # Sélection des documents modèles
+    st.markdown("#### 📄 Sélectionner les documents modèles")
     
-    # Apprentissage automatique depuis SharePoint
-    if st.button("🎓 Apprendre automatiquement depuis SharePoint", key="auto_learn_from_sharepoint"):
-        if not type_style:
-            st.error("❌ Veuillez spécifier un nom de style")
-        else:
-            with st.spinner("Recherche de modèles dans SharePoint..."):
-                # Rechercher les documents pertinents
-                modeles_auto = []
-                
-                for doc_id, doc in st.session_state.azure_documents.items():
-                    doc_title_lower = doc.title.lower()
-                    type_style_lower = type_style.lower()
-                    
-                    # Recherche intelligente de modèles
-                    if any(term in type_style_lower for term in ["plainte", "conclusion", "mémoire", "demande", "requête"]):
-                        if any(term in doc_title_lower for term in type_style_lower.split()):
-                            modeles_auto.append(doc)
-                
-                if modeles_auto:
-                    st.success(f"✅ {len(modeles_auto)} modèles potentiels trouvés")
-                    
-                    # Analyser automatiquement
-                    if st.button("Analyser ces modèles", key="analyze_auto_models"):
-                        if 'style_analyzer' not in st.session_state:
-                            st.session_state.style_analyzer = StyleAnalyzer()
-                        
-                        patterns = []
-                        for doc in modeles_auto[:10]:  # Limiter à 10
-                            pattern = st.session_state.style_analyzer.analyze_document(doc, type_style)
-                            patterns.append(pattern)
-                            st.caption(f"✓ {doc.title} analysé")
-                        
-                        # Fusionner et sauvegarder
-                        merged_pattern = {
-                            'nombre_documents': len(patterns),
-                            'structure_commune': merge_structures([p.structure for p in patterns]),
-                            'formules_frequentes': merge_formules([p.formules for p in patterns]),
-                            'mise_en_forme_type': merge_formatting([p.mise_en_forme for p in patterns]),
-                            'vocabulaire_cle': merge_vocabulary([p.vocabulaire for p in patterns])
-                        }
-                        
-                        if 'learned_styles' not in st.session_state:
-                            st.session_state.learned_styles = {}
-                        
-                        st.session_state.learned_styles[type_style] = merged_pattern
-                        
-                        st.success(f"✅ Style '{type_style}' appris avec succès!")
-                        
-                        # Afficher un résumé
-                        with st.expander("Voir le résumé du style appris"):
-                            st.json(merged_pattern)
-                else:
-                    st.warning("⚠️ Aucun modèle trouvé. Essayez avec un nom plus précis.")
-    
-    # Sélection manuelle des documents
-    if st.session_state.azure_documents:
-        st.markdown("#### 📚 Ou sélectionner manuellement les documents modèles")
-        
-        # Sélection des documents
-        docs_modeles = []
-        for doc_id, doc in st.session_state.azure_documents.items():
-            if st.checkbox(
-                f"{doc.title}",
-                key=f"model_{doc_id}",
-                help=f"Source: {doc.source}"
-            ):
-                docs_modeles.append(doc)
-    
-    # Upload de documents Word
-    st.markdown("#### 📤 Ou télécharger des documents Word")
-    
+    # Upload de documents
     uploaded_files = st.file_uploader(
-        "Choisir des fichiers Word (.docx)",
-        type=['docx'],
+        "Charger des documents modèles",
+        type=['docx', 'txt', 'pdf'],
         accept_multiple_files=True,
-        key="upload_word_models"
+        key="upload_style_docs"
     )
     
-    if st.button("🧠 Apprendre le style", key="learn_style") and type_style:
-        if not docs_modeles and not uploaded_files:
-            st.error("❌ Veuillez sélectionner au moins un document modèle")
-            return
+    # Ou sélectionner parmi les documents Azure
+    if st.session_state.azure_documents:
+        st.markdown("##### Ou sélectionner parmi vos documents")
         
-        with st.spinner("Analyse en cours..."):
-            # Initialiser l'analyseur
-            if 'style_analyzer' not in st.session_state:
-                st.session_state.style_analyzer = StyleAnalyzer()
-            
-            patterns = []
-            
-            # Analyser les documents Azure
-            for doc in docs_modeles:
-                pattern = st.session_state.style_analyzer.analyze_document(doc, type_style)
-                patterns.append(pattern)
-            
-            # Analyser les documents Word uploadés
-            if uploaded_files and DOCX_AVAILABLE:
-                for uploaded_file in uploaded_files:
-                    # Lire le contenu du fichier
-                    doc_bytes = uploaded_file.read()
-                    
-                    # Analyser le document Word
-                    pattern = st.session_state.style_analyzer.analyze_word_document(doc_bytes, type_style)
-                    if pattern:
-                        patterns.append(pattern)
-                        st.success(f"✅ {uploaded_file.name} analysé")
-            
-            if patterns:
-                # Fusionner les patterns
-                merged_pattern = {
-                    'nombre_documents': len(patterns),
-                    'structure_commune': merge_structures([p.structure for p in patterns]),
-                    'formules_frequentes': merge_formules([p.formules for p in patterns]),
-                    'mise_en_forme_type': merge_formatting([p.mise_en_forme for p in patterns]),
-                    'vocabulaire_cle': merge_vocabulary([p.vocabulaire for p in patterns])
-                }
+        docs_for_style = []
+        for doc_id, doc in list(st.session_state.azure_documents.items())[:20]:
+            if st.checkbox(
+                f"{doc.title[:80]}",
+                key=f"style_doc_{doc_id}"
+            ):
+                docs_for_style.append(doc_id)
+    
+    # Type d'acte pour ce style
+    style_name = st.text_input(
+        "Nom du style",
+        placeholder="Ex: Conclusions pénales, Plaintes commerciales...",
+        key="style_name_input"
+    )
+    
+    # Analyser le style
+    if st.button("🔍 Analyser le style", key="analyze_style_button"):
+        if style_name and (uploaded_files or docs_for_style):
+            analyze_style(style_name, uploaded_files, docs_for_style)
+    
+    # Afficher les styles appris
+    if st.session_state.get('learned_styles'):
+        st.markdown("### 🎨 Styles appris")
+        
+        for style_name, style_data in st.session_state.learned_styles.items():
+            with st.expander(f"📝 {style_name}"):
+                st.json(style_data.get('summary', {}))
                 
-                # Sauvegarder le style
-                if 'learned_styles' not in st.session_state:
-                    st.session_state.learned_styles = {}
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Documents analysés", style_data.get('doc_count', 0))
+                    st.metric("Longueur moyenne", f"{style_data.get('avg_length', 0):,.0f} mots")
                 
-                st.session_state.learned_styles[type_style] = merged_pattern
-                
-                st.success(f"✅ Style '{type_style}' appris avec succès à partir de {len(patterns)} documents!")
-                
-                # Afficher un résumé
-                with st.expander("Voir le résumé du style appris"):
-                    st.json(merged_pattern)
-    else:
-        if not type_style and (docs_modeles or uploaded_files):
-            st.warning("⚠️ Veuillez spécifier un nom de style")
+                with col2:
+                    if st.button(f"🗑️ Supprimer", key=f"delete_style_{clean_key(style_name)}"):
+                        del st.session_state.learned_styles[style_name]
+                        st.rerun()
 
 def show_templates_tab():
-    """Affiche l'onglet des modèles"""
+    """Onglet des modèles"""
     st.markdown("### 📚 Bibliothèque de modèles")
     
     # Options pour générer des modèles dynamiques
-    st.markdown("#### 🤖 Générer des modèles personnalisés avec l'IA")
+    st.markdown("#### 🤖 Générer des modèles personnalisés")
     
     col1, col2 = st.columns([3, 1])
     
@@ -684,12 +268,12 @@ def show_templates_tab():
     with col2:
         if st.button("🎯 Générer", key="generer_modeles_button"):
             if type_modele_generer:
-                with st.spinner("🤖 Génération de modèles intelligents..."):
+                with st.spinner("Génération de modèles intelligents..."):
                     # Contexte optionnel
                     context = {
                         'client': st.session_state.get('client_nom_acte', ''),
                         'infraction': st.session_state.get('infraction_acte', ''),
-                        'juridiction': st.session_state.get('juridiction', '')
+                        'juridiction': st.session_state.get('juridiction_acte', '')
                     }
                     
                     loop = asyncio.new_event_loop()
@@ -712,25 +296,39 @@ def show_templates_tab():
         for cache_key, modeles in st.session_state.dynamic_templates.items():
             type_clean = cache_key.replace("templates_", "").replace("_", " ").title()
             
-            with st.expander(f"📁 Modèles pour : {type_clean}"):
+            with st.expander(f"📁 Modèles pour : {type_clean}", expanded=True):
                 for titre, contenu in modeles.items():
                     st.markdown(f"**{titre}**")
                     
-                    st.text_area(
-                        "Modèle",
-                        value=contenu,
-                        height=300,
-                        key=f"dyn_template_view_{clean_key(titre)}"
-                    )
+                    # Aperçu du modèle
+                    with st.container():
+                        st.text_area(
+                            "Aperçu",
+                            value=contenu[:500] + "..." if len(contenu) > 500 else contenu,
+                            height=200,
+                            disabled=True,
+                            key=f"preview_dyn_template_{clean_key(titre)}"
+                        )
                     
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
                         if st.button(f"📋 Utiliser", key=f"use_dyn_template_{clean_key(titre)}"):
                             st.session_state.template_to_use = contenu
-                            st.info("Modèle copié. Retournez à l'onglet Rédaction.")
+                            st.session_state.selected_tab = 0  # Retour à l'onglet rédaction
+                            st.success("✅ Modèle copié. Retournez à l'onglet Rédaction.")
                     
                     with col2:
+                        if st.button(f"👁️ Voir complet", key=f"view_dyn_template_{clean_key(titre)}"):
+                            with st.expander("Modèle complet", expanded=True):
+                                st.text_area(
+                                    "Contenu",
+                                    value=contenu,
+                                    height=600,
+                                    key=f"full_dyn_template_{clean_key(titre)}"
+                                )
+                    
+                    with col3:
                         st.download_button(
                             "💾 Télécharger",
                             contenu,
@@ -739,45 +337,249 @@ def show_templates_tab():
                             key=f"download_dyn_template_{clean_key(titre)}"
                         )
                     
-                    with col3:
-                        if st.button("🗑️ Supprimer", key=f"delete_dyn_template_{clean_key(titre)}"):
-                            del st.session_state.dynamic_templates[cache_key]
-                            st.rerun()
-                    
                     st.markdown("---")
     
-    # Option pour importer des modèles
-    st.markdown("#### 📤 Importer des modèles depuis SharePoint")
-    
-    if st.button("🔄 Rechercher des modèles dans SharePoint", key="search_templates_sharepoint"):
-        templates_found = []
+    # Modèles personnalisés existants
+    if st.session_state.get('custom_templates'):
+        st.markdown("#### 📑 Modèles personnalisés")
         
-        for doc_id, doc in st.session_state.azure_documents.items():
-            doc_title_lower = doc.title.lower()
-            
-            # Identifier les modèles
-            if any(term in doc_title_lower for term in ["modèle", "template", "exemple", "type"]):
-                templates_found.append(doc)
-        
-        if templates_found:
-            st.success(f"✅ {len(templates_found)} modèles trouvés")
-            
-            for template in templates_found[:10]:  # Limiter à 10
-                with st.expander(f"📄 {template.title}"):
-                    st.text_area(
-                        "Aperçu",
-                        value=template.content[:1000] + "..." if len(template.content) > 1000 else template.content,
-                        height=200,
-                        key=f"preview_template_{template.id}"
+        for template_name, template_content in st.session_state.custom_templates.items():
+            with st.expander(f"📄 {template_name}"):
+                st.text_area(
+                    "Contenu",
+                    value=template_content,
+                    height=300,
+                    key=f"view_template_{clean_key(template_name)}"
+                )
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"🗑️ Supprimer", key=f"delete_template_{clean_key(template_name)}"):
+                        del st.session_state.custom_templates[template_name]
+                        st.rerun()
+                
+                with col2:
+                    st.download_button(
+                        "💾 Télécharger",
+                        template_content,
+                        f"{clean_key(template_name)}.txt",
+                        "text/plain",
+                        key=f"download_template_{clean_key(template_name)}"
                     )
-                    
-                    if st.button(f"📥 Importer comme modèle", key=f"import_template_{template.id}"):
-                        # Ajouter aux modèles dynamiques
-                        cache_key = f"templates_imported_{clean_key(template.title)}"
-                        if cache_key not in st.session_state.dynamic_templates:
-                            st.session_state.dynamic_templates[cache_key] = {}
+    
+    # Créer un nouveau modèle
+    st.markdown("#### ➕ Créer un nouveau modèle")
+    
+    new_template_name = st.text_input(
+        "Nom du modèle",
+        placeholder="Ex: Conclusions récapitulatives",
+        key="new_template_name"
+    )
+    
+    new_template_content = st.text_area(
+        "Contenu du modèle",
+        placeholder="Utilisez des balises comme [CLIENT], [PARTIE_ADVERSE], [FAITS], etc.",
+        height=300,
+        key="new_template_content"
+    )
+    
+    if st.button("💾 Sauvegarder le modèle", key="save_new_template"):
+        if new_template_name and new_template_content:
+            if 'custom_templates' not in st.session_state:
+                st.session_state.custom_templates = {}
+            
+            st.session_state.custom_templates[new_template_name] = new_template_content
+            st.success(f"✅ Modèle '{new_template_name}' sauvegardé!")
+            st.rerun()
+
+def analyze_style(style_name: str, uploaded_files, doc_ids):
+    """Analyse le style des documents sélectionnés"""
+    with st.spinner("🔄 Analyse du style en cours..."):
+        analyzer = st.session_state.style_analyzer
+        documents = []
+        
+        # Récupérer le contenu des documents
+        if uploaded_files:
+            for file in uploaded_files:
+                content = file.read()
+                if file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                    # Traiter les fichiers Word
+                    if DOCX_AVAILABLE:
+                        doc = DocxDocument(io.BytesIO(content))
+                        text = "\n".join([p.text for p in doc.paragraphs])
+                        documents.append({
+                            'title': file.name,
+                            'content': text
+                        })
+                else:
+                    # Fichiers texte
+                    documents.append({
+                        'title': file.name,
+                        'content': content.decode('utf-8', errors='ignore')
+                    })
+        
+        # Documents Azure
+        for doc_id in doc_ids:
+            if doc_id in st.session_state.azure_documents:
+                doc = st.session_state.azure_documents[doc_id]
+                documents.append({
+                    'title': doc.title,
+                    'content': doc.content
+                })
+        
+        if documents:
+            # Analyser le style
+            style_pattern = analyzer.analyze_documents(documents, style_name)
+            
+            # Sauvegarder le style
+            if 'learned_styles' not in st.session_state:
+                st.session_state.learned_styles = {}
+            
+            st.session_state.learned_styles[style_name] = {
+                'pattern': style_pattern.__dict__,
+                'doc_count': len(documents),
+                'avg_length': sum(len(d['content'].split()) for d in documents) // len(documents),
+                'summary': {
+                    'structure': style_pattern.structure,
+                    'formules_types': style_pattern.formules[:5],
+                    'vocabulaire_freq': dict(list(style_pattern.vocabulaire.items())[:10])
+                }
+            }
+            
+            st.success(f"✅ Style '{style_name}' appris avec succès!")
+            st.info(f"📊 {len(documents)} documents analysés")
+
+def generate_acte(type_acte: str, style_choisi: str):
+    """Génère l'acte avec le style choisi"""
+    if not type_acte:
+        st.error("❌ Veuillez spécifier le type d'acte")
+        return
+    
+    # Construire le prompt
+    prompt = build_generation_prompt(type_acte, style_choisi)
+    
+    # Générer avec l'IA
+    llm_manager = MultiLLMManager()
+    
+    with st.spinner("🔄 Génération en cours..."):
+        if llm_manager.clients:
+            # Utiliser le premier provider disponible
+            provider = list(llm_manager.clients.keys())[0]
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            response = loop.run_until_complete(
+                llm_manager.query_single_llm(
+                    provider,
+                    prompt,
+                    "Tu es un avocat expert en droit pénal des affaires, spécialisé dans la rédaction d'actes juridiques."
+                )
+            )
+            
+            if response['success']:
+                # Afficher le résultat
+                st.markdown("### 📄 Acte généré")
+                
+                # Zone d'édition
+                acte_genere = st.text_area(
+                    "Vous pouvez modifier l'acte généré",
+                    value=response['response'],
+                    height=600,
+                    key="acte_genere_edit"
+                )
+                
+                # Options d'export
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.download_button(
+                        "💾 Télécharger (.txt)",
+                        acte_genere,
+                        f"{clean_key(type_acte)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        "text/plain",
+                        key="download_txt_acte"
+                    )
+                
+                with col2:
+                    if DOCX_AVAILABLE:
+                        # Créer un document Word
+                        doc = DocxDocument()
+                        doc.add_heading(type_acte, 0)
                         
-                        st.session_state.dynamic_templates[cache_key][f"📄 {template.title}"] = template.content
-                        st.success(f"✅ Modèle '{template.title}' importé")
+                        # Ajouter le contenu
+                        for paragraph in acte_genere.split('\n'):
+                            if paragraph.strip():
+                                doc.add_paragraph(paragraph)
+                        
+                        # Sauvegarder en mémoire
+                        docx_buffer = io.BytesIO()
+                        doc.save(docx_buffer)
+                        docx_buffer.seek(0)
+                        
+                        st.download_button(
+                            "💾 Télécharger (.docx)",
+                            docx_buffer.getvalue(),
+                            f"{clean_key(type_acte)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key="download_docx_acte"
+                        )
+                
+                with col3:
+                    if st.button("📧 Préparer l'envoi", key="prepare_send"):
+                        st.info("Fonctionnalité d'envoi à implémenter")
+            else:
+                st.error(f"❌ Erreur : {response['error']}")
         else:
-            st.info("Aucun modèle trouvé dans SharePoint")
+            st.error("❌ Aucune IA disponible")
+
+def build_generation_prompt(type_acte: str, style_choisi: str) -> str:
+    """Construit le prompt pour la génération"""
+    prompt = f"Rédige un(e) {type_acte} professionnel(le) en droit pénal des affaires.\n\n"
+    
+    # Ajouter les informations du formulaire
+    if st.session_state.get('client_nom_acte'):
+        prompt += f"Client : {st.session_state.client_nom_acte}\n"
+    
+    if st.session_state.get('partie_adverse_acte'):
+        prompt += f"Partie adverse : {st.session_state.partie_adverse_acte}\n"
+    
+    if st.session_state.get('juridiction_acte'):
+        prompt += f"Juridiction : {st.session_state.juridiction_acte}\n"
+    
+    if st.session_state.get('numero_affaire_acte'):
+        prompt += f"Référence : {st.session_state.numero_affaire_acte}\n"
+    
+    if st.session_state.get('infraction_acte'):
+        prompt += f"Infraction/Objet : {st.session_state.infraction_acte}\n"
+    
+    # Ajouter les faits
+    if st.session_state.get('faits_acte'):
+        prompt += f"\nFaits :\n{st.session_state.faits_acte}\n"
+    
+    # Ajouter les arguments
+    if st.session_state.get('arguments_acte'):
+        prompt += f"\nPoints clés à développer :\n{st.session_state.arguments_acte}\n"
+    
+    # Ajouter les références aux pièces
+    if st.session_state.get('pieces_a_citer'):
+        prompt += "\nPièces à citer :\n"
+        for i, piece in enumerate(st.session_state.pieces_a_citer, 1):
+            prompt += f"- Pièce n°{i} : {piece.titre}\n"
+    
+    # Ajouter les instructions de style
+    if style_choisi != "Style standard" and style_choisi in st.session_state.get('learned_styles', {}):
+        style_data = st.session_state.learned_styles[style_choisi]
+        prompt += f"\nAppliquer le style '{style_choisi}' avec les caractéristiques suivantes :\n"
+        prompt += f"- Structure type : {style_data['pattern']['structure']}\n"
+        prompt += f"- Formules caractéristiques : {style_data['pattern']['formules'][:3]}\n"
+    
+    # Ajouter les paramètres de rédaction
+    prompt += f"\nTon : {st.session_state.get('ton_redaction_acte', 'Formel')}\n"
+    prompt += f"Longueur : {st.session_state.get('longueur_acte', 'Standard')}\n"
+    
+    # Ajouter le modèle si sélectionné
+    if st.session_state.get('use_template_check') and st.session_state.get('template_to_use'):
+        prompt += f"\nUtiliser le modèle suivant comme base :\n{st.session_state.template_to_use}\n"
+    
+    return prompt
