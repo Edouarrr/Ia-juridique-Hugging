@@ -1,5 +1,5 @@
 # managers/azure_blob_manager.py
-"""Gestionnaire pour Azure Blob Storage avec navigation complète"""
+"""Gestionnaire pour Azure Blob Storage"""
 
 import os
 import io
@@ -26,7 +26,7 @@ except ImportError:
     logger.warning("Module python-docx non disponible")
 
 from models.dataclasses import Document
-
+from utils.helpers import clean_env_for_azure
 
 class AzureBlobManager:
     """Gestionnaire pour Azure Blob Storage avec navigation dans les dossiers"""
@@ -44,7 +44,7 @@ class AzureBlobManager:
         """Initialise le client Azure Blob"""
         try:
             # Nettoyer l'environnement pour Hugging Face
-            self._clean_env_for_azure()
+            clean_env_for_azure()
             
             connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
             if connection_string and AZURE_AVAILABLE:
@@ -58,18 +58,6 @@ class AzureBlobManager:
         except Exception as e:
             logger.error(f"Erreur initialisation Azure Blob : {e}")
             self.blob_service_client = None
-    
-    def _clean_env_for_azure(self):
-        """Nettoie l'environnement pour Azure sur Hugging Face Spaces"""
-        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 
-                      'NO_PROXY', 'no_proxy', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE']
-        
-        for var in proxy_vars:
-            if var in os.environ:
-                del os.environ[var]
-        
-        os.environ['CURL_CA_BUNDLE'] = ""
-        os.environ['REQUESTS_CA_BUNDLE'] = ""
     
     def is_connected(self) -> bool:
         """Vérifie si la connexion est établie"""
