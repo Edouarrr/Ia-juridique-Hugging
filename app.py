@@ -16,13 +16,20 @@ if sys.stdout.encoding != 'utf-8':
 
 # PAS de dotenv sur Hugging Face Spaces - les variables sont dans Settings > Variables and secrets
 
+# app.py - Ajoutez après les imports, avant main()
 import os
-from config.app_config import APP_CONFIG
-from utils.styles import load_custom_css
-from utils.helpers import initialize_session_state
-from managers.azure_blob_manager import AzureBlobManager
-from managers.azure_search_manager import AzureSearchManager
 
+# DIAGNOSTIC TEMPORAIRE - À RETIRER APRÈS TEST
+print("=== DIAGNOSTIC AU DÉMARRAGE ===")
+print(f"AZURE_STORAGE_CONNECTION_STRING: {bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING'))}")
+print(f"AZURE_SEARCH_ENDPOINT: {bool(os.getenv('AZURE_SEARCH_ENDPOINT'))}")
+print(f"AZURE_SEARCH_KEY: {bool(os.getenv('AZURE_SEARCH_KEY'))}")
+
+# Afficher les premières lettres pour vérifier
+conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+if conn_str:
+    print(f"Connection string commence par: {conn_str[:30]}...")
+    
 def main():
     """Interface principale de l'application"""
     
