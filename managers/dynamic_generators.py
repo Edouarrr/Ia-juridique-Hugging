@@ -2,13 +2,15 @@
 """Générateurs dynamiques pour prompts et templates"""
 
 import json
+import re
 import logging
 import asyncio
 from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
-from managers.multi_llm_manager import MultiLLMManager, LLMProvider
+from managers.multi_llm_manager import MultiLLMManager
+from config.app_config import LLMProvider
 
 
 async def generate_dynamic_search_prompts(search_query: str, context: str = "") -> Dict[str, Dict[str, List[str]]]:
@@ -73,7 +75,6 @@ techniquement précis et adaptés au contexte du droit pénal économique franç
         
         if response['success']:
             # Extraire le JSON de la réponse
-            import re
             json_match = re.search(r'\{[\s\S]*\}', response['response'])
             if json_match:
                 try:
@@ -172,7 +173,6 @@ Retourne un JSON avec 3 modèles fusionnés."""
         
         # Extraire le JSON
         if response_text:
-            import re
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
                 try:
