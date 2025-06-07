@@ -87,6 +87,24 @@ print(f"AZURE_SEARCH_ENDPOINT: {os.getenv('AZURE_SEARCH_ENDPOINT')}")
 print(f"AZURE_SEARCH_KEY: {'SET' if os.getenv('AZURE_SEARCH_KEY') else 'NOT SET'}")
 print("==================")
 
+# ================== FIX POUR HUGGING FACE SPACES ==================
+def clean_env_for_azure():
+    """Nettoie l'environnement pour Azure sur Hugging Face Spaces"""
+    # Supprimer les variables de proxy qui interfèrent avec Azure
+    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 
+                  'NO_PROXY', 'no_proxy', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE']
+    
+    for var in proxy_vars:
+        if var in os.environ:
+            del os.environ[var]
+    
+    # Désactiver les proxies dans requests
+    os.environ['CURL_CA_BUNDLE'] = ""
+    os.environ['REQUESTS_CA_BUNDLE'] = ""
+    
+# Appeler cette fonction AVANT toute initialisation Azure
+clean_env_for_azure()
+
 # ================== CONFIGURATION CENTRALISÉE ==================
 class AppConfig:
     """Configuration centralisée de l'application"""
@@ -374,40 +392,48 @@ class AzureSearchManager:
             self.openai_client = None
     
     def _init_clients(self):
-        """Initialise les clients Azure Search et OpenAI"""
-        try:
-            # Azure Search
-            search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-            search_key = os.getenv('AZURE_SEARCH_KEY')
+    """Initialise les clients Azure Search et OpenAI"""
+    try:
+        # Nettoyer l'environnement pour Hugging Face
+        clean_env_for_azure()
+        
+        # Azure Search
+        search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+        search_key = os.getenv('AZURE_SEARCH_KEY')
+        
+        if search_endpoint and search_key and AZURE_AVAILABLE:
+            self.index_client = SearchIndexClient(
+                endpoint=search_endpoint,
+                credential=AzureKeyCredential(search_key)
+            )
             
-            if search_endpoint and search_key and AZURE_AVAILABLE:
-                self.index_client = SearchIndexClient(
-                    endpoint=search_endpoint,
-                    credential=AzureKeyCredential(search_key)
-                )
-                
-                self.search_client = SearchClient(
-                    endpoint=search_endpoint,
-                    index_name=AppConfig.SEARCH_INDEX_NAME,
-                    credential=AzureKeyCredential(search_key)
-                )
-                
-                logger.info("Client Azure Search initialisé")
+            self.search_client = SearchClient(
+                endpoint=search_endpoint,
+                index_name=AppConfig.SEARCH_INDEX_NAME,
+                credential=AzureKeyCredential(search_key)
+            )
             
-            # OpenAI pour les embeddings
-            openai_key = os.getenv('AZURE_OPENAI_KEY')
-            openai_endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+            logger.info("Client Azure Search initialisé")
+        
+        # OpenAI pour les embeddings
+        openai_key = os.getenv('AZURE_OPENAI_KEY')
+        openai_endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+        
+        if openai_key and openai_endpoint and AzureOpenAI:
+            # Créer le client sans paramètres proxy
+            self.openai_client = AzureOpenAI(
+                azure_endpoint=openai_endpoint,
+                api_key=openai_key,
+                api_version="2024-02-01"
+            )
+            logger.info("Client OpenAI pour embeddings initialisé")
             
-            if openai_key and openai_endpoint and AzureOpenAI:
-                self.openai_client = AzureOpenAI(
-                    azure_endpoint=openai_endpoint,
-                    api_key=openai_key,
-                    api_version="2024-02-01"
-                )
-                logger.info("Client OpenAI pour embeddings initialisé")
-                
-        except Exception as e:
-            logger.error(f"Erreur initialisation Azure Search: {e}")
+    except Exception as e:
+        logger.error(f"Erreur initialisation Azure Search: {e}")
+        # Ne pas propager l'erreur pour permettre à l'app de continuer
+        self.search_client = None
+        self.index_client = None
+        self.openai_client = None
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Génère un embedding pour un texte"""
@@ -1081,8 +1107,12 @@ class MultiLLMManager:
         self.executor = ThreadPoolExecutor(max_workers=5)
     
     def _initialize_clients(self) -> Dict[LLMProvider, Any]:
-        """Initialise les clients LLM"""
-        clients = {}
+    """Initialise les clients LLM"""
+    # Nettoyer l'environnement pour Hugging Face
+    clean_env_for_azure()
+    
+    clients = {}
+    # ... reste du code
         
         # Azure OpenAI
         if self.configs[LLMProvider.AZURE_OPENAI]['key']:
