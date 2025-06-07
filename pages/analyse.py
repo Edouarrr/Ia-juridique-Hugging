@@ -9,15 +9,9 @@ from typing import Optional
 
 from config import TYPES_INFRACTIONS, MESSAGES
 from models import AnalyseJuridique, Infraction, Personne, TypePersonne
-from managers import (
-    LLMManager, 
-    DocumentManager, 
-    JurisprudenceVerifier,
-    display_jurisprudence_verification,
-    display_model_selector,
-    display_import_interface,
-    display_export_interface
-)
+from managers.llm_manager import LLMManager, display_model_selector
+from managers.document_manager import DocumentManager, display_import_interface, display_export_interface
+from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
 from utils import load_custom_css, create_alert_box, create_section_divider, format_date
 
 def show():
