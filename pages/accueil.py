@@ -4,20 +4,45 @@
 import streamlit as st
 from datetime import datetime
 
-from config.app_config import APP_TITLE, APP_VERSION, APP_ICON, TYPES_INFRACTIONS, MESSAGES
-from utils.styles import load_custom_css, create_header, format_metric_card, create_alert_box
+# Import sécurisé avec valeurs par défaut
+try:
+    from config.app_config import APP_TITLE, APP_VERSION, APP_ICON, TYPES_INFRACTIONS
+except ImportError:
+    APP_TITLE = "Assistant Pénal des Affaires IA"
+    APP_VERSION = "3.0.0"
+    APP_ICON = "⚖️"
+    TYPES_INFRACTIONS = [
+        "Abus de biens sociaux",
+        "Abus de confiance",
+        "Corruption",
+        "Fraude fiscale",
+        "Blanchiment"
+    ]
+
+try:
+    from utils.styles import load_custom_css, format_metric_card
+except ImportError:
+    def load_custom_css():
+        pass
+    def format_metric_card(title, value, color="primary"):
+        return f"<div style='background-color: #f5f5f5; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'><h4>{title}</h4><p>{value}</p></div>"
 
 
 def show():
     """Affiche la page d'accueil"""
-    load_custom_css()
+    # Charger les styles CSS si disponibles
+    try:
+        load_custom_css()
+    except:
+        pass
     
-    # Titre principal - Utilisons st.title au lieu de HTML pour éviter la duplication
+    # Titre principal
     st.title(f"{APP_ICON} {APP_TITLE}")
     st.markdown("Intelligence artificielle au service du droit pénal économique")
     
     # Message de bienvenue
-    st.markdown("## 👋 " + MESSAGES["welcome"])
+    st.markdown("## 👋 Bienvenue dans l'Assistant Pénal des Affaires IA")
+    st.info("Cette plateforme utilise l'intelligence artificielle pour vous accompagner dans vos analyses juridiques en droit pénal des affaires.")
     
     # Section des fonctionnalités principales
     st.markdown("## 🚀 Fonctionnalités principales")
@@ -25,34 +50,37 @@ def show():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown(format_metric_card(
-            "🔍 Recherche intelligente",
-            "Documents & Jurisprudence",
-            color="primary"
-        ), unsafe_allow_html=True)
+        st.markdown("""
+        <div style='background-color: #f5f5f5; padding: 1.5rem; border-radius: 10px; height: 200px;'>
+            <h3 style='color: #1a237e;'>🔍 Recherche intelligente</h3>
+            <p>Explorez vos documents SharePoint et recherchez dans la jurisprudence</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         if st.button("Accéder à la recherche", key="btn_recherche", use_container_width=True):
-            st.info("Utilisez le menu de navigation pour accéder à la recherche")
+            st.info("👉 Utilisez le menu de navigation à gauche pour accéder à la recherche")
     
     with col2:
-        st.markdown(format_metric_card(
-            "📋 Analyse juridique",
-            "IA & Insights",
-            color="success"
-        ), unsafe_allow_html=True)
+        st.markdown("""
+        <div style='background-color: #f5f5f5; padding: 1.5rem; border-radius: 10px; height: 200px;'>
+            <h3 style='color: #4caf50;'>📋 Analyse juridique</h3>
+            <p>Analysez vos documents avec l'aide de l'IA et générez des insights</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         if st.button("Lancer une analyse", key="btn_analyse", use_container_width=True):
-            st.info("Utilisez le menu de navigation pour accéder à l'analyse")
+            st.info("👉 Utilisez le menu de navigation à gauche pour accéder à l'analyse")
     
     with col3:
-        st.markdown(format_metric_card(
-            "💬 Assistant interactif",
-            "Questions & Réponses",
-            color="info"
-        ), unsafe_allow_html=True)
+        st.markdown("""
+        <div style='background-color: #f5f5f5; padding: 1.5rem; border-radius: 10px; height: 200px;'>
+            <h3 style='color: #2196f3;'>💬 Assistant interactif</h3>
+            <p>Posez vos questions juridiques et obtenez des réponses instantanées</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         if st.button("Démarrer l'assistant", key="btn_assistant", use_container_width=True):
-            st.info("Utilisez le menu de navigation pour accéder à l'assistant")
+            st.info("👉 Utilisez le menu de navigation à gauche pour accéder à l'assistant")
     
     # Statistiques et métriques
     st.markdown("---")
@@ -94,57 +122,113 @@ def show():
     st.markdown("---")
     st.markdown("## 💡 Aide rapide")
     
-    with st.expander("🎯 Comment démarrer ?"):
+    # Comment démarrer
+    with st.expander("🎯 Comment démarrer ?", expanded=True):
         st.markdown("""
-        1. **Recherchez vos documents** : Utilisez la fonction de recherche pour explorer vos documents SharePoint
-        2. **Sélectionnez les pièces pertinentes** : Organisez vos documents par catégorie
-        3. **Lancez une analyse** : Utilisez l'IA pour analyser vos documents
-        4. **Générez des documents** : Créez des plaintes, conclusions ou courriers
-        5. **Consultez l'assistant** : Posez vos questions juridiques spécifiques
+        ### Étapes pour bien commencer :
+        
+        1. **📂 Recherchez vos documents**
+           - Utilisez la fonction de recherche pour explorer vos documents SharePoint
+           - Naviguez dans les dossiers et sélectionnez les fichiers pertinents
+        
+        2. **📌 Sélectionnez les pièces pertinentes**
+           - Organisez vos documents par catégorie
+           - Préparez votre dossier pour l'analyse
+        
+        3. **🤖 Lancez une analyse**
+           - Utilisez l'IA pour analyser vos documents
+           - Obtenez des insights juridiques pertinents
+        
+        4. **📝 Générez des documents**
+           - Créez des plaintes, conclusions ou courriers
+           - Utilisez les modèles adaptés à votre besoin
+        
+        5. **💬 Consultez l'assistant**
+           - Posez vos questions juridiques spécifiques
+           - Obtenez des réponses personnalisées
         """)
     
+    # Types d'infractions
     with st.expander("📚 Types d'infractions supportées"):
+        st.markdown("### Infractions prises en charge par l'application :")
+        
         # Afficher les infractions en colonnes
-        infractions_cols = st.columns(3)
-        for i, infraction in enumerate(TYPES_INFRACTIONS):
-            with infractions_cols[i % 3]:
+        cols = st.columns(3)
+        for i, infraction in enumerate(TYPES_INFRACTIONS[:15]):  # Limiter à 15 pour éviter les erreurs
+            with cols[i % 3]:
                 st.write(f"• {infraction}")
+        
+        if len(TYPES_INFRACTIONS) > 15:
+            st.info(f"... et {len(TYPES_INFRACTIONS) - 15} autres infractions")
     
+    # Configuration requise
     with st.expander("🔧 Configuration requise"):
         st.markdown("""
-        **Services Azure nécessaires :**
-        - ✅ Azure Blob Storage (pour accéder à SharePoint)
-        - ✅ Azure Search (pour la recherche vectorielle)
-        - ✅ Azure OpenAI (pour les embeddings)
+        ### Services Azure nécessaires :
+        - ✅ **Azure Blob Storage** - Pour accéder à vos documents SharePoint
+        - ✅ **Azure Search** - Pour la recherche vectorielle avancée
+        - ✅ **Azure OpenAI** - Pour les embeddings et l'analyse
         
-        **IA supportées :**
-        - Claude (Anthropic)
-        - GPT-4 (OpenAI/Azure)
-        - Gemini (Google)
-        - Perplexity
-        - Mistral
+        ### IA supportées :
+        - 🤖 **Claude** (Anthropic) - Pour les analyses juridiques complexes
+        - 🤖 **GPT-4** (OpenAI/Azure) - Pour la génération de contenu
+        - 🤖 **Gemini** (Google) - Pour les recherches contextuelles
+        - 🤖 **Perplexity** - Pour les recherches web avancées
+        - 🤖 **Mistral** - Pour les tâches spécialisées
+        
+        ### Configuration minimale :
+        - Connexion internet stable
+        - Navigateur moderne (Chrome, Firefox, Edge)
+        - Accès aux services Azure configurés
         """)
     
-    # Section actualités/mises à jour
+    # Section actualités
     st.markdown("---")
     st.markdown("## 📰 Actualités juridiques")
     
-    # Simuler des actualités
-    actualites = [
-        {
-            "titre": "Nouvelle jurisprudence sur l'abus de biens sociaux",
-            "date": "15 juin 2025",
-            "description": "La Cour de cassation précise les conditions de caractérisation..."
-        },
-        {
-            "titre": "Réforme du droit pénal des affaires",
-            "date": "10 juin 2025",
-            "description": "Le projet de loi renforçant la lutte contre la corruption..."
-        }
-    ]
+    # Colonnes pour les actualités
+    col1, col2 = st.columns(2)
     
-    for actu in actualites:
-        with st.container():
-            st.markdown(f"### {actu['titre']}")
-            st.caption(f"📅 {actu['date']}")
-            st.info(actu['description'])
+    with col1:
+        st.markdown("""
+        <div style='background-color: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid #1a237e;'>
+            <h4 style='margin: 0; color: #1a237e;'>Nouvelle jurisprudence ABS</h4>
+            <p style='margin: 0.5rem 0; color: #666; font-size: 0.9rem;'>15 juin 2025</p>
+            <p style='margin: 0;'>La Cour de cassation précise les conditions de caractérisation de l'abus de biens sociaux en cas de confusion de patrimoine...</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style='background-color: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid #4caf50;'>
+            <h4 style='margin: 0; color: #4caf50;'>Guide conformité AFA</h4>
+            <p style='margin: 0.5rem 0; color: #666; font-size: 0.9rem;'>10 juin 2025</p>
+            <p style='margin: 0;'>L'Agence française anticorruption publie ses nouvelles recommandations pour les programmes de conformité...</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Footer
+    st.markdown("---")
+    
+    # Informations de version
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown(f"**Version** : {APP_VERSION}")
+    
+    with col2:
+        st.markdown(f"**Dernière mise à jour** : {datetime.now().strftime('%d/%m/%Y')}")
+    
+    with col3:
+        st.markdown("**Support** : contact@assistant-penal.ai")
+    
+    # Copyright
+    st.markdown(
+        f"""
+        <div style='text-align: center; color: #666; padding: 1rem; margin-top: 2rem;'>
+            <p>© 2025 {APP_TITLE} - Tous droits réservés</p>
+            <p style='font-size: 0.9rem;'>Développé avec ❤️ pour les professionnels du droit</p>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
