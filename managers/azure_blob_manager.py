@@ -1,277 +1,208 @@
-# managers/multi_llm_manager.py
-"""Gestionnaire pour interroger plusieurs LLMs en parallèle"""
+# managers/azure_blob_manager.py
+"""Gestionnaire pour Azure Blob Storage avec navigation complète"""
 
 import os
+import io
 import logging
-import asyncio
-from typing import Dict, List, Any, Optional
-from concurrent.futures import ThreadPoolExecutor
-from enum import Enum
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Imports conditionnels pour les IA
+# Vérifier la disponibilité d'Azure
 try:
-    from openai import OpenAI, AzureOpenAI
-    OPENAI_AVAILABLE = True
+    from azure.storage.blob import BlobServiceClient
+    AZURE_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
-    logger.warning("OpenAI non disponible")
+    AZURE_AVAILABLE = False
+    logger.warning("Modules Azure non disponibles")
 
+# Import conditionnel pour docx
 try:
-    import anthropic
-    ANTHROPIC_AVAILABLE = True
+    from docx import Document as DocxDocument
+    DOCX_AVAILABLE = True
 except ImportError:
-    ANTHROPIC_AVAILABLE = False
-    logger.warning("Anthropic non disponible")
+    DOCX_AVAILABLE = False
+    logger.warning("Module python-docx non disponible")
 
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-    logger.warning("Gemini non disponible")
-
-from config import LLM_CONFIGS
+from models.dataclasses import Document
 
 
-class LLMProvider(Enum):
-    """Providers LLM disponibles"""
-    AZURE_OPENAI = "Azure OpenAI (GPT-4)"
-    CLAUDE_OPUS = "Claude Opus 4"
-    CHATGPT_4O = "ChatGPT 4o"
-    GEMINI = "Google Gemini"
-    PERPLEXITY = "Perplexity AI"
-
-
-class MultiLLMManager:
-    """Gestionnaire pour interroger plusieurs LLMs"""
+class AzureBlobManager:
+    """Gestionnaire pour Azure Blob Storage avec navigation dans les dossiers"""
     
     def __init__(self):
-        self.configs = LLM_CONFIGS
-        self.clients = self._initialize_clients()
-        self.executor = ThreadPoolExecutor(max_workers=5)
+        self.blob_service_client = None
+        self.container_client = None
+        try:
+            self._init_blob_client()
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation d'AzureBlobManager : {e}")
+            self.blob_service_client = None
     
-    def _initialize_clients(self) -> Dict[LLMProvider, Any]:
-        """Initialise les clients LLM"""
-        clients = {}
-        
-        # Azure OpenAI
-        if self.configs[LLMProvider.AZURE_OPENAI]['key'] and OPENAI_AVAILABLE:
-            try:
-                clients[LLMProvider.AZURE_OPENAI] = AzureOpenAI(
-                    azure_endpoint=self.configs[LLMProvider.AZURE_OPENAI]['endpoint'],
-                    api_key=self.configs[LLMProvider.AZURE_OPENAI]['key'],
-                    api_version=self.configs[LLMProvider.AZURE_OPENAI]['api_version']
-                )
-            except Exception as e:
-                logger.warning(f"Azure OpenAI non disponible: {e}")
-        
-        # Claude
-        if self.configs[LLMProvider.CLAUDE_OPUS]['api_key'] and ANTHROPIC_AVAILABLE:
-            try:
-                clients[LLMProvider.CLAUDE_OPUS] = anthropic.Anthropic(
-                    api_key=self.configs[LLMProvider.CLAUDE_OPUS]['api_key']
-                )
-            except Exception as e:
-                logger.warning(f"Claude non disponible: {e}")
-        
-        # ChatGPT
-        if self.configs[LLMProvider.CHATGPT_4O]['api_key'] and OPENAI_AVAILABLE:
-            try:
-                clients[LLMProvider.CHATGPT_4O] = OpenAI(
-                    api_key=self.configs[LLMProvider.CHATGPT_4O]['api_key']
-                )
-            except Exception as e:
-                logger.warning(f"ChatGPT non disponible: {e}")
-        
-        # Gemini
-        if self.configs[LLMProvider.GEMINI]['api_key'] and GEMINI_AVAILABLE:
-            try:
-                genai.configure(api_key=self.configs[LLMProvider.GEMINI]['api_key'])
-                clients[LLMProvider.GEMINI] = genai.GenerativeModel(
-                    self.configs[LLMProvider.GEMINI]['model']
-                )
-            except Exception as e:
-                logger.warning(f"Gemini non disponible: {e}")
-        
-        # Perplexity
-        if self.configs[LLMProvider.PERPLEXITY]['api_key'] and OPENAI_AVAILABLE:
-            try:
-                clients[LLMProvider.PERPLEXITY] = OpenAI(
-                    api_key=self.configs[LLMProvider.PERPLEXITY]['api_key'],
-                    base_url="https://api.perplexity.ai"
-                )
-            except Exception as e:
-                logger.warning(f"Perplexity non disponible: {e}")
-        
-        return clients
+    def _init_blob_client(self):
+        """Initialise le client Azure Blob"""
+        try:
+            # Nettoyer l'environnement pour Hugging Face
+            self._clean_env_for_azure()
+            
+            connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+            if connection_string and AZURE_AVAILABLE:
+                self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+                logger.info("Client Azure Blob Storage initialisé avec succès")
+            else:
+                if not connection_string:
+                    logger.warning("AZURE_STORAGE_CONNECTION_STRING non définie")
+                if not AZURE_AVAILABLE:
+                    logger.warning("Modules Azure non disponibles")
+        except Exception as e:
+            logger.error(f"Erreur initialisation Azure Blob : {e}")
+            self.blob_service_client = None
     
-    async def query_single_llm(self, 
-                              provider: LLMProvider, 
-                              prompt: str,
-                              system_prompt: str = None) -> Dict[str, Any]:
-        """Interroge un seul LLM"""
+    def _clean_env_for_azure(self):
+        """Nettoie l'environnement pour Azure sur Hugging Face Spaces"""
+        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 
+                      'NO_PROXY', 'no_proxy', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE']
         
-        if provider not in self.clients:
-            return {
-                'provider': provider.value,
-                'success': False,
-                'error': 'Provider non configuré',
-                'response': None
-            }
+        for var in proxy_vars:
+            if var in os.environ:
+                del os.environ[var]
+        
+        os.environ['CURL_CA_BUNDLE'] = ""
+        os.environ['REQUESTS_CA_BUNDLE'] = ""
+    
+    def is_connected(self) -> bool:
+        """Vérifie si la connexion est établie"""
+        return self.blob_service_client is not None
+    
+    def list_containers(self) -> List[str]:
+        """Liste tous les containers disponibles"""
+        if not self.blob_service_client:
+            return []
         
         try:
-            client = self.clients[provider]
+            containers = self.blob_service_client.list_containers()
+            container_list = [container.name for container in containers]
+            logger.info(f"Containers trouvés: {container_list}")
+            return container_list
+        except Exception as e:
+            logger.error(f"Erreur listing containers : {e}")
+            return []
+    
+    def list_folders(self, container_name: str, prefix: str = "") -> List[Dict[str, Any]]:
+        """Liste les dossiers et fichiers dans un chemin donné"""
+        if not self.blob_service_client:
+            return []
+        
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
             
-            # Azure OpenAI
-            if provider == LLMProvider.AZURE_OPENAI:
-                messages = []
-                if system_prompt:
-                    messages.append({"role": "system", "content": system_prompt})
-                messages.append({"role": "user", "content": prompt})
-                
-                response = client.chat.completions.create(
-                    model=self.configs[provider]['deployment'],
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=4000
-                )
-                
-                return {
-                    'provider': provider.value,
-                    'success': True,
-                    'response': response.choices[0].message.content,
-                    'usage': response.usage.model_dump() if response.usage else None
-                }
+            folders = set()
+            files = []
             
-            # Claude
-            elif provider == LLMProvider.CLAUDE_OPUS:
-                messages = []
-                messages.append({"role": "user", "content": prompt})
-                
-                response = client.messages.create(
-                    model=self.configs[provider]['model'],
-                    messages=messages,
-                    system=system_prompt if system_prompt else "Tu es un assistant juridique expert en droit pénal des affaires.",
-                    max_tokens=4000
-                )
-                
-                return {
-                    'provider': provider.value,
-                    'success': True,
-                    'response': response.content[0].text,
-                    'usage': {'total_tokens': response.usage.input_tokens + response.usage.output_tokens}
-                }
+            blobs = container_client.list_blobs(name_starts_with=prefix)
             
-            # ChatGPT 4o
-            elif provider == LLMProvider.CHATGPT_4O:
-                messages = []
-                if system_prompt:
-                    messages.append({"role": "system", "content": system_prompt})
-                messages.append({"role": "user", "content": prompt})
+            for blob in blobs:
+                relative_path = blob.name[len(prefix):] if prefix else blob.name
+                parts = relative_path.split('/')
                 
-                response = client.chat.completions.create(
-                    model=self.configs[provider]['model'],
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=4000
-                )
-                
-                return {
-                    'provider': provider.value,
-                    'success': True,
-                    'response': response.choices[0].message.content,
-                    'usage': response.usage.model_dump() if response.usage else None
-                }
+                if len(parts) > 1 and parts[0]:
+                    folders.add(parts[0])
+                elif len(parts) == 1 and parts[0]:
+                    files.append({
+                        'name': parts[0],
+                        'size': blob.size,
+                        'last_modified': blob.last_modified,
+                        'content_type': blob.content_settings.content_type if blob.content_settings else None,
+                        'full_path': blob.name
+                    })
             
-            # Gemini
-            elif provider == LLMProvider.GEMINI:
-                full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-                response = client.generate_content(full_prompt)
-                
-                return {
-                    'provider': provider.value,
-                    'success': True,
-                    'response': response.text,
-                    'usage': None
-                }
+            result = []
             
-            # Perplexity
-            elif provider == LLMProvider.PERPLEXITY:
-                messages = []
-                if system_prompt:
-                    messages.append({"role": "system", "content": system_prompt})
-                messages.append({"role": "user", "content": prompt})
-                
-                response = client.chat.completions.create(
-                    model=self.configs[provider]['model'],
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=4000
-                )
-                
-                return {
-                    'provider': provider.value,
-                    'success': True,
-                    'response': response.choices[0].message.content,
-                    'usage': response.usage.model_dump() if response.usage else None,
-                    'citations': getattr(response, 'citations', [])
-                }
+            for folder in sorted(folders):
+                result.append({
+                    'name': folder,
+                    'type': 'folder',
+                    'path': f"{prefix}{folder}/" if prefix else f"{folder}/"
+                })
+            
+            for file in sorted(files, key=lambda x: x['name']):
+                result.append({
+                    'name': file['name'],
+                    'type': 'file',
+                    'size': file['size'],
+                    'last_modified': file['last_modified'],
+                    'content_type': file['content_type'],
+                    'full_path': file['full_path']
+                })
+            
+            return result
             
         except Exception as e:
-            logger.error(f"Erreur {provider.value}: {str(e)}")
-            return {
-                'provider': provider.value,
-                'success': False,
-                'error': str(e),
-                'response': None
-            }
+            logger.error(f"Erreur listing dossiers : {e}")
+            return []
     
-    async def query_multiple_llms(self, providers: List[LLMProvider], prompt: str, 
-                                 system_prompt: str = None) -> List[Dict[str, Any]]:
-        """Interroge plusieurs LLMs en parallèle"""
-        tasks = []
+    def download_file(self, container_name: str, blob_name: str) -> Optional[bytes]:
+        """Télécharge un fichier depuis Azure Blob"""
+        if not self.blob_service_client:
+            return None
         
-        for provider in providers:
-            task = self.query_single_llm(provider, prompt, system_prompt)
-            tasks.append(task)
-        
-        results = await asyncio.gather(*tasks)
-        return results
-    
-    def fusion_responses(self, responses: List[Dict[str, Any]]) -> str:
-        """Fusionne intelligemment plusieurs réponses"""
-        valid_responses = [r for r in responses if r['success']]
-        
-        if not valid_responses:
-            return "Aucune réponse valide obtenue."
-        
-        if len(valid_responses) == 1:
-            return valid_responses[0]['response']
-        
-        # Construire un prompt de fusion
-        fusion_prompt = "Voici plusieurs analyses d'experts. Synthétise-les en gardant les points essentiels:\n\n"
-        
-        for resp in valid_responses:
-            fusion_prompt += f"### {resp['provider']}\n{resp['response']}\n\n"
-        
-        # Utiliser le premier LLM disponible pour la fusion
-        if self.clients:
-            provider = list(self.clients.keys())[0]
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            fusion_result = loop.run_until_complete(
-                self.query_single_llm(
-                    provider,
-                    fusion_prompt,
-                    "Tu es un expert en synthèse. Fusionne ces analyses en gardant le meilleur de chaque."
-                )
+        try:
+            blob_client = self.blob_service_client.get_blob_client(
+                container=container_name,
+                blob=blob_name
             )
             
-            if fusion_result['success']:
-                return fusion_result['response']
+            return blob_client.download_blob().readall()
+            
+        except Exception as e:
+            logger.error(f"Erreur téléchargement blob : {e}")
+            return None
+    
+    def extract_text_from_blob(self, container_name: str, blob_name: str) -> Optional[str]:
+        """Extrait le texte d'un blob"""
+        content_bytes = self.download_file(container_name, blob_name)
         
-        # Fallback: concatenation simple
-        return "\n\n".join([f"### {r['provider']}\n{r['response']}" for r in valid_responses])
+        if not content_bytes:
+            return None
+        
+        file_ext = os.path.splitext(blob_name)[1].lower()
+        
+        try:
+            if file_ext == '.txt':
+                return content_bytes.decode('utf-8', errors='ignore')
+            elif file_ext in ['.docx', '.doc'] and DOCX_AVAILABLE:
+                doc = DocxDocument(io.BytesIO(content_bytes))
+                return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+            else:
+                return f"[Format {file_ext} non supporté pour l'extraction de texte]"
+        except Exception as e:
+            logger.error(f"Erreur extraction texte : {e}")
+            return None
+    
+    def get_all_files_in_folder(self, container_name: str, folder_path: str) -> List[Dict[str, Any]]:
+        """Récupère récursivement tous les fichiers d'un dossier"""
+        if not self.blob_service_client:
+            return []
+        
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            all_files = []
+            
+            blobs = container_client.list_blobs(name_starts_with=folder_path)
+            
+            for blob in blobs:
+                if not blob.name.endswith('/'):
+                    all_files.append({
+                        'name': os.path.basename(blob.name),
+                        'full_path': blob.name,
+                        'size': blob.size,
+                        'last_modified': blob.last_modified,
+                        'folder': os.path.dirname(blob.name)
+                    })
+            
+            return all_files
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération fichiers du dossier : {e}")
+            return []
