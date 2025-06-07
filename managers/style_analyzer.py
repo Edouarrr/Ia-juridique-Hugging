@@ -1,10 +1,10 @@
 # managers/style_analyzer.py
-"""Analyseur de style pour apprendre et reproduire des styles de rédaction"""
+"""Analyseur de style pour documents juridiques"""
 
 import re
 import io
 import logging
-from typing import Dict, List, Set, Optional, Any  # Import Any ajouté ici
+from typing import Dict, List, Set, Optional, Any
 from collections import defaultdict, Counter
 from datetime import datetime
 
@@ -18,7 +18,6 @@ except ImportError:
     logger.warning("Module python-docx non disponible")
 
 from models.dataclasses import Document, StylePattern
-
 
 class StyleAnalyzer:
     """Analyse et apprend le style de rédaction des documents"""
@@ -121,7 +120,7 @@ class StyleAnalyzer:
             # Enrichir avec les informations Word spécifiques
             pattern.structure.update({
                 'word_styles': list(structure['styles_utilises']),
-                'word_formatting': structure['mise_en_forme_paragraphes'][:10]  # Garder un échantillon
+                'word_formatting': structure['mise_en_forme_paragraphes'][:10]
             })
             
             return pattern
@@ -143,7 +142,6 @@ class StyleAnalyzer:
         section_content = []
         
         for line in lines:
-            # Détecter les titres (lignes en majuscules, numérotées, etc.)
             if self._is_title(line):
                 if current_section:
                     structure['sections'].append({
@@ -157,7 +155,6 @@ class StyleAnalyzer:
             else:
                 section_content.append(line)
         
-        # Ajouter la dernière section
         if current_section:
             structure['sections'].append({
                 'titre': current_section,
@@ -170,7 +167,6 @@ class StyleAnalyzer:
         """Extrait les formules types du document"""
         formules = set()
         
-        # Patterns de formules juridiques courantes
         patterns = [
             r"J'ai l'honneur de.*?[.!]",
             r"Il résulte de.*?[.!]",
@@ -192,7 +188,7 @@ class StyleAnalyzer:
             matches = re.finditer(pattern, content, re.IGNORECASE | re.DOTALL)
             for match in matches:
                 formule = match.group(0).strip()
-                if len(formule) < 200:  # Éviter les formules trop longues
+                if len(formule) < 200:
                     formules.add(formule)
         
         return formules
@@ -209,29 +205,25 @@ class StyleAnalyzer:
     
     def _analyze_vocabulary(self, content: str) -> Dict[str, int]:
         """Analyse le vocabulaire utilisé"""
-        # Nettoyer le texte
         words = re.findall(r'\b[a-zA-ZÀ-ÿ]+\b', content.lower())
         
-        # Compter les fréquences
         word_freq = defaultdict(int)
         for word in words:
-            if len(word) > 3:  # Ignorer les mots courts
+            if len(word) > 3:
                 word_freq[word] += 1
         
-        # Garder les mots les plus fréquents
         return dict(sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:100])
     
     def _extract_sample_paragraphs(self, content: str) -> List[str]:
         """Extrait des paragraphes types"""
         paragraphs = content.split('\n\n')
         
-        # Filtrer les paragraphes intéressants
         samples = []
         for para in paragraphs:
-            if 50 < len(para) < 500:  # Longueur raisonnable
+            if 50 < len(para) < 500:
                 samples.append(para.strip())
         
-        return samples[:10]  # Garder max 10 exemples
+        return samples[:10]
     
     def _is_title(self, line: str) -> bool:
         """Détermine si une ligne est un titre"""
@@ -240,17 +232,16 @@ class StyleAnalyzer:
         if not line:
             return False
         
-        # Critères pour identifier un titre
         if line.isupper() and len(line) > 3:
             return True
         
-        if re.match(r'^[IVX]+\.?\s+', line):  # Numérotation romaine
+        if re.match(r'^[IVX]+\.?\s+', line):
             return True
         
-        if re.match(r'^\d+\.?\s+', line):  # Numérotation arabe
+        if re.match(r'^\d+\.?\s+', line):
             return True
         
-        if re.match(r'^[A-Z]\.\s+', line):  # Lettre majuscule
+        if re.match(r'^[A-Z]\.\s+', line):
             return True
         
         return False
@@ -271,16 +262,10 @@ class StyleAnalyzer:
         if not patterns:
             return contenu_base
         
-        # Utiliser le premier pattern comme référence
         pattern = patterns[0]
         
-        # Appliquer la structure
         styled_content = self._apply_structure(contenu_base, pattern.structure)
-        
-        # Insérer des formules types
         styled_content = self._insert_formules(styled_content, pattern.formules)
-        
-        # Appliquer la mise en forme
         styled_content = self._apply_formatting(styled_content, pattern.mise_en_forme)
         
         return styled_content
@@ -292,17 +277,14 @@ class StyleAnalyzer:
         if not sections:
             return content
         
-        # Restructurer le contenu
         lines = content.split('\n')
         structured = []
         
         section_size = len(lines) // len(sections) if sections else len(lines)
         
         for i, section in enumerate(sections):
-            # Ajouter le titre de section
             structured.append(f"\n{section['titre']}\n")
             
-            # Ajouter le contenu de la section
             start = i * section_size
             end = start + section_size if i < len(sections) - 1 else len(lines)
             
@@ -315,24 +297,20 @@ class StyleAnalyzer:
         if not formules:
             return content
         
-        # Insérer quelques formules au début des paragraphes
         paragraphs = content.split('\n\n')
         
-        for i in range(0, len(paragraphs), 3):  # Tous les 3 paragraphes
+        for i in range(0, len(paragraphs), 3):
             if i < len(paragraphs) and formules:
                 formule = formules[i % len(formules)]
-                # Adapter la formule au contexte
                 paragraphs[i] = f"{formule} {paragraphs[i]}"
         
         return '\n\n'.join(paragraphs)
     
     def _apply_formatting(self, content: str, formatting: Dict[str, Any]) -> str:
         """Applique la mise en forme au contenu"""
-        # Ajuster l'espacement
         if formatting.get('espacement_sections', 0) > 1:
             content = re.sub(r'\n{2,}', '\n\n\n', content)
         
-        # Ajouter la numérotation si nécessaire
         if formatting.get('utilise_numerotation'):
             lines = content.split('\n')
             numbered_lines = []
