@@ -1,10 +1,9 @@
 # managers/azure_search_manager.py
-"""Gestionnaire pour Azure Cognitive Search avec vectorisation"""
+"""Gestionnaire pour Azure Cognitive Search"""
 
 import os
 import logging
 from typing import List, Dict, Any, Optional
-from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +26,8 @@ except ImportError:
     logger.warning("Azure OpenAI non disponible")
 
 from models.dataclasses import Document
-from config.app_config import AZURE_SEARCH_CONFIG
-
-
-class SearchMode(Enum):
-    """Modes de recherche disponibles"""
-    HYBRID = "Recherche hybride (textuelle + sémantique)"
-    TEXT_ONLY = "Recherche textuelle uniquement"
-    VECTOR_ONLY = "Recherche vectorielle uniquement"
-    LOCAL = "Recherche locale uniquement"
-
+from config.app_config import APP_CONFIG, SearchMode
+from utils.helpers import clean_env_for_azure
 
 class AzureSearchManager:
     """Gestionnaire pour Azure Cognitive Search avec vectorisation"""
@@ -54,11 +45,11 @@ class AzureSearchManager:
         """Initialise les clients Azure Search et OpenAI"""
         try:
             # Nettoyer l'environnement
-            self._clean_env_for_azure()
+            clean_env_for_azure()
             
             # Azure Search
-            search_endpoint = AZURE_SEARCH_CONFIG.get('endpoint')
-            search_key = AZURE_SEARCH_CONFIG.get('key')
+            search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+            search_key = os.getenv('AZURE_SEARCH_KEY')
             
             if search_endpoint and search_key and AZURE_SEARCH_AVAILABLE:
                 self.index_client = SearchIndexClient(
@@ -68,7 +59,7 @@ class AzureSearchManager:
                 
                 self.search_client = SearchClient(
                     endpoint=search_endpoint,
-                    index_name=AZURE_SEARCH_CONFIG['index_name'],
+                    index_name=APP_CONFIG['SEARCH_INDEX_NAME'],
                     credential=AzureKeyCredential(search_key)
                 )
                 
@@ -88,18 +79,6 @@ class AzureSearchManager:
                 
         except Exception as e:
             logger.error(f"Erreur initialisation Azure Search: {e}")
-    
-    def _clean_env_for_azure(self):
-        """Nettoie l'environnement pour Azure"""
-        proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 
-                      'NO_PROXY', 'no_proxy', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE']
-        
-        for var in proxy_vars:
-            if var in os.environ:
-                del os.environ[var]
-        
-        os.environ['CURL_CA_BUNDLE'] = ""
-        os.environ['REQUESTS_CA_BUNDLE'] = ""
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Génère un embedding pour un texte"""
@@ -127,7 +106,7 @@ class AzureSearchManager:
             
             if not embedding:
                 logger.warning(f"Pas d'embedding pour {document.id}")
-                embedding = [0.0] * AZURE_SEARCH_CONFIG['vector_dimension']
+                embedding = [0.0] * APP_CONFIG['VECTOR_DIMENSION']
             
             doc_to_index = {
                 "id": document.id,
