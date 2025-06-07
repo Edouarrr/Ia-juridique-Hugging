@@ -27,20 +27,6 @@ try:
     from azure.search.documents import SearchClient
     from azure.search.documents.indexes import SearchIndexClient
     from azure.search.documents.models import VectorizedQuery
-    from azure.search.documents.indexes.models import (
-        SearchIndex,
-        SimpleField,
-        SearchableField,
-        SearchField,
-        VectorSearch,
-        HnswAlgorithmConfiguration,
-        VectorSearchProfile,
-        SemanticConfiguration,
-        SemanticPrioritizedFields,
-        SemanticField,
-        SemanticSearch,
-        SearchFieldDataType
-    )
     from azure.core.credentials import AzureKeyCredential
     from azure.storage.blob import BlobServiceClient
     AZURE_AVAILABLE = True
@@ -117,7 +103,7 @@ class AppConfig:
     EXPORT_FORMAT = "%Y%m%d_%H%M%S"
     
     # Azure Search
-    SEARCH_INDEX_NAME = "juridique-index-vector"
+    SEARCH_INDEX_NAME = "juridique-index"
     VECTOR_DIMENSION = 1536  # OpenAI embeddings
     
     # Formats de citation
@@ -159,6 +145,7 @@ def initialize_session_state():
         st.session_state.azure_search_manager = None
         st.session_state.dynamic_search_prompts = {}  # Cache pour les prompts générés
         st.session_state.dynamic_templates = {}  # Cache pour les modèles générés
+        st.session_state.selected_folders = set()  # Dossiers sélectionnés
 
 # ================== ENUMERATIONS ==================
 
@@ -283,6 +270,20 @@ st.markdown("""
         box-shadow: 0 4px 16px rgba(0,0,0,0.15);
     }
     
+    .folder-card {
+        background: #e3f2fd;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 5px solid var(--secondary-color);
+        transition: all 0.3s ease;
+    }
+    
+    .folder-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    
     .folder-nav {
         background: white;
         padding: 1rem;
@@ -380,9 +381,6 @@ class AzureSearchManager:
                     credential=AzureKeyCredential(search_key)
                 )
                 
-                # Créer l'index si nécessaire
-                self._ensure_index_exists()
-                
                 self.search_client = SearchClient(
                     endpoint=search_endpoint,
                     index_name=AppConfig.SEARCH_INDEX_NAME,
@@ -405,66 +403,6 @@ class AzureSearchManager:
                 
         except Exception as e:
             logger.error(f"Erreur initialisation Azure Search: {e}")
-    
-    def _ensure_index_exists(self):
-        """Crée l'index s'il n'existe pas"""
-        try:
-            index = SearchIndex(
-                name=AppConfig.SEARCH_INDEX_NAME,
-                fields=[
-                    SimpleField(name="id", type=SearchFieldDataType.String, key=True),
-                    SearchableField(name="title", type=SearchFieldDataType.String, 
-                                  sortable=True, filterable=True, facetable=True),
-                    SearchableField(name="content", type=SearchFieldDataType.String),
-                    SimpleField(name="source", type=SearchFieldDataType.String, 
-                              filterable=True, facetable=True),
-                    SimpleField(name="folder_path", type=SearchFieldDataType.String, 
-                              filterable=True),
-                    SimpleField(name="created_at", type=SearchFieldDataType.DateTimeOffset, 
-                              filterable=True, sortable=True),
-                    SearchField(name="embedding", type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                              searchable=True, vector_search_dimensions=AppConfig.VECTOR_DIMENSION,
-                              vector_search_profile_name="embedding-profile"),
-                    SimpleField(name="metadata", type=SearchFieldDataType.String)
-                ],
-                vector_search=VectorSearch(
-                    profiles=[
-                        VectorSearchProfile(
-                            name="embedding-profile",
-                            algorithm_configuration_name="hnsw-config"
-                        )
-                    ],
-                    algorithms=[
-                        HnswAlgorithmConfiguration(
-                            name="hnsw-config",
-                            parameters={
-                                "m": 4,
-                                "efConstruction": 400,
-                                "efSearch": 500,
-                                "metric": "cosine"
-                            }
-                        )
-                    ]
-                ),
-                semantic_search=SemanticSearch(
-                    default_configuration_name="semantic-config",
-                    configurations=[
-                        SemanticConfiguration(
-                            name="semantic-config",
-                            prioritized_fields=SemanticPrioritizedFields(
-                                title_field=SemanticField(field_name="title"),
-                                content_fields=[SemanticField(field_name="content")]
-                            )
-                        )
-                    ]
-                )
-            )
-            
-            self.index_client.create_or_update_index(index)
-            logger.info(f"Index {AppConfig.SEARCH_INDEX_NAME} créé/mis à jour")
-            
-        except Exception as e:
-            logger.error(f"Erreur création index: {e}")
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Génère un embedding pour un texte"""
@@ -501,10 +439,7 @@ class AzureSearchManager:
                 "title": document.title,
                 "content": document.content,
                 "source": document.source,
-                "folder_path": document.folder_path or "",
-                "created_at": document.created_at.isoformat(),
-                "contentVector": embedding,
-                "metadata": json.dumps(document.metadata)
+                "embedding": embedding
             }
             
             # Indexer
@@ -517,7 +452,7 @@ class AzureSearchManager:
             return False
     
     def search_hybrid(self, query: str, mode: SearchMode = SearchMode.HYBRID, 
-                     top: int = 10, filters: Optional[str] = None) -> List[Dict[str, Any]]:
+                     top: int = 50, filters: Optional[str] = None) -> List[Dict[str, Any]]:
         """Recherche hybride (textuelle + vectorielle)"""
         if not self.search_client:
             return []
@@ -534,7 +469,7 @@ class AzureSearchManager:
                     vector_query = VectorizedQuery(
                         vector=query_embedding,
                         k_nearest_neighbors=top,
-                        fields="contentVector"
+                        fields="embedding"
                     )
                     
                     if mode == SearchMode.VECTOR_ONLY:
@@ -551,9 +486,7 @@ class AzureSearchManager:
                             search_text=query,
                             vector_queries=[vector_query],
                             filter=filters,
-                            top=top,
-                            query_type="semantic",
-                            semantic_configuration_name="semantic-config"
+                            top=top
                         )
                     
                     for result in response:
@@ -562,9 +495,7 @@ class AzureSearchManager:
                             'title': result['title'],
                             'content': result['content'],
                             'score': result['@search.score'],
-                            'source': result['source'],
-                            'folder_path': result.get('folder_path', ''),
-                            'metadata': json.loads(result.get('metadata', '{}'))
+                            'source': result['source']
                         })
             
             elif mode == SearchMode.TEXT_ONLY:
@@ -581,9 +512,7 @@ class AzureSearchManager:
                         'title': result['title'],
                         'content': result['content'],
                         'score': result['@search.score'],
-                        'source': result['source'],
-                        'folder_path': result.get('folder_path', ''),
-                        'metadata': json.loads(result.get('metadata', '{}'))
+                        'source': result['source']
                     })
             
             return results
@@ -738,6 +667,35 @@ class AzureBlobManager:
         except Exception as e:
             logger.error(f"Erreur extraction texte : {e}")
             return None
+    
+    def get_all_files_in_folder(self, container_name: str, folder_path: str) -> List[Dict[str, Any]]:
+        """Récupère récursivement tous les fichiers d'un dossier"""
+        if not self.blob_service_client:
+            return []
+        
+        try:
+            container_client = self.blob_service_client.get_container_client(container_name)
+            all_files = []
+            
+            # Lister tous les blobs avec le préfixe du dossier
+            blobs = container_client.list_blobs(name_starts_with=folder_path)
+            
+            for blob in blobs:
+                # Ignorer les dossiers vides
+                if not blob.name.endswith('/'):
+                    all_files.append({
+                        'name': os.path.basename(blob.name),
+                        'full_path': blob.name,
+                        'size': blob.size,
+                        'last_modified': blob.last_modified,
+                        'folder': os.path.dirname(blob.name)
+                    })
+            
+            return all_files
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération fichiers du dossier : {e}")
+            return []
 
 # ================== GESTIONNAIRE DE SÉLECTION DE PIÈCES ==================
 
@@ -1376,12 +1334,9 @@ async def generate_dynamic_search_prompts(search_query: str, context: str = "") 
         }
     
     prompt = f"""En tant qu'expert en droit pénal des affaires, génère des prompts de recherche juridique pertinents basés sur cette requête : "{search_query}"
-
 {f"Contexte supplémentaire : {context}" if context else ""}
-
 Crée une structure JSON avec des catégories et sous-catégories de prompts de recherche.
 Chaque prompt doit être concis (max 80 caractères) et cibler un aspect juridique précis.
-
 Format attendu :
 {{
     "🔍 Éléments constitutifs": {{
@@ -1397,7 +1352,6 @@ Format attendu :
         "Stratégies": ["prompt1", "prompt2", ...]
     }}
 }}
-
 Génère au moins 3 catégories avec 2 sous-catégories chacune, et 4 prompts par sous-catégorie."""
     
     system_prompt = """Tu es un avocat spécialisé en droit pénal des affaires avec 20 ans d'expérience.
@@ -1465,14 +1419,11 @@ Contexte spécifique :
     
     prompt = f"""Génère 3 modèles d'actes juridiques pour : "{type_acte}"
 {context_str}
-
 Pour chaque modèle, fournis :
 1. Un titre descriptif avec emoji (ex: "📨 Demande d'audition libre")
 2. Le contenu complet du modèle avec les balises [CHAMP] pour les éléments à personnaliser
-
 Utilise un style juridique professionnel, formel et conforme aux usages du barreau français.
 Les modèles doivent être immédiatement utilisables par un avocat.
-
 Format de réponse attendu (JSON) :
 {{
     "📄 Modèle standard de {type_acte}": "Contenu du modèle...",
@@ -1497,9 +1448,7 @@ aux exigences procédurales et aux usages de la profession."""
         if len(responses) > 1:
             fusion_prompt = f"""Voici plusieurs propositions de modèles pour "{type_acte}".
 Fusionne-les intelligemment pour créer les 3 meilleurs modèles en gardant le meilleur de chaque proposition.
-
 {chr(10).join([f"Proposition {i+1}: {r['response']}" for i, r in enumerate(responses) if r['success']])}
-
 Retourne un JSON avec 3 modèles fusionnés."""
             
             fusion_response = await llm_manager.query_single_llm(
@@ -1531,22 +1480,14 @@ Retourne un JSON avec 3 modèles fusionnés."""
     # Fallback avec un modèle basique
     return {
         f"📄 Modèle standard de {type_acte}": f"""[EN-TÊTE AVOCAT]
-
 À l'attention de [DESTINATAIRE]
-
 Objet : {type_acte}
 Référence : [RÉFÉRENCE]
-
 [FORMULE D'APPEL],
-
 J'ai l'honneur de [OBJET DE LA DEMANDE].
-
 [DÉVELOPPEMENT]
-
 [CONCLUSION]
-
 Je vous prie d'agréer, [FORMULE DE POLITESSE].
-
 [SIGNATURE]"""
     }
 
@@ -1674,58 +1615,36 @@ def page_recherche_documents():
         with st.container():
             st.markdown('<div class="search-section">', unsafe_allow_html=True)
             
-            # Barre de recherche principale
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                search_query = st.text_input(
-                    "Rechercher dans les documents indexés",
-                    value=st.session_state.search_query,
-                    placeholder="Ex: abus de biens sociaux, délégation de pouvoirs, fraude fiscale...",
-                    key="search_input_main"
-                )
+            # Barre de recherche principale simplifiée
+            with st.form(key="search_form"):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    search_query = st.text_input(
+                        "Rechercher dans tous les documents",
+                        value=st.session_state.search_query,
+                        placeholder="Ex: abus de biens sociaux, délégation de pouvoirs, fraude fiscale...",
+                        key="search_input_main"
+                    )
+                
+                with col2:
+                    search_clicked = st.form_submit_button("🔍 Rechercher", type="primary")
             
-            with col2:
-                search_clicked = st.button("🔍 Rechercher", type="primary", key="search_button_main")
-            
-            # Options de recherche avancée
+            # Options de recherche avancée (masquées par défaut)
             with st.expander("Options avancées"):
                 search_mode = st.selectbox(
                     "Mode de recherche",
                     [mode.value for mode in SearchMode],
                     key="search_mode_select"
                 )
-                
-                # Filtres
-                col1, col2 = st.columns(2)
-                with col1:
-                    filter_source = st.selectbox(
-                        "Source",
-                        ["Toutes", "azure", "local"],
-                        key="filter_source"
-                    )
-                
-                with col2:
-                    filter_folder = st.text_input(
-                        "Dossier",
-                        placeholder="Chemin du dossier",
-                        key="filter_folder"
-                    )
             
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Effectuer la recherche
             if search_clicked and search_query:
+                st.session_state.search_query = search_query
+                
                 with st.spinner("Recherche en cours..."):
-                    # Construire les filtres
-                    filters = []
-                    if filter_source != "Toutes":
-                        filters.append(f"source eq '{filter_source}'")
-                    if filter_folder:
-                        filters.append(f"folder_path eq '{filter_folder}'")
-                    
-                    filter_string = " and ".join(filters) if filters else None
-                    
-                    # Recherche
+                    # Mode de recherche
                     mode_enum = SearchMode.HYBRID
                     for mode in SearchMode:
                         if mode.value == search_mode:
@@ -1734,44 +1653,112 @@ def page_recherche_documents():
                     
                     results = st.session_state.azure_search_manager.search_hybrid(
                         search_query,
-                        mode=mode_enum,
-                        filters=filter_string
+                        mode=mode_enum
                     )
                     
+                    # Organiser les résultats : dossiers d'abord
+                    folders_results = []
+                    files_results = []
+                    
+                    # Simuler des dossiers basés sur les chemins
+                    folder_paths = set()
+                    for result in results:
+                        if 'folder_path' in result and result['folder_path']:
+                            # Extraire tous les niveaux de dossiers
+                            parts = result['folder_path'].split('/')
+                            for i in range(1, len(parts)):
+                                folder_paths.add('/'.join(parts[:i]))
+                    
+                    # Créer des résultats pour les dossiers
+                    for folder_path in sorted(folder_paths):
+                        folders_results.append({
+                            'type': 'folder',
+                            'path': folder_path,
+                            'name': folder_path.split('/')[-1],
+                            'count': len([r for r in results if r.get('folder_path', '').startswith(folder_path)])
+                        })
+                    
+                    # Ajouter les fichiers
+                    for result in results:
+                        result['type'] = 'file'
+                        files_results.append(result)
+                    
                     # Afficher les résultats
-                    if results:
-                        st.success(f"✅ {len(results)} résultats trouvés")
+                    total_results = len(folders_results) + len(files_results)
+                    if total_results > 0:
+                        st.success(f"✅ {total_results} résultats trouvés ({len(folders_results)} dossiers, {len(files_results)} fichiers)")
                         
-                        for result in results:
-                            with st.container():
-                                st.markdown('<div class="document-card">', unsafe_allow_html=True)
-                                
-                                col1, col2 = st.columns([4, 1])
-                                
-                                with col1:
-                                    st.markdown(f"**{result['title']}**")
-                                    st.caption(f"Score: {result['score']:.2f} | Source: {result['source']}")
+                        # Afficher les dossiers en premier
+                        if folders_results:
+                            st.markdown("### 📁 Dossiers")
+                            for folder in folders_results:
+                                with st.container():
+                                    st.markdown('<div class="folder-card">', unsafe_allow_html=True)
                                     
-                                    # Extrait du contenu
-                                    excerpt = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
-                                    st.text(excerpt)
-                                
-                                with col2:
-                                    if st.button("➕ Ajouter", key=f"add_search_{result['id']}"):
-                                        # Créer un document
-                                        doc = Document(
-                                            id=result['id'],
-                                            title=result['title'],
-                                            content=result['content'],
-                                            source=result['source'],
-                                            metadata=result['metadata'],
-                                            folder_path=result.get('folder_path')
-                                        )
+                                    col1, col2 = st.columns([4, 1])
+                                    
+                                    with col1:
+                                        st.markdown(f"📁 **{folder['name']}**")
+                                        st.caption(f"Chemin: {folder['path']} | {folder['count']} documents")
+                                    
+                                    with col2:
+                                        if st.button("➕ Ajouter tout", key=f"add_folder_{clean_key(folder['path'])}"):
+                                            # Ajouter tous les fichiers du dossier
+                                            added_count = 0
+                                            with st.spinner(f"Ajout des documents du dossier {folder['name']}..."):
+                                                for result in files_results:
+                                                    if result.get('folder_path', '').startswith(folder['path']):
+                                                        doc = Document(
+                                                            id=result['id'],
+                                                            title=result['title'],
+                                                            content=result['content'],
+                                                            source=result['source'],
+                                                            folder_path=result.get('folder_path')
+                                                        )
+                                                        st.session_state.azure_documents[doc.id] = doc
+                                                        added_count += 1
+                                            
+                                            if added_count > 0:
+                                                st.success(f"✅ {added_count} documents ajoutés du dossier {folder['name']}")
+                                    
+                                    st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        # Afficher les fichiers
+                        if files_results:
+                            st.markdown("### 📄 Documents")
+                            for result in files_results:
+                                with st.container():
+                                    st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                                    
+                                    col1, col2 = st.columns([4, 1])
+                                    
+                                    with col1:
+                                        st.markdown(f"**{result['title']}**")
+                                        st.caption(f"Score: {result['score']:.2f} | Source: {result['source']}")
                                         
-                                        st.session_state.azure_documents[doc.id] = doc
-                                        st.success(f"✅ {doc.title} ajouté")
-                                
-                                st.markdown('</div>', unsafe_allow_html=True)
+                                        # Extrait du contenu
+                                        excerpt = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
+                                        st.text(excerpt)
+                                    
+                                    with col2:
+                                        if result['id'] in st.session_state.azure_documents:
+                                            st.success("✅ Déjà ajouté")
+                                        else:
+                                            if st.button("➕ Ajouter", key=f"add_search_{result['id']}"):
+                                                # Créer un document
+                                                doc = Document(
+                                                    id=result['id'],
+                                                    title=result['title'],
+                                                    content=result['content'],
+                                                    source=result['source'],
+                                                    folder_path=result.get('folder_path')
+                                                )
+                                                
+                                                st.session_state.azure_documents[doc.id] = doc
+                                                st.success(f"✅ {doc.title} ajouté")
+                                                st.rerun()
+                                    
+                                    st.markdown('</div>', unsafe_allow_html=True)
                     else:
                         st.info("Aucun résultat trouvé")
     
@@ -1787,9 +1774,13 @@ def page_recherche_documents():
         col1, col2 = st.columns([3, 1])
         
         with col1:
+            # Définir la valeur par défaut
+            default_container = "sharepoint-documents" if "sharepoint-documents" in containers else (containers[0] if containers else None)
+            
             selected_container = st.selectbox(
                 "Sélectionner un espace de stockage",
                 containers,
+                index=containers.index(default_container) if default_container else 0,
                 key="container_select"
             )
             
@@ -1827,10 +1818,17 @@ def page_recherche_documents():
             items = azure_manager.list_folders(selected_container, current_path)
             
             if items:
-                # Organiser en colonnes
-                for item in items:
+                # Séparer dossiers et fichiers
+                folders = [item for item in items if item['type'] == 'folder']
+                files = [item for item in items if item['type'] == 'file']
+                
+                # Afficher les dossiers en premier
+                for item in folders + files:
                     with st.container():
-                        st.markdown('<div class="document-card">', unsafe_allow_html=True)
+                        if item['type'] == 'folder':
+                            st.markdown('<div class="folder-card">', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<div class="document-card">', unsafe_allow_html=True)
                         
                         col1, col2, col3 = st.columns([3, 1, 1])
                         
@@ -1861,9 +1859,53 @@ def page_recherche_documents():
                         
                         with col3:
                             if item['type'] == 'folder':
-                                if st.button("📂 Ouvrir", key=f"open_folder_{clean_key(item['name'])}"):
-                                    st.session_state.current_folder_path = item['path']
-                                    st.rerun()
+                                col_open, col_add = st.columns(2)
+                                
+                                with col_open:
+                                    if st.button("📂", key=f"open_folder_{clean_key(item['name'])}", help="Ouvrir"):
+                                        st.session_state.current_folder_path = item['path']
+                                        st.rerun()
+                                
+                                with col_add:
+                                    if st.button("➕", key=f"add_folder_all_{clean_key(item['path'])}", help="Ajouter tout le dossier"):
+                                        # Ajouter tous les fichiers du dossier
+                                        with st.spinner(f"Ajout du dossier {item['name']}..."):
+                                            all_files = azure_manager.get_all_files_in_folder(selected_container, item['path'])
+                                            
+                                            added_count = 0
+                                            for file_info in all_files:
+                                                # Extraire le texte
+                                                content = azure_manager.extract_text_from_blob(
+                                                    selected_container,
+                                                    file_info['full_path']
+                                                )
+                                                
+                                                if content:
+                                                    doc_id = f"azure_{clean_key(file_info['full_path'])}"
+                                                    doc = Document(
+                                                        id=doc_id,
+                                                        title=file_info['name'],
+                                                        content=content,
+                                                        source='azure',
+                                                        metadata={
+                                                            'container': selected_container,
+                                                            'path': file_info['full_path'],
+                                                            'size': file_info.get('size'),
+                                                            'last_modified': file_info.get('last_modified')
+                                                        },
+                                                        folder_path=file_info['folder']
+                                                    )
+                                                    
+                                                    st.session_state.azure_documents[doc_id] = doc
+                                                    
+                                                    # Indexer dans Azure Search
+                                                    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
+                                                        st.session_state.azure_search_manager.index_document(doc)
+                                                    
+                                                    added_count += 1
+                                            
+                                            if added_count > 0:
+                                                st.success(f"✅ {added_count} documents ajoutés du dossier {item['name']}")
                             else:
                                 col_view, col_select = st.columns(2)
                                 
@@ -1888,9 +1930,11 @@ def page_recherche_documents():
                                     # Créer un document et l'ajouter à la session
                                     doc_id = f"azure_{clean_key(item['full_path'])}"
                                     
-                                    if st.button("➕", key=f"add_doc_{doc_id}", help="Ajouter à la sélection"):
-                                        # Télécharger le contenu si pas déjà fait
-                                        if doc_id not in st.session_state.azure_documents:
+                                    if doc_id in st.session_state.azure_documents:
+                                        st.success("✅")
+                                    else:
+                                        if st.button("➕", key=f"add_doc_{doc_id}", help="Ajouter à la sélection"):
+                                            # Télécharger le contenu si pas déjà fait
                                             with st.spinner("Ajout..."):
                                                 content = azure_manager.extract_text_from_blob(
                                                     selected_container,
@@ -1919,6 +1963,7 @@ def page_recherche_documents():
                                                         st.session_state.azure_search_manager.index_document(doc)
                                                     
                                                     st.success(f"✅ {item['name']} ajouté")
+                                                    st.rerun()
                         
                         st.markdown('</div>', unsafe_allow_html=True)
             else:
@@ -1927,10 +1972,12 @@ def page_recherche_documents():
         st.warning("Aucun container disponible")
     
     # Prompts de recherche suggérés dynamiques
-    st.markdown("### 💡 Recherches suggérées")
-    
-    # Générer des prompts dynamiques si une recherche est active
-    if search_query:
+    if st.session_state.search_query:
+        st.markdown("### 💡 Recherches suggérées")
+        
+        # Générer des prompts dynamiques si une recherche est active
+        search_query = st.session_state.search_query
+        
         # Vérifier le cache
         cache_key = f"prompts_{clean_key(search_query)}"
         
@@ -1969,9 +2016,6 @@ def page_recherche_documents():
                             ):
                                 st.session_state.search_query = prompt
                                 st.rerun()
-    else:
-        # Prompts statiques par défaut
-        st.info("💡 Entrez une recherche pour obtenir des suggestions personnalisées")
 
 def page_selection_pieces():
     """Page de sélection et organisation des pièces"""
@@ -2220,7 +2264,6 @@ Client: {client_nom} ({client_type})
 Infraction reprochée: {infraction}
 Documents analysés:
 {chr(10).join(contenu_pieces)}
-
 Analyses demandées:
 """
         
@@ -2437,21 +2480,17 @@ def page_redaction_assistee():
             # Construire le prompt
             prompt = f"""Tu es un avocat expert en droit pénal des affaires.
 Rédige un(e) {type_acte} avec les informations suivantes :
-
 Destinataire : {destinataire or 'Non spécifié'}
 Client : {client_nom or 'Non spécifié'}
 Avocat : {avocat_nom or 'Non spécifié'}
 Référence : {reference or 'Non spécifiée'}
 Infraction(s) : {infraction or 'Non spécifiée'}
 Date des faits : {date_faits.strftime('%d/%m/%Y') if date_faits else 'Non spécifiée'}
-
 Points clés à développer :
 {points_cles}
-
 Ton souhaité : {ton}
 Longueur : {longueur}
 {"Inclure des références jurisprudentielles pertinentes" if inclure_jurisprudence else ""}
-
 Structure l'acte de manière professionnelle avec :
 - Un en-tête approprié
 - Une introduction claire
@@ -2696,7 +2735,7 @@ def page_configuration():
     
     st.header("⚙️ Configuration")
     
-    tabs = st.tabs(["🔑 Clés API", "📊 État du système", "💾 Export/Import", "🔍 Index de recherche"])
+    tabs = st.tabs(["🔑 Clés API", "📊 État du système", "💾 Export/Import"])
     
     # Onglet Clés API
     with tabs[0]:
@@ -2716,6 +2755,28 @@ def page_configuration():
         - GOOGLE_API_KEY
         - PERPLEXITY_API_KEY
         """)
+        
+        # Créer un fichier .env exemple
+        env_example = """# Azure Search
+AZURE_SEARCH_ENDPOINT=https://search-rag-juridique.search.windows.net
+AZURE_SEARCH_KEY=IFf759DWAhLxjAgMQvVEHXJq8ZCis1CY4EWmmYtWddAzSeConn3E
+
+# Azure OpenAI pour les embeddings
+AZURE_OPENAI_ENDPOINT=https://openai-juridique-rag2.openai.azure.com
+AZURE_OPENAI_KEY=7uhpXfQhmUnFzgbn8x7yMmuBezONcqH6uWhlLnEIjihBHMlgjiOzJQQJ99BFAC5T7U2XJ3w3AAABACOGF4Yd
+AZURE_OPENAI_DEPLOYMENT=text-embedding-ada-002
+
+# Azure Blob Storage (remplacer par vos vraies valeurs)
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE_COMPTE;AccountKey=VOTRE_CLE;EndpointSuffix=core.windows.net
+"""
+        
+        st.download_button(
+            "📥 Télécharger un fichier .env exemple",
+            env_example,
+            ".env.example",
+            "text/plain",
+            key="download_env_example"
+        )
         
         # Vérifier l'état des clés
         configs = LLMConfig.get_configs()
@@ -2877,47 +2938,6 @@ def page_configuration():
                     
             except Exception as e:
                 st.error(f"❌ Erreur lors de l'import: {str(e)}")
-    
-    # Onglet Index de recherche
-    with tabs[3]:
-        st.markdown("### 🔍 Gestion de l'index de recherche")
-        
-        if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
-            # Réindexer tous les documents
-            if st.button("🔄 Réindexer tous les documents", key="reindex_all"):
-                with st.spinner("Réindexation en cours..."):
-                    success_count = 0
-                    error_count = 0
-                    
-                    for doc_id, doc in st.session_state.azure_documents.items():
-                        if st.session_state.azure_search_manager.index_document(doc):
-                            success_count += 1
-                        else:
-                            error_count += 1
-                    
-                    st.success(f"✅ {success_count} documents indexés")
-                    if error_count > 0:
-                        st.warning(f"⚠️ {error_count} erreurs")
-            
-            # Créer/Recréer l'index
-            if st.button("🏗️ Recréer l'index", key="recreate_index"):
-                if st.checkbox("Confirmer la suppression et recréation de l'index", key="confirm_recreate"):
-                    with st.spinner("Recréation de l'index..."):
-                        try:
-                            st.session_state.azure_search_manager._ensure_index_exists()
-                            st.success("✅ Index recréé avec succès")
-                        except Exception as e:
-                            st.error(f"❌ Erreur : {str(e)}")
-        else:
-            st.warning("⚠️ Azure Search non configuré")
-            
-            st.markdown("""
-            Pour utiliser la recherche vectorielle, configurez :
-            1. AZURE_SEARCH_ENDPOINT
-            2. AZURE_SEARCH_KEY
-            3. AZURE_OPENAI_ENDPOINT (pour les embeddings)
-            4. AZURE_OPENAI_KEY
-            """)
 
 # Fonctions auxiliaires pour la fusion des styles
 def merge_structures(structures: List[Dict]) -> Dict[str, Any]:
