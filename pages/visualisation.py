@@ -13,8 +13,8 @@ from pyvis.network import Network
 import tempfile
 import os
 
-from config import TYPES_INFRACTIONS
-from utils import load_custom_css, create_section_divider, get_color_scheme
+from config.app_config import TYPES_INFRACTIONS
+from utils.styles import load_custom_css, create_section_divider, get_color_scheme
 
 def show():
     """Affiche la page de visualisation"""
