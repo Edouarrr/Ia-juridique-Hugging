@@ -47,6 +47,13 @@ def show_page():
                 ["Recherche dans mes documents", "Recherche jurisprudence (Légifrance)", "Recherche complète"],
                 key="search_mode_select"
             )
+            
+            # Option pour la génération dynamique
+            use_dynamic_prompts = st.checkbox(
+                "🤖 Utiliser l'IA pour enrichir ma recherche",
+                value=True,
+                help="Génère automatiquement des recherches pertinentes basées sur votre requête"
+            )
         
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -66,9 +73,12 @@ def show_page():
     st.markdown("### 📂 Explorer les documents SharePoint")
     show_azure_navigation(azure_manager)
     
-    # Suggestions de recherche
+    # Suggestions de recherche (avec génération dynamique)
     if st.session_state.get('search_query'):
-        show_search_suggestions(st.session_state.search_query)
+        if st.session_state.get('search_mode_select') == "Recherche dans mes documents" and use_dynamic_prompts:
+            show_dynamic_search_suggestions(st.session_state.search_query)
+        else:
+            show_search_suggestions(st.session_state.search_query)
 
 def show_legifrance_search(search_query: str):
     """Affiche les liens de recherche Légifrance"""
@@ -376,53 +386,83 @@ def add_entire_folder(azure_manager, selected_container, item):
             st.success(f"✅ {added_count} documents ajoutés")
 
 def show_search_suggestions(search_query: str):
-    """Affiche des suggestions de recherche"""
+    """Affiche des suggestions de recherche statiques"""
     st.markdown("### 💡 Affiner votre recherche")
     
-    # Essayer de générer des suggestions dynamiques
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        suggestions_dynamiques = loop.run_until_complete(
-            generate_dynamic_search_prompts(search_query)
-        )
-        
-        # Afficher les suggestions par catégorie
-        for categorie, sous_categories in suggestions_dynamiques.items():
-            with st.expander(categorie, expanded=True):
-                for sous_cat, prompts in sous_categories.items():
-                    st.markdown(f"**{sous_cat}**")
-                    cols = st.columns(2)
-                    for i, prompt in enumerate(prompts[:4]):
-                        with cols[i % 2]:
-                            if st.button(prompt, key=f"dyn_sugg_{clean_key(prompt)}", use_container_width=True):
-                                st.session_state.search_query = prompt
-                                st.rerun()
+    col1, col2 = st.columns(2)
     
-    except Exception as e:
-        # Fallback vers des suggestions statiques
-        col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### 📚 Recherches complémentaires")
+        suggestions = [
+            f"{search_query} jurisprudence récente",
+            f"{search_query} Cour de cassation",
+            f"{search_query} éléments constitutifs",
+            f"{search_query} moyens de défense"
+        ]
         
-        with col1:
-            st.markdown("#### 📚 Recherches complémentaires")
-            suggestions = [
-                f"{search_query} jurisprudence récente",
-                f"{search_query} Cour de cassation",
-                f"{search_query} éléments constitutifs",
-                f"{search_query} moyens de défense"
-            ]
+        for suggestion in suggestions:
+            if st.button(suggestion, key=f"sugg_{clean_key(suggestion)}", use_container_width=True):
+                st.session_state.search_query = suggestion
+                st.rerun()
+    
+    with col2:
+        st.markdown("#### 🏛️ Sources juridiques")
+        st.markdown(f"""
+        **Rechercher "{search_query}" sur :**
+        - [📖 Légifrance](https://www.legifrance.gouv.fr/search/all?tab=all&query={search_query})
+        - [⚖️ Cour de cassation](https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext={search_query})
+        - [🏛️ Conseil d'État](https://www.conseil-etat.fr/arianeweb/)
+        """)
+
+def show_dynamic_search_suggestions(search_query: str):
+    """Affiche des suggestions de recherche générées dynamiquement par l'IA"""
+    st.markdown("### 💡 Recherches suggérées par l'IA")
+    
+    # Vérifier si on a déjà généré des suggestions pour cette requête
+    cache_key = f"prompts_{clean_key(search_query)}"
+    
+    if cache_key not in st.session_state:
+        with st.spinner("🤖 Génération de suggestions intelligentes..."):
+            # Contexte additionnel
+            context = ""
+            if st.session_state.get('infraction'):
+                context += f"Infraction: {st.session_state.infraction}. "
+            if st.session_state.get('client_type'):
+                context += f"Type de client: {st.session_state.client_type}. "
             
-            for suggestion in suggestions:
-                if st.button(suggestion, key=f"static_sugg_{clean_key(suggestion)}", use_container_width=True):
-                    st.session_state.search_query = suggestion
-                    st.rerun()
-        
-        with col2:
-            st.markdown("#### 🏛️ Sources juridiques")
-            st.markdown(f"""
-            **Rechercher "{search_query}" sur :**
-            - [📖 Légifrance](https://www.legifrance.gouv.fr/search/all?tab=all&query={search_query})
-            - [⚖️ Cour de cassation](https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext={search_query})
-            - [🏛️ Conseil d'État](https://www.conseil-etat.fr/arianeweb/)
-            """)
+            # Générer les prompts
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            suggestions_dynamiques = loop.run_until_complete(
+                generate_dynamic_search_prompts(search_query, context)
+            )
+            
+            st.session_state[cache_key] = suggestions_dynamiques
+    else:
+        suggestions_dynamiques = st.session_state[cache_key]
+    
+    # Afficher les suggestions par catégorie
+    for categorie, sous_categories in suggestions_dynamiques.items():
+        with st.expander(categorie, expanded=True):
+            for sous_cat, prompts in sous_categories.items():
+                st.markdown(f"**{sous_cat}**")
+                
+                # Créer une grille de boutons
+                cols = st.columns(2)
+                for i, prompt in enumerate(prompts[:4]):  # Limiter à 4 prompts par sous-catégorie
+                    with cols[i % 2]:
+                        if st.button(
+                            prompt, 
+                            key=f"dyn_sugg_{clean_key(categorie)}_{clean_key(sous_cat)}_{i}",
+                            use_container_width=True,
+                            help=f"Rechercher: {prompt}"
+                        ):
+                            st.session_state.search_query = prompt
+                            st.rerun()
+    
+    # Option pour régénérer
+    if st.button("🔄 Générer d'autres suggestions", key="regenerate_suggestions"):
+        if cache_key in st.session_state:
+            del st.session_state[cache_key]
+        st.rerun()
