@@ -1532,17 +1532,16 @@ def main():
     
     # DEBUG AZURE - Afficher dans la sidebar
     with st.sidebar.expander("🔧 Debug Azure", expanded=True):
-        st.write("**Variables d'environnement:**")
+        st.write("**1. Variables d'environnement:**")
         
         # Vérifier chaque variable
         vars_check = {
             "AZURE_STORAGE_CONNECTION_STRING": os.getenv('AZURE_STORAGE_CONNECTION_STRING'),
             "AZURE_SEARCH_ENDPOINT": os.getenv('AZURE_SEARCH_ENDPOINT'),
             "AZURE_SEARCH_KEY": os.getenv('AZURE_SEARCH_KEY'),
-            "AZURE_OPENAI_ENDPOINT": os.getenv('AZURE_OPENAI_ENDPOINT'),
-            "AZURE_OPENAI_KEY": os.getenv('AZURE_OPENAI_KEY')
         }
         
+        all_vars_ok = True
         for var_name, var_value in vars_check.items():
             if var_value:
                 if "KEY" in var_name or "CONNECTION_STRING" in var_name:
@@ -1551,6 +1550,49 @@ def main():
                     st.success(f"✅ {var_name}: {var_value}")
             else:
                 st.error(f"❌ {var_name}: NON DÉFINIE")
+                all_vars_ok = False
+        
+        if all_vars_ok:
+            st.write("**2. Test de connexion Blob:**")
+            try:
+                from azure.storage.blob import BlobServiceClient
+                conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+                blob_service = BlobServiceClient.from_connection_string(conn_str)
+                
+                # Lister les containers
+                containers = []
+                for container in blob_service.list_containers():
+                    containers.append(container.name)
+                
+                st.success(f"✅ Blob: {len(containers)} containers")
+                st.write("Containers:", containers)
+                
+            except Exception as e:
+                st.error(f"❌ Blob: {type(e).__name__}")
+                st.error(str(e))
+            
+            st.write("**3. Test Azure Search:**")
+            try:
+                from azure.search.documents import SearchClient
+                from azure.core.credentials import AzureKeyCredential
+                
+                search_client = SearchClient(
+                    endpoint=os.getenv('AZURE_SEARCH_ENDPOINT'),
+                    index_name="juridique-index",
+                    credential=AzureKeyCredential(os.getenv('AZURE_SEARCH_KEY'))
+                )
+                
+                # Test simple
+                results = list(search_client.search(search_text="test", top=1))
+                st.success(f"✅ Search: OK ({len(results)} résultats)")
+                
+            except Exception as e:
+                st.error(f"❌ Search: {type(e).__name__}")
+                st.error(str(e))
+    
+    # Initialisation normale...
+    initialize_session_state()
+    # ... reste du code
     
     # Initialisation normale...
     initialize_session_state()
