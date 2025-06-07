@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 from typing import Dict, List, Optional
 
-from config import TYPES_INFRACTIONS
+from config.app_config import TYPES_INFRACTIONS
 from managers import LLMManager, display_model_selector, display_model_params
 from utils import load_custom_css, create_alert_box, format_date, sanitize_text
 
