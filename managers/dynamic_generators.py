@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 from managers.multi_llm_manager import MultiLLMManager
 from config.app_config import LLMProvider
 
-
 async def generate_dynamic_search_prompts(search_query: str, context: str = "") -> Dict[str, Dict[str, List[str]]]:
     """Génère dynamiquement des prompts de recherche basés sur la requête"""
     llm_manager = MultiLLMManager()
@@ -96,7 +95,6 @@ techniquement précis et adaptés au contexte du droit pénal économique franç
             ]
         }
     }
-
 
 async def generate_dynamic_templates(type_acte: str, context: Dict[str, Any] = None) -> Dict[str, str]:
     """Génère dynamiquement des modèles d'actes juridiques"""
