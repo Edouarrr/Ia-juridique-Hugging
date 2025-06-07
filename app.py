@@ -1530,6 +1530,33 @@ ANALYSIS_PROMPTS_AFFAIRES = {
 def main():
     """Interface principale de l'application"""
     
+    # DEBUG AZURE - Afficher dans la sidebar
+    with st.sidebar.expander("🔧 Debug Azure", expanded=True):
+        st.write("**Variables d'environnement:**")
+        
+        # Vérifier chaque variable
+        vars_check = {
+            "AZURE_STORAGE_CONNECTION_STRING": os.getenv('AZURE_STORAGE_CONNECTION_STRING'),
+            "AZURE_SEARCH_ENDPOINT": os.getenv('AZURE_SEARCH_ENDPOINT'),
+            "AZURE_SEARCH_KEY": os.getenv('AZURE_SEARCH_KEY'),
+            "AZURE_OPENAI_ENDPOINT": os.getenv('AZURE_OPENAI_ENDPOINT'),
+            "AZURE_OPENAI_KEY": os.getenv('AZURE_OPENAI_KEY')
+        }
+        
+        for var_name, var_value in vars_check.items():
+            if var_value:
+                if "KEY" in var_name or "CONNECTION_STRING" in var_name:
+                    st.success(f"✅ {var_name}: ***")
+                else:
+                    st.success(f"✅ {var_name}: {var_value}")
+            else:
+                st.error(f"❌ {var_name}: NON DÉFINIE")
+    
+    # Initialisation normale...
+    initialize_session_state()
+    # ... reste du code
+    """Interface principale de l'application"""
+    
     # Initialisation
     initialize_session_state()
     
