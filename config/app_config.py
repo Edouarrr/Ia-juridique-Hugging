@@ -15,6 +15,7 @@ APP_CONFIG = {
         'Analyse IA': '🤖',
         'Rédaction assistée': '📝',
         'Rédaction de courrier': '✉️',
+        'Import/Export': '📥',
         'Configuration': '⚙️'
     },
     'PAGE_SIZE': 10,
@@ -23,6 +24,33 @@ APP_CONFIG = {
     'EXPORT_FORMAT': '%Y%m%d_%H%M%S',
     'SEARCH_INDEX_NAME': 'juridique-index',
     'VECTOR_DIMENSION': 1536
+}
+
+# Configuration des APIs juridiques
+LEGAL_APIS = {
+    "judilibre": {
+        "enabled": True,
+        "base_url": "https://api.piste.gouv.fr/cassation/judilibre/v1",
+        "api_key": "ac72ad69-ef21-4af2-b3e2-6fa1132a8348",
+        "client_secret": "ec344bdb-c1f0-482c-ac1e-bb9254ae6adb",
+        "endpoints": {
+            "search": "/search",
+            "decision": "/decision",
+            "export": "/export"
+        }
+    },
+    "legifrance": {
+        "enabled": True,
+        "base_url": "https://api.piste.gouv.fr/dila/legifrance/v1",
+        "oauth_url": "https://oauth.piste.gouv.fr/api/oauth/token",
+        "client_id": "ac72ad69-ef21-4af2-b3e2-6fa1132a8348",
+        "client_secret": "ec344bdb-c1f0-482c-ac1e-bb9254ae6adb",
+        "endpoints": {
+            "search": "/search",
+            "consult": "/consult",
+            "download": "/download"
+        }
+    }
 }
 
 # Délais de prescription
