@@ -102,3 +102,51 @@ MESSAGES = {
     "no_results": "Aucun résultat trouvé.",
     "verification_in_progress": "Vérification des jurisprudences en cours..."
 }
+
+# Configuration Azure Search
+AZURE_SEARCH_CONFIG = {
+    'index_name': 'juridique-index',
+    'vector_dimension': 1536,  # OpenAI embeddings
+    'endpoint': None,  # Sera chargé depuis les variables d'environnement
+    'key': None  # Sera chargé depuis les variables d'environnement
+}
+
+# Container Azure par défaut
+DEFAULT_CONTAINER = "sharepoint-documents"
+
+# Formats de citation
+CITATION_FORMATS = {
+    'jurisprudence': "{juridiction}, {date}, n° {numero}",
+    'article_code': "Art. {numero} {code}",
+    'doctrine': "{auteur}, « {titre} », {revue} {annee}, n° {numero}, p. {page}",
+    'circulaire': "Circ. {reference} du {date}",
+    'reponse_ministerielle': "Rép. min. n° {numero}, {date}"
+}
+
+# Prompts d'analyse spécialisés
+ANALYSIS_PROMPTS_AFFAIRES = {
+    "🎯 Analyse infractions économiques": [
+        "Analysez précisément les éléments constitutifs de l'infraction reprochée",
+        "Identifiez l'élément intentionnel et les moyens de le contester",
+        "Recherchez les causes d'exonération ou d'atténuation",
+        "Proposez une stratégie axée sur la bonne foi et l'intérêt social"
+    ],
+    "🏢 Responsabilité personne morale": [
+        "Vérifiez les conditions d'imputation à la personne morale",
+        "Analysez si les faits ont été commis pour le compte de la PM",
+        "Examinez le rôle des organes et représentants",
+        "Évaluez l'impact d'une éventuelle délégation de pouvoirs"
+    ],
+    "🛡️ Moyens de défense affaires": [
+        "Valorisez le programme de conformité existant",
+        "Démontrez les mesures correctives prises",
+        "Argumentez sur l'absence d'enrichissement personnel",
+        "Mettez en avant la transparence et la bonne gouvernance"
+    ],
+    "💰 Enjeux financiers": [
+        "Calculez précisément le préjudice allégué",
+        "Contestez les méthodes de calcul du préjudice",
+        "Évaluez l'impact financier des sanctions encourues",
+        "Proposez des modalités de réparation adaptées"
+    ]
+}
