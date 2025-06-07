@@ -2,116 +2,132 @@
 """Gestionnaire Azure Blob Storage"""
 
 import os
-import logging
+import streamlit as st
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-import streamlit as st
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from azure.storage.blob import BlobServiceClient, ContainerClient
     from azure.core.exceptions import ResourceNotFoundError
     AZURE_AVAILABLE = True
-except ImportError:
+    print("[AzureBlobManager] Azure SDK importé avec succès")
+except ImportError as e:
     AZURE_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
+    print(f"[AzureBlobManager] Azure SDK non disponible: {e}")
 
 class AzureBlobManager:
-    """Gère les opérations avec Azure Blob Storage"""
+    """Gestionnaire pour Azure Blob Storage"""
     
     def __init__(self):
-    self.connected = False
-    self.blob_service_client = None
-    
-    print(f"[AzureBlobManager] AZURE_AVAILABLE: {AZURE_AVAILABLE}")
-    
-    if AZURE_AVAILABLE:
-        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        print(f"[AzureBlobManager] Connection string present: {bool(connection_string)}")
-        
-        if connection_string:
-            try:
-                self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-                # Tester la connexion
-                containers = list(self.blob_service_client.list_containers())
-                self.connected = True
-                print(f"[AzureBlobManager] Connexion réussie, {len(containers)} containers trouvés")
-            except Exception as e:
-                print(f"[AzureBlobManager] Erreur connexion: {type(e).__name__}: {str(e)}")
-        else:
-            print("[AzureBlobManager] Pas de connection string")
-        """Initialise le gestionnaire Azure Blob"""
+        self.connected = False
         self.blob_service_client = None
-        self.connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         
-        if self.connection_string and AZURE_AVAILABLE:
+        print(f"[AzureBlobManager] Initialisation - AZURE_AVAILABLE: {AZURE_AVAILABLE}")
+        
+        if not AZURE_AVAILABLE:
+            print("[AzureBlobManager] SDK Azure non disponible, arrêt de l'initialisation")
+            return
+        
+        # Essayer plusieurs méthodes pour obtenir la connection string
+        connection_string = None
+        
+        # Méthode 1: Variable d'environnement standard
+        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        if connection_string:
+            print("[AzureBlobManager] Connection string trouvée via os.getenv")
+        
+        # Méthode 2: st.secrets (pour Hugging Face Spaces)
+        if not connection_string:
             try:
-                self.blob_service_client = BlobServiceClient.from_connection_string(
-                    self.connection_string
-                )
-                logger.info("✅ Connexion Azure Blob Storage établie")
+                connection_string = st.secrets.get("AZURE_STORAGE_CONNECTION_STRING")
+                if connection_string:
+                    print("[AzureBlobManager] Connection string trouvée via st.secrets")
             except Exception as e:
-                logger.error(f"❌ Erreur connexion Azure Blob: {e}")
-                st.warning(f"Impossible de se connecter à Azure Blob Storage: {str(e)}")
-        else:
-            if not AZURE_AVAILABLE:
-                logger.warning("⚠️ Azure SDK non installé")
-            else:
-                logger.warning("⚠️ AZURE_STORAGE_CONNECTION_STRING non configuré")
+                print(f"[AzureBlobManager] st.secrets non disponible: {e}")
+        
+        # Méthode 3: Vérifier les secrets avec différentes clés possibles
+        if not connection_string:
+            possible_keys = [
+                'azure_storage_connection_string',
+                'AZURE_STORAGE_CONNECTION_STRING',
+                'AzureStorageConnectionString',
+                'azure_storage'
+            ]
+            for key in possible_keys:
+                try:
+                    connection_string = os.getenv(key) or st.secrets.get(key)
+                    if connection_string:
+                        print(f"[AzureBlobManager] Connection string trouvée avec la clé: {key}")
+                        break
+                except:
+                    pass
+        
+        if not connection_string:
+            print("[AzureBlobManager] Aucune connection string trouvée")
+            print("[AzureBlobManager] Variables d'environnement disponibles:", list(os.environ.keys())[:10])
+            return
+        
+        # Vérifier le format de la connection string
+        print(f"[AzureBlobManager] Connection string commence par: {connection_string[:50]}...")
+        
+        try:
+            # Créer le client
+            self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            print("[AzureBlobManager] BlobServiceClient créé")
+            
+            # Tester la connexion en listant les containers
+            containers = []
+            try:
+                for container in self.blob_service_client.list_containers():
+                    containers.append(container.name)
+                    if len(containers) >= 5:  # Limiter pour le test
+                        break
+                
+                self.connected = True
+                print(f"[AzureBlobManager] ✅ Connexion réussie! {len(containers)} containers trouvés")
+                if containers:
+                    print(f"[AzureBlobManager] Premiers containers: {containers}")
+                    
+            except Exception as e:
+                print(f"[AzureBlobManager] ❌ Erreur lors du test de connexion: {type(e).__name__}: {str(e)}")
+                self.connected = False
+                
+        except Exception as e:
+            print(f"[AzureBlobManager] ❌ Erreur création BlobServiceClient: {type(e).__name__}: {str(e)}")
+            self.connected = False
     
     def is_connected(self) -> bool:
-        """Vérifie si la connexion est établie"""
-        return self.blob_service_client is not None
+        """Vérifie si la connexion est active"""
+        return self.connected and self.blob_service_client is not None
     
     def list_containers(self) -> List[str]:
         """Liste tous les containers disponibles"""
         if not self.is_connected():
+            print("[AzureBlobManager] list_containers: Non connecté")
             return []
         
         try:
             containers = []
             for container in self.blob_service_client.list_containers():
                 containers.append(container.name)
+            print(f"[AzureBlobManager] list_containers: {len(containers)} containers trouvés")
             return containers
         except Exception as e:
-            logger.error(f"Erreur listing containers: {e}")
+            print(f"[AzureBlobManager] Erreur listing containers: {type(e).__name__}: {str(e)}")
             return []
     
-    def list_blobs(self, container_name: str, prefix: str = "") -> List[Dict[str, Any]]:
-        """Liste les blobs dans un container avec un préfixe optionnel"""
-        if not self.is_connected():
-            return []
-        
-        try:
-            container_client = self.blob_service_client.get_container_client(container_name)
-            blobs = []
-            
-            for blob in container_client.list_blobs(name_starts_with=prefix):
-                blobs.append({
-                    'name': blob.name,
-                    'size': blob.size,
-                    'last_modified': blob.last_modified,
-                    'content_type': blob.content_settings.content_type if blob.content_settings else None,
-                    'metadata': blob.metadata
-                })
-            
-            return blobs
-        except ResourceNotFoundError:
-            logger.error(f"Container '{container_name}' non trouvé")
-            return []
-        except Exception as e:
-            logger.error(f"Erreur listing blobs: {e}")
-            return []
-    
-    def list_folder_contents(self, container_name: str, folder_path: str = "") -> List[Dict[str, Any]]:
-        """Liste le contenu d'un dossier (blobs et sous-dossiers)"""
+    def list_folder_contents(self, container_name: str, folder_path: str = "") -> List[Dict]:
+        """Liste le contenu d'un dossier dans un container"""
         if not self.is_connected():
             return []
         
         try:
             container_client = self.blob_service_client.get_container_client(container_name)
             
-            # Ajouter le slash si nécessaire
+            # Normaliser le chemin
             prefix = folder_path
             if prefix and not prefix.endswith('/'):
                 prefix += '/'
@@ -119,139 +135,97 @@ class AzureBlobManager:
             items = []
             folders = set()
             
-            # Lister tous les blobs avec le préfixe
+            # Lister les blobs
             for blob in container_client.list_blobs(name_starts_with=prefix):
-                # Enlever le préfixe pour obtenir le chemin relatif
+                # Obtenir le chemin relatif
                 relative_path = blob.name[len(prefix):] if prefix else blob.name
                 
-                # Vérifier si c'est un sous-dossier
+                # Vérifier si c'est un dossier
                 if '/' in relative_path:
-                    # C'est dans un sous-dossier
                     folder_name = relative_path.split('/')[0]
                     folders.add(folder_name)
                 else:
-                    # C'est un fichier direct
+                    # C'est un fichier
                     items.append({
-                        'type': 'file',
                         'name': relative_path,
                         'path': blob.name,
                         'size': blob.size,
-                        'last_modified': blob.last_modified,
-                        'content_type': blob.content_settings.content_type if blob.content_settings else None
+                        'type': 'file',
+                        'last_modified': blob.last_modified
                     })
             
             # Ajouter les dossiers
             for folder in sorted(folders):
                 items.append({
-                    'type': 'folder',
                     'name': folder,
-                    'path': prefix + folder
+                    'path': prefix + folder,
+                    'type': 'folder'
                 })
             
-            # Trier : dossiers d'abord, puis fichiers
-            items.sort(key=lambda x: (x['type'] != 'folder', x['name']))
-            
-            return items
+            return sorted(items, key=lambda x: (x['type'] == 'file', x['name']))
             
         except Exception as e:
             logger.error(f"Erreur listing dossier: {e}")
             return []
     
-    def download_blob(self, container_name: str, blob_name: str) -> Optional[bytes]:
+    def download_blob(self, container_name: str, blob_path: str) -> bytes:
         """Télécharge un blob et retourne son contenu"""
         if not self.is_connected():
-            return None
+            return b""
         
         try:
             blob_client = self.blob_service_client.get_blob_client(
                 container=container_name,
-                blob=blob_name
+                blob=blob_path
             )
             
-            download_stream = blob_client.download_blob()
-            return download_stream.readall()
+            return blob_client.download_blob().readall()
             
-        except ResourceNotFoundError:
-            logger.error(f"Blob '{blob_name}' non trouvé dans '{container_name}'")
-            return None
         except Exception as e:
             logger.error(f"Erreur téléchargement blob: {e}")
-            return None
+            return b""
     
-    def upload_blob(self, container_name: str, blob_name: str, data: bytes, 
-                   metadata: Optional[Dict[str, str]] = None) -> bool:
-        """Upload un blob avec des métadonnées optionnelles"""
+    def upload_blob(self, container_name: str, blob_path: str, data: bytes) -> bool:
+        """Upload des données vers un blob"""
         if not self.is_connected():
             return False
         
         try:
             blob_client = self.blob_service_client.get_blob_client(
                 container=container_name,
-                blob=blob_name
+                blob=blob_path
             )
             
-            blob_client.upload_blob(
-                data,
-                overwrite=True,
-                metadata=metadata
-            )
-            
-            logger.info(f"✅ Blob '{blob_name}' uploadé dans '{container_name}'")
+            blob_client.upload_blob(data, overwrite=True)
             return True
             
         except Exception as e:
             logger.error(f"Erreur upload blob: {e}")
             return False
     
-    def delete_blob(self, container_name: str, blob_name: str) -> bool:
-        """Supprime un blob"""
+    def search_blobs(self, container_name: str, search_term: str, max_results: int = 50) -> List[Dict]:
+        """Recherche des blobs par nom"""
         if not self.is_connected():
-            return False
+            return []
         
         try:
-            blob_client = self.blob_service_client.get_blob_client(
-                container=container_name,
-                blob=blob_name
-            )
+            container_client = self.blob_service_client.get_container_client(container_name)
+            results = []
             
-            blob_client.delete_blob()
-            logger.info(f"✅ Blob '{blob_name}' supprimé de '{container_name}'")
-            return True
+            for blob in container_client.list_blobs():
+                if search_term.lower() in blob.name.lower():
+                    results.append({
+                        'name': blob.name,
+                        'size': blob.size,
+                        'last_modified': blob.last_modified,
+                        'container': container_name
+                    })
+                    
+                    if len(results) >= max_results:
+                        break
             
-        except ResourceNotFoundError:
-            logger.warning(f"Blob '{blob_name}' non trouvé dans '{container_name}'")
-            return False
-        except Exception as e:
-            logger.error(f"Erreur suppression blob: {e}")
-            return False
-    
-    def create_container(self, container_name: str) -> bool:
-        """Crée un nouveau container"""
-        if not self.is_connected():
-            return False
-        
-        try:
-            container_client = self.blob_service_client.create_container(container_name)
-            logger.info(f"✅ Container '{container_name}' créé")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur création container: {e}")
-            return False
-    
-    def get_blob_metadata(self, container_name: str, blob_name: str) -> Optional[Dict[str, str]]:
-        """Récupère les métadonnées d'un blob"""
-        if not self.is_connected():
-            return None
-        
-        try:
-            blob_client = self.blob_service_client.get_blob_client(
-                container=container_name,
-                blob=blob_name
-            )
-            
-            properties = blob_client.get_blob_properties()
-            return properties.metadata
+            return results
             
         except Exception as e:
-            logger.error(f"Erreur récupération métadonnées: {e}")
-            return None
+            logger.error(f"Erreur recherche blobs: {e}")
+            return []
