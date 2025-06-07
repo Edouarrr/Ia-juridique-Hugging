@@ -3,7 +3,6 @@
 
 import streamlit as st
 from datetime import datetime
-import random
 
 from config.app_config import APP_TITLE, APP_VERSION, APP_ICON, TYPES_INFRACTIONS, MESSAGES
 from utils.styles import load_custom_css, create_header, format_metric_card, create_alert_box
@@ -13,16 +12,12 @@ def show():
     """Affiche la page d'accueil"""
     load_custom_css()
     
-    # Titre principal avec style
-    st.markdown(f"""
-    <div style='text-align: center; padding: 2rem 0; background-color: #f0f2f6; border-radius: 10px; margin-bottom: 2rem;'>
-        <h1 style='color: #1a237e; font-size: 3rem; margin-bottom: 0.5rem;'>{APP_ICON} {APP_TITLE}</h1>
-        <p style='color: #666; font-size: 1.2rem; margin: 0;'>Intelligence artificielle au service du droit pénal économique</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Titre principal - Utilisons st.title au lieu de HTML pour éviter la duplication
+    st.title(f"{APP_ICON} {APP_TITLE}")
+    st.markdown("Intelligence artificielle au service du droit pénal économique")
     
     # Message de bienvenue
-    st.markdown(create_header(MESSAGES["welcome"], level=2), unsafe_allow_html=True)
+    st.markdown("## 👋 " + MESSAGES["welcome"])
     
     # Section des fonctionnalités principales
     st.markdown("## 🚀 Fonctionnalités principales")
@@ -32,32 +27,32 @@ def show():
     with col1:
         st.markdown(format_metric_card(
             "🔍 Recherche intelligente",
-            "Explorez vos documents SharePoint et recherchez dans la jurisprudence",
-            "primary"
+            "Documents & Jurisprudence",
+            color="primary"
         ), unsafe_allow_html=True)
         
         if st.button("Accéder à la recherche", key="btn_recherche", use_container_width=True):
-            st.session_state.page = "Recherche de jurisprudence"
+            st.info("Utilisez le menu de navigation pour accéder à la recherche")
     
     with col2:
         st.markdown(format_metric_card(
             "📋 Analyse juridique",
-            "Analysez vos documents avec l'aide de l'IA et générez des insights",
-            "success"
+            "IA & Insights",
+            color="success"
         ), unsafe_allow_html=True)
         
         if st.button("Lancer une analyse", key="btn_analyse", use_container_width=True):
-            st.session_state.page = "Analyse juridique"
+            st.info("Utilisez le menu de navigation pour accéder à l'analyse")
     
     with col3:
         st.markdown(format_metric_card(
             "💬 Assistant interactif",
-            "Posez vos questions juridiques et obtenez des réponses instantanées",
-            "info"
+            "Questions & Réponses",
+            color="info"
         ), unsafe_allow_html=True)
         
         if st.button("Démarrer l'assistant", key="btn_assistant", use_container_width=True):
-            st.session_state.page = "Assistant interactif"
+            st.info("Utilisez le menu de navigation pour accéder à l'assistant")
     
     # Statistiques et métriques
     st.markdown("---")
@@ -134,7 +129,7 @@ def show():
     st.markdown("---")
     st.markdown("## 📰 Actualités juridiques")
     
-    # Simuler des actualités (dans une vraie app, ces données viendraient d'une API)
+    # Simuler des actualités
     actualites = [
         {
             "titre": "Nouvelle jurisprudence sur l'abus de biens sociaux",
@@ -145,32 +140,11 @@ def show():
             "titre": "Réforme du droit pénal des affaires",
             "date": "10 juin 2025",
             "description": "Le projet de loi renforçant la lutte contre la corruption..."
-        },
-        {
-            "titre": "Guide pratique : La conformité en entreprise",
-            "date": "5 juin 2025",
-            "description": "L'AFA publie ses nouvelles recommandations..."
         }
     ]
     
-    for actu in actualites[:2]:  # Afficher seulement les 2 dernières
+    for actu in actualites:
         with st.container():
-            st.markdown(f"""
-            <div style='background-color: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
-                <h4 style='margin: 0; color: #1a237e;'>{actu['titre']}</h4>
-                <p style='margin: 0.5rem 0; color: #666; font-size: 0.9rem;'>{actu['date']}</p>
-                <p style='margin: 0;'>{actu['description']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        f"""
-        <div style='text-align: center; color: #666; padding: 1rem;'>
-            <p>Version {APP_VERSION} - Votre expert en droit pénal des affaires</p>
-            <p style='font-size: 0.9rem;'>© 2025 Assistant Pénal des Affaires IA - Tous droits réservés</p>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
+            st.markdown(f"### {actu['titre']}")
+            st.caption(f"📅 {actu['date']}")
+            st.info(actu['description'])
