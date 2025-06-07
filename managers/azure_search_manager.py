@@ -1,237 +1,184 @@
 # managers/azure_search_manager.py
-"""Gestionnaire Azure Cognitive Search"""
+"""Gestionnaire Azure Cognitive Search avec diagnostics renforcés"""
 
 import os
-import logging
-from typing import List, Dict, Optional, Any
 import streamlit as st
+from typing import List, Dict, Optional, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from azure.search.documents import SearchClient
     from azure.search.documents.indexes import SearchIndexClient
-    from azure.search.documents.models import VectorizedQuery
     from azure.core.credentials import AzureKeyCredential
+    from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
     AZURE_SEARCH_AVAILABLE = True
-except ImportError:
+    print("[AzureSearchManager] ✅ Azure Search SDK importé avec succès")
+except ImportError as e:
     AZURE_SEARCH_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
+    print(f"[AzureSearchManager] ❌ Azure Search SDK non disponible: {e}")
 
 class AzureSearchManager:
-    """Gère les opérations de recherche avec Azure Cognitive Search"""
+    """Gestionnaire pour Azure Cognitive Search"""
     
     def __init__(self):
-        """Initialise le gestionnaire de recherche"""
         self.search_client = None
         self.index_client = None
-        self.endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-        self.key = os.getenv('AZURE_SEARCH_KEY')
-        self.index_name = os.getenv('AZURE_SEARCH_INDEX', 'juridique-index')
+        self.index_name = "juridique-index"
+        self.connection_error = None
         
-        if self.endpoint and self.key and AZURE_SEARCH_AVAILABLE:
-            try:
-                credential = AzureKeyCredential(self.key)
-                
-                # Client pour les opérations de recherche
-                self.search_client = SearchClient(
-                    endpoint=self.endpoint,
-                    index_name=self.index_name,
-                    credential=credential
-                )
-                
-                # Client pour la gestion des index
-                self.index_client = SearchIndexClient(
-                    endpoint=self.endpoint,
-                    credential=credential
-                )
-                
-                logger.info("✅ Connexion Azure Search établie")
-            except Exception as e:
-                logger.error(f"❌ Erreur connexion Azure Search: {e}")
-                st.warning(f"Impossible de se connecter à Azure Search: {str(e)}")
-        else:
-            if not AZURE_SEARCH_AVAILABLE:
-                logger.warning("⚠️ Azure Search SDK non installé")
-            else:
-                logger.warning("⚠️ Configuration Azure Search manquante")
-    
-    def is_connected(self) -> bool:
-        """Vérifie si la connexion est établie"""
-        return self.search_client is not None
-    
-    def search_text(self, query: str, top: int = 20, filters: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Recherche textuelle simple"""
-        if not self.is_connected():
-            return []
+        print("[AzureSearchManager] Initialisation...")
+        
+        if not AZURE_SEARCH_AVAILABLE:
+            self.connection_error = "SDK Azure Search non disponible"
+            return
+        
+        # Récupérer les paramètres de connexion
+        endpoint, key = self._get_connection_params()
+        
+        if not endpoint or not key:
+            self.connection_error = "Paramètres de connexion manquants"
+            return
         
         try:
-            results = self.search_client.search(
-                search_text=query,
-                top=top,
-                filter=filters,
-                include_total_count=True
+            print(f"[AzureSearchManager] Connexion à {endpoint}")
+            credential = AzureKeyCredential(key)
+            
+            self.search_client = SearchClient(
+                endpoint=endpoint,
+                index_name=self.index_name,
+                credential=credential
             )
             
-            documents = []
-            for result in results:
-                doc = {
-                    'id': result.get('id', ''),
-                    'title': result.get('title', ''),
-                    'content': result.get('content', ''),
-                    'source': result.get('source', ''),
-                    'score': result.get('@search.score', 0),
-                    'metadata': result.get('metadata', {})
-                }
-                documents.append(doc)
+            self.index_client = SearchIndexClient(
+                endpoint=endpoint,
+                credential=credential
+            )
             
-            return documents
+            # Test de connexion
+            self._test_connection()
             
+            print("[AzureSearchManager] ✅ Connexion Azure Search réussie")
+            
+        except ClientAuthenticationError as e:
+            self.connection_error = f"Erreur d'authentification Azure Search: {str(e)}"
+            print(f"[AzureSearchManager] ❌ {self.connection_error}")
         except Exception as e:
-            logger.error(f"Erreur recherche textuelle: {e}")
-            return []
+            self.connection_error = f"Erreur connexion Azure Search: {str(e)}"
+            print(f"[AzureSearchManager] ❌ {self.connection_error}")
     
-    def search_vector(self, query_embedding: List[float], top: int = 20, 
-                     filters: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Recherche vectorielle (sémantique)"""
-        if not self.is_connected():
-            return []
+    def _get_connection_params(self) -> tuple:
+        """Récupère les paramètres de connexion"""
         
-        try:
-            vector_query = VectorizedQuery(
-                vector=query_embedding,
-                k_nearest_neighbors=top,
-                fields="contentVector"
-            )
-            
-            results = self.search_client.search(
-                search_text=None,
-                vector_queries=[vector_query],
-                filter=filters,
-                top=top
-            )
-            
-            documents = []
-            for result in results:
-                doc = {
-                    'id': result.get('id', ''),
-                    'title': result.get('title', ''),
-                    'content': result.get('content', ''),
-                    'source': result.get('source', ''),
-                    'score': result.get('@search.score', 0),
-                    'metadata': result.get('metadata', {})
-                }
-                documents.append(doc)
-            
-            return documents
-            
-        except Exception as e:
-            logger.error(f"Erreur recherche vectorielle: {e}")
-            return []
+        # Endpoint
+        endpoint = (
+            os.getenv('AZURE_SEARCH_ENDPOINT') or
+            (st.secrets.get("AZURE_SEARCH_ENDPOINT") if hasattr(st, 'secrets') else None) or
+            os.getenv('azure_search_endpoint')
+        )
+        
+        # Key
+        key = (
+            os.getenv('AZURE_SEARCH_KEY') or
+            (st.secrets.get("AZURE_SEARCH_KEY") if hasattr(st, 'secrets') else None) or
+            os.getenv('azure_search_key')
+        )
+        
+        print(f"[AzureSearchManager] Endpoint: {'✅' if endpoint else '❌'}")
+        print(f"[AzureSearchManager] Key: {'✅' if key else '❌'}")
+        
+        if endpoint:
+            print(f"[AzureSearchManager] Endpoint: {endpoint}")
+        if key:
+            print(f"[AzureSearchManager] Key: {key[:10]}...")
+        
+        return endpoint, key
     
-    def search_hybrid(self, query: str, query_embedding: Optional[List[float]] = None, 
-                     top: int = 20, filters: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _test_connection(self):
+        """Teste la connexion"""
+        try:
+            # Tenter une requête simple
+            results = self.search_client.search("test", top=1)
+            list(results)  # Consommer l'itérateur pour déclencher la requête
+            print("[AzureSearchManager] ✅ Test de connexion réussi")
+        except ResourceNotFoundError:
+            print(f"[AzureSearchManager] ⚠️ Index '{self.index_name}' non trouvé, mais connexion OK")
+        except Exception as e:
+            print(f"[AzureSearchManager] ❌ Test de connexion échoué: {e}")
+            raise
+    
+    def get_connection_error(self) -> Optional[str]:
+        """Retourne l'erreur de connexion si applicable"""
+        return self.connection_error
+    
+    def search_hybrid(self, query: str, top: int = 20, filters: Optional[str] = None) -> List[Dict]:
         """Recherche hybride (textuelle + vectorielle)"""
-        if not self.is_connected():
+        if not self.search_client:
             return []
         
         try:
-            # Si pas d'embedding fourni, faire une recherche textuelle simple
-            if not query_embedding:
-                return self.search_text(query, top, filters)
-            
-            # Recherche hybride
-            vector_query = VectorizedQuery(
-                vector=query_embedding,
-                k_nearest_neighbors=top,
-                fields="contentVector"
-            )
-            
             results = self.search_client.search(
                 search_text=query,
-                vector_queries=[vector_query],
-                filter=filters,
                 top=top,
+                filter=filters,
                 include_total_count=True
             )
             
             documents = []
             for result in results:
-                doc = {
+                documents.append({
                     'id': result.get('id', ''),
                     'title': result.get('title', ''),
                     'content': result.get('content', ''),
-                    'source': result.get('source', ''),
                     'score': result.get('@search.score', 0),
-                    'metadata': result.get('metadata', {})
-                }
-                documents.append(doc)
+                    'source': result.get('source', 'Azure Search')
+                })
             
             return documents
             
         except Exception as e:
-            logger.error(f"Erreur recherche hybride: {e}")
-            # Fallback sur recherche textuelle
-            return self.search_text(query, top, filters)
+            print(f"[AzureSearchManager] Erreur recherche hybride: {e}")
+            return []
     
-    def index_document(self, document: Dict[str, Any]) -> bool:
-        """Indexe un document dans Azure Search"""
-        if not self.is_connected():
-            return False
+    def search_text(self, query: str, top: int = 20, filters: Optional[str] = None) -> List[Dict]:
+        """Recherche textuelle pure"""
+        if not self.search_client:
+            return []
         
         try:
-            # S'assurer que le document a un ID
-            if 'id' not in document:
-                document['id'] = str(datetime.now().timestamp())
-            
-            # Uploader le document
-            result = self.search_client.upload_documents(documents=[document])
-            
-            # Vérifier le résultat
-            if result[0].succeeded:
-                logger.info(f"✅ Document '{document['id']}' indexé")
-                return True
-            else:
-                logger.error(f"❌ Échec indexation: {result[0].error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Erreur indexation document: {e}")
-            return False
-    
-    def delete_document(self, document_id: str) -> bool:
-        """Supprime un document de l'index"""
-        if not self.is_connected():
-            return False
-        
-        try:
-            result = self.search_client.delete_documents(documents=[{"id": document_id}])
-            
-            if result[0].succeeded:
-                logger.info(f"✅ Document '{document_id}' supprimé")
-                return True
-            else:
-                logger.error(f"❌ Échec suppression: {result[0].error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Erreur suppression document: {e}")
-            return False
-    
-    def get_document_count(self) -> int:
-        """Retourne le nombre de documents dans l'index"""
-        if not self.is_connected():
-            return 0
-        
-        try:
-            # Recherche vide pour obtenir le count
             results = self.search_client.search(
-                search_text="*",
-                include_total_count=True,
-                top=0
+                search_text=query,
+                top=top,
+                filter=filters,
+                search_mode="all"
             )
             
-            return results.get_count()
+            documents = []
+            for result in results:
+                documents.append({
+                    'id': result.get('id', ''),
+                    'title': result.get('title', ''),
+                    'content': result.get('content', ''),
+                    'score': result.get('@search.score', 0),
+                    'source': 'Azure Search'
+                })
+            
+            return documents
             
         except Exception as e:
-            logger.error(f"Erreur comptage documents: {e}")
-            return 0
+            print(f"[AzureSearchManager] Erreur recherche textuelle: {e}")
+            return []
+    
+    def search_vector(self, query_vector: List[float], top: int = 20) -> List[Dict]:
+        """Recherche vectorielle pure"""
+        if not self.search_client:
+            return []
+        
+        try:
+            print("[AzureSearchManager] ⚠️ Recherche vectorielle non implémentée complètement")
+            return []
+            
+        except Exception as e:
+            print(f"[AzureSearchManager] Erreur recherche vectorielle: {e}")
+            return []
