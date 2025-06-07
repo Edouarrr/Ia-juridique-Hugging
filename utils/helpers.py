@@ -322,3 +322,56 @@ def merge_vocabulary(vocab_list: List[Dict[str, int]]) -> Dict[str, int]:
     
     # Garder les 100 mots les plus fréquents
     return dict(sorted(merged.items(), key=lambda x: x[1], reverse=True)[:100])
+
+    # Ajouter à utils/helpers.py
+
+def create_letterhead_from_template(template, content: str):
+    """Crée un document avec papier en-tête à partir d'un template"""
+    try:
+        from docx import Document as DocxDocument
+        from docx.shared import Pt, Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        import io
+        
+        doc = DocxDocument()
+        
+        # Définir les marges
+        sections = doc.sections
+        for section in sections:
+            section.top_margin = Inches(template.margins['top'])
+            section.bottom_margin = Inches(template.margins['bottom'])
+            section.left_margin = Inches(template.margins['left'])
+            section.right_margin = Inches(template.margins['right'])
+        
+        # Ajouter l'en-tête
+        if template.header_content:
+            header = doc.sections[0].header
+            header_para = header.paragraphs[0]
+            header_para.text = template.header_content
+            header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Ajouter le contenu principal
+        paragraphs = content.split('\n')
+        for para_text in paragraphs:
+            p = doc.add_paragraph(para_text)
+            p.style.font.name = template.font_family
+            p.style.font.size = Pt(template.font_size)
+            p.paragraph_format.line_spacing = template.line_spacing
+        
+        # Ajouter le pied de page
+        if template.footer_content:
+            footer = doc.sections[0].footer
+            footer_para = footer.paragraphs[0]
+            footer_para.text = template.footer_content
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Sauvegarder en mémoire
+        docx_buffer = io.BytesIO()
+        doc.save(docx_buffer)
+        docx_buffer.seek(0)
+        
+        return docx_buffer
+        
+    except Exception as e:
+        logger.error(f"Erreur création document avec papier en-tête: {e}")
+        return None
