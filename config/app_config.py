@@ -1,6 +1,8 @@
 # config/app_config.py
 """Configuration centralisée de l'application"""
 
+import os
+
 # Informations application
 APP_TITLE = "Assistant Pénal des Affaires IA"
 APP_VERSION = "3.0.0"
@@ -40,20 +42,38 @@ TYPES_INFRACTIONS = [
     "Autre infraction"
 ]
 
-# Configuration des modèles LLM
-MODELS_CONFIG = {
-    "OpenAI": {
-        "models": ["gpt-4", "gpt-3.5-turbo"],
-        "default": "gpt-4"
+# Configuration des LLMs - AJOUT MANQUANT
+LLM_CONFIGS = {
+    "AZURE_OPENAI": {
+        'endpoint': os.getenv('AZURE_OPENAI_ENDPOINT', ''),
+        'key': os.getenv('AZURE_OPENAI_KEY', ''),
+        'deployment': os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4'),
+        'api_version': '2024-02-01'
     },
-    "Anthropic": {
-        "models": ["claude-3-opus-20240229", "claude-3-sonnet-20240229"],
-        "default": "claude-3-opus-20240229"
+    "CLAUDE_OPUS": {
+        'api_key': os.getenv('ANTHROPIC_API_KEY', ''),
+        'model': 'claude-3-opus-20240229'
     },
-    "Google": {
-        "models": ["gemini-pro"],
-        "default": "gemini-pro"
+    "CHATGPT_4O": {
+        'api_key': os.getenv('OPENAI_API_KEY', ''),
+        'model': 'gpt-4-turbo-preview'
+    },
+    "GEMINI": {
+        'api_key': os.getenv('GOOGLE_API_KEY', ''),
+        'model': 'gemini-pro'
+    },
+    "PERPLEXITY": {
+        'api_key': os.getenv('PERPLEXITY_API_KEY', ''),
+        'model': 'pplx-70b-online'
     }
+}
+
+# Configuration Azure Search
+AZURE_SEARCH_CONFIG = {
+    'index_name': 'juridique-index',
+    'vector_dimension': 1536,
+    'endpoint': os.getenv('AZURE_SEARCH_ENDPOINT', ''),
+    'key': os.getenv('AZURE_SEARCH_KEY', '')
 }
 
 # APIs juridiques
@@ -77,21 +97,6 @@ DEFAULT_SETTINGS = {
     "top_p": 0.9,
     "presence_penalty": 0.0,
     "frequency_penalty": 0.0
-}
-
-# Formats d'export
-EXPORT_FORMATS = {
-    "PDF": {"extension": ".pdf", "mime": "application/pdf"},
-    "DOCX": {"extension": ".docx", "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-    "TXT": {"extension": ".txt", "mime": "text/plain"},
-    "JSON": {"extension": ".json", "mime": "application/json"}
-}
-
-# Configuration du cache
-CACHE_CONFIG = {
-    "ttl": 3600,
-    "max_entries": 1000,
-    "persist": True
 }
 
 # Messages système
