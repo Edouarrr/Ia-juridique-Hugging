@@ -527,4 +527,148 @@ def add_file_to_documents(azure_manager, container_name: str, file_info: Dict, c
             
             # Indexer dans Azure Search si disponible
             if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
-                success = st.session_state.azure_search_manager.index_doc
+                success = st.session_state.azure_search_manager.index_document(doc)
+                if success:
+                    st.success(f"✅ {file_info['name']} ajouté et indexé")
+                else:
+                    st.success(f"✅ {file_info['name']} ajouté (indexation échouée)")
+            else:
+                st.success(f"✅ {file_info['name']} ajouté")
+            
+            st.rerun()
+        else:
+            st.error("❌ Impossible d'extraire le contenu du fichier")
+
+
+def add_entire_folder(azure_manager, container_name: str, folder_info: Dict):
+    """Ajoute tous les fichiers d'un dossier"""
+    with st.spinner(f"Ajout du dossier {folder_info['name']}..."):
+        all_files = azure_manager.get_all_files_in_folder(container_name, folder_info['path'])
+        
+        added_count = 0
+        failed_count = 0
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for i, file_info in enumerate(all_files):
+            # Mettre à jour la progression
+            progress = (i + 1) / len(all_files)
+            progress_bar.progress(progress)
+            status_text.text(f"Traitement de {file_info['name']}...")
+            
+            # Extraire le texte
+            content = azure_manager.extract_text_from_blob(
+                container_name,
+                file_info['full_path']
+            )
+            
+            if content:
+                doc_id = f"azure_{clean_key(file_info['full_path'])}"
+                doc = Document(
+                    id=doc_id,
+                    title=file_info['name'],
+                    content=content,
+                    source='azure',
+                    metadata={
+                        'container': container_name,
+                        'path': file_info['full_path'],
+                        'size': file_info.get('size'),
+                        'last_modified': file_info.get('last_modified')
+                    },
+                    folder_path=file_info['folder']
+                )
+                
+                if 'azure_documents' not in st.session_state:
+                    st.session_state.azure_documents = {}
+                
+                st.session_state.azure_documents[doc_id] = doc
+                
+                # Indexer dans Azure Search si disponible
+                if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
+                    st.session_state.azure_search_manager.index_document(doc)
+                
+                added_count += 1
+            else:
+                failed_count += 1
+        
+        # Effacer la barre de progression
+        progress_bar.empty()
+        status_text.empty()
+        
+        if added_count > 0:
+            st.success(f"✅ {added_count} documents ajoutés du dossier {folder_info['name']}")
+        
+        if failed_count > 0:
+            st.warning(f"⚠️ {failed_count} fichiers n'ont pas pu être traités")
+        
+        if added_count > 0:
+            st.rerun()
+
+
+def display_search_suggestions():
+    """Affiche des suggestions de recherche dynamiques"""
+    st.markdown("### 💡 Affiner votre recherche")
+    
+    search_query = st.session_state.search_query
+    
+    # Essayer de générer des suggestions dynamiques
+    try:
+        from managers.dynamic_generators import generate_dynamic_search_prompts
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        with st.spinner("Génération de suggestions intelligentes..."):
+            suggestions_dynamiques = loop.run_until_complete(
+                generate_dynamic_search_prompts(search_query)
+            )
+        
+        # Afficher les suggestions par catégorie
+        for categorie, sous_categories in suggestions_dynamiques.items():
+            with st.expander(categorie, expanded=True):
+                for sous_cat, prompts in sous_categories.items():
+                    st.markdown(f"**{sous_cat}**")
+                    
+                    cols = st.columns(2)
+                    for i, prompt in enumerate(prompts[:4]):
+                        with cols[i % 2]:
+                            if st.button(
+                                prompt, 
+                                key=f"dyn_sugg_{clean_key(prompt)}", 
+                                use_container_width=True
+                            ):
+                                st.session_state.search_query = prompt
+                                st.rerun()
+    
+    except Exception as e:
+        # Fallback vers des suggestions statiques
+        st.warning("⚠️ Suggestions intelligentes non disponibles")
+        
+        # Suggestions statiques
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 📚 Recherches complémentaires")
+            suggestions = [
+                f"{search_query} jurisprudence récente",
+                f"{search_query} Cour de cassation",
+                f"{search_query} éléments constitutifs",
+                f"{search_query} moyens de défense"
+            ]
+            
+            for suggestion in suggestions:
+                if st.button(suggestion, key=f"static_sugg_{clean_key(suggestion)}", use_container_width=True):
+                    st.session_state.search_query = suggestion
+                    st.rerun()
+        
+        with col2:
+            st.markdown("#### 🏛️ Sources juridiques")
+            
+            st.markdown(f"""
+            **Rechercher "{search_query}" sur :**
+            - [📖 Légifrance](https://www.legifrance.gouv.fr/search/all?tab=all&query={search_query})
+            - [⚖️ Cour de cassation](https://www.courdecassation.fr/recherche-judilibre?search_api_fulltext={search_query})
+            - [🏛️ Conseil d'État](https://www.conseil-etat.fr/arianeweb/)
+            - [📊 Doctrine](https://www.doctrine.fr/search?q={search_query})
+            """)
