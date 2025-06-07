@@ -3,194 +3,174 @@
 
 import streamlit as st
 from datetime import datetime
-import plotly.graph_objects as go
-import plotly.express as px
+import random
+
 from config.app_config import APP_TITLE, APP_VERSION, APP_ICON, TYPES_INFRACTIONS, MESSAGES
 from utils.styles import load_custom_css, create_header, format_metric_card, create_alert_box
 
+
 def show():
     """Affiche la page d'accueil"""
-    # Charger les styles personnalisés
     load_custom_css()
     
-    # Header personnalisé
-    st.markdown(create_header(
-        f"{APP_ICON} {APP_TITLE}",
-        f"Version {APP_VERSION} - Votre expert en droit pénal des affaires"
-    ), unsafe_allow_html=True)
+    # Titre principal avec style
+    st.markdown(f"""
+    <div style='text-align: center; padding: 2rem 0; background-color: #f0f2f6; border-radius: 10px; margin-bottom: 2rem;'>
+        <h1 style='color: #1a237e; font-size: 3rem; margin-bottom: 0.5rem;'>{APP_ICON} {APP_TITLE}</h1>
+        <p style='color: #666; font-size: 1.2rem; margin: 0;'>Intelligence artificielle au service du droit pénal économique</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Message de bienvenue
-    st.markdown(create_alert_box(MESSAGES["welcome"], "info"), unsafe_allow_html=True)
+    st.markdown(create_header(MESSAGES["welcome"], level=2), unsafe_allow_html=True)
     
-    # Statistiques en colonnes
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        analyses_count = st.session_state.get('analyses_count', 0)
-        st.markdown(format_metric_card(
-            "Analyses réalisées",
-            str(analyses_count),
-            "+5 cette semaine" if analyses_count > 0 else None,
-            "primary"
-        ), unsafe_allow_html=True)
-    
-    with col2:
-        verifications_count = st.session_state.get('verifications_count', 0)
-        st.markdown(format_metric_card(
-            "Jurisprudences vérifiées",
-            str(verifications_count),
-            None,
-            "success"
-        ), unsafe_allow_html=True)
-    
-    with col3:
-        documents_count = st.session_state.get('documents_count', 0)
-        st.markdown(format_metric_card(
-            "Documents traités",
-            str(documents_count),
-            None,
-            "info"
-        ), unsafe_allow_html=True)
-    
-    with col4:
-        risk_score = st.session_state.get('average_risk_score', 0)
-        st.markdown(format_metric_card(
-            "Score de risque moyen",
-            f"{risk_score:.1f}/10",
-            None,
-            "warning" if risk_score > 5 else "success"
-        ), unsafe_allow_html=True)
-    
-    # Séparateur
-    st.markdown("---")
-    
-    # Section fonctionnalités principales
-    st.markdown("## 🎯 Fonctionnalités principales")
+    # Section des fonctionnalités principales
+    st.markdown("## 🚀 Fonctionnalités principales")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("""
-        ### 📋 Analyse juridique
-        - Analyse complète de cas
-        - Identification des infractions
-        - Évaluation des risques
-        - Recommandations stratégiques
-        """)
-        if st.button("Commencer une analyse", key="btn_analyse"):
-            st.switch_page("pages/analyse.py")
+        st.markdown(format_metric_card(
+            "🔍 Recherche intelligente",
+            "Explorez vos documents SharePoint et recherchez dans la jurisprudence",
+            "primary"
+        ), unsafe_allow_html=True)
+        
+        if st.button("Accéder à la recherche", key="btn_recherche", use_container_width=True):
+            st.session_state.page = "Recherche de jurisprudence"
     
     with col2:
-        st.markdown("""
-        ### 🔍 Recherche jurisprudentielle
-        - Recherche multi-sources
-        - Vérification automatique
-        - Base Judilibre & Légifrance
-        - Suggestions IA
-        """)
-        if st.button("Rechercher", key="btn_recherche"):
-            st.switch_page("pages/recherche.py")
+        st.markdown(format_metric_card(
+            "📋 Analyse juridique",
+            "Analysez vos documents avec l'aide de l'IA et générez des insights",
+            "success"
+        ), unsafe_allow_html=True)
+        
+        if st.button("Lancer une analyse", key="btn_analyse", use_container_width=True):
+            st.session_state.page = "Analyse juridique"
     
     with col3:
+        st.markdown(format_metric_card(
+            "💬 Assistant interactif",
+            "Posez vos questions juridiques et obtenez des réponses instantanées",
+            "info"
+        ), unsafe_allow_html=True)
+        
+        if st.button("Démarrer l'assistant", key="btn_assistant", use_container_width=True):
+            st.session_state.page = "Assistant interactif"
+    
+    # Statistiques et métriques
+    st.markdown("---")
+    st.markdown("## 📊 Tableau de bord")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        nb_docs = len(st.session_state.get('azure_documents', {}))
+        st.metric(
+            "Documents chargés",
+            nb_docs,
+            delta=f"+{nb_docs}" if nb_docs > 0 else None
+        )
+    
+    with col2:
+        nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
+        st.metric(
+            "Pièces sélectionnées",
+            nb_pieces,
+            delta=f"+{nb_pieces}" if nb_pieces > 0 else None
+        )
+    
+    with col3:
+        nb_analyses = st.session_state.get('analyses_count', 0)
+        st.metric(
+            "Analyses effectuées",
+            nb_analyses
+        )
+    
+    with col4:
+        nb_styles = len(st.session_state.get('learned_styles', {}))
+        st.metric(
+            "Styles appris",
+            nb_styles
+        )
+    
+    # Section d'aide rapide
+    st.markdown("---")
+    st.markdown("## 💡 Aide rapide")
+    
+    with st.expander("🎯 Comment démarrer ?"):
         st.markdown("""
-        ### 💬 Assistant interactif
-        - Chatbot juridique expert
-        - Réponses personnalisées
-        - Multi-modèles IA
-        - Historique conservé
+        1. **Recherchez vos documents** : Utilisez la fonction de recherche pour explorer vos documents SharePoint
+        2. **Sélectionnez les pièces pertinentes** : Organisez vos documents par catégorie
+        3. **Lancez une analyse** : Utilisez l'IA pour analyser vos documents
+        4. **Générez des documents** : Créez des plaintes, conclusions ou courriers
+        5. **Consultez l'assistant** : Posez vos questions juridiques spécifiques
         """)
-        if st.button("Discuter", key="btn_assistant"):
-            st.switch_page("pages/assistant.py")
     
-    # Section infractions
-    st.markdown("## 📊 Types d'infractions traités")
+    with st.expander("📚 Types d'infractions supportées"):
+        # Afficher les infractions en colonnes
+        infractions_cols = st.columns(3)
+        for i, infraction in enumerate(TYPES_INFRACTIONS):
+            with infractions_cols[i % 3]:
+                st.write(f"• {infraction}")
     
-    # Graphique des infractions
-    fig_infractions = create_infractions_chart()
-    st.plotly_chart(fig_infractions, use_container_width=True)
-    
-    # Guides rapides
-    st.markdown("## 📚 Guides rapides")
-    
-    with st.expander("🚀 Comment démarrer ?"):
+    with st.expander("🔧 Configuration requise"):
         st.markdown("""
-        1. **Configurez vos clés API** dans la page Configuration
-        2. **Importez vos documents** ou saisissez directement votre cas
-        3. **Lancez l'analyse** et obtenez des recommandations détaillées
-        4. **Vérifiez les jurisprudences** citées automatiquement
-        5. **Exportez vos résultats** dans le format souhaité
+        **Services Azure nécessaires :**
+        - ✅ Azure Blob Storage (pour accéder à SharePoint)
+        - ✅ Azure Search (pour la recherche vectorielle)
+        - ✅ Azure OpenAI (pour les embeddings)
+        
+        **IA supportées :**
+        - Claude (Anthropic)
+        - GPT-4 (OpenAI/Azure)
+        - Gemini (Google)
+        - Perplexity
+        - Mistral
         """)
     
-    with st.expander("⚡ Raccourcis utiles"):
-        st.markdown("""
-        - `Ctrl + K` : Recherche rapide
-        - `Ctrl + N` : Nouvelle analyse
-        - `Ctrl + E` : Export
-        - `Ctrl + H` : Historique
-        """)
-    
-    with st.expander("🔒 Sécurité et confidentialité"):
-        st.markdown("""
-        - Vos données ne sont pas stockées sur nos serveurs
-        - Les clés API sont chiffrées localement
-        - Connexion sécurisée HTTPS
-        - Conformité RGPD
-        """)
-    
-    # Actualités juridiques (placeholder)
+    # Section actualités/mises à jour
+    st.markdown("---")
     st.markdown("## 📰 Actualités juridiques")
     
-    news_container = st.container()
-    with news_container:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.info("""
-            **Nouvelle jurisprudence** 🆕  
-            Cass. crim., 15 janvier 2025 : Précisions sur l'élément intentionnel 
-            en matière d'abus de biens sociaux...
-            """)
-        
-        with col2:
-            st.info("""
-            **Réforme législative** 📜  
-            Projet de loi renforçant la lutte contre la corruption : 
-            nouvelles obligations de compliance...
-            """)
+    # Simuler des actualités (dans une vraie app, ces données viendraient d'une API)
+    actualites = [
+        {
+            "titre": "Nouvelle jurisprudence sur l'abus de biens sociaux",
+            "date": "15 juin 2025",
+            "description": "La Cour de cassation précise les conditions de caractérisation..."
+        },
+        {
+            "titre": "Réforme du droit pénal des affaires",
+            "date": "10 juin 2025",
+            "description": "Le projet de loi renforçant la lutte contre la corruption..."
+        },
+        {
+            "titre": "Guide pratique : La conformité en entreprise",
+            "date": "5 juin 2025",
+            "description": "L'AFA publie ses nouvelles recommandations..."
+        }
+    ]
+    
+    for actu in actualites[:2]:  # Afficher seulement les 2 dernières
+        with st.container():
+            st.markdown(f"""
+            <div style='background-color: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
+                <h4 style='margin: 0; color: #1a237e;'>{actu['titre']}</h4>
+                <p style='margin: 0.5rem 0; color: #666; font-size: 0.9rem;'>{actu['date']}</p>
+                <p style='margin: 0;'>{actu['description']}</p>
+            </div>
+            """, unsafe_allow_html=True)
     
     # Footer
     st.markdown("---")
-    st.caption(f"© 2025 {APP_TITLE} - Dernière mise à jour : {datetime.now().strftime('%d/%m/%Y')}")
-
-def create_infractions_chart():
-    """Crée un graphique des types d'infractions"""
-    # Données fictives pour la démo
-    infractions_data = {
-        'Type': TYPES_INFRACTIONS[:8],
-        'Nombre de cas': [45, 38, 32, 28, 25, 22, 18, 15]
-    }
-    
-    fig = px.bar(
-        infractions_data,
-        x='Nombre de cas',
-        y='Type',
-        orientation='h',
-        color='Nombre de cas',
-        color_continuous_scale='Blues',
-        title="Infractions les plus fréquemment analysées"
+    st.markdown(
+        f"""
+        <div style='text-align: center; color: #666; padding: 1rem;'>
+            <p>Version {APP_VERSION} - Votre expert en droit pénal des affaires</p>
+            <p style='font-size: 0.9rem;'>© 2025 Assistant Pénal des Affaires IA - Tous droits réservés</p>
+        </div>
+        """, 
+        unsafe_allow_html=True
     )
-    
-    fig.update_layout(
-        showlegend=False,
-        height=400,
-        xaxis_title="Nombre de cas traités",
-        yaxis_title="",
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
-    
-    return fig
-
-# Point d'entrée pour Streamlit
-if __name__ == "__main__":
-    show()
