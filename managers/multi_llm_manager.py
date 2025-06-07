@@ -1,350 +1,268 @@
-# managers/style_analyzer.py
-"""Analyseur de style pour apprendre et reproduire des styles de rédaction"""
+# managers/multi_llm_manager.py
+"""Gestionnaire pour interroger plusieurs LLMs en parallèle"""
 
-import re
-import io
+import os
 import logging
-from typing import Dict, List, Set, Optional
-from collections import defaultdict, Counter
-from dataclasses import dataclass, field
+import asyncio
+from typing import Dict, List, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+# Imports conditionnels pour les IA
 try:
-    from docx import Document as DocxDocument
-    DOCX_AVAILABLE = True
+    from openai import OpenAI, AzureOpenAI
+    OPENAI_AVAILABLE = True
 except ImportError:
-    DOCX_AVAILABLE = False
-    logger.warning("Module python-docx non disponible")
+    OPENAI_AVAILABLE = False
+    logger.warning("OpenAI non disponible")
 
-from models import Document, StylePattern
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    logger.warning("Anthropic non disponible")
+
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    logger.warning("Gemini non disponible")
+
+from config.app_config import LLMProvider, LLM_CONFIGS
 
 
-class StyleAnalyzer:
-    """Analyse et apprend le style de rédaction des documents"""
+class MultiLLMManager:
+    """Gestionnaire pour interroger plusieurs LLMs"""
     
     def __init__(self):
-        self.patterns = defaultdict(list)
-        self.formules_types = defaultdict(set)
-        self.structures = defaultdict(list)
+        self.configs = LLM_CONFIGS
+        self.clients = self._initialize_clients()
+        self.executor = ThreadPoolExecutor(max_workers=5)
     
-    def analyze_document(self, document: Document, type_acte: str) -> StylePattern:
-        """Analyse un document pour en extraire le style"""
-        content = document.content
+    def _initialize_clients(self) -> Dict[Any, Any]:
+        """Initialise les clients LLM"""
+        clients = {}
         
-        # Analyser la structure
-        structure = self._extract_structure(content)
+        # Azure OpenAI
+        if self.configs[LLMProvider.AZURE_OPENAI]['key'] and OPENAI_AVAILABLE:
+            try:
+                clients[LLMProvider.AZURE_OPENAI] = AzureOpenAI(
+                    azure_endpoint=self.configs[LLMProvider.AZURE_OPENAI]['endpoint'],
+                    api_key=self.configs[LLMProvider.AZURE_OPENAI]['key'],
+                    api_version=self.configs[LLMProvider.AZURE_OPENAI]['api_version']
+                )
+            except Exception as e:
+                logger.warning(f"Azure OpenAI non disponible: {e}")
         
-        # Extraire les formules types
-        formules = self._extract_formules(content)
+        # Claude
+        if self.configs[LLMProvider.CLAUDE_OPUS]['api_key'] and ANTHROPIC_AVAILABLE:
+            try:
+                clients[LLMProvider.CLAUDE_OPUS] = anthropic.Anthropic(
+                    api_key=self.configs[LLMProvider.CLAUDE_OPUS]['api_key']
+                )
+            except Exception as e:
+                logger.warning(f"Claude non disponible: {e}")
         
-        # Analyser la mise en forme
-        mise_en_forme = self._analyze_formatting(content)
+        # ChatGPT
+        if self.configs[LLMProvider.CHATGPT_4O]['api_key'] and OPENAI_AVAILABLE:
+            try:
+                clients[LLMProvider.CHATGPT_4O] = OpenAI(
+                    api_key=self.configs[LLMProvider.CHATGPT_4O]['api_key']
+                )
+            except Exception as e:
+                logger.warning(f"ChatGPT non disponible: {e}")
         
-        # Analyser le vocabulaire
-        vocabulaire = self._analyze_vocabulary(content)
+        # Gemini
+        if self.configs[LLMProvider.GEMINI]['api_key'] and GEMINI_AVAILABLE:
+            try:
+                genai.configure(api_key=self.configs[LLMProvider.GEMINI]['api_key'])
+                clients[LLMProvider.GEMINI] = genai.GenerativeModel(
+                    self.configs[LLMProvider.GEMINI]['model']
+                )
+            except Exception as e:
+                logger.warning(f"Gemini non disponible: {e}")
         
-        # Extraire des paragraphes types
-        paragraphes_types = self._extract_sample_paragraphs(content)
+        # Perplexity
+        if self.configs[LLMProvider.PERPLEXITY]['api_key'] and OPENAI_AVAILABLE:
+            try:
+                clients[LLMProvider.PERPLEXITY] = OpenAI(
+                    api_key=self.configs[LLMProvider.PERPLEXITY]['api_key'],
+                    base_url="https://api.perplexity.ai"
+                )
+            except Exception as e:
+                logger.warning(f"Perplexity non disponible: {e}")
         
-        pattern = StylePattern(
-            document_id=document.id,
-            type_acte=type_acte,
-            structure=structure,
-            formules=list(formules),
-            mise_en_forme=mise_en_forme,
-            vocabulaire=vocabulaire,
-            paragraphes_types=paragraphes_types
-        )
-        
-        # Stocker le pattern
-        self.patterns[type_acte].append(pattern)
-        
-        return pattern
+        return clients
     
-    def analyze_word_document(self, doc_bytes: bytes, type_acte: str) -> Optional[StylePattern]:
-        """Analyse un document Word pour en extraire le style"""
-        if not DOCX_AVAILABLE:
-            return None
+    async def query_single_llm(self, 
+                              provider: str, 
+                              prompt: str,
+                              system_prompt: str = None) -> Dict[str, Any]:
+        """Interroge un seul LLM"""
+        
+        if provider not in self.clients:
+            return {
+                'provider': provider,
+                'success': False,
+                'error': 'Provider non configuré',
+                'response': None
+            }
         
         try:
-            doc = DocxDocument(io.BytesIO(doc_bytes))
+            client = self.clients[provider]
             
-            # Extraire le contenu et la structure
-            content = []
-            structure = {
-                'sections': [],
-                'styles_utilises': set(),
-                'mise_en_forme_paragraphes': []
-            }
+            # Azure OpenAI
+            if provider == LLMProvider.AZURE_OPENAI:
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                response = client.chat.completions.create(
+                    model=self.configs[provider]['deployment'],
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=4000
+                )
+                
+                return {
+                    'provider': provider,
+                    'success': True,
+                    'response': response.choices[0].message.content,
+                    'usage': response.usage.model_dump() if response.usage else None
+                }
             
-            for paragraph in doc.paragraphs:
-                text = paragraph.text.strip()
-                if text:
-                    content.append(text)
-                    
-                    # Analyser le style du paragraphe
-                    para_style = {
-                        'style': paragraph.style.name if paragraph.style else 'Normal',
-                        'alignment': str(paragraph.alignment) if paragraph.alignment else 'LEFT',
-                        'first_line_indent': paragraph.paragraph_format.first_line_indent,
-                        'left_indent': paragraph.paragraph_format.left_indent,
-                        'right_indent': paragraph.paragraph_format.right_indent,
-                        'space_before': paragraph.paragraph_format.space_before,
-                        'space_after': paragraph.paragraph_format.space_after,
-                        'line_spacing': paragraph.paragraph_format.line_spacing
-                    }
-                    
-                    structure['mise_en_forme_paragraphes'].append(para_style)
-                    
-                    if paragraph.style:
-                        structure['styles_utilises'].add(paragraph.style.name)
-                    
-                    # Détecter les sections
-                    if paragraph.style and 'Heading' in paragraph.style.name:
-                        structure['sections'].append({
-                            'titre': text,
-                            'niveau': paragraph.style.name
-                        })
+            # Claude
+            elif provider == LLMProvider.CLAUDE_OPUS:
+                messages = []
+                messages.append({"role": "user", "content": prompt})
+                
+                response = client.messages.create(
+                    model=self.configs[provider]['model'],
+                    messages=messages,
+                    system=system_prompt if system_prompt else "Tu es un assistant juridique expert en droit pénal des affaires.",
+                    max_tokens=4000
+                )
+                
+                return {
+                    'provider': provider,
+                    'success': True,
+                    'response': response.content[0].text,
+                    'usage': {'total_tokens': response.usage.input_tokens + response.usage.output_tokens}
+                }
             
-            # Créer un document temporaire pour l'analyse
-            temp_doc = Document(
-                id=f"word_doc_{datetime.now().timestamp()}",
-                title=type_acte,
-                content='\n'.join(content),
-                source='word'
-            )
+            # ChatGPT 4o
+            elif provider == LLMProvider.CHATGPT_4O:
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                response = client.chat.completions.create(
+                    model=self.configs[provider]['model'],
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=4000
+                )
+                
+                return {
+                    'provider': provider,
+                    'success': True,
+                    'response': response.choices[0].message.content,
+                    'usage': response.usage.model_dump() if response.usage else None
+                }
             
-            # Analyser avec la méthode standard
-            pattern = self.analyze_document(temp_doc, type_acte)
+            # Gemini
+            elif provider == LLMProvider.GEMINI:
+                full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+                response = client.generate_content(full_prompt)
+                
+                return {
+                    'provider': provider,
+                    'success': True,
+                    'response': response.text,
+                    'usage': None
+                }
             
-            # Enrichir avec les informations Word spécifiques
-            pattern.structure.update({
-                'word_styles': list(structure['styles_utilises']),
-                'word_formatting': structure['mise_en_forme_paragraphes'][:10]  # Garder un échantillon
-            })
-            
-            return pattern
+            # Perplexity
+            elif provider == LLMProvider.PERPLEXITY:
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                response = client.chat.completions.create(
+                    model=self.configs[provider]['model'],
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=4000
+                )
+                
+                return {
+                    'provider': provider,
+                    'success': True,
+                    'response': response.choices[0].message.content,
+                    'usage': response.usage.model_dump() if response.usage else None,
+                    'citations': getattr(response, 'citations', [])
+                }
             
         except Exception as e:
-            logger.error(f"Erreur analyse document Word: {e}")
-            return None
+            logger.error(f"Erreur {provider}: {str(e)}")
+            return {
+                'provider': provider,
+                'success': False,
+                'error': str(e),
+                'response': None
+            }
     
-    def _extract_structure(self, content: str) -> Dict[str, Any]:
-        """Extrait la structure du document"""
-        lines = content.split('\n')
-        structure = {
-            'sections': [],
-            'niveau_hierarchie': 0,
-            'longueur_sections': []
-        }
+    async def query_multiple_llms(self, providers: List[str], prompt: str, 
+                                 system_prompt: str = None) -> List[Dict[str, Any]]:
+        """Interroge plusieurs LLMs en parallèle"""
+        tasks = []
         
-        current_section = None
-        section_content = []
+        for provider in providers:
+            task = self.query_single_llm(provider, prompt, system_prompt)
+            tasks.append(task)
         
-        for line in lines:
-            # Détecter les titres (lignes en majuscules, numérotées, etc.)
-            if self._is_title(line):
-                if current_section:
-                    structure['sections'].append({
-                        'titre': current_section,
-                        'longueur': len(section_content)
-                    })
-                    structure['longueur_sections'].append(len(section_content))
-                
-                current_section = line.strip()
-                section_content = []
-            else:
-                section_content.append(line)
-        
-        # Ajouter la dernière section
-        if current_section:
-            structure['sections'].append({
-                'titre': current_section,
-                'longueur': len(section_content)
-            })
-        
-        return structure
+        results = await asyncio.gather(*tasks)
+        return results
     
-    def _extract_formules(self, content: str) -> Set[str]:
-        """Extrait les formules types du document"""
-        formules = set()
+    def fusion_responses(self, responses: List[Dict[str, Any]]) -> str:
+        """Fusionne intelligemment plusieurs réponses"""
+        valid_responses = [r for r in responses if r['success']]
         
-        # Patterns de formules juridiques courantes
-        patterns = [
-            r"J'ai l'honneur de.*?[.!]",
-            r"Il résulte de.*?[.!]",
-            r"Aux termes de.*?[.!]",
-            r"En l'espèce.*?[.!]",
-            r"Par ces motifs.*?[.!]",
-            r"Il convient de.*?[.!]",
-            r"Force est de constater.*?[.!]",
-            r"Il apparaît que.*?[.!]",
-            r"Attendu que.*?[.!]",
-            r"Considérant que.*?[.!]",
-            r"Je vous prie d'agréer.*?[.!]",
-            r"Veuillez agréer.*?[.!]",
-            r"Dans l'attente de.*?[.!]",
-            r"Je reste à votre disposition.*?[.!]"
-        ]
+        if not valid_responses:
+            return "Aucune réponse valide obtenue."
         
-        for pattern in patterns:
-            matches = re.finditer(pattern, content, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                formule = match.group(0).strip()
-                if len(formule) < 200:  # Éviter les formules trop longues
-                    formules.add(formule)
+        if len(valid_responses) == 1:
+            return valid_responses[0]['response']
         
-        return formules
-    
-    def _analyze_formatting(self, content: str) -> Dict[str, Any]:
-        """Analyse la mise en forme du document"""
-        return {
-            'longueur_moyenne_paragraphe': self._avg_paragraph_length(content),
-            'utilise_tirets': '-' in content,
-            'utilise_numerotation': bool(re.search(r'\d+\.', content)),
-            'utilise_majuscules_titres': bool(re.search(r'^[A-Z\s]+$', content, re.MULTILINE)),
-            'espacement_sections': content.count('\n\n')
-        }
-    
-    def _analyze_vocabulary(self, content: str) -> Dict[str, int]:
-        """Analyse le vocabulaire utilisé"""
-        # Nettoyer le texte
-        words = re.findall(r'\b[a-zA-ZÀ-ÿ]+\b', content.lower())
+        # Construire un prompt de fusion
+        fusion_prompt = "Voici plusieurs analyses d'experts. Synthétise-les en gardant les points essentiels:\n\n"
         
-        # Compter les fréquences
-        word_freq = defaultdict(int)
-        for word in words:
-            if len(word) > 3:  # Ignorer les mots courts
-                word_freq[word] += 1
+        for resp in valid_responses:
+            fusion_prompt += f"### {resp['provider']}\n{resp['response']}\n\n"
         
-        # Garder les mots les plus fréquents
-        return dict(sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:100])
-    
-    def _extract_sample_paragraphs(self, content: str) -> List[str]:
-        """Extrait des paragraphes types"""
-        paragraphs = content.split('\n\n')
-        
-        # Filtrer les paragraphes intéressants
-        samples = []
-        for para in paragraphs:
-            if 50 < len(para) < 500:  # Longueur raisonnable
-                samples.append(para.strip())
-        
-        return samples[:10]  # Garder max 10 exemples
-    
-    def _is_title(self, line: str) -> bool:
-        """Détermine si une ligne est un titre"""
-        line = line.strip()
-        
-        if not line:
-            return False
-        
-        # Critères pour identifier un titre
-        if line.isupper() and len(line) > 3:
-            return True
-        
-        if re.match(r'^[IVX]+\.?\s+', line):  # Numérotation romaine
-            return True
-        
-        if re.match(r'^\d+\.?\s+', line):  # Numérotation arabe
-            return True
-        
-        if re.match(r'^[A-Z]\.\s+', line):  # Lettre majuscule
-            return True
-        
-        return False
-    
-    def _avg_paragraph_length(self, content: str) -> int:
-        """Calcule la longueur moyenne des paragraphes"""
-        paragraphs = content.split('\n\n')
-        lengths = [len(p) for p in paragraphs if p.strip()]
-        
-        return sum(lengths) // len(lengths) if lengths else 0
-    
-    def generate_with_style(self, type_acte: str, contenu_base: str) -> str:
-        """Génère du contenu en appliquant le style appris"""
-        if type_acte not in self.patterns:
-            return contenu_base
-        
-        patterns = self.patterns[type_acte]
-        if not patterns:
-            return contenu_base
-        
-        # Utiliser le premier pattern comme référence
-        pattern = patterns[0]
-        
-        # Appliquer la structure
-        styled_content = self._apply_structure(contenu_base, pattern.structure)
-        
-        # Insérer des formules types
-        styled_content = self._insert_formules(styled_content, pattern.formules)
-        
-        # Appliquer la mise en forme
-        styled_content = self._apply_formatting(styled_content, pattern.mise_en_forme)
-        
-        return styled_content
-    
-    def _apply_structure(self, content: str, structure: Dict[str, Any]) -> str:
-        """Applique une structure au contenu"""
-        sections = structure.get('sections', [])
-        
-        if not sections:
-            return content
-        
-        # Restructurer le contenu
-        lines = content.split('\n')
-        structured = []
-        
-        section_size = len(lines) // len(sections) if sections else len(lines)
-        
-        for i, section in enumerate(sections):
-            # Ajouter le titre de section
-            structured.append(f"\n{section['titre']}\n")
+        # Utiliser le premier LLM disponible pour la fusion
+        if self.clients:
+            provider = list(self.clients.keys())[0]
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-            # Ajouter le contenu de la section
-            start = i * section_size
-            end = start + section_size if i < len(sections) - 1 else len(lines)
+            fusion_result = loop.run_until_complete(
+                self.query_single_llm(
+                    provider,
+                    fusion_prompt,
+                    "Tu es un expert en synthèse. Fusionne ces analyses en gardant le meilleur de chaque."
+                )
+            )
             
-            structured.extend(lines[start:end])
+            if fusion_result['success']:
+                return fusion_result['response']
         
-        return '\n'.join(structured)
-    
-    def _insert_formules(self, content: str, formules: List[str]) -> str:
-        """Insère des formules types dans le contenu"""
-        if not formules:
-            return content
-        
-        # Insérer quelques formules au début des paragraphes
-        paragraphs = content.split('\n\n')
-        
-        for i in range(0, len(paragraphs), 3):  # Tous les 3 paragraphes
-            if i < len(paragraphs) and formules:
-                formule = formules[i % len(formules)]
-                # Adapter la formule au contexte
-                paragraphs[i] = f"{formule} {paragraphs[i]}"
-        
-        return '\n\n'.join(paragraphs)
-    
-    def _apply_formatting(self, content: str, formatting: Dict[str, Any]) -> str:
-        """Applique la mise en forme au contenu"""
-        # Ajuster l'espacement
-        if formatting.get('espacement_sections', 0) > 1:
-            content = re.sub(r'\n{2,}', '\n\n\n', content)
-        
-        # Ajouter la numérotation si nécessaire
-        if formatting.get('utilise_numerotation'):
-            lines = content.split('\n')
-            numbered_lines = []
-            counter = 1
-            
-            for line in lines:
-                if line.strip() and not self._is_title(line):
-                    numbered_lines.append(f"{counter}. {line}")
-                    counter += 1
-                else:
-                    numbered_lines.append(line)
-            
-            content = '\n'.join(numbered_lines)
-        
-        return content
+        # Fallback: concatenation simple
+        return "\n\n".join([f"### {r['provider']}\n{r['response']}" for r in valid_responses])
