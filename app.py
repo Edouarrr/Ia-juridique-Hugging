@@ -131,7 +131,10 @@ def main():
     initialize_session_state()
     
     # Charger les styles CSS
-    load_custom_css()
+    try:
+        load_custom_css()
+    except Exception as e:
+        st.warning(f"Impossible de charger les styles CSS: {e}")
     
     # Initialiser les managers Azure
     initialize_azure_managers()
@@ -167,6 +170,17 @@ def main():
         
         st.markdown("---")
         
+        # Mode debug pour Hugging Face
+        debug_mode = st.checkbox("🐛 Mode Debug", value=False, key="debug_mode")
+        
+        if debug_mode:
+            st.markdown("### 🔍 Debug Info")
+            st.code(f"Page: {selected_page}")
+            st.code(f"Module: {page_modules.get(selected_page)}")
+            st.code(f"Working dir: {os.getcwd()}")
+        
+        st.markdown("---")
+        
         # État du système
         display_system_status()
         
@@ -183,61 +197,97 @@ def main():
     
     # Zone principale - Afficher la page sélectionnée
     try:
-        # Import dynamique du module de la page
-        module = __import__(page_modules[selected_page], fromlist=['show'])
-        
-        # Appeler la fonction show() du module
-        module.show()
+        # Import spécifique pour Hugging Face
+        if selected_page == "Accueil":
+            # Import direct pour éviter les problèmes sur Hugging Face
+            try:
+                from pages import accueil
+                if hasattr(accueil, 'show'):
+                    accueil.show()
+                else:
+                    st.error("La fonction show() n'est pas trouvée dans pages.accueil")
+                    # Page de secours minimale
+                    st.header("🏠 Bienvenue")
+                    st.info("Utilisez le menu de navigation pour accéder aux fonctionnalités")
+            except Exception as e:
+                st.error(f"Erreur lors du chargement de la page d'accueil: {e}")
+                if debug_mode:
+                    st.exception(e)
+        else:
+            # Import dynamique pour les autres pages
+            module = __import__(page_modules[selected_page], fromlist=['show'])
+            if hasattr(module, 'show'):
+                module.show()
+            else:
+                st.error(f"❌ La page '{selected_page}' n'a pas de fonction 'show()'")
         
     except ImportError as e:
         st.error(f"❌ Impossible de charger la page '{selected_page}'")
         st.error(f"Erreur d'import : {str(e)}")
         
         # Afficher les détails de l'erreur en mode debug
-        with st.expander("🐛 Détails de l'erreur"):
-            st.exception(e)
-            
-            # Vérifier les imports
-            st.markdown("**Vérification des imports :**")
-            
-            # Essayer d'importer chaque module individuellement
-            modules_to_check = [
-                "config.app_config",
-                "utils.styles",
-                "utils.helpers",
-                "models.dataclasses",
-                page_modules[selected_page]
-            ]
-            
-            for module_name in modules_to_check:
-                try:
-                    __import__(module_name)
-                    st.success(f"✅ {module_name}")
-                except ImportError as import_error:
-                    st.error(f"❌ {module_name}: {str(import_error)}")
+        if debug_mode:
+            with st.expander("🐛 Détails de l'erreur"):
+                st.exception(e)
+                
+                # Vérifier les imports
+                st.markdown("**Vérification des imports :**")
+                
+                # Essayer d'importer chaque module individuellement
+                modules_to_check = [
+                    "config.app_config",
+                    "utils.styles",
+                    "utils.helpers",
+                    "models.dataclasses",
+                    page_modules[selected_page]
+                ]
+                
+                for module_name in modules_to_check:
+                    try:
+                        __import__(module_name)
+                        st.success(f"✅ {module_name}")
+                    except ImportError as import_error:
+                        st.error(f"❌ {module_name}: {str(import_error)}")
+        
+        # Page de secours
+        st.markdown("### 🏠 Navigation rapide")
+        st.info("""
+        L'application rencontre un problème de chargement.
+        
+        **Fonctionnalités disponibles :**
+        - 🔍 Recherche de documents
+        - 📋 Analyse juridique
+        - 💬 Assistant interactif
+        - 📊 Visualisation
+        - ⚙️ Configuration
+        
+        Essayez de sélectionner une autre page dans le menu.
+        """)
     
     except AttributeError as e:
         st.error(f"❌ La page '{selected_page}' n'a pas de fonction 'show()'")
-        st.error(f"Erreur : {str(e)}")
+        if debug_mode:
+            st.error(f"Erreur : {str(e)}")
+            st.exception(e)
     
     except Exception as e:
         st.error(f"❌ Erreur lors du chargement de la page : {str(e)}")
         
-        # Afficher plus de détails
-        with st.expander("🐛 Détails de l'erreur"):
-            st.exception(e)
-            
-            # Essayer d'afficher une page de secours
-            st.markdown("### 🏠 Page d'accueil de secours")
-            st.info("""
-            Il semble y avoir un problème avec le chargement de la page.
-            
-            **Actions possibles :**
-            1. Vérifiez que tous les modules sont correctement installés
-            2. Consultez les logs pour plus de détails
-            3. Essayez une autre page depuis le menu
-            4. Redémarrez l'application
-            """)
+        # Afficher plus de détails si mode debug
+        if debug_mode:
+            with st.expander("🐛 Détails de l'erreur"):
+                st.exception(e)
+                
+                # Lister les fichiers pour debug
+                st.markdown("**Structure des fichiers:**")
+                for root, dirs, files in os.walk("."):
+                    level = root.replace(".", "", 1).count(os.sep)
+                    indent = " " * 2 * level
+                    st.text(f"{indent}{os.path.basename(root)}/")
+                    subindent = " " * 2 * (level + 1)
+                    for file in files[:5]:  # Limiter à 5 fichiers par dossier
+                        if not file.startswith('.'):
+                            st.text(f"{subindent}{file}")
     
     # Footer
     st.markdown("---")
