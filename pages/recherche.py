@@ -7,11 +7,11 @@ from datetime import datetime, timedelta
 import pandas as pd
 from typing import List, Dict
 
-from config import TYPES_INFRACTIONS, LEGAL_APIS
-from models import JurisprudenceSearch, JurisprudenceReference, TypeJuridiction, SourceJurisprudence
+from config.app_config import TYPES_INFRACTIONS, LEGAL_APIS
+from models.jurisprudence_models import JurisprudenceSearch, JurisprudenceReference, TypeJuridiction, SourceJurisprudence
 from managers.legal_search import LegalSearchManager
 from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
-from utils import load_custom_css, create_alert_box, create_badge, create_progress_bar
+from utils.styles import load_custom_css, create_alert_box, create_badge, create_progress_bar
 
 def show():
     """Affiche la page de recherche de jurisprudence"""
