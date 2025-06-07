@@ -14,9 +14,6 @@ import sys
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# PAS de dotenv sur Hugging Face Spaces - les variables sont dans Settings > Variables and secrets
-
-# app.py - Ajoutez après les imports, avant main()
 import os
 
 # DIAGNOSTIC TEMPORAIRE - À RETIRER APRÈS TEST
@@ -29,13 +26,42 @@ print(f"AZURE_SEARCH_KEY: {bool(os.getenv('AZURE_SEARCH_KEY'))}")
 conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
 if conn_str:
     print(f"Connection string commence par: {conn_str[:30]}...")
-    
+
+from config.app_config import APP_CONFIG
+from utils.styles import load_custom_css
+from utils.helpers import initialize_session_state
+from managers.azure_blob_manager import AzureBlobManager
+from managers.azure_search_manager import AzureSearchManager
+
 def main():
     """Interface principale de l'application"""
     
     # Initialisation
     initialize_session_state()
     load_custom_css()
+    
+    # Diagnostic visible dans l'interface
+    with st.expander("🔧 Diagnostic des connexions", expanded=False):
+        st.write("**Variables d'environnement:**")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
+                st.success("✅ AZURE_STORAGE_CONNECTION_STRING")
+            else:
+                st.error("❌ AZURE_STORAGE_CONNECTION_STRING")
+        
+        with col2:
+            if os.getenv('AZURE_SEARCH_ENDPOINT'):
+                st.success("✅ AZURE_SEARCH_ENDPOINT")
+            else:
+                st.error("❌ AZURE_SEARCH_ENDPOINT")
+        
+        with col3:
+            if os.getenv('AZURE_SEARCH_KEY'):
+                st.success("✅ AZURE_SEARCH_KEY")
+            else:
+                st.error("❌ AZURE_SEARCH_KEY")
     
     # Initialiser les gestionnaires Azure dans session state
     if 'azure_blob_manager' not in st.session_state:
@@ -82,22 +108,37 @@ def main():
         st.markdown("---")
         st.markdown("### 📊 État du système")
         
-        # État Azure
-        col1, col2 = st.columns(2)
+        # État Azure avec plus de détails
+        st.markdown("**Connexions Azure:**")
         
-        with col1:
-            if st.session_state.get('azure_blob_manager') and st.session_state.azure_blob_manager.is_connected():
-                st.success("✅ Azure Blob")
+        # Azure Blob
+        if st.session_state.get('azure_blob_manager'):
+            if st.session_state.azure_blob_manager.is_connected():
+                st.success("✅ Azure Blob Storage")
+                containers = st.session_state.azure_blob_manager.list_containers()
+                if containers:
+                    st.caption(f"{len(containers)} containers trouvés")
             else:
-                st.error("❌ Azure Blob")
+                st.error("❌ Azure Blob Storage")
+                st.caption("Non connecté")
+        else:
+            st.warning("⚠️ Azure Blob Storage")
+            st.caption("Non initialisé")
         
-        with col2:
-            if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.search_client:
+        # Azure Search
+        if st.session_state.get('azure_search_manager'):
+            if st.session_state.azure_search_manager.search_client:
                 st.success("✅ Azure Search")
+                st.caption("Index: juridique-index")
             else:
-                st.warning("⚠️ Azure Search")
+                st.error("❌ Azure Search")
+                st.caption("Non connecté")
+        else:
+            st.warning("⚠️ Azure Search")
+            st.caption("Non initialisé")
         
         # Métriques
+        st.markdown("---")
         st.markdown("### 📈 Métriques")
         
         nb_docs = len(st.session_state.get('azure_documents', {}))
@@ -199,20 +240,35 @@ def main():
             
             # Vérifier les variables
             vars_to_check = [
-                "AZURE_STORAGE_CONNECTION_STRING",
-                "AZURE_SEARCH_ENDPOINT",
-                "AZURE_SEARCH_KEY",
-                "AZURE_OPENAI_ENDPOINT",
-                "AZURE_OPENAI_KEY",
-                "ANTHROPIC_API_KEY",
-                "OPENAI_API_KEY"
+                ("AZURE_STORAGE_CONNECTION_STRING", "Connexion Azure Blob Storage"),
+                ("AZURE_SEARCH_ENDPOINT", "URL Azure Search"),
+                ("AZURE_SEARCH_KEY", "Clé Azure Search"),
+                ("AZURE_OPENAI_ENDPOINT", "URL Azure OpenAI"),
+                ("AZURE_OPENAI_KEY", "Clé Azure OpenAI"),
+                ("ANTHROPIC_API_KEY", "Clé Anthropic Claude"),
+                ("OPENAI_API_KEY", "Clé OpenAI"),
+                ("GOOGLE_API_KEY", "Clé Google Gemini"),
+                ("PERPLEXITY_API_KEY", "Clé Perplexity")
             ]
             
-            for var in vars_to_check:
-                if os.getenv(var):
-                    st.success(f"✅ {var}")
-                else:
-                    st.error(f"❌ {var}")
+            col1, col2 = st.columns([3, 1])
+            for var, description in vars_to_check:
+                with col1:
+                    st.text(description)
+                with col2:
+                    if os.getenv(var):
+                        st.success("✅")
+                    else:
+                        st.error("❌")
+            
+            # Instructions pour Hugging Face
+            st.markdown("---")
+            st.info("""
+            **Pour configurer les variables sur Hugging Face Spaces:**
+            1. Allez dans Settings > Variables and secrets
+            2. Ajoutez chaque variable avec sa valeur
+            3. Redémarrez le Space
+            """)
 
 if __name__ == "__main__":
     main()
