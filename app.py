@@ -1,7 +1,7 @@
 # app.py
 """
 Assistant Pénal des Affaires IA
-Point d'entrée principal de l'application
+Point d'entrée principal de l'application Streamlit
 """
 
 import streamlit as st
@@ -10,17 +10,12 @@ from pathlib import Path
 import logging
 from datetime import datetime
 
-# Configuration de base de Streamlit - DOIT ÊTRE EN PREMIER
+# Configuration de base
 st.set_page_config(
     page_title="Assistant Pénal des Affaires IA",
     page_icon="⚖️",
     layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={
-        'Get Help': 'https://github.com/votre-repo',
-        'Report a bug': "https://github.com/votre-repo/issues",
-        'About': "Assistant IA spécialisé en droit pénal des affaires français"
-    }
+    initial_sidebar_state="expanded"
 )
 
 # Configuration du logging
@@ -30,263 +25,203 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Imports des modules de l'application
+# Ajouter le répertoire racine au path pour les imports
+root_dir = Path(__file__).parent
+sys.path.insert(0, str(root_dir))
+
+# Imports des modules
 try:
-    # Configuration
-    from config import APP_TITLE, APP_ICON, PAGES, MESSAGES
-    from config import LLM_CONFIGS, get_llm_client
-    
-    # Modèles
-    from models import (
-        AnalyseJuridique, CasJuridique, Personne,
-        JurisprudenceReference, VerificationResult
-    )
-    
-    # Gestionnaires
-    from managers import (
-        LLMManager,
-        DocumentManager,
-        JurisprudenceVerifier,
-        LegalSearchManager
-    )
-    
-    # Pages
-    from pages import accueil, analyse, recherche, visualisation, assistant, configuration
-    
-    # Utilitaires
-    from utils import load_custom_css, initialize_session_state
-    
+    from config import APP_TITLE, APP_ICON, PAGES
+    from managers import LLMManager, DocumentManager, JurisprudenceVerifier
+    from utils import load_custom_css
 except ImportError as e:
-    st.error(f"Erreur d'import des modules: {e}")
+    st.error(f"""
+    ❌ Erreur d'import des modules : {str(e)}
+    
+    Assurez-vous que tous les modules sont correctement installés :
+    - config/
+    - managers/
+    - models/
+    - pages/
+    - utils/
+    """)
     st.stop()
 
-# Initialisation de session_state
-def init_session_state():
-    """Initialise toutes les variables de session"""
-    defaults = {
-        # Gestionnaires
-        'llm_manager': LLMManager(),
-        'doc_manager': DocumentManager(),
-        'jurisprudence_verifier': JurisprudenceVerifier(),
-        'legal_search_manager': None,  # Initialisé après LLM
-        
-        # État de l'application
-        'current_page': 'Accueil',
-        'analysis_history': [],
-        'current_analysis': None,
-        'imported_content': "",
-        
-        # Configuration des modèles
-        'selected_provider': 'OpenAI',
-        'selected_model': 'gpt-4o-mini',
-        
-        # Clés API (à charger depuis les secrets ou l'environnement)
-        'openai_api_key': st.secrets.get('OPENAI_API_KEY', ''),
-        'anthropic_api_key': st.secrets.get('ANTHROPIC_API_KEY', ''),
-        'google_api_key': st.secrets.get('GOOGLE_API_KEY', ''),
-        'mistral_api_key': st.secrets.get('MISTRAL_API_KEY', ''),
-        'groq_api_key': st.secrets.get('GROQ_API_KEY', ''),
-        
-        # Statut des APIs juridiques
-        'judilibre_enabled': False,
-        'legifrance_enabled': False,
-        
-        # Historique et cache
-        'search_history': [],
-        'verification_cache': {},
-        
-        # Paramètres utilisateur
-        'user_preferences': {
-            'theme': 'light',
-            'auto_verify_jurisprudence': True,
-            'include_ai_suggestions': True,
-            'export_format': 'docx'
-        }
-    }
+def initialize_session_state():
+    """Initialise les variables de session"""
+    # Managers
+    if 'llm_manager' not in st.session_state:
+        st.session_state.llm_manager = LLMManager()
+        logger.info("LLM Manager initialisé")
     
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    if 'doc_manager' not in st.session_state:
+        st.session_state.doc_manager = DocumentManager()
+        logger.info("Document Manager initialisé")
     
-    # Initialiser le gestionnaire de recherche juridique avec le LLM manager
-    if st.session_state.legal_search_manager is None:
-        st.session_state.legal_search_manager = LegalSearchManager(
-            st.session_state.llm_manager
-        )
+    if 'jurisprudence_verifier' not in st.session_state:
+        st.session_state.jurisprudence_verifier = JurisprudenceVerifier()
+        logger.info("Jurisprudence Verifier initialisé")
+    
+    # Statistiques
+    if 'analyses_count' not in st.session_state:
+        st.session_state.analyses_count = 0
+    
+    if 'verifications_count' not in st.session_state:
+        st.session_state.verifications_count = 0
+    
+    if 'documents_count' not in st.session_state:
+        st.session_state.documents_count = 0
+    
+    if 'messages_count' not in st.session_state:
+        st.session_state.messages_count = 0
+    
+    # Autres
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "Accueil"
+    
+    logger.info("Session state initialisé")
 
-def init_managers():
-    """Initialise les gestionnaires avec les clés API"""
-    llm_manager = st.session_state.llm_manager
-    
-    # Initialiser les clients LLM disponibles
-    for provider in LLM_CONFIGS.keys():
-        api_key = st.session_state.get(f"{provider.lower()}_api_key")
-        if api_key:
-            try:
-                llm_manager.initialize_client(provider, api_key)
-                logger.info(f"Client {provider} initialisé")
-            except Exception as e:
-                logger.error(f"Erreur initialisation {provider}: {e}")
-
-def render_sidebar():
-    """Affiche la barre latérale de navigation"""
+def create_sidebar():
+    """Crée la barre latérale de navigation"""
     with st.sidebar:
-        st.image("https://via.placeholder.com/300x100/1a1a2e/f5f5f5?text=Assistant+Juridique+IA", use_column_width=True)
+        # Logo et titre
+        st.markdown(f"""
+        <div style='text-align: center; padding: 1rem 0;'>
+            <h1>{APP_ICON}</h1>
+            <h3>{APP_TITLE}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
         st.markdown("---")
         
         # Navigation
         st.markdown("### 🧭 Navigation")
         
+        # Menu de navigation
+        selected_page = None
         for page_name, icon in PAGES.items():
-            if st.button(f"{icon} {page_name}", key=f"nav_{page_name}", use_container_width=True):
-                st.session_state.current_page = page_name
-                st.rerun()
+            if st.button(
+                f"{icon} {page_name}",
+                key=f"nav_{page_name}",
+                use_container_width=True,
+                type="primary" if st.session_state.current_page == page_name else "secondary"
+            ):
+                selected_page = page_name
+        
+        if selected_page:
+            st.session_state.current_page = selected_page
+            logger.info(f"Navigation vers : {selected_page}")
         
         st.markdown("---")
         
-        # Statut du système
-        st.markdown("### 📊 Statut")
+        # Statistiques rapides
+        st.markdown("### 📊 Statistiques")
         
-        # Modèle actuel
-        if st.session_state.llm_manager.current_model:
-            st.success(f"🤖 {st.session_state.selected_provider}/{st.session_state.selected_model}")
-        else:
-            st.warning("⚠️ Aucun modèle configuré")
-        
-        # APIs juridiques
         col1, col2 = st.columns(2)
         with col1:
-            if st.session_state.judilibre_enabled:
-                st.success("✅ Judilibre")
-            else:
-                st.error("❌ Judilibre")
+            st.metric("Analyses", st.session_state.analyses_count)
+            st.metric("Documents", st.session_state.documents_count)
         with col2:
-            if st.session_state.legifrance_enabled:
-                st.success("✅ Légifrance")
-            else:
-                st.error("❌ Légifrance")
+            st.metric("Vérifications", st.session_state.verifications_count)
+            st.metric("Messages", st.session_state.messages_count)
         
-        # Statistiques
         st.markdown("---")
-        st.markdown("### 📈 Statistiques")
-        st.metric("Analyses effectuées", len(st.session_state.analysis_history))
-        st.metric("Documents importés", len(st.session_state.doc_manager.imported_documents))
         
         # Informations
-        st.markdown("---")
         st.markdown("### ℹ️ Informations")
         st.caption(f"Version 3.0.0")
-        st.caption(f"Dernière mise à jour: {datetime.now().strftime('%d/%m/%Y')}")
+        st.caption(f"Dernière activité : {datetime.now().strftime('%H:%M')}")
         
-        # Bouton d'aide
-        with st.expander("❓ Aide"):
+        # Liens utiles
+        with st.expander("🔗 Liens utiles"):
             st.markdown("""
-            **Navigation:**
-            - Utilisez les boutons ci-dessus pour naviguer
-            - Configurez d'abord vos clés API
-            
-            **Fonctionnalités:**
-            - Analyse juridique complète
-            - Vérification des jurisprudences
-            - Recherche multi-sources
-            - Export multi-formats
-            
-            **Support:**
-            - Documentation: [Lien]
-            - Contact: support@example.com
+            - [Documentation](https://docs.assistant-juridique.ai)
+            - [Support](mailto:support@assistant-juridique.ai)
+            - [GitHub](https://github.com/assistant-juridique)
             """)
 
-def render_header():
-    """Affiche l'en-tête de l'application"""
-    col1, col2, col3 = st.columns([1, 3, 1])
-    
-    with col2:
-        st.markdown(f"<h1 style='text-align: center;'>{APP_ICON} {APP_TITLE}</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #666;'>Intelligence Artificielle au service du droit pénal des affaires</p>", unsafe_allow_html=True)
-    
-    st.markdown("---")
-
-def route_to_page():
-    """Route vers la page appropriée selon la sélection"""
-    current_page = st.session_state.current_page
-    
-    # Mapping des pages
-    page_modules = {
-        'Accueil': accueil,
-        'Analyse juridique': analyse,
-        'Recherche de jurisprudence': recherche,
-        'Visualisation': visualisation,
-        'Assistant interactif': assistant,
-        'Configuration': configuration
-    }
-    
-    # Afficher la page correspondante
-    if current_page in page_modules:
-        page_modules[current_page].render()
-    else:
-        st.error(f"Page '{current_page}' non trouvée")
-
-def check_system_ready():
-    """Vérifie que le système est prêt"""
-    warnings = []
-    
-    # Vérifier les clés API
-    if not any(st.session_state.get(f"{provider.lower()}_api_key") for provider in LLM_CONFIGS.keys()):
-        warnings.append("Aucune clé API configurée. Rendez-vous dans Configuration.")
-    
-    # Vérifier les APIs juridiques
-    if not st.session_state.judilibre_enabled and not st.session_state.legifrance_enabled:
-        warnings.append("APIs juridiques non configurées. Vérification des jurisprudences limitée.")
-    
-    # Afficher les avertissements
-    if warnings and st.session_state.current_page != 'Configuration':
-        container = st.container()
-        with container:
-            for warning in warnings:
-                st.warning(f"⚠️ {warning}")
+def load_page(page_name: str):
+    """Charge la page sélectionnée"""
+    try:
+        # Mapping des pages vers les modules
+        page_modules = {
+            "Accueil": "pages.accueil",
+            "Analyse juridique": "pages.analyse",
+            "Recherche de jurisprudence": "pages.recherche",
+            "Visualisation": "pages.visualisation",
+            "Assistant interactif": "pages.assistant",
+            "Configuration": "pages.configuration"
+        }
+        
+        if page_name in page_modules:
+            # Import dynamique du module
+            module_name = page_modules[page_name]
+            logger.info(f"Chargement du module : {module_name}")
+            
+            # Importer et exécuter la fonction show()
+            import importlib
+            module = importlib.import_module(module_name)
+            
+            if hasattr(module, 'show'):
+                module.show()
+            else:
+                st.error(f"La page {page_name} n'a pas de fonction show()")
+        else:
+            st.error(f"Page non trouvée : {page_name}")
+            
+    except Exception as e:
+        st.error(f"""
+        ❌ Erreur lors du chargement de la page '{page_name}' :
+        
+        {str(e)}
+        
+        Vérifiez que le fichier correspondant existe dans le dossier 'pages/'
+        """)
+        logger.error(f"Erreur chargement page {page_name}: {str(e)}", exc_info=True)
 
 def main():
-    """Fonction principale de l'application"""
-    # Initialisation
-    init_session_state()
-    init_managers()
-    
-    # Charger les styles CSS personnalisés
+    """Fonction principale"""
+    # Charger les styles CSS
     load_custom_css()
     
-    # Interface principale
-    render_sidebar()
+    # Initialiser la session
+    initialize_session_state()
+    
+    # Créer la sidebar
+    create_sidebar()
+    
+    # Charger la page actuelle
+    current_page = st.session_state.current_page
+    logger.info(f"Page actuelle : {current_page}")
     
     # Zone principale
-    render_header()
+    with st.container():
+        load_page(current_page)
     
-    # Vérifications système
-    check_system_ready()
-    
-    # Router vers la page
-    route_to_page()
-    
-    # Footer
+    # Footer global (optionnel)
     st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    with col2:
-        st.markdown(
-            "<p style='text-align: center; color: #888; font-size: 0.9em;'>"
-            "Assistant Pénal des Affaires IA © 2024 | "
-            "Développé avec ❤️ et Streamlit"
-            "</p>",
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        """
+        <div style='text-align: center; color: gray; font-size: 0.8em;'>
+        © 2025 Assistant Pénal des Affaires IA | 
+        <a href='#' style='color: gray;'>Mentions légales</a> | 
+        <a href='#' style='color: gray;'>Confidentialité</a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-# Point d'entrée
 if __name__ == "__main__":
     try:
+        logger.info("Démarrage de l'application")
         main()
     except Exception as e:
-        logger.error(f"Erreur critique: {e}")
-        st.error(f"Une erreur critique s'est produite: {e}")
-        st.error("Veuillez rafraîchir la page ou contacter le support.")
+        st.error(f"""
+        ❌ Erreur critique : {str(e)}
         
-        # Afficher plus de détails en mode debug
-        if st.secrets.get("DEBUG", False):
-            st.exception(e)
+        Veuillez vérifier :
+        1. Que tous les modules sont correctement installés
+        2. Que les dépendances sont satisfaites (requirements.txt)
+        3. Les logs pour plus de détails
+        """)
+        logger.error("Erreur critique", exc_info=True)
