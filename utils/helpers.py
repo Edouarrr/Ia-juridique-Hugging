@@ -134,10 +134,11 @@ def create_letterhead_from_template(template, content: str) -> io.BytesIO:
         # Ajouter le contenu principal
         paragraphs = content.split('\n')
         for para_text in paragraphs:
-            p = doc.add_paragraph(para_text)
-            p.style.font.name = template.font_family
-            p.style.font.size = Pt(template.font_size)
-            p.paragraph_format.line_spacing = template.line_spacing
+            if para_text.strip():
+                p = doc.add_paragraph(para_text)
+                p.style.font.name = template.font_family
+                p.style.font.size = Pt(template.font_size)
+                p.paragraph_format.line_spacing = template.line_spacing
         
         # Ajouter le pied de page
         if template.footer_content:
