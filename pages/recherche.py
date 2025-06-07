@@ -1,5 +1,5 @@
 # pages/recherche.py
-"""Page de recherche de documents avec prompts dynamiques"""
+"""Page de recherche de documents avec recherche juridique intégrée"""
 
 import streamlit as st
 import asyncio
@@ -10,6 +10,7 @@ from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
 from managers.document_manager import display_import_interface
 from managers.dynamic_generators import generate_dynamic_search_prompts
+from managers.legal_search import LegalSearchManager, display_legal_search_interface
 from models.dataclasses import Document
 from utils.helpers import clean_key
 
@@ -18,18 +19,27 @@ def show_page():
     st.header("🔍 Recherche de documents")
     
     # Onglets
-    tabs = st.tabs(["🔎 Recherche", "🌐 Navigation Azure", "📤 Import direct", "🤖 Recherche intelligente"])
+    tabs = st.tabs([
+        "🔎 Recherche", 
+        "⚖️ Jurisprudence", 
+        "🌐 Navigation Azure", 
+        "📤 Import direct", 
+        "🤖 Recherche intelligente"
+    ])
     
     with tabs[0]:
         show_search_tab()
     
     with tabs[1]:
-        show_azure_browser_tab()
+        show_jurisprudence_tab()
     
     with tabs[2]:
-        show_import_tab()
+        show_azure_browser_tab()
     
     with tabs[3]:
+        show_import_tab()
+    
+    with tabs[4]:
         show_intelligent_search_tab()
 
 def show_search_tab():
@@ -70,6 +80,10 @@ def show_search_tab():
     # Afficher les résultats
     if 'search_results' in st.session_state:
         show_search_results(st.session_state.search_results)
+
+def show_jurisprudence_tab():
+    """Onglet de recherche juridique multi-sources"""
+    display_legal_search_interface()
 
 def show_azure_browser_tab():
     """Onglet de navigation Azure Blob"""
