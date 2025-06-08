@@ -152,6 +152,83 @@ class Document:
         return cls(**data)
 
 @dataclass
+class CasJuridique:
+    """Représente un cas juridique complet"""
+    id: str
+    titre: str
+    description: str
+    type_affaire: str  # pénal, civil, commercial, etc.
+    parties: Dict[str, List[str]] = field(default_factory=dict)  # demandeurs, défendeurs, etc.
+    juridiction: Optional[str] = None
+    date_debut: Optional[datetime] = None
+    date_fin: Optional[datetime] = None
+    statut: str = "en_cours"  # en_cours, clos, en_appel
+    documents: List[str] = field(default_factory=list)  # IDs des documents
+    infractions: List[str] = field(default_factory=list)
+    montants_enjeu: Dict[str, float] = field(default_factory=dict)
+    avocats: Dict[str, str] = field(default_factory=dict)  # partie: avocat
+    decisions: List[Dict[str, Any]] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        """Validation post-initialisation"""
+        if not self.id:
+            self.id = f"cas_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        
+        # Initialiser les parties par défaut
+        if not self.parties:
+            self.parties = {
+                'demandeurs': [],
+                'defendeurs': [],
+                'temoins': [],
+                'experts': []
+            }
+    
+    def add_document(self, doc_id: str):
+        """Ajoute un document au cas"""
+        if doc_id not in self.documents:
+            self.documents.append(doc_id)
+            self.updated_at = datetime.now()
+    
+    def add_partie(self, type_partie: str, nom: str):
+        """Ajoute une partie au cas"""
+        if type_partie not in self.parties:
+            self.parties[type_partie] = []
+        if nom not in self.parties[type_partie]:
+            self.parties[type_partie].append(nom)
+            self.updated_at = datetime.now()
+    
+    def add_decision(self, decision: Dict[str, Any]):
+        """Ajoute une décision au cas"""
+        decision['date'] = datetime.now().isoformat()
+        self.decisions.append(decision)
+        self.updated_at = datetime.now()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'id': self.id,
+            'titre': self.titre,
+            'description': self.description,
+            'type_affaire': self.type_affaire,
+            'parties': self.parties,
+            'juridiction': self.juridiction,
+            'date_debut': self.date_debut.isoformat() if self.date_debut else None,
+            'date_fin': self.date_fin.isoformat() if self.date_fin else None,
+            'statut': self.statut,
+            'documents': self.documents,
+            'infractions': self.infractions,
+            'montants_enjeu': self.montants_enjeu,
+            'avocats': self.avocats,
+            'decisions': self.decisions,
+            'metadata': self.metadata,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
+
+@dataclass
 class PieceSelectionnee:
     """Représente une pièce sélectionnée pour un bordereau"""
     numero: int
