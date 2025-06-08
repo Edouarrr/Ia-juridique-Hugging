@@ -7,6 +7,7 @@ from managers.style_analyzer import StyleAnalyzer
 from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
 from managers.jurisprudence_verifier import JurisprudenceVerifier
 from managers.legal_search import LegalSearchManager
+from managers.company_info_manager import CompanyInfoManager, get_company_info_manager
 
 __all__ = [
     'MultiLLMManager',
@@ -17,5 +18,7 @@ __all__ = [
     'generate_dynamic_search_prompts',
     'generate_dynamic_templates',
     'JurisprudenceVerifier',
-    'LegalSearchManager'
+    'LegalSearchManager',
+    'CompanyInfoManager',
+    'get_company_info_manager'
 ]
