@@ -6408,7 +6408,7 @@ def extract_plaidoirie_structure(content: str) -> dict:
     structure = {}
     
     # Pattern pour les sections principales
-    sections = re.findall(r'^([IVX]+\.\s+.*), content, re.MULTILINE)
+    sections = re.findall(r'^[IVX]+\.\s+.*', content, re.MULTILINE)
     
     for section in sections:
         # Trouver le contenu de cette section
