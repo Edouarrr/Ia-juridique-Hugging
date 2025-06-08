@@ -1,6 +1,7 @@
 # models/dataclasses.py
 """Modèles de données pour l'application juridique - Version améliorée avec intégration Pappers/Societe.com"""
 
+from __future__ import annotations  # Ajout pour résoudre le problème de forward reference
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Union, Tuple, Set
@@ -375,6 +376,7 @@ class StyleLearningResult:
                 'paragraph_numbering': self.paragraph_numbering_pattern,
                 'argument_patterns': self.argument_patterns,
                 'citation_patterns': self.citation_patterns,
+                'conclusion_patterns': self.conclusion_patterns,
                 'formatting': {
                     'bold': self.use_bold,
                     'italic': self.use_italic,
@@ -413,6 +415,95 @@ class StyleLearningResult:
             return "équilibrée"
         else:
             return "simple"
+
+@dataclass
+class StylePattern:
+    """Pattern de style extrait d'un document"""
+    document_id: str
+    type_acte: str
+    structure: Dict[str, Any] = field(default_factory=dict)
+    formules: List[str] = field(default_factory=list)
+    mise_en_forme: Dict[str, Any] = field(default_factory=dict)
+    vocabulaire: Dict[str, int] = field(default_factory=dict)
+    paragraphes_types: List[str] = field(default_factory=list)
+    
+    # Nouveaux champs pour l'analyse approfondie
+    numerotation: Dict[str, Any] = field(default_factory=dict)
+    formalite: Dict[str, Any] = field(default_factory=dict)
+    argumentation: Dict[str, List[str]] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Initialisation et validation"""
+        if not self.document_id:
+            self.document_id = f"pattern_{datetime.now().timestamp()}"
+        
+        # S'assurer que les dictionnaires sont initialisés
+        if not self.structure:
+            self.structure = {}
+        if not self.mise_en_forme:
+            self.mise_en_forme = {}
+        if not self.numerotation:
+            self.numerotation = {}
+        if not self.formalite:
+            self.formalite = {}
+        if not self.argumentation:
+            self.argumentation = {}
+    
+    def merge_with(self, other: 'StylePattern') -> 'StylePattern':
+        """Fusionne avec un autre pattern"""
+        merged = StylePattern(
+            document_id=f"{self.document_id}_merged",
+            type_acte=self.type_acte
+        )
+        
+        # Fusionner les structures
+        merged.structure = {**self.structure, **other.structure}
+        
+        # Fusionner les formules
+        merged.formules = list(set(self.formules + other.formules))
+        
+        # Fusionner la mise en forme
+        merged.mise_en_forme = {**self.mise_en_forme, **other.mise_en_forme}
+        
+        # Fusionner le vocabulaire
+        merged.vocabulaire = self.vocabulaire.copy()
+        for word, count in other.vocabulaire.items():
+            merged.vocabulaire[word] = merged.vocabulaire.get(word, 0) + count
+        
+        # Fusionner les paragraphes types
+        merged.paragraphes_types = list(set(self.paragraphes_types + other.paragraphes_types))
+        
+        # Fusionner la numérotation
+        merged.numerotation = {**self.numerotation, **other.numerotation}
+        
+        # Fusionner la formalité
+        if self.formalite.get('score', 0) and other.formalite.get('score', 0):
+            merged.formalite['score'] = (
+                self.formalite.get('score', 0) + other.formalite.get('score', 0)
+            ) / 2
+        
+        # Fusionner l'argumentation
+        for key, values in other.argumentation.items():
+            if key not in merged.argumentation:
+                merged.argumentation[key] = []
+            merged.argumentation[key].extend(values)
+        
+        return merged
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'document_id': self.document_id,
+            'type_acte': self.type_acte,
+            'structure': self.structure,
+            'formules': self.formules,
+            'mise_en_forme': self.mise_en_forme,
+            'vocabulaire': self.vocabulaire,
+            'paragraphes_types': self.paragraphes_types,
+            'numerotation': self.numerotation,
+            'formalite': self.formalite,
+            'argumentation': self.argumentation
+        }
 
 @dataclass
 class DocumentTemplate:
@@ -817,6 +908,93 @@ class Partie:
             'has_entreprise_info': self.info_entreprise is not None
         }
 
+# ========== INFRACTIONS ==========
+
+@dataclass
+class InfractionIdentifiee:
+    """Infraction identifiée dans les documents"""
+    type: InfractionAffaires
+    description: str
+    elements_constitutifs: List[str] = field(default_factory=list)
+    preuves: List[str] = field(default_factory=list)
+    articles_code_penal: List[str] = field(default_factory=list)
+    sanctions_encourues: Dict[str, str] = field(default_factory=dict)
+    personnes_impliquees: List[str] = field(default_factory=list)
+    prescription: Optional[str] = None
+    gravite: int = 5  # 1-10
+    montant_prejudice: Optional[float] = None
+    circonstances_aggravantes: List[str] = field(default_factory=list)
+    date_faits: Optional[datetime] = None
+    lieu_faits: Optional[str] = None
+    
+    def __post_init__(self):
+        # Ajouter automatiquement les articles selon le type d'infraction
+        if not self.articles_code_penal:
+            self.articles_code_penal = self.get_articles_applicables()
+    
+    def get_articles_applicables(self) -> List[str]:
+        """Retourne les articles applicables selon le type d'infraction"""
+        articles_map = {
+            InfractionAffaires.ESCROQUERIE: ["313-1 Code pénal"],
+            InfractionAffaires.ABUS_CONFIANCE: ["314-1 Code pénal"],
+            InfractionAffaires.ABUS_BIENS_SOCIAUX: ["L241-3 Code de commerce", "L242-6 Code de commerce"],
+            InfractionAffaires.FAUX_USAGE_FAUX: ["441-1 Code pénal"],
+            InfractionAffaires.CORRUPTION: ["432-11 Code pénal", "433-1 Code pénal"],
+            InfractionAffaires.TRAFIC_INFLUENCE: ["432-11 Code pénal", "433-2 Code pénal"],
+            InfractionAffaires.FAVORITISME: ["432-14 Code pénal"],
+            InfractionAffaires.PRISE_ILLEGALE_INTERETS: ["432-12 Code pénal"],
+            InfractionAffaires.BLANCHIMENT: ["324-1 Code pénal"],
+            InfractionAffaires.FRAUDE_FISCALE: ["1741 Code général des impôts"],
+            InfractionAffaires.TRAVAIL_DISSIMULE: ["L8221-3 Code du travail"],
+            InfractionAffaires.MARCHANDAGE: ["L8231-1 Code du travail"],
+            InfractionAffaires.ENTRAVE: ["L2328-1 Code du travail"],
+            InfractionAffaires.BANQUEROUTE: ["L654-2 Code de commerce"],
+            InfractionAffaires.RECEL: ["321-1 Code pénal"],
+            InfractionAffaires.DELIT_INITIE: ["L465-1 Code monétaire et financier"],
+            InfractionAffaires.MANIPULATION_COURS: ["L465-3-1 Code monétaire et financier"]
+        }
+        return articles_map.get(self.type, [])
+    
+    def get_sanctions_maximales(self) -> Dict[str, str]:
+        """Retourne les sanctions maximales encourues"""
+        sanctions_map = {
+            InfractionAffaires.ESCROQUERIE: {
+                "prison": "5 ans",
+                "amende": "375 000 €",
+                "personnes_morales": "1 875 000 €"
+            },
+            InfractionAffaires.ABUS_BIENS_SOCIAUX: {
+                "prison": "5 ans",
+                "amende": "375 000 €",
+                "interdictions": "Interdiction de gérer"
+            },
+            InfractionAffaires.CORRUPTION: {
+                "prison": "10 ans",
+                "amende": "1 000 000 €",
+                "complementaires": "Interdiction des droits civiques"
+            }
+            # Ajouter d'autres infractions selon les besoins
+        }
+        return sanctions_map.get(self.type, {"prison": "Variable", "amende": "Variable"})
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'type': self.type.value,
+            'description': self.description,
+            'elements_constitutifs': self.elements_constitutifs,
+            'preuves': self.preuves,
+            'articles_code_penal': self.articles_code_penal,
+            'sanctions_encourues': self.sanctions_encourues or self.get_sanctions_maximales(),
+            'personnes_impliquees': self.personnes_impliquees,
+            'prescription': self.prescription,
+            'gravite': self.gravite,
+            'montant_prejudice': self.montant_prejudice,
+            'circonstances_aggravantes': self.circonstances_aggravantes,
+            'date_faits': self.date_faits.isoformat() if self.date_faits else None,
+            'lieu_faits': self.lieu_faits
+        }
+
 @dataclass
 class CasJuridique:
     """Représente un cas juridique complet avec traçabilité"""
@@ -974,93 +1152,6 @@ class CasJuridique:
             base_dict['nombre_pieces'] = len(self.pieces_principales)
         
         return base_dict
-
-# ========== INFRACTIONS ==========
-
-@dataclass
-class InfractionIdentifiee:
-    """Infraction identifiée dans les documents"""
-    type: InfractionAffaires
-    description: str
-    elements_constitutifs: List[str] = field(default_factory=list)
-    preuves: List[str] = field(default_factory=list)
-    articles_code_penal: List[str] = field(default_factory=list)
-    sanctions_encourues: Dict[str, str] = field(default_factory=dict)
-    personnes_impliquees: List[str] = field(default_factory=list)
-    prescription: Optional[str] = None
-    gravite: int = 5  # 1-10
-    montant_prejudice: Optional[float] = None
-    circonstances_aggravantes: List[str] = field(default_factory=list)
-    date_faits: Optional[datetime] = None
-    lieu_faits: Optional[str] = None
-    
-    def __post_init__(self):
-        # Ajouter automatiquement les articles selon le type d'infraction
-        if not self.articles_code_penal:
-            self.articles_code_penal = self.get_articles_applicables()
-    
-    def get_articles_applicables(self) -> List[str]:
-        """Retourne les articles applicables selon le type d'infraction"""
-        articles_map = {
-            InfractionAffaires.ESCROQUERIE: ["313-1 Code pénal"],
-            InfractionAffaires.ABUS_CONFIANCE: ["314-1 Code pénal"],
-            InfractionAffaires.ABUS_BIENS_SOCIAUX: ["L241-3 Code de commerce", "L242-6 Code de commerce"],
-            InfractionAffaires.FAUX_USAGE_FAUX: ["441-1 Code pénal"],
-            InfractionAffaires.CORRUPTION: ["432-11 Code pénal", "433-1 Code pénal"],
-            InfractionAffaires.TRAFIC_INFLUENCE: ["432-11 Code pénal", "433-2 Code pénal"],
-            InfractionAffaires.FAVORITISME: ["432-14 Code pénal"],
-            InfractionAffaires.PRISE_ILLEGALE_INTERETS: ["432-12 Code pénal"],
-            InfractionAffaires.BLANCHIMENT: ["324-1 Code pénal"],
-            InfractionAffaires.FRAUDE_FISCALE: ["1741 Code général des impôts"],
-            InfractionAffaires.TRAVAIL_DISSIMULE: ["L8221-3 Code du travail"],
-            InfractionAffaires.MARCHANDAGE: ["L8231-1 Code du travail"],
-            InfractionAffaires.ENTRAVE: ["L2328-1 Code du travail"],
-            InfractionAffaires.BANQUEROUTE: ["L654-2 Code de commerce"],
-            InfractionAffaires.RECEL: ["321-1 Code pénal"],
-            InfractionAffaires.DELIT_INITIE: ["L465-1 Code monétaire et financier"],
-            InfractionAffaires.MANIPULATION_COURS: ["L465-3-1 Code monétaire et financier"]
-        }
-        return articles_map.get(self.type, [])
-    
-    def get_sanctions_maximales(self) -> Dict[str, str]:
-        """Retourne les sanctions maximales encourues"""
-        sanctions_map = {
-            InfractionAffaires.ESCROQUERIE: {
-                "prison": "5 ans",
-                "amende": "375 000 €",
-                "personnes_morales": "1 875 000 €"
-            },
-            InfractionAffaires.ABUS_BIENS_SOCIAUX: {
-                "prison": "5 ans",
-                "amende": "375 000 €",
-                "interdictions": "Interdiction de gérer"
-            },
-            InfractionAffaires.CORRUPTION: {
-                "prison": "10 ans",
-                "amende": "1 000 000 €",
-                "complementaires": "Interdiction des droits civiques"
-            }
-            # Ajouter d'autres infractions selon les besoins
-        }
-        return sanctions_map.get(self.type, {"prison": "Variable", "amende": "Variable"})
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'type': self.type.value,
-            'description': self.description,
-            'elements_constitutifs': self.elements_constitutifs,
-            'preuves': self.preuves,
-            'articles_code_penal': self.articles_code_penal,
-            'sanctions_encourues': self.sanctions_encourues or self.get_sanctions_maximales(),
-            'personnes_impliquees': self.personnes_impliquees,
-            'prescription': self.prescription,
-            'gravite': self.gravite,
-            'montant_prejudice': self.montant_prejudice,
-            'circonstances_aggravantes': self.circonstances_aggravantes,
-            'date_faits': self.date_faits.isoformat() if self.date_faits else None,
-            'lieu_faits': self.lieu_faits
-        }
 
 # ========== PIÈCES ET PROCÉDURE ==========
 
@@ -2043,6 +2134,21 @@ class RedactionResult:
             'statistics': self.get_statistics(),
             'style_learning_applied': self.style_learning_applied.style_name if self.style_learning_applied else None
         }
+
+# ========== JURISPRUDENCE (pour compatibilité) ==========
+
+@dataclass
+class JurisprudenceReference:
+    """Référence de jurisprudence"""
+    id: str
+    juridiction: str
+    date: datetime
+    numero: str
+    sommaire: Optional[str] = None
+    
+    def get_citation(self) -> str:
+        """Retourne la citation formatée"""
+        return f"{self.juridiction}, {self.date.strftime('%d %B %Y')}, n°{self.numero}"
 
 # ========== FONCTIONS HELPER AMÉLIORÉES ==========
 
