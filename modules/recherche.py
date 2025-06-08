@@ -6787,3 +6787,191 @@ def extract_key_phrases(responses: list) -> list:
             unique_phrases.append(cleaned)
     
     return unique_phrases[:20]  # Top 20
+# === FONCTIONS MANQUANTES À AJOUTER ===
+
+def format_ai_analysis_for_export(analysis_results: dict) -> str:
+    """Formate les résultats d'analyse IA pour l'export"""
+    content = f"ANALYSE IA - {analysis_results.get('type', 'Générale').upper()}\n"
+    content += f"Date : {analysis_results.get('timestamp', datetime.now()).strftime('%d/%m/%Y %H:%M')}\n"
+    content += f"Documents analysés : {analysis_results.get('document_count', 0)}\n\n"
+    
+    if analysis_results.get('query'):
+        content += f"QUESTION : {analysis_results['query']}\n\n"
+    
+    content += "ANALYSE :\n"
+    content += analysis_results.get('content', 'Aucun contenu')
+    
+    return content
+
+def format_search_results_for_export(search_results: list) -> str:
+    """Formate les résultats de recherche pour l'export"""
+    content = f"RÉSULTATS DE RECHERCHE\n"
+    content += f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    content += f"Nombre de résultats : {len(search_results)}\n\n"
+    
+    for i, result in enumerate(search_results, 1):
+        content += f"{i}. {result.get('title', 'Sans titre')}\n"
+        content += f"   Source : {result.get('source', 'N/A')}\n"
+        content += f"   Score : {result.get('score', 0):.2%}\n"
+        if result.get('content'):
+            content += f"   Extrait : {result['content'][:200]}...\n"
+        content += "\n"
+    
+    return content
+
+def deepen_current_analysis(results: dict):
+    """Approfondit l'analyse actuelle"""
+    st.info("🔄 Approfondissement de l'analyse en cours...")
+    query = results.get('query', '')
+    deeper_query = f"{query} - analyse approfondie avec plus de détails"
+    st.session_state.universal_query = deeper_query
+    st.rerun()
+
+def create_analysis_visualization(results: dict):
+    """Crée une visualisation de l'analyse"""
+    st.info("📊 Création de visualisations...")
+    if results.get('type') == 'risk_analysis':
+        st.warning("Visualisation des risques à implémenter")
+    else:
+        st.info("Visualisation générale à implémenter")
+
+def analyze_compliance(documents: list, query: str) -> dict:
+    """Analyse de conformité"""
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    compliance_prompt = f"""Analyse la conformité réglementaire dans ces documents.
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+QUESTION: {query}
+
+Vérifie:
+1. CONFORMITÉ LÉGALE
+2. OBLIGATIONS RÉGLEMENTAIRES
+3. ÉCARTS IDENTIFIÉS
+4. RECOMMANDATIONS
+
+Format structuré."""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            compliance_prompt,
+            "Tu es un expert en conformité juridique."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'compliance',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query
+            }
+            
+    except Exception as e:
+        return {'error': f'Erreur analyse: {str(e)}'}
+
+def analyze_strategy(documents: list, query: str) -> dict:
+    """Analyse stratégique"""
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    strategy_prompt = f"""Analyse stratégique de ces documents.
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+QUESTION: {query}
+
+Développe:
+1. ANALYSE DE SITUATION
+2. OPTIONS STRATÉGIQUES
+3. RECOMMANDATIONS
+4. PLAN D'ACTION
+
+Format professionnel."""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            strategy_prompt,
+            "Tu es un stratège juridique expert."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'strategy',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query
+            }
+            
+    except Exception as e:
+        return {'error': f'Erreur analyse: {str(e)}'}
+
+def show_plaidoirie_results():
+    """Affiche les résultats de plaidoirie"""
+    result = st.session_state.plaidoirie_result
+    
+    st.markdown("### 🎤 Plaidoirie générée")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Type", result.get('type', 'Plaidoirie').title())
+    with col2:
+        st.metric("Durée estimée", result.get('duree_estimee', 'N/A'))
+    with col3:
+        st.metric("Points clés", len(result.get('key_points', [])))
+    
+    st.text_area(
+        "Plaidoirie",
+        value=result.get('content', ''),
+        height=600,
+        key="plaidoirie_display"
+    )
+
+def show_preparation_client_results():
+    """Affiche les résultats de préparation client"""
+    result = st.session_state.preparation_client_result
+    
+    st.markdown("### 👥 Préparation client")
+    
+    config = result.get('config', {})
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Type", config.get('prep_type', 'N/A'))
+    with col2:
+        st.metric("Profil client", config.get('profil_client', 'N/A'))
+    with col3:
+        st.metric("Durée", result.get('stats', {}).get('duree_estimee', 'N/A'))
+    
+    st.text_area(
+        "Guide de préparation",
+        value=result.get('content', ''),
+        height=600,
+        key="preparation_display"
+    )
+
+def extract_section(content: str, section_name: str) -> str:
+    """Extrait une section spécifique du contenu"""
+    pattern = rf'{section_name}[:\s]*\n(.*?)(?=\n[A-Z][A-Z\s]+:|$)'
+    match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+    
+    if match:
+        return match.group(1).strip()
+    return ""
+
+def process_universal_query(query: str):
+    """Traite une requête universelle - fonction temporaire"""
+    st.info(f"Traitement de la requête : {query}")
+    # Cette fonction sera remplacée par l'import correct plus tard
