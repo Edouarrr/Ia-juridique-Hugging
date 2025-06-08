@@ -58,6 +58,234 @@ from managers.jurisprudence_verifier import JurisprudenceVerifier
 from models.dataclasses import Document, PieceSelectionnee
 from utils.helpers import clean_key
 
+# === FONCTION PRINCIPALE D'AFFICHAGE ===
+
+def show_page():
+    """Fonction principale de la page recherche universelle"""
+    
+    st.markdown("## 🔍 Recherche Universelle")
+    
+    # Barre de recherche principale
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        query = st.text_input(
+            "Entrez votre commande ou recherche",
+            placeholder="Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...",
+            key="universal_query",
+            help="Utilisez @ pour référencer une affaire spécifique"
+        )
+    
+    with col2:
+        search_button = st.button("🔍 Rechercher", key="search_button", use_container_width=True)
+    
+    # Suggestions de commandes
+    with st.expander("💡 Exemples de commandes", expanded=False):
+        st.markdown("""
+        **Recherche :**
+        - `contrats société XYZ`
+        - `@affaire_martin documents comptables`
+        
+        **Analyse :**
+        - `analyser les risques @dossier_pénal`
+        - `identifier les infractions @affaire_corruption`
+        
+        **Rédaction :**
+        - `rédiger conclusions défense @affaire_martin abus biens sociaux`
+        - `créer plainte avec constitution partie civile escroquerie`
+        
+        **Visualisations :**
+        - `chronologie des faits @affaire_martin`
+        - `cartographie des sociétés @groupe_abc`
+        
+        **Gestion :**
+        - `importer documents PDF`
+        - `exporter analyse format word`
+        - `envoyer par email @destinataire`
+        """)
+    
+    # Traiter la requête
+    if query and (search_button or st.session_state.get('process_query', False)):
+        with st.spinner("🔄 Traitement en cours..."):
+            process_universal_query(query)
+    
+    # Afficher les résultats
+    show_unified_results_tab()
+    
+    # Réinitialiser le flag de traitement
+    if 'process_query' in st.session_state:
+        st.session_state.process_query = False
+
+def process_universal_query(query: str):
+    """Traite une requête universelle et route vers la bonne fonction"""
+    
+    # Sauvegarder la requête
+    st.session_state.last_universal_query = query
+    
+    # Analyser la requête
+    analysis = analyze_query(query)
+    st.session_state.current_analysis = analysis
+    
+    # Router selon le type détecté
+    if analysis['type'] == 'import':
+        process_import_request(query, analysis)
+    
+    elif analysis['type'] == 'export':
+        process_export_request(query, analysis)
+    
+    elif analysis['type'] == 'email':
+        process_email_request(query, analysis)
+    
+    elif analysis['type'] == 'piece_selection':
+        process_piece_selection_request(query, analysis)
+    
+    elif analysis['type'] == 'bordereau':
+        process_bordereau_request(query, analysis)
+    
+    elif analysis['type'] == 'synthesis':
+        process_synthesis_request(query, analysis)
+    
+    elif analysis['type'] == 'template':
+        process_template_request(query, analysis)
+    
+    elif analysis['type'] == 'jurisprudence':
+        process_jurisprudence_request(query, analysis)
+    
+    elif analysis['type'] == 'redaction':
+        process_redaction_request(query, analysis)
+    
+    elif analysis['type'] == 'plaidoirie':
+        process_plaidoirie_request(query, analysis)
+    
+    elif analysis['type'] == 'preparation_client':
+        process_preparation_client_request(query, analysis)
+    
+    elif analysis['type'] == 'timeline':
+        process_timeline_request(query, analysis)
+    
+    elif analysis['type'] == 'mapping':
+        process_mapping_request(query, analysis)
+    
+    elif analysis['type'] == 'comparison':
+        process_comparison_request(query, analysis)
+    
+    elif analysis['type'] == 'analysis':
+        process_analysis_request(query, analysis)
+    
+    else:  # Recherche simple par défaut
+        process_search_request(query, analysis)
+
+def analyze_query(query: str) -> dict:
+    """Analyse une requête pour déterminer le type d'action"""
+    
+    query_lower = query.lower()
+    
+    # Patterns de détection
+    patterns = {
+        'import': ['import', 'importer', 'charger', 'upload'],
+        'export': ['export', 'exporter', 'télécharger', 'download'],
+        'email': ['email', 'envoyer', 'mail', 'courrier électronique'],
+        'piece_selection': ['sélectionner pièces', 'choisir pièces', 'pièces'],
+        'bordereau': ['bordereau', 'liste pièces', 'inventaire'],
+        'synthesis': ['synthèse', 'synthétiser', 'résumer'],
+        'template': ['template', 'modèle', 'gabarit'],
+        'jurisprudence': ['jurisprudence', 'juris', 'décision', 'arrêt'],
+        'redaction': ['rédiger', 'écrire', 'créer', 'conclusions', 'plainte'],
+        'plaidoirie': ['plaidoirie', 'plaider', 'audience'],
+        'preparation_client': ['préparer client', 'préparation', 'coaching'],
+        'timeline': ['chronologie', 'timeline', 'frise'],
+        'mapping': ['cartographie', 'mapping', 'carte', 'réseau'],
+        'comparison': ['comparer', 'comparaison', 'différences'],
+        'analysis': ['analyser', 'analyse', 'étudier', 'examiner']
+    }
+    
+    # Détecter le type
+    detected_type = 'search'  # Par défaut
+    
+    for pattern_type, keywords in patterns.items():
+        if any(kw in query_lower for kw in keywords):
+            detected_type = pattern_type
+            break
+    
+    # Extraire la référence @ si présente
+    reference = None
+    ref_match = re.search(r'@(\w+)', query)
+    if ref_match:
+        reference = ref_match.group(1)
+    
+    # Extraire d'autres détails selon le type
+    details = extract_query_details(query, detected_type)
+    
+    return {
+        'type': detected_type,
+        'query': query,
+        'reference': reference,
+        'details': details
+    }
+
+def extract_query_details(query: str, query_type: str) -> dict:
+    """Extrait les détails spécifiques selon le type de requête"""
+    
+    details = {}
+    
+    if query_type == 'export':
+        # Détecter le format
+        if 'word' in query.lower() or 'docx' in query.lower():
+            details['format'] = 'docx'
+        elif 'pdf' in query.lower():
+            details['format'] = 'pdf'
+        elif 'excel' in query.lower() or 'xlsx' in query.lower():
+            details['format'] = 'xlsx'
+        else:
+            details['format'] = 'docx'  # Par défaut
+    
+    elif query_type == 'redaction':
+        # Détecter le type de document
+        if 'conclusions' in query.lower():
+            details['document_type'] = 'conclusions'
+        elif 'plainte' in query.lower():
+            details['document_type'] = 'plainte'
+        elif 'courrier' in query.lower():
+            details['document_type'] = 'courrier'
+        else:
+            details['document_type'] = 'general'
+    
+    # Ajouter d'autres extractions selon les besoins
+    
+    return details
+
+# === FONCTIONS STUB MANQUANTES ===
+
+def process_redaction_request(query: str, analysis: dict):
+    """Traite une demande de rédaction"""
+    st.info("🚧 Fonction de rédaction en cours d'implémentation")
+    # TODO: Implémenter la rédaction
+
+def process_plaidoirie_request(query: str, analysis: dict):
+    """Traite une demande de plaidoirie"""
+    st.info("🚧 Fonction de plaidoirie en cours d'implémentation")
+    # TODO: Implémenter la plaidoirie
+
+def process_preparation_client_request(query: str, analysis: dict):
+    """Traite une demande de préparation client"""
+    st.info("🚧 Fonction de préparation client en cours d'implémentation")
+    # TODO: Implémenter la préparation
+
+def process_timeline_request(query: str, analysis: dict):
+    """Traite une demande de chronologie"""
+    st.info("🚧 Fonction de chronologie en cours d'implémentation")
+    # TODO: Implémenter la timeline
+
+def process_mapping_request(query: str, analysis: dict):
+    """Traite une demande de cartographie"""
+    st.info("🚧 Fonction de cartographie en cours d'implémentation")
+    # TODO: Implémenter le mapping
+
+def process_comparison_request(query: str, analysis: dict):
+    """Traite une demande de comparaison"""
+    st.info("🚧 Fonction de comparaison en cours d'implémentation")
+    # TODO: Implémenter la comparaison
+
 # Configuration des styles de rédaction
 REDACTION_STYLES = {
     'formel': {
