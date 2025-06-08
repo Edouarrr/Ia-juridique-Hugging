@@ -1,509 +1,704 @@
 # utils/helpers.py
 """Fonctions utilitaires pour l'application juridique"""
 
+import streamlit as st
 import re
-import unicodedata
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple, Union
-import hashlib
-import base64
 import json
-import os
+import hashlib
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Tuple, Union
 from pathlib import Path
+import unicodedata
+
+from models.dataclasses import QueryAnalysis, Document, Entity
+
+def initialize_session_state():
+    """Initialise l'état de la session Streamlit"""
+    
+    # État principal
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 'recherche'
+    
+    # Documents et données
+    if 'azure_documents' not in st.session_state:
+        st.session_state.azure_documents = {}
+    
+    if 'pieces_selectionnees' not in st.session_state:
+        st.session_state.pieces_selectionnees = {}
+    
+    if 'selected_pieces' not in st.session_state:
+        st.session_state.selected_pieces = []
+    
+    # Résultats
+    if 'search_results' not in st.session_state:
+        st.session_state.search_results = []
+    
+    # Managers (seront initialisés dans app.py)
+    if 'azure_blob_manager' not in st.session_state:
+        st.session_state.azure_blob_manager = None
+    
+    if 'azure_search_manager' not in st.session_state:
+        st.session_state.azure_search_manager = None
+    
+    # Templates personnalisés
+    if 'saved_templates' not in st.session_state:
+        st.session_state.saved_templates = {}
+    
+    # Préférences utilisateur
+    if 'user_preferences' not in st.session_state:
+        st.session_state.user_preferences = {
+            'results_per_page': 20,
+            'default_view': 'Compact',
+            'auto_jurisprudence': True,
+            'create_hyperlinks': True,
+            'default_doc_length': 'Très détaillé'
+        }
 
 def clean_key(text: str) -> str:
-    """Nettoie une chaîne pour en faire une clé valide"""
+    """Nettoie une chaîne pour l'utiliser comme clé"""
     if not text:
         return ""
     
-    # Supprimer les accents
-    text = ''.join(c for c in unicodedata.normalize('NFD', text)
-                   if unicodedata.category(c) != 'Mn')
+    # Normaliser les caractères Unicode
+    text = unicodedata.normalize('NFKD', text)
+    text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
     
-    # Remplacer les espaces et caractères spéciaux par des underscores
-    text = re.sub(r'[^a-zA-Z0-9_-]', '_', text)
-    
-    # Supprimer les underscores multiples
-    text = re.sub(r'_+', '_', text)
-    
-    # Supprimer les underscores au début et à la fin
-    text = text.strip('_')
+    # Remplacer les caractères spéciaux
+    text = re.sub(r'[^\w\s-]', '', text.lower())
+    text = re.sub(r'[-\s]+', '_', text)
     
     # Limiter la longueur
-    if len(text) > 64:
-        text = text[:64]
-    
-    # S'assurer qu'il n'est pas vide
-    if not text:
-        text = "key_" + hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
-    
-    return text.lower()
+    return text[:50]
 
-def extract_date(text: str) -> Optional[datetime]:
-    """Extrait une date d'un texte"""
-    # Patterns de dates courants
-    date_patterns = [
-        (r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', '%d/%m/%Y'),
-        (r'(\d{1,2})\.(\d{1,2})\.(\d{4})', '%d.%m.%Y'),
-        (r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})', None),
-        (r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', '%Y-%m-%d'),
-    ]
+def generate_document_id(title: str, source: str = "") -> str:
+    """Génère un ID unique pour un document"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
-    # Mapping des mois français
-    mois_fr = {
-        'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
-        'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
-        'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
+    # Créer un hash court du titre
+    title_hash = hashlib.md5(title.encode()).hexdigest()[:8]
+    
+    if source:
+        return f"{clean_key(source)}_{title_hash}_{timestamp}"
+    else:
+        return f"doc_{title_hash}_{timestamp}"
+
+def analyze_query_intent(query: str) -> QueryAnalysis:
+    """Analyse l'intention d'une requête utilisateur"""
+    
+    query_lower = query.lower()
+    
+    # Patterns d'intention
+    intent_patterns = {
+        'redaction': [
+            r'\b(rédiger|créer|écrire|composer|préparer)\b.*\b(conclusions?|plainte|assignation|mémoire|courrier|requête)\b',
+            r'\b(conclusions?|plainte|assignation|mémoire)\b.*\b(défense|demandeur)\b'
+        ],
+        'plaidoirie': [
+            r'\b(plaidoirie|plaider|audience|plaidoyer)\b',
+            r'\b(préparer|créer).*\b(plaidoirie|argumentation orale)\b'
+        ],
+        'preparation_client': [
+            r'\b(préparer|coaching|entraîner)\b.*\b(client|témoin|partie)\b',
+            r'\b(questions?\s*réponses?|Q&A|interrogatoire|audition)\b.*\b(client|préparer)\b'
+        ],
+        'timeline': [
+            r'\b(chronologie|timeline|frise|calendrier)\b',
+            r'\b(ordre|séquence)\b.*\b(chronologique|temporel|événements?)\b'
+        ],
+        'mapping': [
+            r'\b(cartographie|carte|mapping|réseau)\b',
+            r'\b(relations?|liens?)\b.*\b(entre|sociétés?|personnes?)\b'
+        ],
+        'comparison': [
+            r'\b(comparer|comparaison|différences?|divergences?)\b',
+            r'\b(évolution|changements?)\b.*\b(entre|versions?)\b'
+        ],
+        'analysis': [
+            r'\b(analyser|analyse|identifier|évaluer)\b.*\b(risques?|conformité|stratégie)\b',
+            r'\b(risques?|dangers?|exposition)\b.*\b(juridiques?|pénaux?)\b'
+        ],
+        'jurisprudence': [
+            r'\b(jurisprudence|arrêts?|décisions?)\b',
+            r'\b(rechercher|trouver)\b.*\b(jurisprudence|précédents?)\b'
+        ],
+        'import': [
+            r'\b(importer|charger|upload|télécharger)\b.*\b(documents?|fichiers?)\b',
+            r'\b(ajouter|intégrer)\b.*\b(documents?|pièces?)\b'
+        ],
+        'export': [
+            r'\b(exporter|télécharger|download|sauvegarder)\b',
+            r'\b(format|convertir)\b.*\b(word|pdf|excel)\b'
+        ],
+        'email': [
+            r'\b(envoyer|email|mail|courrier électronique)\b',
+            r'\b(partager|transmettre)\b.*\b(par\s+mail|email)\b'
+        ],
+        'synthesis': [
+            r'\b(synthèse|synthétiser|résumer|résumé)\b',
+            r'\b(points?\s+clés?|essentiel|principal)\b'
+        ],
+        'piece_selection': [
+            r'\b(sélectionner|choisir|trier)\b.*\b(pièces?|documents?)\b',
+            r'\b(pièces?)\b.*\b(pertinentes?|importantes?)\b'
+        ],
+        'bordereau': [
+            r'\b(bordereau|liste)\b.*\b(pièces?|communication)\b',
+            r'\b(créer|générer)\b.*\bordereau\b'
+        ],
+        'template': [
+            r'\b(template|modèle|gabarit)\b',
+            r'\b(utiliser|appliquer|créer)\b.*\b(template|modèle)\b'
+        ]
     }
     
-    for pattern, date_format in date_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            if date_format:
-                try:
-                    return datetime.strptime(match.group(0), date_format)
-                except ValueError:
-                    continue
-            else:
-                # Format avec mois en français
-                try:
-                    day = int(match.group(1))
-                    month = mois_fr.get(match.group(2).lower())
-                    year = int(match.group(3))
-                    if month:
-                        return datetime(year, month, day)
-                except (ValueError, AttributeError):
-                    continue
+    # Détection de l'intention
+    detected_intent = 'search'  # Par défaut
+    max_confidence = 0.0
     
-    return None
+    for intent, patterns in intent_patterns.items():
+        for pattern in patterns:
+            if re.search(pattern, query_lower):
+                # Calculer un score de confiance basique
+                matches = len(re.findall(pattern, query_lower))
+                confidence = min(matches * 0.5, 1.0)
+                
+                if confidence > max_confidence:
+                    detected_intent = intent
+                    max_confidence = confidence
+                break
+    
+    # Extraction des entités
+    entities = extract_query_entities(query)
+    
+    # Détails supplémentaires selon l'intention
+    details = extract_intent_details(query, detected_intent)
+    
+    return QueryAnalysis(
+        original_query=query,
+        intent=detected_intent,
+        entities=entities,
+        confidence=max_confidence,
+        details=details
+    )
 
-def extract_dates(text: str) -> List[Tuple[datetime, str]]:
-    """Extrait toutes les dates d'un texte avec leur contexte"""
-    dates = []
-    sentences = text.split('.')
+def extract_query_entities(query: str) -> Dict[str, Any]:
+    """Extrait les entités d'une requête"""
     
-    for sentence in sentences:
-        date = extract_date(sentence)
-        if date:
-            # Nettoyer le contexte
-            context = sentence.strip()
-            if len(context) > 200:
-                context = context[:200] + "..."
-            dates.append((date, context))
+    entities = {
+        'references': [],
+        'dates': [],
+        'persons': [],
+        'organizations': [],
+        'document_types': [],
+        'legal_terms': []
+    }
     
-    # Trier par date
-    dates.sort(key=lambda x: x[0])
+    # Références @ 
+    references = re.findall(r'@(\w+)', query)
+    entities['references'] = references
     
-    return dates
-
-def extract_amounts(text: str) -> List[Tuple[float, str]]:
-    """Extrait les montants monétaires d'un texte"""
-    amounts = []
-    
-    # Patterns pour les montants
-    amount_patterns = [
-        r'(\d{1,3}(?:\s?\d{3})*(?:,\d{2})?)\s*(?:€|EUR|euros?)',
-        r'(\d+(?:\.\d{3})*(?:,\d{2})?)\s*(?:€|EUR|euros?)',
-        r'(\d+(?:,\d{2})?)\s*(?:€|EUR|euros?)',
+    # Dates
+    date_patterns = [
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+        r'\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b',
+        r'\b(?:janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+\d{4}\b'
     ]
     
-    for pattern in amount_patterns:
-        matches = re.finditer(pattern, text, re.IGNORECASE)
-        for match in matches:
-            amount_str = match.group(1)
-            # Normaliser le format
-            amount_str = amount_str.replace(' ', '').replace('.', '')
-            amount_str = amount_str.replace(',', '.')
-            
-            try:
-                amount = float(amount_str)
-                context = text[max(0, match.start()-50):min(len(text), match.end()+50)]
-                amounts.append((amount, context))
-            except ValueError:
-                continue
+    for pattern in date_patterns:
+        dates = re.findall(pattern, query, re.IGNORECASE)
+        entities['dates'].extend(dates)
     
-    # Dédupliquer et trier
-    amounts = list(set(amounts))
-    amounts.sort(key=lambda x: x[0], reverse=True)
+    # Types de documents
+    doc_types = ['conclusions', 'plainte', 'assignation', 'mémoire', 'ordonnance', 'jugement', 'arrêt']
+    for doc_type in doc_types:
+        if doc_type in query.lower():
+            entities['document_types'].append(doc_type)
     
-    return amounts
+    # Termes juridiques
+    legal_terms = ['abus de biens sociaux', 'escroquerie', 'faux', 'blanchiment', 'corruption']
+    for term in legal_terms:
+        if term in query.lower():
+            entities['legal_terms'].append(term)
+    
+    # Extraction basique de noms propres (majuscules)
+    potential_names = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', query)
+    entities['persons'] = [name for name in potential_names if len(name.split()) >= 2]
+    
+    return entities
+
+def extract_intent_details(query: str, intent: str) -> Dict[str, Any]:
+    """Extrait des détails spécifiques selon l'intention"""
+    
+    details = {}
+    query_lower = query.lower()
+    
+    if intent == 'redaction':
+        # Type de document
+        if 'conclusions' in query_lower:
+            details['document_type'] = 'conclusions'
+            if 'défense' in query_lower:
+                details['partie'] = 'defense'
+            elif 'demandeur' in query_lower:
+                details['partie'] = 'demandeur'
+        
+        elif 'plainte' in query_lower:
+            details['document_type'] = 'plainte'
+            if 'constitution' in query_lower and 'partie civile' in query_lower:
+                details['document_type'] = 'constitution_pc'
+        
+        # Infractions
+        infractions = ['abus de biens sociaux', 'escroquerie', 'faux', 'blanchiment']
+        for infraction in infractions:
+            if infraction in query_lower:
+                details['infraction'] = infraction
+                break
+    
+    elif intent == 'timeline':
+        # Type de chronologie
+        if 'faits' in query_lower:
+            details['timeline_type'] = 'faits'
+        elif 'procédure' in query_lower:
+            details['timeline_type'] = 'procedure'
+        else:
+            details['timeline_type'] = 'complete'
+    
+    elif intent == 'mapping':
+        # Type de cartographie
+        if 'société' in query_lower or 'entreprise' in query_lower:
+            details['mapping_type'] = 'societes'
+        elif 'personne' in query_lower:
+            details['mapping_type'] = 'personnes'
+        elif 'flux' in query_lower or 'financier' in query_lower:
+            details['mapping_type'] = 'flux_financiers'
+        else:
+            details['mapping_type'] = 'complete'
+    
+    elif intent == 'import':
+        # Types de fichiers
+        file_types = []
+        if 'pdf' in query_lower:
+            file_types.append('pdf')
+        if 'word' in query_lower or 'docx' in query_lower:
+            file_types.append('docx')
+        if 'excel' in query_lower or 'xlsx' in query_lower:
+            file_types.append('xlsx')
+        
+        details['file_types'] = file_types if file_types else ['pdf', 'docx', 'txt']
+    
+    elif intent == 'export':
+        # Format d'export
+        if 'word' in query_lower or 'docx' in query_lower:
+            details['format'] = 'docx'
+        elif 'pdf' in query_lower:
+            details['format'] = 'pdf'
+        elif 'excel' in query_lower:
+            details['format'] = 'xlsx'
+        else:
+            details['format'] = 'docx'
+    
+    return details
 
 def extract_entities(text: str) -> Dict[str, List[str]]:
-    """Extrait les entités nommées d'un texte"""
+    """Extrait les entités d'un texte (personnes, organisations, lieux)"""
+    
     entities = {
         'persons': [],
         'organizations': [],
         'locations': [],
-        'dates': [],
-        'amounts': [],
-        'legal_refs': []
+        'dates': []
     }
     
-    # Personnes (patterns simples)
-    # Noms propres (2-3 mots commençant par majuscule)
-    person_pattern = r'\b([A-Z][a-zàâäéèêëïîôùûç]+ (?:[A-Z][a-zàâäéèêëïîôùûç]+ ?){0,2})\b'
-    persons = re.findall(person_pattern, text)
-    entities['persons'] = list(set(persons))
+    # Extraction simple basée sur des patterns
+    # Personnes (noms propres composés)
+    person_pattern = r'\b(?:M\.|Mme|Me|Dr|Pr)?\.?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b'
+    potential_persons = re.findall(person_pattern, text)
     
-    # Organisations (SA, SARL, SAS, etc.)
-    org_pattern = r'\b([A-Z][A-Za-zàâäéèêëïîôùûç\-]+(?: [A-Z][A-Za-zàâäéèêëïîôùûç\-]+)*)\s*(?:SA|SARL|SAS|SCI|EURL|GIE|S\.A\.|S\.A\.R\.L\.|S\.A\.S\.)\b'
-    orgs = re.findall(org_pattern, text)
-    entities['organizations'] = list(set(orgs))
+    # Filtrer les faux positifs courants
+    false_positives = ['La République', 'Le Tribunal', 'La Cour', 'Le Ministère']
+    entities['persons'] = [p for p in potential_persons if p not in false_positives]
     
-    # Lieux (villes, adresses)
-    location_keywords = ['rue', 'avenue', 'boulevard', 'place', 'Paris', 'Lyon', 'Marseille']
-    for keyword in location_keywords:
-        pattern = rf'\b(\d+\s+)?{keyword}\s+[A-Z][a-zàâäéèêëïîôùûç\-]+(?:\s+[A-Z]?[a-zàâäéèêëïîôùûç\-]+)*\b'
-        locations = re.findall(pattern, text, re.IGNORECASE)
-        entities['locations'].extend(locations)
+    # Organisations (mots en majuscules, acronymes)
+    org_patterns = [
+        r'\b[A-Z]{2,}\b',  # Acronymes
+        r'\bSociété\s+[A-Z]\w+(?:\s+[A-Z]\w+)*\b',  # Société X
+        r'\b(?:SARL|SAS|SA|EURL|SCI)\s+[A-Z]\w+\b'  # Formes juridiques
+    ]
     
-    entities['locations'] = list(set(entities['locations']))
+    for pattern in org_patterns:
+        orgs = re.findall(pattern, text)
+        entities['organizations'].extend(orgs)
+    
+    # Lieux
+    location_pattern = r'\b(?:à|de|en)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
+    potential_locations = re.findall(location_pattern, text)
+    entities['locations'] = list(set(potential_locations))
     
     # Dates
-    dates = extract_dates(text)
-    entities['dates'] = [date[0].strftime('%d/%m/%Y') for date in dates]
+    date_patterns = [
+        r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b',
+        r'\b\d{1,2}\s+(?:janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+\d{4}\b'
+    ]
     
-    # Montants
-    amounts = extract_amounts(text)
-    entities['amounts'] = [f"{amount[0]:,.2f} €" for amount in amounts]
+    for pattern in date_patterns:
+        dates = re.findall(pattern, text, re.IGNORECASE)
+        entities['dates'].extend(dates)
     
-    # Références juridiques
-    legal_refs = extract_legal_references(text)
-    entities['legal_refs'] = legal_refs
+    # Dédupliquer
+    for key in entities:
+        entities[key] = list(set(entities[key]))
     
     return entities
 
-def extract_legal_references(text: str) -> List[str]:
-    """Extrait les références juridiques (articles, jurisprudence)"""
-    references = []
+def format_date(date: Union[datetime, str], format: str = "%d/%m/%Y") -> str:
+    """Formate une date de manière cohérente"""
     
-    # Articles de loi
-    article_patterns = [
-        r'articles?\s+L\.?\s*\d+(?:-\d+)?(?:\s+et\s+L\.?\s*\d+(?:-\d+)?)*',
-        r'articles?\s+R\.?\s*\d+(?:-\d+)?(?:\s+et\s+R\.?\s*\d+(?:-\d+)?)*',
-        r'articles?\s+\d+(?:-\d+)?(?:\s+et\s+\d+(?:-\d+)?)*\s+du\s+code\s+\w+',
-        r'articles?\s+\d+(?:-\d+)?(?:\s+(?:et|à)\s+\d+(?:-\d+)?)*',
-    ]
+    if isinstance(date, str):
+        # Essayer de parser la date
+        for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+            try:
+                date = datetime.strptime(date, fmt)
+                break
+            except:
+                continue
+        else:
+            return date  # Retourner tel quel si parsing échoue
     
-    for pattern in article_patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        references.extend(matches)
+    if isinstance(date, datetime):
+        return date.strftime(format)
     
-    # Jurisprudence
-    juris_patterns = [
-        r'Cass\.?\s*(?:civ\.|crim\.|com\.|soc\.)?,?\s*\d{1,2}\s+\w+\s+\d{4}',
-        r'C\.?\s*cass\.?,?\s*\d{1,2}\s+\w+\s+\d{4}',
-        r'CA\s+[A-Z][a-z]+,?\s*\d{1,2}\s+\w+\s+\d{4}',
-        r'CE,?\s*\d{1,2}\s+\w+\s+\d{4}',
-        r'Cons\.\s*const\.,?\s*\d{1,2}\s+\w+\s+\d{4}',
-    ]
-    
-    for pattern in juris_patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        references.extend(matches)
-    
-    return list(set(references))
+    return str(date)
 
-def format_legal_date(date: datetime) -> str:
-    """Formate une date au format juridique français"""
-    mois = [
-        'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-        'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
-    ]
+def calculate_text_similarity(text1: str, text2: str) -> float:
+    """Calcule la similarité entre deux textes (0-1)"""
     
-    return f"{date.day} {mois[date.month - 1]} {date.year}"
+    # Normaliser les textes
+    text1_lower = text1.lower().strip()
+    text2_lower = text2.lower().strip()
+    
+    # Si identiques
+    if text1_lower == text2_lower:
+        return 1.0
+    
+    # Tokenizer simple
+    words1 = set(text1_lower.split())
+    words2 = set(text2_lower.split())
+    
+    # Jaccard similarity
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    
+    if not union:
+        return 0.0
+    
+    return len(intersection) / len(union)
 
-def generate_document_id(prefix: str = "doc") -> str:
-    """Génère un ID unique pour un document"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-    random_part = hashlib.md5(os.urandom(16)).hexdigest()[:8]
-    return f"{prefix}_{timestamp}_{random_part}"
-
-def calculate_reading_time(text: str, words_per_minute: int = 200) -> int:
-    """Calcule le temps de lecture estimé en minutes"""
-    word_count = len(text.split())
-    return max(1, round(word_count / words_per_minute))
-
-def truncate_text(text: str, max_length: int = 500, suffix: str = "...") -> str:
-    """Tronque un texte en préservant les mots complets"""
-    if len(text) <= max_length:
-        return text
+def extract_section(text: str, section_title: str) -> Optional[str]:
+    """Extrait une section spécifique d'un texte"""
     
-    # Trouver le dernier espace avant la limite
-    truncated = text[:max_length]
-    last_space = truncated.rfind(' ')
-    
-    if last_space > 0:
-        truncated = truncated[:last_space]
-    
-    return truncated + suffix
-
-def highlight_text(text: str, terms: List[str], tag: str = "mark") -> str:
-    """Surligne des termes dans un texte"""
-    if not terms:
-        return text
-    
-    # Échapper les caractères spéciaux regex
-    escaped_terms = [re.escape(term) for term in terms]
-    pattern = r'\b(' + '|'.join(escaped_terms) + r')\b'
-    
-    def replace_func(match):
-        return f'<{tag}>{match.group(0)}</{tag}>'
-    
-    return re.sub(pattern, replace_func, text, flags=re.IGNORECASE)
-
-def extract_section(content: str, section_title: str) -> Optional[str]:
-    """Extrait une section spécifique d'un document"""
-    # Patterns pour identifier les sections
+    # Patterns pour identifier le début d'une section
     patterns = [
-        rf'^{re.escape(section_title)}.*?(?=^[IVX]+\.|^[A-Z]\.|$)',
-        rf'^[IVX]+\.\s*{re.escape(section_title)}.*?(?=^[IVX]+\.|$)',
-        rf'^[A-Z]\.\s*{re.escape(section_title)}.*?(?=^[A-Z]\.|^[IVX]+\.|$)',
+        rf"(?:^|\n)\s*{re.escape(section_title)}\s*:?\s*\n",
+        rf"(?:^|\n)\s*\*\*{re.escape(section_title)}\*\*\s*:?\s*\n",
+        rf"(?:^|\n)\s*#{1,3}\s*{re.escape(section_title)}\s*\n"
     ]
     
     for pattern in patterns:
-        match = re.search(pattern, content, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
-            return match.group(0).strip()
+            start = match.end()
+            
+            # Trouver la fin de la section (prochaine section ou fin du texte)
+            next_section = re.search(r'\n\s*(?:\*\*[A-Z]|\#{1,3}\s*[A-Z]|^[A-Z][A-Z\s]+:)', text[start:], re.MULTILINE)
+            
+            if next_section:
+                end = start + next_section.start()
+            else:
+                end = len(text)
+            
+            return text[start:end].strip()
     
     return None
 
-def normalize_whitespace(text: str) -> str:
-    """Normalise les espaces dans un texte"""
-    # Remplacer les espaces multiples par un seul
-    text = re.sub(r'\s+', ' ', text)
-    # Supprimer les espaces en début et fin de ligne
-    lines = [line.strip() for line in text.split('\n')]
-    # Rejoindre en préservant les sauts de ligne significatifs
-    return '\n'.join(line for line in lines if line)
+def chunk_text(text: str, chunk_size: int = 3000, overlap: int = 200) -> List[str]:
+    """Divise un texte en chunks avec overlap"""
+    
+    if len(text) <= chunk_size:
+        return [text]
+    
+    chunks = []
+    start = 0
+    
+    while start < len(text):
+        # Trouver la fin du chunk
+        end = start + chunk_size
+        
+        # Si on n'est pas à la fin, essayer de couper à une phrase
+        if end < len(text):
+            # Chercher la fin de phrase la plus proche
+            sentence_end = text.rfind('.', start, end)
+            if sentence_end > start:
+                end = sentence_end + 1
+        
+        chunks.append(text[start:end])
+        
+        # Prochain chunk avec overlap
+        start = end - overlap
+    
+    return chunks
 
-def create_summary(text: str, max_sentences: int = 3) -> str:
-    """Crée un résumé simple basé sur les premières phrases"""
-    sentences = re.split(r'[.!?]+', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
+def sanitize_filename(filename: str) -> str:
+    """Nettoie un nom de fichier pour le rendre sûr"""
     
-    if len(sentences) <= max_sentences:
-        return text
+    # Remplacer les caractères interdits
+    forbidden_chars = '<>:"/\\|?*'
+    for char in forbidden_chars:
+        filename = filename.replace(char, '_')
     
-    summary = '. '.join(sentences[:max_sentences])
-    if not summary.endswith('.'):
-        summary += '.'
+    # Limiter la longueur
+    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
     
-    return summary
+    if len(name) > 200:
+        name = name[:200]
+    
+    return f"{name}.{ext}" if ext else name
 
 def format_file_size(size_bytes: int) -> str:
-    """Formate une taille de fichier en unités lisibles"""
+    """Formate une taille de fichier en unité lisible"""
+    
     for unit in ['B', 'KB', 'MB', 'GB']:
         if size_bytes < 1024.0:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
+    
     return f"{size_bytes:.1f} TB"
 
 def is_valid_email(email: str) -> bool:
     """Vérifie si une adresse email est valide"""
+    
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+    return bool(re.match(pattern, email))
 
-def sanitize_filename(filename: str) -> str:
-    """Nettoie un nom de fichier pour le rendre sûr"""
-    # Remplacer les caractères interdits
-    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-    # Limiter la longueur
-    name, ext = os.path.splitext(filename)
-    if len(name) > 200:
-        name = name[:200]
-    return name + ext
+def generate_summary(text: str, max_length: int = 500) -> str:
+    """Génère un résumé simple d'un texte"""
+    
+    if len(text) <= max_length:
+        return text
+    
+    # Prendre le début jusqu'à la dernière phrase complète
+    truncated = text[:max_length]
+    last_period = truncated.rfind('.')
+    
+    if last_period > max_length * 0.8:  # Si on trouve un point pas trop tôt
+        return truncated[:last_period + 1]
+    else:
+        return truncated + "..."
 
-def parse_reference(reference: str) -> Dict[str, str]:
-    """Parse une référence juridique"""
-    result = {
-        'type': 'unknown',
-        'jurisdiction': '',
-        'date': '',
-        'number': '',
-        'full': reference
+def merge_documents(docs: List[Document], separator: str = "\n\n---\n\n") -> Document:
+    """Fusionne plusieurs documents en un seul"""
+    
+    if not docs:
+        raise ValueError("Aucun document à fusionner")
+    
+    if len(docs) == 1:
+        return docs[0]
+    
+    # Fusionner les contenus
+    merged_content = separator.join(doc.content for doc in docs)
+    
+    # Fusionner les métadonnées
+    merged_metadata = {
+        'merged_from': [doc.id for doc in docs],
+        'merge_date': datetime.now().isoformat(),
+        'document_count': len(docs)
     }
     
-    # Cour de cassation
-    if re.search(r'Cass\.?|C\.\s*cass\.?', reference, re.IGNORECASE):
-        result['type'] = 'cassation'
-        result['jurisdiction'] = 'Cour de cassation'
-        
-        # Extraire la chambre
-        chamber = re.search(r'(civ\.|crim\.|com\.|soc\.)', reference, re.IGNORECASE)
-        if chamber:
-            result['chamber'] = chamber.group(1)
-    
-    # Cour d'appel
-    elif re.search(r'CA\s+', reference, re.IGNORECASE):
-        result['type'] = 'appel'
-        city = re.search(r'CA\s+([A-Z][a-z]+)', reference)
-        if city:
-            result['jurisdiction'] = f"CA {city.group(1)}"
-    
-    # Date
-    date = extract_date(reference)
-    if date:
-        result['date'] = date.strftime('%d/%m/%Y')
-    
-    return result
-
-def detect_language(text: str) -> str:
-    """Détecte la langue d'un texte (basique)"""
-    # Mots français courants
-    fr_words = ['le', 'de', 'un', 'et', 'la', 'les', 'des', 'que', 'pour', 'dans']
-    # Mots anglais courants
-    en_words = ['the', 'of', 'and', 'to', 'in', 'is', 'it', 'that', 'for', 'with']
-    
-    text_lower = text.lower()
-    text_words = text_lower.split()
-    
-    fr_count = sum(1 for word in text_words if word in fr_words)
-    en_count = sum(1 for word in text_words if word in en_words)
-    
-    if fr_count > en_count:
-        return 'fr'
-    elif en_count > fr_count:
-        return 'en'
-    else:
-        return 'unknown'
-
-def merge_documents(docs: List[Dict[str, Any]], separator: str = "\n\n---\n\n") -> str:
-    """Fusionne plusieurs documents en un seul texte"""
-    merged = []
-    
+    # Fusionner les tags
+    all_tags = []
     for doc in docs:
-        header = f"# {doc.get('title', 'Sans titre')}\n"
-        if doc.get('date'):
-            header += f"Date: {doc['date']}\n"
-        if doc.get('source'):
-            header += f"Source: {doc['source']}\n"
-        
-        content = doc.get('content', '')
-        merged.append(header + "\n" + content)
+        all_tags.extend(doc.tags)
+    unique_tags = list(set(all_tags))
     
-    return separator.join(merged)
+    # Créer le document fusionné
+    merged_doc = Document(
+        id=generate_document_id("Document fusionné", "merge"),
+        title=f"Fusion de {len(docs)} documents",
+        content=merged_content,
+        source="Fusion",
+        metadata=merged_metadata,
+        tags=unique_tags
+    )
+    
+    return merged_doc
 
-def calculate_similarity(text1: str, text2: str) -> float:
-    """Calcule la similarité entre deux textes (méthode basique)"""
-    # Tokenisation simple
-    words1 = set(text1.lower().split())
-    words2 = set(text2.lower().split())
+def extract_legal_references(text: str) -> Dict[str, List[str]]:
+    """Extrait les références juridiques d'un texte"""
     
-    # Coefficient de Jaccard
-    if not words1 or not words2:
-        return 0.0
+    references = {
+        'articles': [],
+        'jurisprudence': [],
+        'lois': []
+    }
     
-    intersection = words1.intersection(words2)
-    union = words1.union(words2)
+    # Articles de loi
+    article_patterns = [
+        r'article\s+[LR]?\s*\d+(?:-\d+)?(?:\s+et\s+[LR]?\s*\d+)*',
+        r'articles?\s+\d+(?:\s*,\s*\d+)*\s+(?:du|de\s+la|des)\s+[^,\.\n]+',
+    ]
     
-    return len(intersection) / len(union)
+    for pattern in article_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        references['articles'].extend(matches)
+    
+    # Jurisprudence
+    juris_patterns = [
+        r'(?:Cass\.|Cour de cassation)[^,\.\n]+\d{4}',
+        r'(?:CE|Conseil d\'État)[^,\.\n]+\d{4}',
+        r'(?:CA|Cour d\'appel)\s+[^,\.\n]+\d{4}'
+    ]
+    
+    for pattern in juris_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        references['jurisprudence'].extend(matches)
+    
+    # Lois
+    loi_pattern = r'loi\s+(?:n°\s*)?\d{4}-\d+\s+du\s+\d{1,2}\s+\w+\s+\d{4}'
+    lois = re.findall(loi_pattern, text, re.IGNORECASE)
+    references['lois'] = lois
+    
+    # Dédupliquer
+    for key in references:
+        references[key] = list(set(references[key]))
+    
+    return references
 
-def extract_questions(text: str) -> List[str]:
-    """Extrait les questions d'un texte"""
-    # Patterns pour les questions
-    sentences = re.split(r'[.!?]+', text)
-    questions = []
+def highlight_text(text: str, keywords: List[str], color: str = "yellow") -> str:
+    """Surligne des mots-clés dans un texte (HTML)"""
     
-    for sentence in sentences:
-        sentence = sentence.strip()
-        # Vérifier si c'est une question
-        if sentence and ('?' in sentence or 
-                        sentence.lower().startswith(('qui', 'que', 'quoi', 'quand', 
-                                                    'où', 'comment', 'pourquoi', 
-                                                    'est-ce', 'combien'))):
-            if not sentence.endswith('?'):
-                sentence += '?'
-            questions.append(sentence)
+    if not keywords:
+        return text
     
-    return questions
+    # Échapper les caractères spéciaux HTML
+    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    
+    # Surligner chaque mot-clé
+    for keyword in keywords:
+        if keyword:
+            pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+            text = pattern.sub(f'<mark style="background-color: {color};">{keyword}</mark>', text)
+    
+    return text
 
-def format_duration(minutes: int) -> str:
-    """Formate une durée en heures et minutes"""
-    if minutes < 60:
-        return f"{minutes} minutes"
+def create_breadcrumb(path: List[str]) -> str:
+    """Crée un fil d'Ariane à partir d'un chemin"""
     
-    hours = minutes // 60
-    mins = minutes % 60
+    if not path:
+        return ""
     
-    if mins == 0:
-        return f"{hours} heure{'s' if hours > 1 else ''}"
+    parts = []
+    for i, part in enumerate(path):
+        if i < len(path) - 1:
+            parts.append(f"{part} >")
+        else:
+            parts.append(f"**{part}**")
+    
+    return " ".join(parts)
+
+def calculate_read_time(text: str, words_per_minute: int = 200) -> int:
+    """Calcule le temps de lecture estimé en minutes"""
+    
+    word_count = len(text.split())
+    read_time = word_count / words_per_minute
+    
+    # Arrondir au supérieur
+    return max(1, int(read_time + 0.5))
+
+def get_file_icon(filename: str) -> str:
+    """Retourne l'icône appropriée selon l'extension du fichier"""
+    
+    ext = filename.lower().split('.')[-1] if '.' in filename else ''
+    
+    icons = {
+        'pdf': '📄',
+        'doc': '📝',
+        'docx': '📝',
+        'txt': '📃',
+        'xlsx': '📊',
+        'xls': '📊',
+        'csv': '📊',
+        'png': '🖼️',
+        'jpg': '🖼️',
+        'jpeg': '🖼️',
+        'zip': '📦',
+        'rar': '📦'
+    }
+    
+    return icons.get(ext, '📎')
+
+def format_duration(seconds: int) -> str:
+    """Formate une durée en format lisible"""
+    
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        secs = seconds % 60
+        return f"{minutes}m {secs}s" if secs else f"{minutes}m"
     else:
-        return f"{hours}h{mins:02d}"
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
 
-def extract_phone_numbers(text: str) -> List[str]:
-    """Extrait les numéros de téléphone"""
-    # Pattern pour les numéros français
-    pattern = r'(?:(?:\+33|0)\s?[1-9](?:\s?\d{2}){4})'
-    phones = re.findall(pattern, text)
+def validate_reference(reference: str) -> bool:
+    """Valide le format d'une référence juridique"""
     
-    # Normaliser
-    normalized = []
-    for phone in phones:
-        # Supprimer les espaces
-        phone = re.sub(r'\s', '', phone)
-        # Format standard
-        if phone.startswith('+33'):
-            phone = '0' + phone[3:]
-        # Ajouter les espaces
-        if len(phone) == 10:
-            phone = ' '.join([phone[i:i+2] for i in range(0, 10, 2)])
-        normalized.append(phone)
-    
-    return list(set(normalized))
+    # Format attendu : lettres, chiffres, tirets, underscores
+    pattern = r'^[a-zA-Z0-9_-]+$'
+    return bool(re.match(pattern, reference))
 
-def create_safe_dict(data: Any) -> Dict[str, Any]:
-    """Crée un dictionnaire sûr à partir de données potentiellement invalides"""
-    if isinstance(data, dict):
-        return {k: v for k, v in data.items() if k and isinstance(k, str)}
-    elif hasattr(data, '__dict__'):
-        return create_safe_dict(data.__dict__)
-    else:
-        return {}
+def extract_monetary_amounts(text: str) -> List[Dict[str, Any]]:
+    """Extrait les montants monétaires d'un texte"""
+    
+    amounts = []
+    
+    # Patterns pour différents formats
+    patterns = [
+        (r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s*€', 'EUR'),
+        (r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\$', 'USD'),
+        (r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)', 'EUR'),
+        (r'\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', 'USD')
+    ]
+    
+    for pattern, currency in patterns:
+        matches = re.finditer(pattern, text)
+        for match in matches:
+            amount_str = match.group(1)
+            
+            # Convertir en nombre
+            try:
+                # Normaliser le format
+                amount_str = amount_str.replace('.', '').replace(',', '.')
+                amount = float(amount_str)
+                
+                amounts.append({
+                    'amount': amount,
+                    'currency': currency,
+                    'text': match.group(0),
+                    'position': match.start()
+                })
+            except ValueError:
+                continue
+    
+    return amounts
 
-def format_percentage(value: float, decimals: int = 1) -> str:
-    """Formate un pourcentage"""
-    return f"{value * 100:.{decimals}f}%"
-
-def generate_unique_id(prefix: str = "") -> str:
-    """Génère un ID unique"""
-    timestamp = int(datetime.now().timestamp() * 1000000)
-    random_part = hashlib.md5(os.urandom(16)).hexdigest()[:6]
+def normalize_whitespace(text: str) -> str:
+    """Normalise les espaces dans un texte"""
     
-    if prefix:
-        return f"{prefix}_{timestamp}_{random_part}"
-    else:
-        return f"{timestamp}_{random_part}"
-
-# Fonctions de validation
-def validate_document(doc: Dict[str, Any]) -> Tuple[bool, List[str]]:
-    """Valide un document et retourne les erreurs"""
-    errors = []
+    # Remplacer les espaces multiples par un seul
+    text = re.sub(r'\s+', ' ', text)
     
-    if not doc.get('title'):
-        errors.append("Le titre est requis")
+    # Supprimer les espaces en début/fin de ligne
+    lines = text.split('\n')
+    lines = [line.strip() for line in lines]
     
-    if not doc.get('content'):
-        errors.append("Le contenu est requis")
-    elif len(doc['content']) < 10:
-        errors.append("Le contenu est trop court")
-    
-    if not doc.get('source'):
-        errors.append("La source est requise")
-    
-    return len(errors) == 0, errors
-
-def extract_metadata(file_path: str) -> Dict[str, Any]:
-    """Extrait les métadonnées d'un fichier"""
-    metadata = {}
-    
-    try:
-        stat = os.stat(file_path)
-        metadata['size'] = stat.st_size
-        metadata['created'] = datetime.fromtimestamp(stat.st_ctime)
-        metadata['modified'] = datetime.fromtimestamp(stat.st_mtime)
-        metadata['extension'] = os.path.splitext(file_path)[1]
-    except Exception:
-        pass
-    
-    return metadata
+    # Reconstruire avec des sauts de ligne simples
+    return '\n'.join(lines)
