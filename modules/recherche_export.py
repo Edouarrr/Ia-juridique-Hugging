@@ -327,4 +327,129 @@ def create_formatted_docx(content: str, doc_type: str) -> bytes:
             
             # Points avec tirets
             elif line.startswith('-'):
-                p
+                p = doc.add_paragraph(line[1:].strip(), style='List Bullet')
+            
+            # Texte normal
+            else:
+                p = doc.add_paragraph(line, style='Normal')
+        
+        # Pied de page
+        section = doc.sections[0]
+        footer = section.footer
+        footer_para = footer.paragraphs[0]
+        footer_para.text = f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} - {doc_type.title()}"
+        footer_para.style.font.size = Pt(9)
+        footer_para.style.font.color.rgb = RGBColor(128, 128, 128)
+        footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Sauvegarder
+        import io
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        return buffer.getvalue()
+        
+    except Exception as e:
+        st.error(f"Erreur création document Word: {e}")
+        return content.encode('utf-8')
+
+def export_to_pdf(content: str, analysis: dict) -> bytes:
+    """Exporte vers PDF"""
+    st.warning("⚠️ Export PDF nécessite l'installation de bibliothèques supplémentaires")
+    return content.encode('utf-8')
+
+def export_to_txt(content: str, analysis: dict) -> bytes:
+    """Exporte en texte brut"""
+    return content.encode('utf-8')
+
+def export_to_html(content: str, analysis: dict) -> bytes:
+    """Exporte vers HTML avec style"""
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>{analysis.get('document_type', 'Document').title()}</title>
+    <style>
+        body {{ font-family: 'Times New Roman', serif; margin: 40px; }}
+        h1 {{ text-align: center; color: #2c3e50; }}
+        h2 {{ color: #34495e; margin-top: 30px; }}
+        h3 {{ color: #7f8c8d; }}
+        p {{ text-align: justify; line-height: 1.6; }}
+        .metadata {{ text-align: right; color: #95a5a6; font-size: 0.9em; }}
+        .section {{ margin: 20px 0; }}
+        ul, ol {{ margin-left: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="metadata">Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}</div>
+    <h1>{analysis.get('document_type', 'Document').upper()}</h1>
+    <div class="content">
+"""
+    
+    lines = content.split('\n')
+    for line in lines:
+        if not line.strip():
+            continue
+        
+        if line.strip().isupper() and len(line.strip()) > 5:
+            html += f"<h2>{line.strip()}</h2>\n"
+        elif line.strip().startswith('-'):
+            html += f"<li>{line.strip()[1:].strip()}</li>\n"
+        else:
+            html += f"<p>{line.strip()}</p>\n"
+    
+    html += """
+    </div>
+</body>
+</html>"""
+    
+    return html.encode('utf-8')
+
+def export_to_xlsx(content: str, analysis: dict) -> bytes:
+    """Exporte vers Excel"""
+    if not PANDAS_AVAILABLE:
+        st.error("❌ pandas requis pour l'export Excel")
+        return content.encode('utf-8')
+    
+    try:
+        import io
+        
+        # Créer un DataFrame
+        lines = content.split('\n')
+        df = pd.DataFrame({'Contenu': lines})
+        
+        # Exporter vers Excel
+        buffer = io.BytesIO()
+        
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Données', index=False)
+            
+            # Ajouter une feuille de métadonnées
+            metadata = pd.DataFrame({
+                'Propriété': ['Type', 'Date génération', 'Source'],
+                'Valeur': [
+                    analysis.get('document_type', 'Export'),
+                    datetime.now().strftime('%d/%m/%Y %H:%M'),
+                    analysis.get('reference', 'N/A')
+                ]
+            })
+            metadata.to_excel(writer, sheet_name='Métadonnées', index=False)
+        
+        buffer.seek(0)
+        return buffer.getvalue()
+        
+    except Exception as e:
+        st.error(f"Erreur export Excel: {e}")
+        return content.encode('utf-8')
+
+def get_mime_type(format: str) -> str:
+    """Retourne le type MIME pour un format"""
+    mime_types = {
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'pdf': 'application/pdf',
+        'txt': 'text/plain',
+        'html': 'text/html',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }
+    return mime_types.get(format, 'application/octet-stream')
