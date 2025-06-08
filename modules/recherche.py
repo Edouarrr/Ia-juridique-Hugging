@@ -237,27 +237,28 @@ try:
     from managers.multi_llm_manager import MultiLLMManager
     from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
     
-    # Import des modèles - CORRIGES
+    # Import des modèles
     from models.dataclasses import (
         Document, 
         PieceSelectionnee, 
-        AnalyseJuridique,  # Au lieu de AnalyseJuridique non existant
-        InfractionIdentifiee,  # Maintenant défini dans dataclasses
-        InfractionAffaires,  # Import depuis dataclasses
-        LLMProvider,  # Import depuis dataclasses  
-        SearchMode  # Import depuis dataclasses
+        AnalyseJuridique,
+        InfractionIdentifiee
     )
     
     # Import de la configuration
     from config.app_config import (
+        InfractionAffaires,
         ANALYSIS_PROMPTS_AFFAIRES,
+        ANALYSIS_PROMPTS_INFRACTIONS,
+        LLMProvider,
+        SearchMode,
         app_config,
         api_config
     )
     
 except ImportError as e:
     st.error(f"⚠️ Import manquant : {e}")
-
+    
 # ========================= PAGE PRINCIPALE =========================
 
 def show_page():
