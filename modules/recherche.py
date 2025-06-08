@@ -1351,8 +1351,9 @@ def generate_export(content: str, format: str, analysis: dict) -> dict:
                 doc.add_paragraph(f"Requête : {st.session_state.get('universal_query', 'N/A')}")
                 doc.add_page_break()
             
-            # Ajouter le contenu
-            for paragraph in content.split('\n\n'):
+            # Ajouter le contenu - CORRECTION ICI
+            paragraphs = content.split('\n\n')
+            for paragraph in paragraphs:
                 if paragraph.strip():
                     # Détecter les titres
                     if paragraph.startswith('===') or paragraph.endswith('==='):
@@ -1387,26 +1388,27 @@ def generate_export(content: str, format: str, analysis: dict) -> dict:
         return generate_export(content, 'txt', analysis)
     
     elif format == 'html':
-        html_content = f"""
+        # CORRECTION ICI - pas de f-string avec \n
+        html_content = """
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="utf-8">
             <title>Export Juridique</title>
             <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                h1 {{ color: #1a237e; }}
-                h2 {{ color: #283593; }}
-                .metadata {{ background: #f5f5f5; padding: 10px; margin-bottom: 20px; }}
-                .section {{ margin-bottom: 30px; }}
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                h1 { color: #1a237e; }
+                h2 { color: #283593; }
+                .metadata { background: #f5f5f5; padding: 10px; margin-bottom: 20px; }
+                .section { margin-bottom: 30px; }
             </style>
         </head>
         <body>
             <div class="metadata">
-                <p>Export du {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+                <p>Export du """ + datetime.now().strftime('%d/%m/%Y %H:%M') + """</p>
             </div>
             <div class="content">
-                {content.replace('\n', '<br>')}
+                """ + content.replace('\n', '<br>') + """
             </div>
         </body>
         </html>
@@ -1420,6 +1422,23 @@ def generate_export(content: str, format: str, analysis: dict) -> dict:
     else:
         # Format non supporté
         return generate_export(content, 'txt', analysis)
+
+def compile_documents_for_export(documents: list) -> str:
+    """Compile plusieurs documents pour l'export"""
+    separator = "=" * 50
+    content = f"EXPORT DE DOCUMENTS\n{separator}\n\n"
+    content += f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    content += f"Nombre de documents : {len(documents)}\n\n"
+    
+    for i, doc in enumerate(documents, 1):
+        content += f"\n{separator}\n"
+        content += f"DOCUMENT {i} : {doc.get('title', 'Sans titre')}\n"
+        content += f"Source : {doc.get('source', 'N/A')}\n"
+        content += f"{separator}\n\n"
+        content += doc.get('content', 'Contenu non disponible')
+        content += "\n\n"
+    
+    return content
 
 def process_email_request(query: str, analysis: dict):
     """Traite une demande d'envoi d'email"""
