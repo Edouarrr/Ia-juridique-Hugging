@@ -1,5 +1,5 @@
 # models/dataclasses.py
-"""Modèles de données pour l'application juridique - Version adaptée pour le droit pénal des affaires"""
+"""Modèles de données pour l'application juridique - Version améliorée avec intégration Pappers/Societe.com"""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -20,6 +20,15 @@ class SourceJurisprudence(Enum):
     COURDECASSATION = "courdecassation"
     CONSEILDETAT = "conseildetat"
     CONSEILCONSTITUTIONNEL = "conseilconstitutionnel"
+
+class SourceEntreprise(Enum):
+    """Sources d'information sur les entreprises"""
+    PAPPERS = "pappers"
+    SOCIETE_COM = "societe.com"
+    INFOGREFFE = "infogreffe"
+    INSEE = "insee"
+    MANUAL = "manual"
+    CACHED = "cached"
 
 class TypeDocument(Enum):
     """Types de documents juridiques"""
@@ -60,6 +69,40 @@ class TypeJuridiction(Enum):
     JUGE_INSTRUCTION = "Juge d'instruction"
     PROCUREUR = "Procureur de la République"
     AUTRE = "Autre"
+
+class StatutProcedural(Enum):
+    """Statut d'une personne dans la procédure pénale"""
+    # Phase d'enquête
+    SUSPECT = "suspect"
+    MIS_EN_CAUSE = "mis en cause"
+    TEMOIN = "témoin"
+    VICTIME = "victime"
+    
+    # Phase d'instruction
+    MIS_EN_EXAMEN = "mis en examen"
+    TEMOIN_ASSISTE = "témoin assisté"
+    PARTIE_CIVILE = "partie civile"
+    
+    # Phase de jugement
+    PREVENU = "prévenu"
+    ACCUSE = "accusé"  # Pour la cour d'assises
+    CONDAMNE = "condamné"
+    RELAXE = "relaxé"
+    
+    # Autres
+    PLAIGNANT = "plaignant"
+    CIVILEMENT_RESPONSABLE = "civilement responsable"
+    TIERS = "tiers"
+
+class PhaseProcedure(Enum):
+    """Phase de la procédure pénale"""
+    ENQUETE_PRELIMINAIRE = "enquête préliminaire"
+    ENQUETE_FLAGRANCE = "enquête de flagrance"
+    INSTRUCTION = "instruction"
+    JUGEMENT = "jugement"
+    APPEL = "appel"
+    CASSATION = "cassation"
+    EXECUTION = "exécution"
 
 class InfractionAffaires(Enum):
     """Types d'infractions pénales des affaires"""
@@ -151,6 +194,7 @@ class StyleRedaction(Enum):
     TECHNIQUE = "technique"
     SYNTHETIQUE = "synthétique"
     PEDAGOGIQUE = "pédagogique"
+    PERSONNALISE = "personnalisé"  # Nouveau : style appris des documents
 
 class TypeAnalyse(Enum):
     """Types d'analyse juridique"""
@@ -173,6 +217,84 @@ class TypePartie(Enum):
     PREVENU = "prévenu"
     ACCUSE = "accusé"
 
+# ========== INFORMATIONS ENTREPRISE ==========
+
+@dataclass
+class InformationEntreprise:
+    """Informations légales d'une entreprise récupérées via API"""
+    # Identifiants
+    siren: Optional[str] = None
+    siret: Optional[str] = None
+    tva_intracommunautaire: Optional[str] = None
+    
+    # Informations générales
+    denomination: str = ""
+    forme_juridique: Optional[str] = None
+    capital_social: Optional[float] = None
+    devise_capital: str = "EUR"
+    date_creation: Optional[datetime] = None
+    date_cloture_exercice: Optional[str] = None
+    
+    # Localisation
+    siege_social: Optional[str] = None
+    code_postal: Optional[str] = None
+    ville: Optional[str] = None
+    pays: str = "France"
+    
+    # RCS
+    rcs_numero: Optional[str] = None
+    rcs_ville: Optional[str] = None
+    
+    # Dirigeants
+    representants_legaux: List[Dict[str, str]] = field(default_factory=list)
+    
+    # Activité
+    code_ape: Optional[str] = None
+    activite_principale: Optional[str] = None
+    effectif: Optional[str] = None
+    chiffre_affaires: Optional[float] = None
+    
+    # Métadonnées
+    source: SourceEntreprise = SourceEntreprise.MANUAL
+    date_recuperation: datetime = field(default_factory=datetime.now)
+    derniere_mise_a_jour: Optional[datetime] = None
+    fiable: bool = True
+    
+    def get_denomination_complete(self) -> str:
+        """Retourne la dénomination complète avec forme juridique"""
+        if self.forme_juridique:
+            return f"{self.denomination} ({self.forme_juridique})"
+        return self.denomination
+    
+    def get_immatriculation_complete(self) -> str:
+        """Retourne l'immatriculation RCS complète"""
+        if self.rcs_numero and self.rcs_ville:
+            return f"RCS {self.rcs_ville} {self.rcs_numero}"
+        elif self.siren:
+            return f"SIREN {self.siren}"
+        return ""
+    
+    def format_capital(self) -> str:
+        """Formate le capital social"""
+        if self.capital_social:
+            return f"{self.capital_social:,.0f} {self.devise_capital}".replace(',', ' ')
+        return "Non renseigné"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'siren': self.siren,
+            'siret': self.siret,
+            'denomination': self.denomination,
+            'forme_juridique': self.forme_juridique,
+            'capital_social': self.capital_social,
+            'siege_social': self.siege_social,
+            'rcs': self.get_immatriculation_complete(),
+            'representants': self.representants_legaux,
+            'source': self.source.value,
+            'date_recuperation': self.date_recuperation.isoformat()
+        }
+
 # ========== STYLES ET TEMPLATES ==========
 
 @dataclass
@@ -185,6 +307,13 @@ class StyleConfig:
     sentence_structure: str = "complexe"
     formality_level: int = 5  # 1-10
     
+    # Nouveau : paramètres appris
+    learned_patterns: Dict[str, Any] = field(default_factory=dict)
+    paragraph_numbering: Optional[str] = None  # Ex: "1.", "I.", "A.", etc.
+    citation_style: Optional[str] = None
+    argumentation_structure: List[str] = field(default_factory=list)
+    typical_phrases: List[str] = field(default_factory=list)
+    
     def to_dict(self) -> Dict[str, Any]:
         return {
             'name': self.name,
@@ -192,8 +321,98 @@ class StyleConfig:
             'tone': self.tone,
             'vocabulary': self.vocabulary,
             'sentence_structure': self.sentence_structure,
-            'formality_level': self.formality_level
+            'formality_level': self.formality_level,
+            'learned_patterns': self.learned_patterns,
+            'paragraph_numbering': self.paragraph_numbering,
+            'citation_style': self.citation_style,
+            'argumentation_structure': self.argumentation_structure,
+            'typical_phrases': self.typical_phrases
         }
+
+@dataclass
+class StyleLearningResult:
+    """Résultat de l'apprentissage du style depuis des documents"""
+    style_name: str
+    documents_analyzed: int
+    
+    # Structure
+    paragraph_numbering_style: str  # "numeric", "roman", "alphabetic", "mixed"
+    paragraph_numbering_pattern: str  # Ex: "1.", "I.", "A.", "1.1."
+    average_paragraph_length: int
+    average_sentence_length: int
+    
+    # Vocabulaire et ton
+    formality_score: float  # 0-1
+    technical_terms_frequency: float
+    common_phrases: List[str] = field(default_factory=list)
+    transition_words: List[str] = field(default_factory=list)
+    
+    # Argumentation
+    argument_patterns: List[str] = field(default_factory=list)
+    citation_patterns: List[str] = field(default_factory=list)
+    conclusion_patterns: List[str] = field(default_factory=list)
+    
+    # Mise en forme
+    use_bold: bool = False
+    use_italic: bool = False
+    use_underline: bool = False
+    heading_style: Optional[str] = None
+    
+    # Métadonnées
+    learning_date: datetime = field(default_factory=datetime.now)
+    confidence_score: float = 0.8
+    
+    def to_style_config(self) -> StyleConfig:
+        """Convertit en configuration de style utilisable"""
+        return StyleConfig(
+            name=self.style_name,
+            description=f"Style appris de {self.documents_analyzed} documents",
+            tone=self._determine_tone(),
+            vocabulary=self._determine_vocabulary(),
+            sentence_structure=self._determine_structure(),
+            formality_level=int(self.formality_score * 10),
+            learned_patterns={
+                'paragraph_numbering': self.paragraph_numbering_pattern,
+                'argument_patterns': self.argument_patterns,
+                'citation_patterns': self.citation_patterns,
+                'formatting': {
+                    'bold': self.use_bold,
+                    'italic': self.use_italic,
+                    'underline': self.use_underline
+                }
+            },
+            paragraph_numbering=self.paragraph_numbering_pattern,
+            argumentation_structure=self.argument_patterns,
+            typical_phrases=self.common_phrases
+        )
+    
+    def _determine_tone(self) -> str:
+        if self.formality_score > 0.8:
+            return "très formel et solennel"
+        elif self.formality_score > 0.6:
+            return "formel et professionnel"
+        elif self.formality_score > 0.4:
+            return "professionnel mais accessible"
+        else:
+            return "direct et moderne"
+    
+    def _determine_vocabulary(self) -> str:
+        if self.technical_terms_frequency > 0.3:
+            return "très technique et spécialisé"
+        elif self.technical_terms_frequency > 0.15:
+            return "technique avec vulgarisation"
+        else:
+            return "clair et accessible"
+    
+    def _determine_structure(self) -> str:
+        if self.average_sentence_length > 30:
+            return "très complexe"
+        elif self.average_sentence_length > 20:
+            return "complexe"
+        elif self.average_sentence_length > 15:
+            return "équilibrée"
+        else:
+            return "simple"
 
 @dataclass
 class DocumentTemplate:
@@ -210,6 +429,9 @@ class DocumentTemplate:
     usage_count: int = 0
     required_fields: List[str] = field(default_factory=list)
     optional_fields: List[str] = field(default_factory=list)
+    
+    # Nouveau : style personnalisé appris
+    custom_style: Optional[StyleConfig] = None
     
     def __post_init__(self):
         self.extract_variables()
@@ -251,6 +473,9 @@ class Document:
     file_size: Optional[int] = None
     mime_type: Optional[str] = None
     
+    # Nouveau : informations de style extraites
+    style_info: Optional[Dict[str, Any]] = None
+    
     def __post_init__(self):
         """Validation post-initialisation"""
         if not self.id:
@@ -279,6 +504,49 @@ class Document:
         references = re.findall(r'@(\w+)', self.content)
         return list(set(references))
     
+    def extract_style_info(self) -> Dict[str, Any]:
+        """Extrait les informations de style du document"""
+        # Analyser la numérotation des paragraphes
+        numbering_patterns = {
+            'numeric': r'^\d+\.',
+            'roman_upper': r'^[IVX]+\.',
+            'roman_lower': r'^[ivx]+\.',
+            'alphabetic_upper': r'^[A-Z]\.',
+            'alphabetic_lower': r'^[a-z]\.',
+            'hierarchical': r'^\d+\.\d+'
+        }
+        
+        style_info = {
+            'paragraph_numbering': None,
+            'average_sentence_length': 0,
+            'formality_indicators': 0,
+            'technical_terms_count': 0
+        }
+        
+        # Détecter le style de numérotation
+        for style, pattern in numbering_patterns.items():
+            if re.search(pattern, self.content, re.MULTILINE):
+                style_info['paragraph_numbering'] = style
+                break
+        
+        # Analyser la complexité des phrases
+        sentences = self.content.split('.')
+        if sentences:
+            total_words = sum(len(s.split()) for s in sentences)
+            style_info['average_sentence_length'] = total_words / len(sentences)
+        
+        # Indicateurs de formalité
+        formal_markers = [
+            'attendu que', 'considérant', 'il appert', 'nonobstant',
+            'aux termes de', 'en l\'espèce', 'il échet', 'partant'
+        ]
+        style_info['formality_indicators'] = sum(
+            1 for marker in formal_markers if marker in self.content.lower()
+        )
+        
+        self.style_info = style_info
+        return style_info
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convertit l'objet en dictionnaire"""
         return {
@@ -295,7 +563,8 @@ class Document:
             'reference': self.reference,
             'file_path': self.file_path,
             'file_size': self.file_size,
-            'mime_type': self.mime_type
+            'mime_type': self.mime_type,
+            'style_info': self.style_info
         }
     
     @classmethod
@@ -401,35 +670,113 @@ class Partie:
     nom: str
     type_partie: TypePartie
     type_personne: str = "morale"  # physique ou morale
-    forme_juridique: Optional[str] = None  # SA, SARL, SAS, etc.
+    
+    # Phase procédurale et statut
+    phase_procedure: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE
+    statut_procedural: StatutProcedural = StatutProcedural.MIS_EN_CAUSE
+    
+    # Informations entreprise (si personne morale)
+    info_entreprise: Optional[InformationEntreprise] = None
+    
+    # Informations manuelles (compatibilité)
+    forme_juridique: Optional[str] = None
     capital_social: Optional[float] = None
-    rcs: Optional[str] = None  # Numéro RCS
+    rcs: Optional[str] = None
     siret: Optional[str] = None
     siege_social: Optional[str] = None
     representant_legal: Optional[str] = None
-    date_naissance: Optional[datetime] = None  # Pour personnes physiques
+    
+    # Informations personne physique
+    date_naissance: Optional[datetime] = None
     lieu_naissance: Optional[str] = None
     nationalite: Optional[str] = None
     adresse: Optional[str] = None
+    
+    # Représentation
     avocat: Optional[str] = None
+    
+    # Métadonnées
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
         if not self.id:
             self.id = f"partie_{self.nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Déterminer automatiquement le statut selon la phase et le type
+        self._auto_determine_statut()
+    
+    def _auto_determine_statut(self):
+        """Détermine automatiquement le statut procédural selon la phase"""
+        if self.type_partie == TypePartie.PLAIGNANT:
+            self.statut_procedural = StatutProcedural.PLAIGNANT
+        elif self.type_partie == TypePartie.PARTIE_CIVILE:
+            self.statut_procedural = StatutProcedural.PARTIE_CIVILE
+        elif self.type_partie == TypePartie.TEMOIN:
+            self.statut_procedural = StatutProcedural.TEMOIN
+        elif self.phase_procedure in [PhaseProcedure.ENQUETE_PRELIMINAIRE, PhaseProcedure.ENQUETE_FLAGRANCE]:
+            if self.type_partie in [TypePartie.MIS_EN_CAUSE, TypePartie.DEFENDEUR]:
+                self.statut_procedural = StatutProcedural.MIS_EN_CAUSE
+        elif self.phase_procedure == PhaseProcedure.INSTRUCTION:
+            if self.type_partie in [TypePartie.MIS_EN_CAUSE, TypePartie.DEFENDEUR]:
+                self.statut_procedural = StatutProcedural.MIS_EN_EXAMEN
+        elif self.phase_procedure == PhaseProcedure.JUGEMENT:
+            if self.type_partie == TypePartie.PREVENU:
+                self.statut_procedural = StatutProcedural.PREVENU
+    
+    def update_from_entreprise_info(self, info: InformationEntreprise):
+        """Met à jour les informations depuis InformationEntreprise"""
+        self.info_entreprise = info
+        self.forme_juridique = info.forme_juridique
+        self.capital_social = info.capital_social
+        self.siret = info.siret
+        self.siege_social = info.siege_social
+        if info.representants_legaux:
+            self.representant_legal = info.representants_legaux[0].get('nom', '')
+        if info.rcs_numero and info.rcs_ville:
+            self.rcs = f"{info.rcs_ville} {info.rcs_numero}"
+    
+    def get_designation_procedurale(self) -> str:
+        """Retourne la désignation selon le statut procédural"""
+        if self.phase_procedure == PhaseProcedure.ENQUETE_PRELIMINAIRE:
+            if self.statut_procedural == StatutProcedural.MIS_EN_CAUSE:
+                return f"{self.nom} (mis en cause)"
+            elif self.statut_procedural == StatutProcedural.SUSPECT:
+                return f"{self.nom} (suspect)"
+        elif self.phase_procedure == PhaseProcedure.INSTRUCTION:
+            if self.statut_procedural == StatutProcedural.MIS_EN_EXAMEN:
+                return f"{self.nom} (mis en examen)"
+            elif self.statut_procedural == StatutProcedural.TEMOIN_ASSISTE:
+                return f"{self.nom} (témoin assisté)"
+        elif self.phase_procedure == PhaseProcedure.JUGEMENT:
+            if self.statut_procedural == StatutProcedural.PREVENU:
+                return f"{self.nom} (prévenu)"
+        
+        return self.nom
     
     def get_designation_complete(self) -> str:
         """Retourne la désignation complète de la partie"""
         if self.type_personne == "morale":
-            designation = f"{self.nom}"
-            if self.forme_juridique:
-                designation += f", {self.forme_juridique}"
-            if self.capital_social:
-                designation += f" au capital de {self.capital_social:,.0f} euros"
-            if self.rcs:
-                designation += f", RCS {self.rcs}"
-            if self.siege_social:
-                designation += f", dont le siège social est situé {self.siege_social}"
+            # Utiliser les infos entreprise si disponibles
+            if self.info_entreprise:
+                designation = self.info_entreprise.get_denomination_complete()
+                if self.info_entreprise.capital_social:
+                    designation += f" au capital de {self.info_entreprise.format_capital()}"
+                if self.info_entreprise.get_immatriculation_complete():
+                    designation += f", {self.info_entreprise.get_immatriculation_complete()}"
+                if self.info_entreprise.siege_social:
+                    designation += f", dont le siège social est situé {self.info_entreprise.siege_social}"
+            else:
+                # Fallback sur les infos manuelles
+                designation = f"{self.nom}"
+                if self.forme_juridique:
+                    designation += f", {self.forme_juridique}"
+                if self.capital_social:
+                    designation += f" au capital de {self.capital_social:,.0f} euros"
+                if self.rcs:
+                    designation += f", RCS {self.rcs}"
+                if self.siege_social:
+                    designation += f", dont le siège social est situé {self.siege_social}"
+            
             if self.representant_legal:
                 designation += f", représentée par {self.representant_legal}"
         else:
@@ -451,6 +798,8 @@ class Partie:
             'nom': self.nom,
             'type_partie': self.type_partie.value,
             'type_personne': self.type_personne,
+            'phase_procedure': self.phase_procedure.value,
+            'statut_procedural': self.statut_procedural.value,
             'forme_juridique': self.forme_juridique,
             'capital_social': self.capital_social,
             'rcs': self.rcs,
@@ -463,7 +812,9 @@ class Partie:
             'adresse': self.adresse,
             'avocat': self.avocat,
             'metadata': self.metadata,
-            'designation_complete': self.get_designation_complete()
+            'designation_complete': self.get_designation_complete(),
+            'designation_procedurale': self.get_designation_procedurale(),
+            'has_entreprise_info': self.info_entreprise is not None
         }
 
 @dataclass
@@ -473,6 +824,7 @@ class CasJuridique:
     titre: str
     description: str
     type_affaire: str  # pénal, civil, commercial, etc.
+    phase_actuelle: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE
     parties: Dict[str, List[Partie]] = field(default_factory=dict)
     juridiction: Optional[str] = None
     date_debut: Optional[datetime] = None
@@ -517,8 +869,24 @@ class CasJuridique:
                 affaire_id=self.id
             )
     
+    def update_phase(self, nouvelle_phase: PhaseProcedure):
+        """Met à jour la phase procédurale et ajuste les statuts des parties"""
+        self.phase_actuelle = nouvelle_phase
+        
+        # Mettre à jour le statut de toutes les parties
+        for parties_list in self.parties.values():
+            for partie in parties_list:
+                partie.phase_procedure = nouvelle_phase
+                partie._auto_determine_statut()
+        
+        self.updated_at = datetime.now()
+    
     def add_partie(self, partie: Partie):
         """Ajoute une partie au cas"""
+        # S'assurer que la partie a la bonne phase
+        partie.phase_procedure = self.phase_actuelle
+        partie._auto_determine_statut()
+        
         type_key = partie.type_partie.value + 's'
         if type_key not in self.parties:
             self.parties[type_key] = []
@@ -532,6 +900,13 @@ class CasJuridique:
         """Retourne toutes les parties d'un type donné"""
         type_key = type_partie.value + 's'
         return self.parties.get(type_key, [])
+    
+    def get_parties_by_statut(self, statut: StatutProcedural) -> List[Partie]:
+        """Retourne toutes les parties ayant un statut procédural donné"""
+        parties = []
+        for parties_list in self.parties.values():
+            parties.extend([p for p in parties_list if p.statut_procedural == statut])
+        return parties
     
     def add_infraction(self, infraction: 'InfractionIdentifiee'):
         """Ajoute une infraction identifiée"""
@@ -570,6 +945,7 @@ class CasJuridique:
             'titre': self.titre,
             'description': self.description,
             'type_affaire': self.type_affaire,
+            'phase_actuelle': self.phase_actuelle.value,
             'parties': {k: [p.to_dict() for p in v] for k, v in self.parties.items()},
             'juridiction': self.juridiction,
             'date_debut': self.date_debut.isoformat() if self.date_debut else None,
@@ -708,6 +1084,10 @@ class PieceSelectionnee:
     communicable: bool = True
     confidentiel: bool = False
     
+    # Nouveau : lien direct vers la source et footnote
+    source_link: Optional[str] = None
+    footnote_text: Optional[str] = None
+    
     def __post_init__(self):
         """Validation et formatage"""
         if self.pertinence < 0:
@@ -719,10 +1099,19 @@ class PieceSelectionnee:
         if not self.cote:
             prefix = self.categorie[:1].upper() if self.categorie else "P"
             self.cote = f"{prefix}-{self.numero:03d}"
+        
+        # Générer le footnote text si non fourni
+        if not self.footnote_text:
+            self.footnote_text = f"Pièce n°{self.numero} : {self.titre}"
+            if self.date:
+                self.footnote_text += f" du {self.date.strftime('%d/%m/%Y')}"
     
     def add_source_reference(self, source_ref: 'SourceReference'):
         """Ajoute une référence source"""
         self.source_references.append(source_ref)
+        # Mettre à jour le lien source
+        if not self.source_link:
+            self.source_link = source_ref.get_link()
     
     def add_fact_prouve(self, fact: 'FactWithSource'):
         """Ajoute un fait que cette pièce prouve"""
@@ -743,6 +1132,17 @@ class PieceSelectionnee:
         
         return min(base_score, 1.0)
     
+    def get_formatted_reference(self) -> str:
+        """Retourne une référence formatée avec lien et footnote"""
+        if self.source_link:
+            return f"[{self.cote}]({self.source_link})[^{self.numero}]"
+        else:
+            return f"{self.cote}[^{self.numero}]"
+    
+    def get_footnote(self) -> str:
+        """Retourne la footnote formatée"""
+        return f"[^{self.numero}]: {self.footnote_text}"
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convertit en dictionnaire"""
         return {
@@ -762,7 +1162,9 @@ class PieceSelectionnee:
             'force_probante': self.force_probante.value,
             'communicable': self.communicable,
             'confidentiel': self.confidentiel,
-            'importance_score': self.get_importance_score()
+            'importance_score': self.get_importance_score(),
+            'source_link': self.source_link,
+            'footnote_text': self.footnote_text
         }
 
 @dataclass
@@ -857,6 +1259,8 @@ class BordereauPieces:
                 if piece.facts_prouve:
                     lines.append(f"   Établit : {len(piece.facts_prouve)} fait(s)")
                 lines.append(f"   Force probante : {piece.force_probante.value}")
+                if piece.source_link:
+                    lines.append(f"   Source : {piece.source_link}")
         
         lines.extend([
             f"",
@@ -867,6 +1271,67 @@ class BordereauPieces:
             f"Fait le {datetime.now().strftime('%d/%m/%Y')}",
             f"",
             f"{self.expediteur or '[Signature]'}"
+        ])
+        
+        return "\n".join(lines)
+    
+    def export_to_markdown_with_links(self) -> str:
+        """Exporte le bordereau au format Markdown avec liens et footnotes"""
+        lines = [
+            f"# BORDEREAU DE COMMUNICATION DE PIÈCES",
+            f"",
+            f"**AFFAIRE :** {self.affaire}  ",
+            f"**DATE :** {self.date_creation.strftime('%d/%m/%Y')}  ",
+            f"**NOMBRE DE PIÈCES :** {len(self.pieces)}",
+            f"",
+            f"---",
+            f""
+        ]
+        
+        # Grouper par catégorie
+        by_category = self.organize_by_category()
+        
+        for category, pieces in sorted(by_category.items()):
+            lines.append(f"## {category.upper()} ({len(pieces)} pièces)")
+            lines.append("")
+            
+            for piece in sorted(pieces, key=lambda p: p.numero):
+                # Titre avec référence formatée
+                lines.append(f"### {piece.get_formatted_reference()} - {piece.titre}")
+                lines.append("")
+                
+                if piece.description:
+                    lines.append(f"**Description :** {piece.description}  ")
+                if piece.date:
+                    lines.append(f"**Date :** {piece.date.strftime('%d/%m/%Y')}  ")
+                if piece.pages:
+                    lines.append(f"**Pages :** {piece.pages}  ")
+                if piece.facts_prouve:
+                    lines.append(f"**Établit :** {len(piece.facts_prouve)} fait(s)  ")
+                lines.append(f"**Force probante :** {piece.force_probante.value}  ")
+                lines.append("")
+        
+        # Ajouter les footnotes
+        lines.extend([
+            f"",
+            f"---",
+            f"",
+            f"## Notes de bas de page",
+            f""
+        ])
+        
+        for piece in sorted(self.pieces, key=lambda p: p.numero):
+            lines.append(piece.get_footnote())
+        
+        lines.extend([
+            f"",
+            f"---",
+            f"",
+            f"*Je certifie que les pièces communiquées sont conformes aux originaux.*",
+            f"",
+            f"Fait le {datetime.now().strftime('%d/%m/%Y')}",
+            f"",
+            f"**{self.expediteur or '[Signature]'}**"
         ])
         
         return "\n".join(lines)
@@ -924,6 +1389,10 @@ class PieceVersee:
     facts_etablis: List['FactWithSource'] = field(default_factory=list)
     elements_procedure_lies: List[str] = field(default_factory=list)  # IDs des ElementProcedure
     
+    # Nouveau : lien et footnote
+    source_link: Optional[str] = None
+    footnote_text: Optional[str] = None
+    
     # Métadonnées techniques
     hash_document: Optional[str] = None  # Hash pour intégrité
     taille: Optional[int] = None
@@ -939,11 +1408,30 @@ class PieceVersee:
     def __post_init__(self):
         if not self.id:
             self.id = f"piece_{self.cote}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Générer la footnote par défaut
+        if not self.footnote_text:
+            self.footnote_text = f"{self.intitule}"
+            if self.date_piece:
+                self.footnote_text += f" du {self.date_piece.strftime('%d/%m/%Y')}"
+            if self.partie_versante:
+                self.footnote_text += f" (versée par {self.partie_versante})"
     
     def marquer_contestee(self, motif: str):
         """Marque la pièce comme contestée"""
         self.contestee = True
         self.motif_contestation = motif
+    
+    def get_formatted_reference(self) -> str:
+        """Retourne une référence formatée avec lien et footnote"""
+        if self.source_link:
+            return f"[{self.cote}]({self.source_link})[^{self.cote}]"
+        else:
+            return f"{self.cote}[^{self.cote}]"
+    
+    def get_footnote(self) -> str:
+        """Retourne la footnote formatée"""
+        return f"[^{self.cote}]: {self.footnote_text}"
     
     def to_bordereau_entry(self) -> Dict[str, Any]:
         """Formate pour un bordereau"""
@@ -955,7 +1443,9 @@ class PieceVersee:
             'date': self.date_piece.strftime('%d/%m/%Y') if self.date_piece else "Non datée",
             'pages': self.nombre_pages,
             'communicable': "Oui" if self.communicable else "Non",
-            'observations': self.motif_contestation if self.contestee else ""
+            'observations': self.motif_contestation if self.contestee else "",
+            'reference_formatee': self.get_formatted_reference(),
+            'footnote': self.get_footnote()
         }
 
 @dataclass
@@ -1239,206 +1729,7 @@ class QueryAnalysis:
             'faux': 'Faux et usage de faux',
             'corruption': 'Corruption',
             'fraude': 'Fraude',
-            'blanchiment': 'Blanchiment (art. 324-1 Code pénal)',
-        'fraude fiscale': 'Fraude fiscale (art. 1741 Code général des impôts)',
-        'travail dissimulé': 'Travail dissimulé (art. L8221-3 Code du travail)',
-        'marchandage': 'Marchandage (art. L8231-1 Code du travail)',
-        'entrave': 'Entrave (art. L2328-1 Code du travail)',
-        'banqueroute': 'Banqueroute (art. L654-2 Code de commerce)',
-        'recel': 'Recel (art. 321-1 Code pénal)'
-    }
-    
-    for keyword, infraction in infractions_keywords.items():
-        if keyword in query_lower:
-            infractions.append(infraction)
-    
-    return infractions
-
-def detect_plainte_type(query: str) -> str:
-    """Détecte le type de plainte demandé"""
-    query_lower = query.lower()
-    
-    # Détection plainte avec constitution de partie civile
-    cpc_keywords = [
-        'partie civile', 'constitution de partie civile', 'cpc',
-        'doyen', 'juge d\'instruction', 'instruction'
-    ]
-    
-    if any(keyword in query_lower for keyword in cpc_keywords):
-        return 'plainte_avec_cpc'
-    
-    # Par défaut, plainte simple
-    return 'plainte_simple'
-
-def create_partie_from_name(nom: str, type_partie: TypePartie, 
-                          is_personne_morale: bool = True) -> Partie:
-    """Crée une partie à partir d'un nom"""
-    partie = Partie(
-        id=f"partie_{nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        nom=nom,
-        type_partie=type_partie,
-        type_personne="morale" if is_personne_morale else "physique"
-    )
-    
-    # Déterminer automatiquement certains attributs pour les sociétés connues
-    societes_connues = {
-        'VINCI': {
-            'forme_juridique': 'SA',
-            'siege_social': 'Nanterre'
-        },
-        'INTERCONSTRUCTION': {
-            'forme_juridique': 'SAS',
-            'siege_social': 'Paris'
-        },
-        'SOGEPROM RÉALISATIONS': {
-            'forme_juridique': 'SAS',
-            'siege_social': 'La Défense'
-        },
-        'DEMATHIEU BARD': {
-            'forme_juridique': 'SA',
-            'siege_social': 'Montigny-lès-Metz'
-        }
-    }
-    
-    if nom in societes_connues:
-        for key, value in societes_connues[nom].items():
-            setattr(partie, key, value)
-    
-    # Pour les personnes physiques
-    if nom.startswith(('M.', 'Mme', 'Monsieur', 'Madame')):
-        partie.type_personne = "physique"
-    
-    return partie
-
-def calculate_document_relevance(doc: Document, query_analysis: QueryAnalysis) -> float:
-    """Calcule la pertinence d'un document par rapport à une requête analysée"""
-    score = 0.0
-    
-    # Vérifier la référence
-    if query_analysis.reference and doc.has_reference(query_analysis.reference):
-        score += 0.4
-    
-    # Vérifier les parties mentionnées
-    doc_content_lower = doc.content.lower()
-    for partie in query_analysis.parties_mentioned:
-        if partie.lower() in doc_content_lower:
-            score += 0.1
-    
-    # Vérifier les infractions
-    for infraction in query_analysis.infractions_mentioned:
-        if infraction.lower() in doc_content_lower:
-            score += 0.15
-    
-    # Vérifier le sujet principal
-    if query_analysis.subject_matter and query_analysis.subject_matter in doc_content_lower:
-        score += 0.2
-    
-    return min(score, 1.0)
-
-def group_documents_by_category(documents: List[Document]) -> Dict[str, List[Document]]:
-    """Groupe les documents par catégorie"""
-    categories = {
-        'Procédure': [],
-        'Expertise': [],
-        'Comptabilité': [],
-        'Contrats': [],
-        'Correspondance': [],
-        'Jurisprudence': [],
-        'Autres': []
-    }
-    
-    category_patterns = {
-        'Procédure': ['plainte', 'procès-verbal', 'audition', 'conclusions', 'assignation'],
-        'Expertise': ['expertise', 'expert', 'rapport technique', 'évaluation'],
-        'Comptabilité': ['bilan', 'compte', 'facture', 'comptable', 'fiscal'],
-        'Contrats': ['contrat', 'convention', 'accord', 'avenant', 'protocole'],
-        'Correspondance': ['courrier', 'email', 'lettre', 'mail', 'courriel'],
-        'Jurisprudence': ['arrêt', 'jugement', 'décision', 'cass.', 'cour d\'appel']
-    }
-    
-    for doc in documents:
-        categorized = False
-        doc_lower = f"{doc.title} {doc.content[:500]}".lower()
-        
-        for category, keywords in category_patterns.items():
-            if any(kw in doc_lower for kw in keywords):
-                categories[category].append(doc)
-                categorized = True
-                break
-        
-        if not categorized:
-            categories['Autres'].append(doc)
-    
-    # Nettoyer les catégories vides
-    return {k: v for k, v in categories.items() if v}
-
-def generate_document_statistics(content: str) -> Dict[str, Any]:
-    """Génère des statistiques détaillées sur un document"""
-    words = content.split()
-    sentences = content.split('.')
-    paragraphs = content.split('\n\n')
-    
-    # Compter les références juridiques
-    law_refs = len(re.findall(r'article\s+[LR]?\s*\d+', content, re.IGNORECASE))
-    case_refs = len(re.findall(r'(?:Cass|CA|CE|CC)\s+[^,\.\n]+\d{4}', content))
-    
-    # Analyser la complexité
-    avg_word_length = sum(len(w) for w in words) / max(len(words), 1)
-    avg_sentence_length = len(words) / max(len(sentences), 1)
-    
-    # Termes juridiques fréquents
-    legal_terms = [
-        'considérant', 'attendu', 'droit', 'juridiction', 'procédure',
-        'jugement', 'arrêt', 'défendeur', 'demandeur', 'partie'
-    ]
-    legal_term_count = sum(1 for word in words if word.lower() in legal_terms)
-    
-    return {
-        'word_count': len(words),
-        'sentence_count': len(sentences),
-        'paragraph_count': len(paragraphs),
-        'avg_word_length': round(avg_word_length, 2),
-        'avg_sentence_length': round(avg_sentence_length, 2),
-        'law_references': law_refs,
-        'case_references': case_refs,
-        'legal_term_density': round(legal_term_count / max(len(words), 1) * 100, 2),
-        'reading_time_minutes': round(len(words) / 200, 1),  # 200 mots/minute
-        'complexity_score': calculate_text_complexity(avg_word_length, avg_sentence_length)
-    }
-
-def calculate_text_complexity(avg_word_length: float, avg_sentence_length: float) -> str:
-    """Calcule le niveau de complexité d'un texte"""
-    # Score de complexité simplifié
-    score = (avg_word_length - 4) * 10 + (avg_sentence_length - 15) * 0.5
-    
-    if score < 5:
-        return "Simple"
-    elif score < 10:
-        return "Modéré"
-    elif score < 15:
-        return "Complexe"
-    else:
-        return "Très complexe"
-
-def format_date_for_legal_document(date: datetime) -> str:
-    """Formate une date pour un document juridique français"""
-    months = {
-        1: "janvier", 2: "février", 3: "mars", 4: "avril",
-        5: "mai", 6: "juin", 7: "juillet", 8: "août",
-        9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
-    }
-    
-    return f"{date.day} {months[date.month]} {date.year}"
-
-def generate_unique_reference(prefix: str = "REF") -> str:
-    """Génère une référence unique pour un document ou une affaire"""
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    random_suffix = ''.join(str(ord(c) % 10) for c in timestamp[-4:])
-    return f"{prefix}-{timestamp}-{random_suffix}"
-
-def validate_email_address(email: str) -> bool:
-    """Valide une adresse email"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}anchiment'
+            'blanchiment': 'Blanchiment'
         }
         
         for keyword, infraction in infractions_keywords.items():
@@ -1649,6 +1940,9 @@ class RedactionResult:
     destinataire: Optional[str] = None
     reference_modele: Optional[str] = None
     
+    # Nouveau : style appris
+    style_learning_applied: Optional[StyleLearningResult] = None
+    
     def __post_init__(self):
         """Calcule le nombre de mots et autres métadonnées"""
         if self.document and not self.word_count:
@@ -1678,6 +1972,24 @@ class RedactionResult:
         """Ajoute une infraction visée"""
         self.infractions_visees.append(infraction)
     
+    def apply_learned_style(self, style_result: StyleLearningResult):
+        """Applique un style appris au document"""
+        self.style_learning_applied = style_result
+        self.style = "personnalisé"
+        
+        # Appliquer la numérotation des paragraphes
+        if style_result.paragraph_numbering_pattern:
+            self.document = self._apply_paragraph_numbering(
+                self.document, 
+                style_result.paragraph_numbering_pattern
+            )
+    
+    def _apply_paragraph_numbering(self, text: str, pattern: str) -> str:
+        """Applique un style de numérotation aux paragraphes"""
+        # Logique d'application du pattern de numérotation
+        # À implémenter selon les besoins
+        return text
+    
     def get_all_sources(self) -> List[SourceReference]:
         """Récupère toutes les sources utilisées"""
         sources = []
@@ -1704,7 +2016,8 @@ class RedactionResult:
             'facts_count': len(self.facts_used),
             'jurisprudence_count': len(self.jurisprudence_references),
             'parties_count': len(self.parties_demanderesses) + len(self.parties_defenderesses),
-            'infractions_count': len(self.infractions_visees)
+            'infractions_count': len(self.infractions_visees),
+            'style_applied': self.style_learning_applied is not None
         }
     
     def to_dict(self) -> Dict[str, Any]:
@@ -1727,1442 +2040,333 @@ class RedactionResult:
             'infractions_visees': [i.type.value for i in self.infractions_visees],
             'destinataire': self.destinataire,
             'reference_modele': self.reference_modele,
-            'statistics': self.get_statistics()
+            'statistics': self.get_statistics(),
+            'style_learning_applied': self.style_learning_applied.style_name if self.style_learning_applied else None
         }
 
-# ========== PLAIDOIRIE ET PRÉPARATION ==========
+# ========== FONCTIONS HELPER AMÉLIORÉES ==========
 
-@dataclass
-class PlaidoirieResult:
-    """Résultat de génération de plaidoirie"""
-    content: str
-    type: str  # correctionnelle, assises, civile, commerciale, prudhommes
-    style: str  # persuasif, technique, emotionnel, factuel
-    duration_estimate: str
-    key_points: List[str] = field(default_factory=list)
-    structure: Dict[str, List[str]] = field(default_factory=dict)
-    oral_markers: List[str] = field(default_factory=list)
-    timestamp: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    stats: Dict[str, Any] = field(default_factory=dict)
-    arguments: List[ArgumentStructure] = field(default_factory=list)
-    facts_used: List[FactWithSource] = field(default_factory=list)
-    source_mapping: Dict[str, List[SourceReference]] = field(default_factory=dict)
+def get_statut_by_phase_and_role(phase: PhaseProcedure, role: str) -> StatutProcedural:
+    """Détermine le statut procédural approprié selon la phase et le rôle"""
+    if role.lower() in ['plaignant', 'victime']:
+        return StatutProcedural.PLAIGNANT
     
-    # Éléments rhétoriques
-    rhetorical_devices: List[str] = field(default_factory=list)
-    transitions: List[str] = field(default_factory=list)
-    emphasis_points: List[str] = field(default_factory=list)
+    if phase in [PhaseProcedure.ENQUETE_PRELIMINAIRE, PhaseProcedure.ENQUETE_FLAGRANCE]:
+        if role.lower() in ['défendeur', 'accusé']:
+            return StatutProcedural.MIS_EN_CAUSE
+        elif role.lower() == 'témoin':
+            return StatutProcedural.TEMOIN
+    elif phase == PhaseProcedure.INSTRUCTION:
+        if role.lower() in ['défendeur', 'accusé']:
+            return StatutProcedural.MIS_EN_EXAMEN
+        elif role.lower() == 'témoin':
+            return StatutProcedural.TEMOIN_ASSISTE
+        elif role.lower() == 'partie civile':
+            return StatutProcedural.PARTIE_CIVILE
+    elif phase == PhaseProcedure.JUGEMENT:
+        if role.lower() in ['défendeur', 'accusé']:
+            return StatutProcedural.PREVENU
+        elif role.lower() == 'partie civile':
+            return StatutProcedural.PARTIE_CIVILE
     
-    def get_speaking_time(self) -> int:
-        """Estime le temps de parole en minutes"""
-        # Environ 150 mots par minute en plaidoirie
-        words = len(self.content.split())
-        return int(words / 150)
-    
-    def get_all_sources(self) -> List[SourceReference]:
-        """Récupère toutes les sources utilisées"""
-        sources = []
-        for arg in self.arguments:
-            sources.extend(arg.get_all_sources())
-        for fact in self.facts_used:
-            sources.extend(fact.sources)
-        return sources
-    
-    def add_rhetorical_device(self, device: str, example: str):
-        """Ajoute un procédé rhétorique utilisé"""
-        self.rhetorical_devices.append({
-            'device': device,
-            'example': example,
-            'position': len(self.content.split(example)[0].split())  # Position en mots
-        })
-    
-    def optimize_for_oral(self):
-        """Optimise le texte pour l'oral"""
-        # Remplacer les phrases trop longues
-        sentences = self.content.split('.')
-        optimized = []
-        
-        for sentence in sentences:
-            words = sentence.split()
-            if len(words) > 25:  # Phrase trop longue pour l'oral
-                # Diviser en phrases plus courtes
-                mid = len(words) // 2
-                optimized.append(' '.join(words[:mid]) + '.')
-                optimized.append(' '.join(words[mid:]) + '.')
-            else:
-                optimized.append(sentence + '.')
-        
-        self.content = ' '.join(optimized)
-        
-        # Ajouter des marqueurs oraux
-        self.add_oral_markers()
-    
-    def add_oral_markers(self):
-        """Ajoute des indications pour l'oral"""
-        markers = [
-            "[PAUSE]",
-            "[EMPHASE]",
-            "[REGARDER LES JURÉS]",
-            "[RALENTIR]",
-            "[VOIX PLUS FORTE]"
-        ]
-        # Logique pour placer les marqueurs aux endroits stratégiques
-        # À implémenter selon les besoins
+    return StatutProcedural.TIERS
 
-@dataclass
-class PreparationClientResult:
-    """Résultat de préparation client"""
-    content: str
-    prep_type: str  # audition, interrogatoire, comparution, témoignage
-    profile: str  # anxieux, confiant, technique, hostile
-    strategy: str
-    key_qa: List[Dict[str, str]] = field(default_factory=list)
-    do_not_say: List[str] = field(default_factory=list)
-    exercises: List[Dict[str, Any]] = field(default_factory=list)
-    duration_estimate: str = ""
-    timestamp: datetime = field(default_factory=datetime.now)
-    config: Dict[str, Any] = field(default_factory=dict)
-    stats: Dict[str, Any] = field(default_factory=dict)
-    facts_basis: List[FactWithSource] = field(default_factory=list)
-    qa_sources: Dict[str, List[SourceReference]] = field(default_factory=dict)
+def format_partie_designation_by_phase(partie: Partie) -> str:
+    """Formate la désignation d'une partie selon la phase procédurale"""
+    base = partie.get_designation_complete()
     
-    # Éléments psychologiques
-    stress_management_tips: List[str] = field(default_factory=list)
-    body_language_advice: List[str] = field(default_factory=list)
-    trigger_questions: List[Dict[str, str]] = field(default_factory=list)
+    # Ajouter le statut procédural approprié
+    if partie.phase_procedure == PhaseProcedure.ENQUETE_PRELIMINAIRE:
+        if partie.statut_procedural == StatutProcedural.MIS_EN_CAUSE:
+            return f"{base}, actuellement mis en cause"
+        elif partie.statut_procedural == StatutProcedural.SUSPECT:
+            return f"{base}, actuellement suspect"
+    elif partie.phase_procedure == PhaseProcedure.INSTRUCTION:
+        if partie.statut_procedural == StatutProcedural.MIS_EN_EXAMEN:
+            return f"{base}, mis en examen"
+        elif partie.statut_procedural == StatutProcedural.TEMOIN_ASSISTE:
+            return f"{base}, témoin assisté"
+    elif partie.phase_procedure == PhaseProcedure.JUGEMENT:
+        if partie.statut_procedural == StatutProcedural.PREVENU:
+            return f"{base}, prévenu"
     
-    def get_top_questions(self, n: int = 10) -> List[Dict[str, str]]:
-        """Retourne les N questions les plus importantes"""
-        return self.key_qa[:n]
-    
-    def add_qa_with_source(self, question: str, answer: str, sources: List[SourceReference]):
-        """Ajoute une Q/R avec ses sources"""
-        self.key_qa.append({
-            'question': question, 
-            'answer': answer,
-            'difficulty': self.assess_question_difficulty(question),
-            'category': self.categorize_question(question)
-        })
-        self.qa_sources[question] = sources
-    
-    def assess_question_difficulty(self, question: str) -> int:
-        """Évalue la difficulté d'une question (1-10)"""
-        difficulty = 5
-        
-        # Questions techniques
-        if any(term in question.lower() for term in ['expliquez', 'détaillez', 'précisez']):
-            difficulty += 2
-        
-        # Questions piège
-        if any(term in question.lower() for term in ['pourquoi', 'comment se fait-il', 'n\'est-il pas vrai']):
-            difficulty += 1
-        
-        # Questions sur les contradictions
-        if any(term in question.lower() for term in ['contradiction', 'incohérence', 'différence']):
-            difficulty += 3
-        
-        return min(10, difficulty)
-    
-    def categorize_question(self, question: str) -> str:
-        """Catégorise une question"""
-        q_lower = question.lower()
-        
-        if any(term in q_lower for term in ['qui', 'quoi', 'où', 'quand']):
-            return "factuelle"
-        elif any(term in q_lower for term in ['pourquoi', 'comment']):
-            return "explicative"
-        elif any(term in q_lower for term in ['pensez-vous', 'croyez-vous']):
-            return "opinion"
-        elif any(term in q_lower for term in ['contradiction', 'différence']):
-            return "confrontation"
-        else:
-            return "générale"
-    
-    def generate_practice_session(self) -> Dict[str, Any]:
-        """Génère une session d'entraînement"""
-        return {
-            'duration': '45 minutes',
-            'exercises': [
-                {
-                    'type': 'questions_simples',
-                    'duration': '15 min',
-                    'questions': self.key_qa[:5]
-                },
-                {
-                    'type': 'questions_difficiles',
-                    'duration': '20 min',
-                    'questions': sorted(self.key_qa, 
-                                      key=lambda x: x.get('difficulty', 5), 
-                                      reverse=True)[:5]
-                },
-                {
-                    'type': 'mise_en_situation',
-                    'duration': '10 min',
-                    'scenario': 'Confrontation avec la partie adverse'
-                }
-            ],
-            'objectives': [
-                'Maîtriser les faits',
-                'Rester cohérent',
-                'Gérer le stress',
-                'Éviter les pièges'
-            ]
-        }
+    return base
 
-# ========== JURISPRUDENCE ==========
+def create_partie_from_name_with_lookup(nom: str, type_partie: TypePartie, 
+                                       is_personne_morale: bool = True,
+                                       phase: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE,
+                                       fetch_entreprise_info: bool = True) -> Partie:
+    """Crée une partie avec recherche automatique des informations entreprise"""
+    partie = Partie(
+        id=f"partie_{nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        nom=nom,
+        type_partie=type_partie,
+        type_personne="morale" if is_personne_morale else "physique",
+        phase_procedure=phase
+    )
+    
+    # Pour les personnes physiques
+    if nom.startswith(('M.', 'Mme', 'Monsieur', 'Madame')):
+        partie.type_personne = "physique"
+    
+    # Pour les entreprises, possibilité de récupérer les infos
+    # (nécessite l'implémentation du service de récupération)
+    if is_personne_morale and fetch_entreprise_info:
+        # Placeholder pour l'appel API
+        # info_entreprise = fetch_company_info(nom)
+        # if info_entreprise:
+        #     partie.update_from_entreprise_info(info_entreprise)
+        pass
+    
+    return partie
 
-@dataclass
-class JurisprudenceReference:
-    """Référence de jurisprudence complète"""
-    numero: str
-    date: datetime
-    juridiction: str
-    type_juridiction: Optional[TypeJuridiction] = None
-    formation: Optional[str] = None
-    titre: Optional[str] = None
-    resume: Optional[str] = None
-    texte_integral: Optional[str] = None
-    url: Optional[str] = None
-    source: SourceJurisprudence = SourceJurisprudence.MANUAL
-    mots_cles: List[str] = field(default_factory=list)
-    articles_vises: List[str] = field(default_factory=list)
-    decisions_citees: List[str] = field(default_factory=list)
-    importance: int = 5
-    solution: Optional[str] = None
-    portee: Optional[str] = None
-    commentaires: Optional[List[str]] = None
-    verified: bool = False
-    confidence_score: float = 0.8
-    
-    def __post_init__(self):
-        if self.commentaires is None:
-            self.commentaires = []
-    
-    def get_citation(self) -> str:
-        """Retourne la citation formatée"""
-        return f"{self.juridiction}, {self.date.strftime('%d %B %Y')}, {self.numero}"
-    
-    def get_short_citation(self) -> str:
-        """Retourne une citation courte"""
-        juridiction_abbrev = {
-            "Cour de cassation": "Cass.",
-            "Conseil d'État": "CE",
-            "Conseil constitutionnel": "CC",
-            "Cour d'appel": "CA"
-        }
-        abbrev = juridiction_abbrev.get(self.juridiction, self.juridiction[:4])
-        return f"{abbrev} {self.date.strftime('%d/%m/%Y')}, n°{self.numero}"
-    
-    def matches_pattern(self, pattern: str) -> bool:
-        """Vérifie si la jurisprudence correspond à un pattern"""
-        pattern_lower = pattern.lower()
-        
-        # Vérifier dans différents champs
-        fields_to_check = [
-            self.numero.lower(),
-            self.juridiction.lower(),
-            self.date.strftime('%d/%m/%Y'),
-            self.titre.lower() if self.titre else "",
-            ' '.join(self.mots_cles).lower()
-        ]
-        
-        return any(pattern_lower in field for field in fields_to_check)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'numero': self.numero,
-            'date': self.date.isoformat(),
-            'juridiction': self.juridiction,
-            'type_juridiction': self.type_juridiction.value if self.type_juridiction else None,
-            'formation': self.formation,
-            'titre': self.titre,
-            'resume': self.resume,
-            'url': self.url,
-            'source': self.source.value,
-            'mots_cles': self.mots_cles,
-            'articles_vises': self.articles_vises,
-            'importance': self.importance,
-            'solution': self.solution,
-            'portee': self.portee,
-            'citation': self.get_citation(),
-            'citation_courte': self.get_short_citation(),
-            'verified': self.verified,
-            'confidence_score': self.confidence_score
-        }
-
-@dataclass
-class VerificationResult:
-    """Résultat de vérification d'une jurisprudence"""
-    is_valid: bool
-    reference: Optional[JurisprudenceReference] = None
-    message: str = ""
-    confidence: float = 0.0
-    source_verified: Optional[SourceJurisprudence] = None
-    verification_date: datetime = field(default_factory=datetime.now)
-    details: Dict[str, Any] = field(default_factory=dict)
-    suggestions: List[JurisprudenceReference] = field(default_factory=list)
-    
-    def add_suggestion(self, jurisprudence: JurisprudenceReference):
-        """Ajoute une suggestion de jurisprudence similaire"""
-        self.suggestions.append(jurisprudence)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'is_valid': self.is_valid,
-            'reference': self.reference.to_dict() if self.reference else None,
-            'message': self.message,
-            'confidence': self.confidence,
-            'source_verified': self.source_verified.value if self.source_verified else None,
-            'verification_date': self.verification_date.isoformat(),
-            'details': self.details,
-            'suggestions': [s.to_dict() for s in self.suggestions]
-        }
-
-# ========== TIMELINE ET MAPPING ==========
-
-@dataclass
-class TimelineEvent:
-    """Événement dans une chronologie"""
-    date: Union[datetime, str]
-    description: str
-    actors: List[str] = field(default_factory=list)
-    location: Optional[str] = None
-    category: Optional[str] = None
-    importance: int = 5  # 1-10
-    source: Optional[str] = None
-    evidence: List[str] = field(default_factory=list)
-    source_references: List[SourceReference] = field(default_factory=list)
-    fact_basis: Optional[FactWithSource] = None
-    related_events: List[str] = field(default_factory=list)  # IDs d'événements liés
-    
-    def __post_init__(self):
-        """Validation"""
-        if self.importance < 1:
-            self.importance = 1
-        elif self.importance > 10:
-            self.importance = 10
-        
-        # Si un fact_basis est fourni, extraire ses sources
-        if self.fact_basis and not self.source_references:
-            self.source_references = self.fact_basis.sources.copy()
-        
-        # Convertir la date si nécessaire
-        if isinstance(self.date, str):
-            try:
-                self.date = datetime.fromisoformat(self.date)
-            except:
-                pass  # Garder comme string si conversion impossible
-    
-    def get_date_str(self) -> str:
-        """Retourne la date formatée"""
-        if isinstance(self.date, datetime):
-            return self.date.strftime('%d/%m/%Y %H:%M')
-        return str(self.date)
-    
-    def is_linked_to(self, other_event_id: str) -> bool:
-        """Vérifie si l'événement est lié à un autre"""
-        return other_event_id in self.related_events
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'date': self.get_date_str(),
-            'description': self.description,
-            'actors': self.actors,
-            'location': self.location,
-            'category': self.category,
-            'importance': self.importance,
-            'source': self.source,
-            'evidence': self.evidence,
-            'sources_count': len(self.source_references),
-            'has_fact_basis': self.fact_basis is not None,
-            'related_events': self.related_events
-        }
-
-@dataclass
-class Entity:
-    """Entité (personne, organisation, etc.)"""
-    name: str
-    type: str  # person, company, organization, location, other
-    aliases: List[str] = field(default_factory=list)
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    mentions_count: int = 0
-    first_mention: Optional[str] = None
-    relationships: List[Dict[str, str]] = field(default_factory=list)
-    role: Optional[str] = None  # demandeur, défendeur, témoin, etc.
-    importance: float = 0.5  # 0-1
-    
-    def add_alias(self, alias: str):
-        """Ajoute un alias"""
-        if alias not in self.aliases and alias != self.name:
-            self.aliases.append(alias)
-    
-    def add_attribute(self, key: str, value: Any):
-        """Ajoute un attribut"""
-        self.attributes[key] = value
-        
-        # Ajuster l'importance selon certains attributs
-        if key in ['role', 'position', 'fonction']:
-            self.importance = min(1.0, self.importance + 0.1)
-    
-    def matches(self, text: str) -> bool:
-        """Vérifie si le texte correspond à l'entité"""
-        text_lower = text.lower()
-        if self.name.lower() in text_lower:
-            return True
-        return any(alias.lower() in text_lower for alias in self.aliases)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'name': self.name,
-            'type': self.type,
-            'aliases': self.aliases,
-            'attributes': self.attributes,
-            'mentions_count': self.mentions_count,
-            'first_mention': self.first_mention,
-            'relationships_count': len(self.relationships),
-            'role': self.role,
-            'importance': self.importance
-        }
-
-@dataclass
-class Relationship:
-    """Relation entre entités"""
-    source: str
-    target: str
-    type: str  # contractual, hierarchical, familial, conflictual, financial, other
-    strength: float = 0.5  # 0-1
-    direction: str = "bidirectional"  # unidirectional, bidirectional
-    evidence: List[str] = field(default_factory=list)
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    confidence: float = 0.8
-    
-    def is_active(self, date: Optional[datetime] = None) -> bool:
-        """Vérifie si la relation est active à une date donnée"""
-        if date is None:
-            date = datetime.now()
-        
-        if self.start_date and date < self.start_date:
-            return False
-        if self.end_date and date > self.end_date:
-            return False
-        return True
-    
-    def add_evidence(self, evidence: str, source: Optional[str] = None):
-        """Ajoute une preuve de la relation"""
-        evidence_entry = evidence
-        if source:
-            evidence_entry = f"{evidence} (Source: {source})"
-        self.evidence.append(evidence_entry)
-        
-        # Augmenter la confiance
-        self.confidence = min(1.0, self.confidence + 0.05)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'source': self.source,
-            'target': self.target,
-            'type': self.type,
-            'strength': self.strength,
-            'direction': self.direction,
-            'evidence_count': len(self.evidence),
-            'is_active': self.is_active(),
-            'duration': self.get_duration(),
-            'attributes': self.attributes,
-            'confidence': self.confidence
-        }
-    
-    def get_duration(self) -> Optional[str]:
-        """Calcule la durée de la relation"""
-        if self.start_date and self.end_date:
-            delta = self.end_date - self.start_date
-            return f"{delta.days} jours"
-        return None
-
-# ========== RÉSULTATS SPÉCIALISÉS ==========
-
-@dataclass
-class TimelineResult:
-    """Résultat de génération de chronologie"""
-    type: str
-    events: List[TimelineEvent]
-    document_count: int
-    timestamp: datetime = field(default_factory=datetime.now)
-    visualization: Optional[Any] = None
-    analysis: Dict[str, Any] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    
-    def get_events_by_date(self) -> List[TimelineEvent]:
-        """Retourne les événements triés par date"""
-        return sorted(self.events, key=lambda e: e.date if isinstance(e.date, datetime) else datetime.min)
-    
-    def get_events_by_importance(self) -> List[TimelineEvent]:
-        """Retourne les événements triés par importance"""
-        return sorted(self.events, key=lambda e: e.importance, reverse=True)
-    
-    def get_events_by_actor(self, actor: str) -> List[TimelineEvent]:
-        """Retourne les événements impliquant un acteur"""
-        return [e for e in self.events if actor in e.actors]
-    
-    def generate_summary(self) -> str:
-        """Génère un résumé de la chronologie"""
-        total_events = len(self.events)
-        if not total_events:
-            return "Aucun événement dans la chronologie"
-        
-        sorted_events = self.get_events_by_date()
-        first_event = sorted_events[0]
-        last_event = sorted_events[-1]
-        
-        key_actors = set()
-        for event in self.events:
-            key_actors.update(event.actors)
-        
-        summary = f"Chronologie de {total_events} événements\n"
-        summary += f"Période : {first_event.get_date_str()} - {last_event.get_date_str()}\n"
-        summary += f"Acteurs principaux : {', '.join(list(key_actors)[:5])}"
-        
-        return summary
-
-@dataclass
-class MappingResult:
-    """Résultat de cartographie"""
-    type: str
-    entities: List[Entity]
-    relationships: List[Relationship]
-    analysis: Dict[str, Any]
-    document_count: int
-    timestamp: datetime = field(default_factory=datetime.now)
-    visualization: Optional[Any] = None
-    config: Dict[str, Any] = field(default_factory=dict)
-    
-    def get_entity_by_name(self, name: str) -> Optional[Entity]:
-        """Trouve une entité par son nom"""
-        for entity in self.entities:
-            if entity.name == name or name in entity.aliases:
-                return entity
-        return None
-    
-    def get_relationships_for_entity(self, entity_name: str) -> List[Relationship]:
-        """Retourne toutes les relations d'une entité"""
-        return [r for r in self.relationships 
-                if r.source == entity_name or r.target == entity_name]
-    
-    def get_network_stats(self) -> Dict[str, Any]:
-        """Calcule des statistiques sur le réseau"""
-        # Calculer le degré de chaque nœud
-        degrees = {}
-        for entity in self.entities:
-            relations = self.get_relationships_for_entity(entity.name)
-            degrees[entity.name] = len(relations)
-        
-        # Identifier les hubs
-        sorted_degrees = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
-        hubs = [name for name, degree in sorted_degrees[:5]]
-        
-        return {
-            'total_entities': len(self.entities),
-            'total_relationships': len(self.relationships),
-            'average_degree': sum(degrees.values()) / max(len(degrees), 1),
-            'max_degree': max(degrees.values()) if degrees else 0,
-            'hubs': hubs,
-            'isolated_entities': [e.name for e in self.entities if degrees.get(e.name, 0) == 0]
-        }
-    
-    def to_graph_data(self) -> Dict[str, Any]:
-        """Convertit en données pour visualisation graphique"""
-        nodes = []
-        edges = []
-        
-        # Créer les nœuds
-        for entity in self.entities:
-            nodes.append({
-                'id': entity.name,
-                'label': entity.name,
-                'type': entity.type,
-                'size': entity.importance * 50,  # Taille proportionnelle à l'importance
-                'attributes': entity.attributes
-            })
-        
-        # Créer les arêtes
-        for rel in self.relationships:
-            edges.append({
-                'source': rel.source,
-                'target': rel.target,
-                'type': rel.type,
-                'weight': rel.strength,
-                'directed': rel.direction == "unidirectional"
-            })
-        
-        return {
-            'nodes': nodes,
-            'edges': edges,
-            'stats': self.get_network_stats()
-        }
-
-@dataclass
-class ComparisonResult:
-    """Résultat de comparaison de documents"""
-    type: str  # versions, témoignages, documents, chronologies
-    document_count: int
-    comparison: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.now)
-    visualizations: Dict[str, Any] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    differences: List[Dict[str, Any]] = field(default_factory=list)
-    similarities: List[Dict[str, Any]] = field(default_factory=list)
-    
-    def add_difference(self, category: str, doc1_content: str, doc2_content: str, importance: int = 5):
-        """Ajoute une différence identifiée"""
-        self.differences.append({
-            'category': category,
-            'doc1': doc1_content,
-            'doc2': doc2_content,
-            'importance': importance,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    def add_similarity(self, category: str, content: str, confidence: float = 0.8):
-        """Ajoute une similarité identifiée"""
-        self.similarities.append({
-            'category': category,
-            'content': content,
-            'confidence': confidence
-        })
-    
-    def get_summary(self) -> Dict[str, Any]:
-        """Génère un résumé de la comparaison"""
-        return {
-            'documents_compared': self.document_count,
-            'differences_found': len(self.differences),
-            'similarities_found': len(self.similarities),
-            'major_differences': len([d for d in self.differences if d.get('importance', 5) >= 7]),
-            'categories': list(set(d['category'] for d in self.differences))
-        }
-
-@dataclass
-class SynthesisResult:
-    """Résultat de synthèse de documents"""
-    content: str
-    piece_count: int
-    categories: List[str]
-    timestamp: datetime = field(default_factory=datetime.now)
-    key_points: List[str] = field(default_factory=list)
-    chronology: Optional[List[TimelineEvent]] = None
-    legal_points: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    sources_used: List[str] = field(default_factory=list)
-    confidence: float = 0.8
-    
-    def add_key_point(self, point: str, source: Optional[str] = None):
-        """Ajoute un point clé"""
-        self.key_points.append(point)
-        if source and source not in self.sources_used:
-            self.sources_used.append(source)
-    
-    def add_legal_point(self, point: str, articles: List[str] = None):
-        """Ajoute un point d'attention juridique"""
-        legal_point = point
-        if articles:
-            legal_point += f" (Articles : {', '.join(articles)})"
-        self.legal_points.append(legal_point)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'content': self.content,
-            'piece_count': self.piece_count,
-            'categories': self.categories,
-            'timestamp': self.timestamp.isoformat(),
-            'key_points': self.key_points,
-            'has_chronology': self.chronology is not None,
-            'legal_points': self.legal_points,
-            'recommendations': self.recommendations,
-            'sources_count': len(self.sources_used),
-            'confidence': self.confidence
-        }
-
-# ========== SESSION ET COMMUNICATION ==========
-
-@dataclass
-class Session:
-    """Session utilisateur avec état de travail"""
-    id: str
-    created_at: datetime = field(default_factory=datetime.now)
-    last_activity: datetime = field(default_factory=datetime.now)
-    documents: Dict[str, Document] = field(default_factory=dict)
-    search_history: List[QueryAnalysis] = field(default_factory=list)
-    preferences: Dict[str, Any] = field(default_factory=dict)
-    temp_data: Dict[str, Any] = field(default_factory=dict)
-    
-    # État de travail
-    current_case: Optional[CasJuridique] = None
-    selected_pieces: List[PieceSelectionnee] = field(default_factory=list)
-    draft_documents: Dict[str, RedactionResult] = field(default_factory=dict)
-    analysis_results: Dict[str, AnalysisResult] = field(default_factory=dict)
-    
-    def is_expired(self, timeout_minutes: int = 60) -> bool:
-        """Vérifie si la session a expiré"""
-        return (datetime.now() - self.last_activity).seconds > timeout_minutes * 60
-    
-    def update_activity(self):
-        """Met à jour l'heure de dernière activité"""
-        self.last_activity = datetime.now()
-    
-    def add_search(self, query_analysis: QueryAnalysis):
-        """Ajoute une recherche à l'historique"""
-        self.search_history.append(query_analysis)
-        self.update_activity()
-    
-    def save_draft(self, doc_type: str, result: RedactionResult):
-        """Sauvegarde un brouillon de document"""
-        self.draft_documents[doc_type] = result
-        self.update_activity()
-    
-    def get_recent_searches(self, n: int = 10) -> List[QueryAnalysis]:
-        """Retourne les N dernières recherches"""
-        return self.search_history[-n:]
-    
-    def export_work(self) -> Dict[str, Any]:
-        """Exporte tout le travail de la session"""
-        return {
-            'session_id': self.id,
-            'created_at': self.created_at.isoformat(),
-            'duration_minutes': int((self.last_activity - self.created_at).seconds / 60),
-            'documents_count': len(self.documents),
-            'searches_count': len(self.search_history),
-            'drafts_count': len(self.draft_documents),
-            'analyses_count': len(self.analysis_results),
-            'current_case': self.current_case.to_dict() if self.current_case else None,
-            'selected_pieces_count': len(self.selected_pieces)
-        }
-
-@dataclass
-class EmailConfig:
-    """Configuration d'envoi d'email"""
-    to: List[str]
-    subject: str
-    body: str
-    cc: List[str] = field(default_factory=list)
-    bcc: List[str] = field(default_factory=list)
-    attachments: List[Dict[str, Any]] = field(default_factory=list)
-    reply_to: Optional[str] = None
-    priority: str = "normal"  # low, normal, high
-    is_encrypted: bool = False
-    requires_receipt: bool = False
-    
-    def add_attachment(self, filename: str, data: bytes, mime_type: str = "application/octet-stream"):
-        """Ajoute une pièce jointe"""
-        self.attachments.append({
-            'filename': filename,
-            'data': data,
-            'mime_type': mime_type,
-            'size': len(data)
-        })
-    
-    def add_document_attachment(self, doc: Document):
-        """Ajoute un document comme pièce jointe"""
-        self.add_attachment(
-            f"{doc.title}.txt",
-            doc.content.encode('utf-8'),
-            'text/plain'
-        )
-    
-    def validate(self) -> Tuple[bool, List[str]]:
-        """Valide la configuration email"""
-        errors = []
-        
-        if not self.to:
-            errors.append("Au moins un destinataire requis")
-        
-        if not self.subject:
-            errors.append("Objet requis")
-        
-        if not self.body:
-            errors.append("Corps du message requis")
-        
-        # Vérifier les adresses email
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        for email in self.to + self.cc + self.bcc:
-            if not re.match(email_pattern, email):
-                errors.append(f"Adresse email invalide : {email}")
-        
-        return len(errors) == 0, errors
-
-# ========== HELPERS ET UTILITIES ==========
-
-class SourceTracker:
-    """Classe helper pour gérer la traçabilité complète des sources"""
-    
-    def __init__(self):
-        self.documents: Dict[str, Document] = {}
-        self.facts: Dict[str, FactWithSource] = {}
-        self.source_cache: Dict[str, SourceReference] = {}
-        self.elements_procedure: Dict[str, ElementProcedure] = {}
-        self.pieces_versees: Dict[str, PieceVersee] = {}
-        self.cas_juridiques: Dict[str, CasJuridique] = {}
-    
-    def register_document(self, doc: Document) -> str:
-        """Enregistre un document et retourne son ID"""
-        self.documents[doc.id] = doc
-        return doc.id
-    
-    def create_source_reference(self, document_id: str, **kwargs) -> SourceReference:
-        """Crée une référence de source"""
-        if document_id not in self.documents:
-            raise ValueError(f"Document {document_id} non trouvé")
-        
-        doc = self.documents[document_id]
-        source_ref = SourceReference(
-            document_id=document_id,
-            document_title=doc.title,
-            **kwargs
-        )
-        
-        # Cache pour éviter les doublons
-        cache_key = f"{document_id}_{kwargs.get('page')}_{kwargs.get('paragraph')}"
-        self.source_cache[cache_key] = source_ref
-        
-        return source_ref
-    
-    def create_fact(self, content: str, category: str, source_refs: List[SourceReference]) -> FactWithSource:
-        """Crée un fait avec ses sources"""
-        fact = FactWithSource(
-            id=f"fact_{len(self.facts)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            content=content,
-            category=category,
-            sources=source_refs,
-            verified=bool(source_refs)
-        )
-        self.facts[fact.id] = fact
-        return fact
-    
-    def create_element_procedure(self, type_acte: str, intitule: str, 
-                               date: datetime, auteur: str, **kwargs) -> ElementProcedure:
-        """Crée un élément de procédure tracé"""
-        element = ElementProcedure(
-            id=f"proc_{type_acte}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            type=type_acte,
-            intitule=intitule,
-            date=date,
-            auteur=auteur,
-            **kwargs
-        )
-        self.elements_procedure[element.id] = element
-        return element
-    
-    def create_piece_versee(self, numero: int, cote: str, intitule: str, 
-                          partie_versante: str, **kwargs) -> PieceVersee:
-        """Crée une pièce versée aux débats"""
-        piece = PieceVersee(
-            id=f"piece_{cote}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            numero_ordre=numero,
-            cote=cote,
-            intitule=intitule,
-            partie_versante=partie_versante,
-            **kwargs
-        )
-        self.pieces_versees[piece.id] = piece
-        return piece
-    
-    def link_piece_to_facts(self, piece_id: str, fact_ids: List[str]):
-        """Lie une pièce aux faits qu'elle établit"""
-        if piece_id not in self.pieces_versees:
-            raise ValueError(f"Pièce {piece_id} non trouvée")
-        
-        piece = self.pieces_versees[piece_id]
-        for fact_id in fact_ids:
-            if fact_id in self.facts:
-                piece.facts_etablis.append(self.facts[fact_id])
-    
-    def link_element_to_sources(self, element_id: str, source_refs: List[SourceReference]):
-        """Lie un élément de procédure à ses sources"""
-        if element_id not in self.elements_procedure:
-            raise ValueError(f"Élément {element_id} non trouvé")
-        
-        element = self.elements_procedure[element_id]
-        element.source_references.extend(source_refs)
-    
-    def find_documents_by_reference(self, reference: str) -> List[Document]:
-        """Trouve tous les documents correspondant à une référence @"""
-        ref_clean = reference.replace('@', '').strip().lower()
-        matching_docs = []
-        
-        for doc in self.documents.values():
-            if doc.has_reference(ref_clean):
-                matching_docs.append(doc)
-        
-        return matching_docs
-    
-    def generate_source_report(self) -> Dict[str, Any]:
-        """Génère un rapport global sur les sources utilisées"""
-        return {
-            'total_documents': len(self.documents),
-            'total_facts': len(self.facts),
-            'facts_with_sources': len([f for f in self.facts.values() if f.sources]),
-            'facts_without_sources': len([f for f in self.facts.values() if not f.sources]),
-            'total_elements_procedure': len(self.elements_procedure),
-            'total_pieces_versees': len(self.pieces_versees),
-            'pieces_contestees': len([p for p in self.pieces_versees.values() if p.contestee]),
-            'source_distribution': self._get_source_distribution(),
-            'procedure_distribution': {
-                type_acte: len([e for e in self.elements_procedure.values() if e.type == type_acte])
-                for type_acte in set(e.type for e in self.elements_procedure.values())
-            }
-        }
-    
-    def _get_source_distribution(self) -> Dict[str, int]:
-        """Analyse la distribution des sources"""
-        distribution = {}
-        
-        # Sources des faits
-        for fact in self.facts.values():
-            for source in fact.sources:
-                doc_title = source.document_title
-                distribution[doc_title] = distribution.get(doc_title, 0) + 1
-        
-        # Sources des éléments de procédure
-        for element in self.elements_procedure.values():
-            for source in element.source_references:
-                doc_title = source.document_title
-                distribution[doc_title] = distribution.get(doc_title, 0) + 1
-        
-        # Sources des pièces
-        for piece in self.pieces_versees.values():
-            for source in piece.source_references:
-                doc_title = source.document_title
-                distribution[doc_title] = distribution.get(doc_title, 0) + 1
-        
-        return distribution
-
-class DocumentFormatter:
-    """Classe pour formater les documents avec liens sources"""
-    
-    def __init__(self, source_tracker: SourceTracker):
-        self.tracker = source_tracker
-    
-    def format_with_sources(self, content: str, fact_ids: List[str]) -> str:
-        """Formate un contenu en ajoutant les liens vers les sources"""
-        fact_map = {fid: self.tracker.facts[fid] for fid in fact_ids if fid in self.tracker.facts}
-        return inject_source_links(content, fact_map)
-    
-    def format_plaidoirie_with_sources(self, plaidoirie: PlaidoirieResult) -> str:
-        """Formate une plaidoirie avec tous les liens sources"""
-        content = plaidoirie.content
-        
-        # Ajouter les liens pour chaque paragraphe
-        paragraphs = content.split('\n\n')
-        formatted_paragraphs = []
-        
-        for i, para in enumerate(paragraphs):
-            # Si des sources sont mappées pour ce paragraphe
-            if i in plaidoirie.source_mapping:
-                sources = plaidoirie.source_mapping[i]
-                # Ajouter une note de bas de page avec les sources
-                source_notes = []
-                for j, source in enumerate(sources):
-                    note_num = f"{i+1}.{j+1}"
-                    para += f"[^{note_num}]"
-                    source_notes.append(f"[^{note_num}]: {source.get_citation()}")
-                
-                formatted_paragraphs.append(para)
-                if source_notes:
-                    formatted_paragraphs.append("\n".join(source_notes))
-            else:
-                formatted_paragraphs.append(para)
-        
-        return "\n\n".join(formatted_paragraphs)
-    
-    def generate_source_footnotes(self, sources: List[SourceReference]) -> str:
-        """Génère des notes de bas de page pour les sources"""
-        footnotes = []
-        for i, source in enumerate(sources, 1):
-            citation = source.get_citation()
-            if source.excerpt:
-                citation += f' - "{source.excerpt}"'
-            footnotes.append(f"[^{i}]: {citation}")
-        
-        return "\n".join(footnotes)
-    
-    def create_hyperlinked_document(self, doc_type: str, content: str, 
-                                  sources: List[SourceReference]) -> str:
-        """Crée un document avec hyperliens vers les sources"""
-        header = f"# {doc_type.upper()}\n\n"
-        header += f"*Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}*\n\n"
-        
-        # Ajouter un sommaire des sources
-        header += "## Sources utilisées\n\n"
-        for i, source in enumerate(sources, 1):
-            header += f"{i}. {source.get_citation()}\n"
-        header += "\n---\n\n"
-        
-        # Contenu avec notes
-        footer = "\n\n---\n\n## Notes et références\n\n"
-        footer += self.generate_source_footnotes(sources)
-        
-        return header + content + footer
-
-# ========== FONCTIONS HELPER ==========
-
-def get_all_juridictions() -> List[str]:
-    """Retourne la liste de toutes les juridictions"""
-    return [j.value for j in TypeJuridiction]
-
-def get_juridiction_type(juridiction_name: str) -> Optional[TypeJuridiction]:
-    """Retourne le type de juridiction à partir du nom"""
-    for jur_type in TypeJuridiction:
-        if jur_type.value.lower() == juridiction_name.lower():
-            return jur_type
-    return None
-
-def format_source_link(source_ref: SourceReference, text: str) -> str:
-    """Formate un texte avec un lien vers sa source"""
-    # Format : [texte](source:document_id#page_X_para_Y)
-    link_parts = [f"source:{source_ref.document_id}"]
-    if source_ref.page:
-        link_parts.append(f"page_{source_ref.page}")
-    if source_ref.paragraph:
-        link_parts.append(f"para_{source_ref.paragraph}")
-    
-    link = "#".join(link_parts)
-    return f"[{text}]({link})"
-
-def format_piece_link(piece: PieceVersee, text: str) -> str:
-    """Formate un texte avec un lien vers une pièce"""
-    # Format : [texte](piece:cote)
-    return f"[{text}](piece:{piece.cote})"
-
-def format_procedure_link(element: ElementProcedure, text: str) -> str:
-    """Formate un texte avec un lien vers un élément de procédure"""
-    # Format : [texte](procedure:element_id)
-    return f"[{text}](procedure:{element.id})"
-
-def parse_source_link(link: str) -> Optional[Dict[str, Any]]:
-    """Parse un lien source pour extraire ses composants"""
-    # Pattern : [texte](type:reference#details)
-    pattern = r'\[([^\]]+)\]\((\w+):([^#\)]+)(?:#([^\)]+))?\)'
-    match = re.match(pattern, link)
-    
-    if not match:
-        return None
-    
-    text, link_type, reference, details = match.groups()
-    
-    result = {
-        'text': text,
-        'type': link_type,
-        'reference': reference
+def extract_paragraph_numbering_style(text: str) -> Optional[str]:
+    """Extrait le style de numérotation des paragraphes d'un texte"""
+    patterns = {
+        r'^\d+\.': 'numeric',  # 1. 2. 3.
+        r'^[IVX]+\.': 'roman_upper',  # I. II. III.
+        r'^[ivx]+\.': 'roman_lower',  # i. ii. iii.
+        r'^[A-Z]\.': 'alpha_upper',  # A. B. C.
+        r'^[a-z]\.': 'alpha_lower',  # a. b. c.
+        r'^\d+\.\d+': 'hierarchical',  # 1.1 1.2 2.1
+        r'^\d+\)': 'numeric_paren',  # 1) 2) 3)
+        r'^[A-Z]\)': 'alpha_paren',  # A) B) C)
+        r'^-': 'dash',  # - item
+        r'^•': 'bullet',  # • item
+        r'^§\s*\d+': 'section'  # § 1
     }
     
-    # Parser les détails si présents
-    if details:
-        detail_parts = details.split('_')
-        if 'page' in details:
-            result['page'] = int(detail_parts[1])
-        if 'para' in details:
-            result['paragraph'] = int(detail_parts[-1])
+    lines = text.split('\n')
+    style_counts = {}
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        for pattern, style in patterns.items():
+            if re.match(pattern, line):
+                style_counts[style] = style_counts.get(style, 0) + 1
+                break
+    
+    if style_counts:
+        # Retourner le style le plus fréquent
+        return max(style_counts, key=style_counts.get)
+    
+    return None
+
+def learn_document_style(documents: List[Document]) -> StyleLearningResult:
+    """Apprend le style de rédaction à partir de plusieurs documents"""
+    result = StyleLearningResult(
+        style_name=f"Style personnalisé basé sur {len(documents)} documents",
+        documents_analyzed=len(documents)
+    )
+    
+    # Analyser chaque document
+    all_sentences = []
+    all_paragraphs = []
+    paragraph_styles = []
+    formality_indicators = []
+    technical_terms = []
+    
+    for doc in documents:
+        # Extraire les infos de style si pas déjà fait
+        if not doc.style_info:
+            doc.extract_style_info()
+        
+        # Collecter les données
+        sentences = doc.content.split('.')
+        paragraphs = doc.content.split('\n\n')
+        
+        all_sentences.extend(sentences)
+        all_paragraphs.extend(paragraphs)
+        
+        if doc.style_info:
+            if doc.style_info.get('paragraph_numbering'):
+                paragraph_styles.append(doc.style_info['paragraph_numbering'])
+            formality_indicators.append(doc.style_info.get('formality_indicators', 0))
+    
+    # Calculer les moyennes
+    if all_sentences:
+        total_words = sum(len(s.split()) for s in all_sentences)
+        result.average_sentence_length = int(total_words / len(all_sentences))
+    
+    if all_paragraphs:
+        total_para_words = sum(len(p.split()) for p in all_paragraphs)
+        result.average_paragraph_length = int(total_para_words / len(all_paragraphs))
+    
+    # Déterminer le style de numérotation dominant
+    if paragraph_styles:
+        style_counts = {}
+        for style in paragraph_styles:
+            style_counts[style] = style_counts.get(style, 0) + 1
+        result.paragraph_numbering_style = max(style_counts, key=style_counts.get)
+        
+        # Déterminer le pattern exact
+        style_patterns = {
+            'numeric': '1.',
+            'roman_upper': 'I.',
+            'roman_lower': 'i.',
+            'alphabetic_upper': 'A.',
+            'alphabetic_lower': 'a.',
+            'hierarchical': '1.1'
+        }
+        result.paragraph_numbering_pattern = style_patterns.get(
+            result.paragraph_numbering_style, 
+            '1.'
+        )
+    
+    # Calculer le score de formalité
+    if formality_indicators:
+        result.formality_score = min(1.0, sum(formality_indicators) / (len(formality_indicators) * 5))
+    
+    # Extraire les phrases et transitions communes
+    sentence_starters = []
+    for para in all_paragraphs[:50]:  # Limiter l'analyse
+        sentences = para.split('.')
+        for sent in sentences:
+            sent = sent.strip()
+            if sent and len(sent.split()) > 5:
+                # Extraire les premiers mots
+                words = sent.split()[:3]
+                starter = ' '.join(words)
+                sentence_starters.append(starter)
+    
+    # Identifier les patterns récurrents
+    starter_counts = {}
+    for starter in sentence_starters:
+        starter_counts[starter] = starter_counts.get(starter, 0) + 1
+    
+    # Garder les plus fréquents
+    common_starters = sorted(starter_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    result.common_phrases = [starter for starter, count in common_starters if count > 1]
+    
+    # Identifier les mots de transition
+    transition_words = [
+        'toutefois', 'cependant', 'néanmoins', 'par ailleurs', 'en outre',
+        'de plus', 'ainsi', 'donc', 'par conséquent', 'dès lors',
+        'en effet', 'or', 'mais', 'enfin', 'd\'une part', 'd\'autre part'
+    ]
+    
+    text_combined = ' '.join(doc.content.lower() for doc in documents)
+    found_transitions = []
+    for word in transition_words:
+        if word in text_combined:
+            count = text_combined.count(word)
+            if count > len(documents):  # Au moins une fois par document en moyenne
+                found_transitions.append(word)
+    
+    result.transition_words = found_transitions
+    
+    # Déterminer les patterns d'argumentation
+    argument_markers = [
+        'il convient de', 'il résulte de', 'il apparaît que', 'force est de constater',
+        'il en découle', 'partant', 'au surplus', 'subsidiairement', 'à titre principal',
+        'en tout état de cause', 'quoi qu\'il en soit'
+    ]
+    
+    found_patterns = []
+    for marker in argument_markers:
+        if marker in text_combined:
+            found_patterns.append(marker)
+    
+    result.argument_patterns = found_patterns
     
     return result
 
-def inject_source_links(text: str, fact_map: Dict[str, FactWithSource]) -> str:
-    """Injecte automatiquement les liens sources dans un texte"""
-    # Cette fonction recherche les faits dans le texte et ajoute les liens
-    for fact_id, fact in fact_map.items():
-        if fact.content in text and fact.sources:
-            # Prendre la première source
-            source = fact.sources[0]
-            linked_text = format_source_link(source, fact.content)
-            text = text.replace(fact.content, linked_text, 1)
+def format_piece_with_source_and_footnote(piece: PieceSelectionnee, 
+                                        source_doc: Optional[Document] = None) -> str:
+    """Formate une référence de pièce avec lien source et footnote"""
+    # Créer le lien source si document disponible
+    if source_doc and not piece.source_link:
+        piece.source_link = f"#doc_{source_doc.id}"
     
-    return text
+    # Générer la référence formatée
+    ref = piece.get_formatted_reference()
+    
+    # Ajouter des informations contextuelles dans la footnote
+    if source_doc:
+        piece.footnote_text += f" (Source: {source_doc.title})"
+    
+    return ref
 
-def extract_parties_from_query(query: str) -> Dict[str, List[str]]:
-    """Extrait les parties mentionnées dans une requête"""
-    parties = {
-        'demandeurs': [],
-        'defendeurs': []
-    }
+def generate_bordereau_with_full_links(bordereau: BordereauPieces, 
+                                     source_tracker: 'SourceTracker') -> str:
+    """Génère un bordereau avec tous les liens et footnotes"""
+    # Utiliser la méthode export_to_markdown_with_links
+    content = bordereau.export_to_markdown_with_links()
     
-    query_lower = query.lower()
-    
-    # Patterns pour les demandeurs (entreprises BTP principalement)
-    demandeurs_patterns = [
-        ('interconstruction', 'INTERCONSTRUCTION'),
-        ('vinci', 'VINCI'),
-        ('sogeprom', 'SOGEPROM RÉALISATIONS'),
-        ('demathieu bard', 'DEMATHIEU BARD'),
-        ('bouygues', 'BOUYGUES'),
-        ('eiffage', 'EIFFAGE'),
-        ('spie', 'SPIE BATIGNOLLES'),
-        ('leon grosse', 'LEON GROSSE'),
-        ('fayat', 'FAYAT'),
-        ('colas', 'COLAS'),
-        ('eurovia', 'EUROVIA'),
-        ('razel-bec', 'RAZEL-BEC'),
-        ('nge', 'NGE'),
-        ('gtm', 'GTM Bâtiment')
-    ]
-    
-    # Patterns pour les défendeurs
-    defendeurs_patterns = [
-        ('perinet', 'M. PERINET'),
-        ('périnet', 'M. PÉRINET'),
-        ('vp invest', 'VP INVEST'),
-        ('perraud', 'M. PERRAUD'),
-        ('martin', 'M. MARTIN'),
-        ('dupont', 'M. DUPONT'),
-        ('durand', 'M. DURAND'),
-        ('laurent', 'M. LAURENT'),
-        ('michel', 'M. MICHEL')
-    ]
-    
-    # Analyser la structure de la requête
-    if ' pour ' in query_lower and ' contre ' in query_lower:
-        # Extraire les parties selon la structure
-        partie_pour = query_lower.split(' pour ')[1].split(' contre ')[0]
-        partie_contre = query_lower.split(' contre ')[1]
+    # Enrichir avec les informations du tracker si disponible
+    if source_tracker:
+        # Ajouter des métadonnées supplémentaires
+        enriched_lines = []
+        enriched_lines.append(content)
+        enriched_lines.append("\n\n## Traçabilité complète\n")
         
-        # Chercher les demandeurs
-        for keyword, nom_formate in demandeurs_patterns:
-            if keyword in partie_pour:
-                parties['demandeurs'].append(nom_formate)
+        for piece in bordereau.pieces:
+            if piece.source_references:
+                enriched_lines.append(f"\n### {piece.cote}")
+                for ref in piece.source_references:
+                    enriched_lines.append(f"- {ref.get_citation()}")
+                    if ref.excerpt:
+                        enriched_lines.append(f"  > {ref.excerpt}")
         
-        # Chercher les défendeurs
-        for keyword, nom_formate in defendeurs_patterns:
-            if keyword in partie_contre:
-                parties['defendeurs'].append(nom_formate)
-    else:
-        # Recherche globale
-        if ' contre ' in query_lower:
-            partie_contre = query_lower.split(' contre ')[1]
-            for keyword, nom_formate in defendeurs_patterns:
-                if keyword in partie_contre:
-                    parties['defendeurs'].append(nom_formate)
-        
-        # Chercher les demandeurs dans le reste
-        for keyword, nom_formate in demandeurs_patterns:
-            if keyword in query_lower and nom_formate not in parties['defendeurs']:
-                if ' contre ' not in query_lower or keyword not in query_lower.split(' contre ')[1]:
-                    parties['demandeurs'].append(nom_formate)
+        content = "\n".join(enriched_lines)
     
-    return parties
+    return content
 
-def extract_infractions_from_query(query: str) -> List[str]:
-    """Extrait les infractions mentionnées dans une requête"""
-    query_lower = query.lower()
-    infractions = []
-    
-    infractions_keywords = {
-        'escroquerie': 'Escroquerie (art. 313-1 Code pénal)',
-        'abus de confiance': 'Abus de confiance (art. 314-1 Code pénal)',
-        'abus de biens sociaux': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
-        'abs': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
-        'faux': 'Faux et usage de faux (art. 441-1 Code pénal)',
-        'corruption': 'Corruption (art. 432-11 et 433-1 Code pénal)',
-        'trafic d\'influence': 'Trafic d\'influence (art. 432-11 et 433-2 Code pénal)',
-        'favoritisme': 'Favoritisme (art. 432-14 Code pénal)',
-        'prise illégale': 'Prise illégale d\'intérêts (art. 432-12 Code pénal)',
-        'blanchiment': 'Bl
-    return bool(re.match(pattern, email))
+# ========== FONCTIONS D'INTÉGRATION ENTREPRISES ==========
 
-def sanitize_filename(filename: str) -> str:
-    """Nettoie un nom de fichier pour le rendre compatible avec tous les OS"""
-    # Remplacer les caractères interdits
-    invalid_chars = '<>:"/\\|?*'
-    for char in invalid_chars:
-        filename = filename.replace(char, '_')
+async def fetch_company_info_pappers(company_name: str, api_key: str) -> Optional[InformationEntreprise]:
+    """
+    Récupère les informations d'une entreprise via l'API Pappers
     
-    # Limiter la longueur
-    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
-    if len(name) > 200:
-        name = name[:200]
+    Note: Cette fonction est un placeholder. L'implémentation réelle nécessite:
+    - Un compte Pappers avec clé API
+    - La bibliothèque requests ou httpx pour les appels API
+    """
+    # Placeholder pour l'implémentation
+    # Dans la vraie implémentation :
+    # 1. Appeler l'API Pappers avec le nom de l'entreprise
+    # 2. Parser la réponse JSON
+    # 3. Créer un objet InformationEntreprise
     
-    return f"{name}.{ext}" if ext else name
+    # Exemple de structure attendue :
+    # response = requests.get(
+    #     f"https://api.pappers.fr/v2/entreprise",
+    #     params={"q": company_name, "api_token": api_key}
+    # )
+    # if response.status_code == 200:
+    #     data = response.json()
+    #     return InformationEntreprise(
+    #         siren=data.get("siren"),
+    #         denomination=data.get("denomination"),
+    #         forme_juridique=data.get("forme_juridique"),
+    #         capital_social=data.get("capital"),
+    #         siege_social=data.get("siege", {}).get("adresse_ligne_1"),
+    #         rcs_numero=data.get("numero_rcs"),
+    #         rcs_ville=data.get("greffe"),
+    #         source=SourceEntreprise.PAPPERS
+    #     )
+    
+    return None
 
-def estimate_reading_time(text: str, words_per_minute: int = 200) -> Dict[str, int]:
-    """Estime le temps de lecture d'un texte"""
-    word_count = len(text.split())
-    minutes = word_count / words_per_minute
+async def fetch_company_info_societe(company_name: str) -> Optional[InformationEntreprise]:
+    """
+    Récupère les informations d'une entreprise via societe.com (scraping)
     
-    return {
-        'minutes': int(minutes),
-        'seconds': int((minutes % 1) * 60),
-        'words': word_count
-    }
-
-def extract_monetary_amounts(text: str) -> List[Dict[str, Any]]:
-    """Extrait les montants monétaires d'un texte"""
-    amounts = []
+    Note: Cette fonction est un placeholder. L'implémentation réelle nécessite:
+    - BeautifulSoup ou playwright pour le scraping
+    - Gestion des rate limits et éthique du scraping
+    """
+    # Placeholder pour l'implémentation
+    # Dans la vraie implémentation :
+    # 1. Rechercher l'entreprise sur societe.com
+    # 2. Parser la page HTML
+    # 3. Extraire les informations pertinentes
+    # 4. Créer un objet InformationEntreprise
     
-    # Patterns pour les montants en euros
-    patterns = [
-        r'(\d{1,3}(?:\s?\d{3})*(?:,\d{2})?)\s*(?:€|EUR|euros?)',
-        r'(\d+(?:\.\d{3})*(?:,\d{2})?)\s*(?:€|EUR|euros?)',
-        r'(?:€|EUR)\s*(\d{1,3}(?:\s?\d{3})*(?:,\d{2})?)'
-    ]
-    
-    for pattern in patterns:
-        matches = re.finditer(pattern, text, re.IGNORECASE)
-        for match in matches:
-            amount_str = match.group(1)
-            # Nettoyer et convertir
-            amount_clean = amount_str.replace(' ', '').replace('.', '').replace(',', '.')
-            try:
-                amount_float = float(amount_clean)
-                amounts.append({
-                    'original': match.group(0),
-                    'amount': amount_float,
-                    'position': match.start()
-                })
-            except ValueError:
-                continue
-    
-    return amounts
-
-def create_document_hash(content: str) -> str:
-    """Crée un hash unique pour un document"""
-    import hashlib
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
-
-def merge_duplicate_facts(facts: List[FactWithSource]) -> List[FactWithSource]:
-    """Fusionne les faits en double en combinant leurs sources"""
-    unique_facts = {}
-    
-    for fact in facts:
-        # Clé basée sur le contenu normalisé
-        key = fact.content.strip().lower()
-        
-        if key in unique_facts:
-            # Fusionner les sources
-            existing = unique_facts[key]
-            for source in fact.sources:
-                if source not in existing.sources:
-                    existing.add_source(source)
-            # Prendre l'importance maximale
-            existing.importance = max(existing.importance, fact.importance)
-        else:
-            unique_facts[key] = fact
-    
-    return list(unique_facts.values())
-
-def rank_documents_by_relevance(documents: List[Document], 
-                               query_analysis: QueryAnalysis) -> List[Tuple[Document, float]]:
-    """Classe les documents par pertinence par rapport à une requête"""
-    scored_docs = []
-    
-    for doc in documents:
-        score = calculate_document_relevance(doc, query_analysis)
-        scored_docs.append((doc, score))
-    
-    # Trier par score décroissant
-    return sorted(scored_docs, key=lambda x: x[1], reverse=True)
-
-def create_legal_summary(text: str, max_length: int = 500) -> str:
-    """Crée un résumé juridique d'un texte"""
-    sentences = text.split('.')
-    summary = []
-    current_length = 0
-    
-    # Prioriser les phrases contenant des termes juridiques importants
-    priority_terms = [
-        'condamne', 'décide', 'ordonne', 'rejette', 'déclare',
-        'considérant', 'attendu', 'motifs', 'dispositif'
-    ]
-    
-    # Trier les phrases par importance
-    scored_sentences = []
-    for sentence in sentences:
-        score = sum(1 for term in priority_terms if term in sentence.lower())
-        scored_sentences.append((sentence, score))
-    
-    scored_sentences.sort(key=lambda x: x[1], reverse=True)
-    
-    # Construire le résumé
-    for sentence, _ in scored_sentences:
-        sentence = sentence.strip()
-        if sentence and current_length + len(sentence) <= max_length:
-            summary.append(sentence)
-            current_length += len(sentence) + 1
-    
-    return '. '.join(summary) + '.' if summary else text[:max_length] + '...'
-
-# ========== TEMPLATES PREDÉFINIS ==========
-
-DOCUMENT_TEMPLATES_DEFAULTS = {
-    'plainte_simple': DocumentTemplate(
-        id='plainte_simple',
-        name='Plainte simple',
-        type=TypeDocument.PLAINTE,
-        structure=[
-            'Monsieur le Procureur de la République',
-            'Tribunal judiciaire de [VILLE]',
-            '[ADRESSE_TRIBUNAL]',
-            '',
-            '[LIEU], le [DATE]',
-            '',
-            'Objet : Plainte',
-            '',
-            'Monsieur le Procureur de la République,',
-            '',
-            'Je soussigné(e) [NOM_PLAIGNANT], [QUALITE], demeurant [ADRESSE_PLAIGNANT],',
-            '',
-            'Ai l\'honneur de porter plainte contre :',
-            '[IDENTITE_MIS_EN_CAUSE]',
-            '',
-            'Pour les faits suivants :',
-            '',
-            'I. EXPOSÉ DES FAITS',
-            '[FAITS_DETAILLES]',
-            '',
-            'II. QUALIFICATION JURIDIQUE',
-            '[INFRACTIONS_VISEES]',
-            '',
-            'III. PRÉJUDICES SUBIS',
-            '[PREJUDICES]',
-            '',
-            'IV. DEMANDES',
-            'Je sollicite l\'ouverture d\'une enquête...',
-            '',
-            'V. PIÈCES JOINTES',
-            '[LISTE_PIECES]',
-            '',
-            'Je me tiens à votre disposition...',
-            '',
-            '[SIGNATURE]'
-        ],
-        style=StyleRedaction.FORMEL,
-        required_fields=['NOM_PLAIGNANT', 'ADRESSE_PLAIGNANT', 'FAITS_DETAILLES'],
-        optional_fields=['QUALITE', 'IDENTITE_MIS_EN_CAUSE', 'PREJUDICES']
-    ),
-    
-    'plainte_avec_cpc': DocumentTemplate(
-        id='plainte_avec_cpc',
-        name='Plainte avec constitution de partie civile',
-        type=TypeDocument.PLAINTE_CPC,
-        structure=[
-            'Monsieur le Doyen des Juges d\'Instruction',
-            'Tribunal judiciaire de [VILLE]',
-            '[ADRESSE_TRIBUNAL]',
-            '',
-            '[LIEU], le [DATE]',
-            '',
-            'OBJET : PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE',
-            '',
-            'POUR :',
-            '[IDENTITE_COMPLETE_PLAIGNANTS]',
-            '',
-            'Ayant pour conseil :',
-            'Maître [NOM_AVOCAT], Avocat au Barreau de [VILLE]',
-            '[ADRESSE_CABINET]',
-            '',
-            'CONTRE :',
-            '[IDENTITE_MIS_EN_CAUSE]',
-            '',
-            'ET CONTRE :',
-            'Toute autre personne que l\'instruction révélerait...',
-            '',
-            'I. EXPOSÉ EXHAUSTIF DES FAITS',
-            'A. CONTEXTE GÉNÉRAL',
-            '[CONTEXTE]',
-            '',
-            'B. CHRONOLOGIE DÉTAILLÉE',
-            '[CHRONOLOGIE]',
-            '',
-            'C. MÉCANISME FRAUDULEUX',
-            '[MECANISME]',
-            '',
-            'II. QUALIFICATION JURIDIQUE APPROFONDIE',
-            '[QUALIFICATIONS_DETAILLEES]',
-            '',
-            'III. ÉLÉMENTS CONSTITUTIFS',
-            'A. ÉLÉMENT MATÉRIEL',
-            '[ELEMENT_MATERIEL]',
-            '',
-            'B. ÉLÉMENT INTENTIONNEL',
-            '[ELEMENT_INTENTIONNEL]',
-            '',
-            'IV. PRÉJUDICES',
-            '[EVALUATION_PREJUDICES]',
-            '',
-            'V. CONSTITUTION DE PARTIE CIVILE',
-            'Les plaignants déclarent expressément se constituer partie civile...',
-            '',
-            'VI. DEMANDES D\'ACTES',
-            '[ACTES_INSTRUCTION]',
-            '',
-            'PAR CES MOTIFS',
-            '[DEMANDES_FINALES]',
-            '',
-            'SOUS TOUTES RÉSERVES',
-            '',
-            'BORDEREAU DE PIÈCES',
-            '[BORDEREAU_PIECES]'
-        ],
-        style=StyleRedaction.FORMEL,
-        required_fields=[
-            'IDENTITE_COMPLETE_PLAIGNANTS', 'CONTEXTE', 'CHRONOLOGIE',
-            'QUALIFICATIONS_DETAILLEES', 'EVALUATION_PREJUDICES'
-        ]
-    ),
-    
-    'conclusions_defense': DocumentTemplate(
-        id='conclusions_defense',
-        name='Conclusions en défense',
-        type=TypeDocument.CONCLUSIONS,
-        structure=[
-            'TRIBUNAL [TYPE_JURIDICTION] DE [VILLE]',
-            '[NUMERO_RG]',
-            '',
-            'CONCLUSIONS EN DÉFENSE',
-            '',
-            'POUR :',
-            '[IDENTITE_DEFENDEUR]',
-            '',
-            'CONTRE :',
-            '[IDENTITE_DEMANDEUR]',
-            '',
-            'PLAISE AU TRIBUNAL',
-            '',
-            'I. RAPPEL DES FAITS ET DE LA PROCÉDURE',
-            'A. Les faits',
-            '[RAPPEL_FAITS]',
-            '',
-            'B. La procédure',
-            '[RAPPEL_PROCEDURE]',
-            '',
-            'II. DISCUSSION',
-            'A. Sur la recevabilité',
-            '[MOYENS_IRRECEVABILITE]',
-            '',
-            'B. Sur le fond',
-            '1. Sur l\'élément matériel',
-            '[CONTESTATION_MATERIEL]',
-            '',
-            '2. Sur l\'élément intentionnel',
-            '[CONTESTATION_INTENTIONNEL]',
-            '',
-            '3. Sur le préjudice allégué',
-            '[CONTESTATION_PREJUDICE]',
-            '',
-            'III. SUR LA DEMANDE DE DOMMAGES-INTÉRÊTS',
-            '[CONTESTATION_DOMMAGES]',
-            '',
-            'PAR CES MOTIFS',
-            '',
-            'Il est demandé au Tribunal de :',
-            '[DEMANDES]',
-            '',
-            'SOUS TOUTES RÉSERVES',
-            '',
-            'BORDEREAU DE PIÈCES EN DÉFENSE',
-            '[BORDEREAU]'
-        ],
-        style=StyleRedaction.FORMEL,
-        required_fields=['IDENTITE_DEFENDEUR', 'IDENTITE_DEMANDEUR', 'RAPPEL_FAITS']
-    )
-}
+    return None
 
 # ========== CONFIGURATION PAR DÉFAUT ==========
 
@@ -3206,1444 +2410,15 @@ DEFAULT_STYLE_CONFIGS = {
         vocabulary="vulgarisé et illustré",
         sentence_structure="simple",
         formality_level=5
+    ),
+    StyleRedaction.PERSONNALISE: StyleConfig(
+        name="Personnalisé",
+        description="Style appris depuis vos documents",
+        tone="adapté à votre pratique",
+        vocabulary="votre vocabulaire habituel",
+        sentence_structure="selon vos habitudes",
+        formality_level=7
     )
 }
 
-# ========== TYPES EXPORTÉS ==========
-
-# Types personnalisés pour les annotations
-DocumentDict = Dict[str, Document]
-SearchResults = List[SearchResult]
-TimelineEvents = List[TimelineEvent]
-EntityList = List[Entity]
-RelationshipList = List[Relationship]
-PartiesList = List[Partie]
-InfractionsList = List[InfractionIdentifiee]
-
-# ========== FIN DU MODULE ==========anchiment'
-        }
-        
-        for keyword, infraction in infractions_keywords.items():
-            if keyword in query_lower:
-                self.infractions_mentioned.append(infraction)
-        
-        # Ajuster la confiance
-        self.confidence = 0.5
-        if self.reference:
-            self.confidence += 0.2
-        if self.action:
-            self.confidence += 0.2
-        if self.parties_mentioned:
-            self.confidence += 0.1
-    
-    def has_reference(self) -> bool:
-        """Vérifie si la requête contient une référence @"""
-        return self.reference is not None
-    
-    def get_reference(self) -> Optional[str]:
-        """Retourne la référence extraite"""
-        return self.reference
-    
-    def is_redaction_request(self) -> bool:
-        """Vérifie si c'est une demande de rédaction"""
-        return self.action in ['redaction', 'plainte', 'conclusions', 'creation']
-    
-    def is_analysis_request(self) -> bool:
-        """Vérifie si c'est une demande d'analyse"""
-        return self.action == 'analysis'
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'original_query': self.original_query,
-            'intent': self.intent,
-            'entities': self.entities,
-            'confidence': self.confidence,
-            'details': self.details,
-            'timestamp': self.timestamp.isoformat(),
-            'reference': self.reference,
-            'action': self.action,
-            'subject_matter': self.subject_matter,
-            'document_type': self.document_type,
-            'parties_mentioned': self.parties_mentioned,
-            'infractions_mentioned': self.infractions_mentioned
-        }
-
-@dataclass
-class SearchResult:
-    """Résultat de recherche unifié"""
-    id: str
-    title: str
-    content: str
-    score: float
-    source: str
-    highlights: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    document_type: Optional[str] = None
-    relevance_explanation: Optional[str] = None
-    matched_references: List[str] = field(default_factory=list)
-    
-    def __post_init__(self):
-        """Normalise le score"""
-        if self.score < 0:
-            self.score = 0
-        elif self.score > 1:
-            self.score = 1
-    
-    def add_highlight(self, text: str, context: str = ""):
-        """Ajoute un passage surligné"""
-        highlight = text
-        if context:
-            highlight = f"...{context}..."
-        self.highlights.append(highlight)
-    
-    def boost_score(self, factor: float):
-        """Augmente le score de pertinence"""
-        self.score = min(1.0, self.score * factor)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'id': self.id,
-            'title': self.title,
-            'content': self.content,
-            'score': self.score,
-            'source': self.source,
-            'highlights': self.highlights,
-            'metadata': self.metadata,
-            'document_type': self.document_type,
-            'relevance_explanation': self.relevance_explanation,
-            'matched_references': self.matched_references
-        }
-
-# ========== ANALYSE ET RÉDACTION ==========
-
-@dataclass
-class AnalysisResult:
-    """Résultat d'analyse IA enrichi"""
-    type: str  # risk_analysis, compliance, strategy, general, infractions
-    content: str
-    query: str
-    document_count: int
-    timestamp: datetime = field(default_factory=datetime.now)
-    provider: Optional[str] = None
-    confidence: float = 0.8
-    key_findings: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    sources: List[str] = field(default_factory=list)
-    infractions_identifiees: List[InfractionIdentifiee] = field(default_factory=list)
-    risk_assessment: Optional[Dict[str, Any]] = None
-    compliance_gaps: List[str] = field(default_factory=list)
-    strategic_options: List[Dict[str, Any]] = field(default_factory=list)
-    
-    def add_key_finding(self, finding: str, source: Optional[str] = None):
-        """Ajoute une conclusion clé"""
-        self.key_findings.append(finding)
-        if source:
-            self.sources.append(source)
-    
-    def add_recommendation(self, recommendation: str, priority: int = 5):
-        """Ajoute une recommandation"""
-        self.recommendations.append({
-            'text': recommendation,
-            'priority': priority,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    def get_executive_summary(self) -> str:
-        """Génère un résumé exécutif"""
-        summary = []
-        
-        # Type d'analyse
-        type_labels = {
-            'risk_analysis': "Analyse des risques",
-            'compliance': "Analyse de conformité",
-            'strategy': "Analyse stratégique",
-            'infractions': "Analyse des infractions",
-            'general_analysis': "Analyse générale"
-        }
-        summary.append(f"**Type:** {type_labels.get(self.type, self.type)}")
-        
-        # Statistiques
-        summary.append(f"**Documents analysés:** {self.document_count}")
-        summary.append(f"**Niveau de confiance:** {self.confidence:.0%}")
-        
-        # Conclusions principales
-        if self.key_findings:
-            summary.append("\n**Principales conclusions:**")
-            for i, finding in enumerate(self.key_findings[:3], 1):
-                summary.append(f"{i}. {finding}")
-        
-        # Recommandations prioritaires
-        if self.recommendations:
-            summary.append("\n**Recommandations prioritaires:**")
-            sorted_recs = sorted(self.recommendations, 
-                               key=lambda x: x.get('priority', 5), 
-                               reverse=True)
-            for i, rec in enumerate(sorted_recs[:3], 1):
-                summary.append(f"{i}. {rec['text']}")
-        
-        return "\n".join(summary)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'type': self.type,
-            'content': self.content,
-            'query': self.query,
-            'document_count': self.document_count,
-            'timestamp': self.timestamp.isoformat(),
-            'provider': self.provider,
-            'confidence': self.confidence,
-            'key_findings': self.key_findings,
-            'recommendations': self.recommendations,
-            'sources': self.sources,
-            'infractions_identifiees': [inf.to_dict() for inf in self.infractions_identifiees],
-            'risk_assessment': self.risk_assessment,
-            'compliance_gaps': self.compliance_gaps,
-            'strategic_options': self.strategic_options,
-            'executive_summary': self.get_executive_summary()
-        }
-
-# Alias pour compatibilité
-AnalyseJuridique = AnalysisResult
-
-@dataclass
-class RedactionResult:
-    """Résultat de rédaction de document enrichi"""
-    type: str  # conclusions, plainte, plainte_avec_cpc, mise_en_demeure, etc.
-    document: str
-    provider: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    style: str = "formel"
-    word_count: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    jurisprudence_used: bool = False
-    jurisprudence_references: List[JurisprudenceReference] = field(default_factory=list)
-    responses: List[Dict[str, Any]] = field(default_factory=list)  # Réponses des différentes IA
-    facts_used: List[FactWithSource] = field(default_factory=list)
-    arguments: List[ArgumentStructure] = field(default_factory=list)
-    paragraph_sources: Dict[int, List[SourceReference]] = field(default_factory=dict)
-    
-    # Champs spécifiques pour les plaintes
-    parties_demanderesses: List[Partie] = field(default_factory=list)
-    parties_defenderesses: List[Partie] = field(default_factory=list)
-    infractions_visees: List[InfractionIdentifiee] = field(default_factory=list)
-    destinataire: Optional[str] = None
-    reference_modele: Optional[str] = None
-    
-    def __post_init__(self):
-        """Calcule le nombre de mots et autres métadonnées"""
-        if self.document and not self.word_count:
-            self.word_count = len(self.document.split())
-        
-        # Déterminer le destinataire selon le type
-        if not self.destinataire:
-            if self.type == 'plainte_avec_cpc':
-                self.destinataire = "Monsieur le Doyen des Juges d'Instruction"
-            elif self.type == 'plainte':
-                self.destinataire = "Monsieur le Procureur de la République"
-    
-    def add_paragraph_source(self, paragraph_num: int, sources: List[SourceReference]):
-        """Ajoute des sources pour un paragraphe spécifique"""
-        if paragraph_num not in self.paragraph_sources:
-            self.paragraph_sources[paragraph_num] = []
-        self.paragraph_sources[paragraph_num].extend(sources)
-    
-    def add_partie(self, partie: Partie, is_demandeur: bool = True):
-        """Ajoute une partie au document"""
-        if is_demandeur:
-            self.parties_demanderesses.append(partie)
-        else:
-            self.parties_defenderesses.append(partie)
-    
-    def add_infraction(self, infraction: InfractionIdentifiee):
-        """Ajoute une infraction visée"""
-        self.infractions_visees.append(infraction)
-    
-    def get_all_sources(self) -> List[SourceReference]:
-        """Récupère toutes les sources utilisées"""
-        sources = []
-        for fact in self.facts_used:
-            sources.extend(fact.sources)
-        for arg in self.arguments:
-            sources.extend(arg.get_all_sources())
-        for para_sources in self.paragraph_sources.values():
-            sources.extend(para_sources)
-        return sources
-    
-    def get_statistics(self) -> Dict[str, Any]:
-        """Retourne des statistiques sur le document"""
-        paragraphs = self.document.split('\n\n')
-        sentences = self.document.split('.')
-        
-        return {
-            'word_count': self.word_count,
-            'char_count': len(self.document),
-            'paragraph_count': len(paragraphs),
-            'sentence_count': len(sentences),
-            'avg_words_per_sentence': self.word_count / max(len(sentences), 1),
-            'sources_count': len(self.get_all_sources()),
-            'facts_count': len(self.facts_used),
-            'jurisprudence_count': len(self.jurisprudence_references),
-            'parties_count': len(self.parties_demanderesses) + len(self.parties_defenderesses),
-            'infractions_count': len(self.infractions_visees)
-        }
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'type': self.type,
-            'document': self.document,
-            'provider': self.provider,
-            'timestamp': self.timestamp.isoformat(),
-            'style': self.style,
-            'word_count': self.word_count,
-            'metadata': self.metadata,
-            'jurisprudence_used': self.jurisprudence_used,
-            'jurisprudence_references': [j.get_citation() for j in self.jurisprudence_references],
-            'facts_used_count': len(self.facts_used),
-            'arguments_count': len(self.arguments),
-            'sources_count': len(self.get_all_sources()),
-            'parties_demanderesses': [p.get_designation_complete() for p in self.parties_demanderesses],
-            'parties_defenderesses': [p.get_designation_complete() for p in self.parties_defenderesses],
-            'infractions_visees': [i.type.value for i in self.infractions_visees],
-            'destinataire': self.destinataire,
-            'reference_modele': self.reference_modele,
-            'statistics': self.get_statistics()
-        }
-
-# ========== PLAIDOIRIE ET PRÉPARATION ==========
-
-@dataclass
-class PlaidoirieResult:
-    """Résultat de génération de plaidoirie"""
-    content: str
-    type: str  # correctionnelle, assises, civile, commerciale, prudhommes
-    style: str  # persuasif, technique, emotionnel, factuel
-    duration_estimate: str
-    key_points: List[str] = field(default_factory=list)
-    structure: Dict[str, List[str]] = field(default_factory=dict)
-    oral_markers: List[str] = field(default_factory=list)
-    timestamp: datetime = field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    stats: Dict[str, Any] = field(default_factory=dict)
-    arguments: List[ArgumentStructure] = field(default_factory=list)
-    facts_used: List[FactWithSource] = field(default_factory=list)
-    source_mapping: Dict[str, List[SourceReference]] = field(default_factory=dict)
-    
-    # Éléments rhétoriques
-    rhetorical_devices: List[str] = field(default_factory=list)
-    transitions: List[str] = field(default_factory=list)
-    emphasis_points: List[str] = field(default_factory=list)
-    
-    def get_speaking_time(self) -> int:
-        """Estime le temps de parole en minutes"""
-        # Environ 150 mots par minute en plaidoirie
-        words = len(self.content.split())
-        return int(words / 150)
-    
-    def get_all_sources(self) -> List[SourceReference]:
-        """Récupère toutes les sources utilisées"""
-        sources = []
-        for arg in self.arguments:
-            sources.extend(arg.get_all_sources())
-        for fact in self.facts_used:
-            sources.extend(fact.sources)
-        return sources
-    
-    def add_rhetorical_device(self, device: str, example: str):
-        """Ajoute un procédé rhétorique utilisé"""
-        self.rhetorical_devices.append({
-            'device': device,
-            'example': example,
-            'position': len(self.content.split(example)[0].split())  # Position en mots
-        })
-    
-    def optimize_for_oral(self):
-        """Optimise le texte pour l'oral"""
-        # Remplacer les phrases trop longues
-        sentences = self.content.split('.')
-        optimized = []
-        
-        for sentence in sentences:
-            words = sentence.split()
-            if len(words) > 25:  # Phrase trop longue pour l'oral
-                # Diviser en phrases plus courtes
-                mid = len(words) // 2
-                optimized.append(' '.join(words[:mid]) + '.')
-                optimized.append(' '.join(words[mid:]) + '.')
-            else:
-                optimized.append(sentence + '.')
-        
-        self.content = ' '.join(optimized)
-        
-        # Ajouter des marqueurs oraux
-        self.add_oral_markers()
-    
-    def add_oral_markers(self):
-        """Ajoute des indications pour l'oral"""
-        markers = [
-            "[PAUSE]",
-            "[EMPHASE]",
-            "[REGARDER LES JURÉS]",
-            "[RALENTIR]",
-            "[VOIX PLUS FORTE]"
-        ]
-        # Logique pour placer les marqueurs aux endroits stratégiques
-        # À implémenter selon les besoins
-
-@dataclass
-class PreparationClientResult:
-    """Résultat de préparation client"""
-    content: str
-    prep_type: str  # audition, interrogatoire, comparution, témoignage
-    profile: str  # anxieux, confiant, technique, hostile
-    strategy: str
-    key_qa: List[Dict[str, str]] = field(default_factory=list)
-    do_not_say: List[str] = field(default_factory=list)
-    exercises: List[Dict[str, Any]] = field(default_factory=list)
-    duration_estimate: str = ""
-    timestamp: datetime = field(default_factory=datetime.now)
-    config: Dict[str, Any] = field(default_factory=dict)
-    stats: Dict[str, Any] = field(default_factory=dict)
-    facts_basis: List[FactWithSource] = field(default_factory=list)
-    qa_sources: Dict[str, List[SourceReference]] = field(default_factory=dict)
-    
-    # Éléments psychologiques
-    stress_management_tips: List[str] = field(default_factory=list)
-    body_language_advice: List[str] = field(default_factory=list)
-    trigger_questions: List[Dict[str, str]] = field(default_factory=list)
-    
-    def get_top_questions(self, n: int = 10) -> List[Dict[str, str]]:
-        """Retourne les N questions les plus importantes"""
-        return self.key_qa[:n]
-    
-    def add_qa_with_source(self, question: str, answer: str, sources: List[SourceReference]):
-        """Ajoute une Q/R avec ses sources"""
-        self.key_qa.append({
-            'question': question, 
-            'answer': answer,
-            'difficulty': self.assess_question_difficulty(question),
-            'category': self.categorize_question(question)
-        })
-        self.qa_sources[question] = sources
-    
-    def assess_question_difficulty(self, question: str) -> int:
-        """Évalue la difficulté d'une question (1-10)"""
-        difficulty = 5
-        
-        # Questions techniques
-        if any(term in question.lower() for term in ['expliquez', 'détaillez', 'précisez']):
-            difficulty += 2
-        
-        # Questions piège
-        if any(term in question.lower() for term in ['pourquoi', 'comment se fait-il', 'n\'est-il pas vrai']):
-            difficulty += 1
-        
-        # Questions sur les contradictions
-        if any(term in question.lower() for term in ['contradiction', 'incohérence', 'différence']):
-            difficulty += 3
-        
-        return min(10, difficulty)
-    
-    def categorize_question(self, question: str) -> str:
-        """Catégorise une question"""
-        q_lower = question.lower()
-        
-        if any(term in q_lower for term in ['qui', 'quoi', 'où', 'quand']):
-            return "factuelle"
-        elif any(term in q_lower for term in ['pourquoi', 'comment']):
-            return "explicative"
-        elif any(term in q_lower for term in ['pensez-vous', 'croyez-vous']):
-            return "opinion"
-        elif any(term in q_lower for term in ['contradiction', 'différence']):
-            return "confrontation"
-        else:
-            return "générale"
-    
-    def generate_practice_session(self) -> Dict[str, Any]:
-        """Génère une session d'entraînement"""
-        return {
-            'duration': '45 minutes',
-            'exercises': [
-                {
-                    'type': 'questions_simples',
-                    'duration': '15 min',
-                    'questions': self.key_qa[:5]
-                },
-                {
-                    'type': 'questions_difficiles',
-                    'duration': '20 min',
-                    'questions': sorted(self.key_qa, 
-                                      key=lambda x: x.get('difficulty', 5), 
-                                      reverse=True)[:5]
-                },
-                {
-                    'type': 'mise_en_situation',
-                    'duration': '10 min',
-                    'scenario': 'Confrontation avec la partie adverse'
-                }
-            ],
-            'objectives': [
-                'Maîtriser les faits',
-                'Rester cohérent',
-                'Gérer le stress',
-                'Éviter les pièges'
-            ]
-        }
-
-# ========== JURISPRUDENCE ==========
-
-@dataclass
-class JurisprudenceReference:
-    """Référence de jurisprudence complète"""
-    numero: str
-    date: datetime
-    juridiction: str
-    type_juridiction: Optional[TypeJuridiction] = None
-    formation: Optional[str] = None
-    titre: Optional[str] = None
-    resume: Optional[str] = None
-    texte_integral: Optional[str] = None
-    url: Optional[str] = None
-    source: SourceJurisprudence = SourceJurisprudence.MANUAL
-    mots_cles: List[str] = field(default_factory=list)
-    articles_vises: List[str] = field(default_factory=list)
-    decisions_citees: List[str] = field(default_factory=list)
-    importance: int = 5
-    solution: Optional[str] = None
-    portee: Optional[str] = None
-    commentaires: Optional[List[str]] = None
-    verified: bool = False
-    confidence_score: float = 0.8
-    
-    def __post_init__(self):
-        if self.commentaires is None:
-            self.commentaires = []
-    
-    def get_citation(self) -> str:
-        """Retourne la citation formatée"""
-        return f"{self.juridiction}, {self.date.strftime('%d %B %Y')}, {self.numero}"
-    
-    def get_short_citation(self) -> str:
-        """Retourne une citation courte"""
-        juridiction_abbrev = {
-            "Cour de cassation": "Cass.",
-            "Conseil d'État": "CE",
-            "Conseil constitutionnel": "CC",
-            "Cour d'appel": "CA"
-        }
-        abbrev = juridiction_abbrev.get(self.juridiction, self.juridiction[:4])
-        return f"{abbrev} {self.date.strftime('%d/%m/%Y')}, n°{self.numero}"
-    
-    def matches_pattern(self, pattern: str) -> bool:
-        """Vérifie si la jurisprudence correspond à un pattern"""
-        pattern_lower = pattern.lower()
-        
-        # Vérifier dans différents champs
-        fields_to_check = [
-            self.numero.lower(),
-            self.juridiction.lower(),
-            self.date.strftime('%d/%m/%Y'),
-            self.titre.lower() if self.titre else "",
-            ' '.join(self.mots_cles).lower()
-        ]
-        
-        return any(pattern_lower in field for field in fields_to_check)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'numero': self.numero,
-            'date': self.date.isoformat(),
-            'juridiction': self.juridiction,
-            'type_juridiction': self.type_juridiction.value if self.type_juridiction else None,
-            'formation': self.formation,
-            'titre': self.titre,
-            'resume': self.resume,
-            'url': self.url,
-            'source': self.source.value,
-            'mots_cles': self.mots_cles,
-            'articles_vises': self.articles_vises,
-            'importance': self.importance,
-            'solution': self.solution,
-            'portee': self.portee,
-            'citation': self.get_citation(),
-            'citation_courte': self.get_short_citation(),
-            'verified': self.verified,
-            'confidence_score': self.confidence_score
-        }
-
-@dataclass
-class VerificationResult:
-    """Résultat de vérification d'une jurisprudence"""
-    is_valid: bool
-    reference: Optional[JurisprudenceReference] = None
-    message: str = ""
-    confidence: float = 0.0
-    source_verified: Optional[SourceJurisprudence] = None
-    verification_date: datetime = field(default_factory=datetime.now)
-    details: Dict[str, Any] = field(default_factory=dict)
-    suggestions: List[JurisprudenceReference] = field(default_factory=list)
-    
-    def add_suggestion(self, jurisprudence: JurisprudenceReference):
-        """Ajoute une suggestion de jurisprudence similaire"""
-        self.suggestions.append(jurisprudence)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'is_valid': self.is_valid,
-            'reference': self.reference.to_dict() if self.reference else None,
-            'message': self.message,
-            'confidence': self.confidence,
-            'source_verified': self.source_verified.value if self.source_verified else None,
-            'verification_date': self.verification_date.isoformat(),
-            'details': self.details,
-            'suggestions': [s.to_dict() for s in self.suggestions]
-        }
-
-# ========== TIMELINE ET MAPPING ==========
-
-@dataclass
-class TimelineEvent:
-    """Événement dans une chronologie"""
-    date: Union[datetime, str]
-    description: str
-    actors: List[str] = field(default_factory=list)
-    location: Optional[str] = None
-    category: Optional[str] = None
-    importance: int = 5  # 1-10
-    source: Optional[str] = None
-    evidence: List[str] = field(default_factory=list)
-    source_references: List[SourceReference] = field(default_factory=list)
-    fact_basis: Optional[FactWithSource] = None
-    related_events: List[str] = field(default_factory=list)  # IDs d'événements liés
-    
-    def __post_init__(self):
-        """Validation"""
-        if self.importance < 1:
-            self.importance = 1
-        elif self.importance > 10:
-            self.importance = 10
-        
-        # Si un fact_basis est fourni, extraire ses sources
-        if self.fact_basis and not self.source_references:
-            self.source_references = self.fact_basis.sources.copy()
-        
-        # Convertir la date si nécessaire
-        if isinstance(self.date, str):
-            try:
-                self.date = datetime.fromisoformat(self.date)
-            except:
-                pass  # Garder comme string si conversion impossible
-    
-    def get_date_str(self) -> str:
-        """Retourne la date formatée"""
-        if isinstance(self.date, datetime):
-            return self.date.strftime('%d/%m/%Y %H:%M')
-        return str(self.date)
-    
-    def is_linked_to(self, other_event_id: str) -> bool:
-        """Vérifie si l'événement est lié à un autre"""
-        return other_event_id in self.related_events
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'date': self.get_date_str(),
-            'description': self.description,
-            'actors': self.actors,
-            'location': self.location,
-            'category': self.category,
-            'importance': self.importance,
-            'source': self.source,
-            'evidence': self.evidence,
-            'sources_count': len(self.source_references),
-            'has_fact_basis': self.fact_basis is not None,
-            'related_events': self.related_events
-        }
-
-@dataclass
-class Entity:
-    """Entité (personne, organisation, etc.)"""
-    name: str
-    type: str  # person, company, organization, location, other
-    aliases: List[str] = field(default_factory=list)
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    mentions_count: int = 0
-    first_mention: Optional[str] = None
-    relationships: List[Dict[str, str]] = field(default_factory=list)
-    role: Optional[str] = None  # demandeur, défendeur, témoin, etc.
-    importance: float = 0.5  # 0-1
-    
-    def add_alias(self, alias: str):
-        """Ajoute un alias"""
-        if alias not in self.aliases and alias != self.name:
-            self.aliases.append(alias)
-    
-    def add_attribute(self, key: str, value: Any):
-        """Ajoute un attribut"""
-        self.attributes[key] = value
-        
-        # Ajuster l'importance selon certains attributs
-        if key in ['role', 'position', 'fonction']:
-            self.importance = min(1.0, self.importance + 0.1)
-    
-    def matches(self, text: str) -> bool:
-        """Vérifie si le texte correspond à l'entité"""
-        text_lower = text.lower()
-        if self.name.lower() in text_lower:
-            return True
-        return any(alias.lower() in text_lower for alias in self.aliases)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'name': self.name,
-            'type': self.type,
-            'aliases': self.aliases,
-            'attributes': self.attributes,
-            'mentions_count': self.mentions_count,
-            'first_mention': self.first_mention,
-            'relationships_count': len(self.relationships),
-            'role': self.role,
-            'importance': self.importance
-        }
-
-@dataclass
-class Relationship:
-    """Relation entre entités"""
-    source: str
-    target: str
-    type: str  # contractual, hierarchical, familial, conflictual, financial, other
-    strength: float = 0.5  # 0-1
-    direction: str = "bidirectional"  # unidirectional, bidirectional
-    evidence: List[str] = field(default_factory=list)
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    confidence: float = 0.8
-    
-    def is_active(self, date: Optional[datetime] = None) -> bool:
-        """Vérifie si la relation est active à une date donnée"""
-        if date is None:
-            date = datetime.now()
-        
-        if self.start_date and date < self.start_date:
-            return False
-        if self.end_date and date > self.end_date:
-            return False
-        return True
-    
-    def add_evidence(self, evidence: str, source: Optional[str] = None):
-        """Ajoute une preuve de la relation"""
-        evidence_entry = evidence
-        if source:
-            evidence_entry = f"{evidence} (Source: {source})"
-        self.evidence.append(evidence_entry)
-        
-        # Augmenter la confiance
-        self.confidence = min(1.0, self.confidence + 0.05)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'source': self.source,
-            'target': self.target,
-            'type': self.type,
-            'strength': self.strength,
-            'direction': self.direction,
-            'evidence_count': len(self.evidence),
-            'is_active': self.is_active(),
-            'duration': self.get_duration(),
-            'attributes': self.attributes,
-            'confidence': self.confidence
-        }
-    
-    def get_duration(self) -> Optional[str]:
-        """Calcule la durée de la relation"""
-        if self.start_date and self.end_date:
-            delta = self.end_date - self.start_date
-            return f"{delta.days} jours"
-        return None
-
-# ========== RÉSULTATS SPÉCIALISÉS ==========
-
-@dataclass
-class TimelineResult:
-    """Résultat de génération de chronologie"""
-    type: str
-    events: List[TimelineEvent]
-    document_count: int
-    timestamp: datetime = field(default_factory=datetime.now)
-    visualization: Optional[Any] = None
-    analysis: Dict[str, Any] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    
-    def get_events_by_date(self) -> List[TimelineEvent]:
-        """Retourne les événements triés par date"""
-        return sorted(self.events, key=lambda e: e.date if isinstance(e.date, datetime) else datetime.min)
-    
-    def get_events_by_importance(self) -> List[TimelineEvent]:
-        """Retourne les événements triés par importance"""
-        return sorted(self.events, key=lambda e: e.importance, reverse=True)
-    
-    def get_events_by_actor(self, actor: str) -> List[TimelineEvent]:
-        """Retourne les événements impliquant un acteur"""
-        return [e for e in self.events if actor in e.actors]
-    
-    def generate_summary(self) -> str:
-        """Génère un résumé de la chronologie"""
-        total_events = len(self.events)
-        if not total_events:
-            return "Aucun événement dans la chronologie"
-        
-        sorted_events = self.get_events_by_date()
-        first_event = sorted_events[0]
-        last_event = sorted_events[-1]
-        
-        key_actors = set()
-        for event in self.events:
-            key_actors.update(event.actors)
-        
-        summary = f"Chronologie de {total_events} événements\n"
-        summary += f"Période : {first_event.get_date_str()} - {last_event.get_date_str()}\n"
-        summary += f"Acteurs principaux : {', '.join(list(key_actors)[:5])}"
-        
-        return summary
-
-@dataclass
-class MappingResult:
-    """Résultat de cartographie"""
-    type: str
-    entities: List[Entity]
-    relationships: List[Relationship]
-    analysis: Dict[str, Any]
-    document_count: int
-    timestamp: datetime = field(default_factory=datetime.now)
-    visualization: Optional[Any] = None
-    config: Dict[str, Any] = field(default_factory=dict)
-    
-    def get_entity_by_name(self, name: str) -> Optional[Entity]:
-        """Trouve une entité par son nom"""
-        for entity in self.entities:
-            if entity.name == name or name in entity.aliases:
-                return entity
-        return None
-    
-    def get_relationships_for_entity(self, entity_name: str) -> List[Relationship]:
-        """Retourne toutes les relations d'une entité"""
-        return [r for r in self.relationships 
-                if r.source == entity_name or r.target == entity_name]
-    
-    def get_network_stats(self) -> Dict[str, Any]:
-        """Calcule des statistiques sur le réseau"""
-        # Calculer le degré de chaque nœud
-        degrees = {}
-        for entity in self.entities:
-            relations = self.get_relationships_for_entity(entity.name)
-            degrees[entity.name] = len(relations)
-        
-        # Identifier les hubs
-        sorted_degrees = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
-        hubs = [name for name, degree in sorted_degrees[:5]]
-        
-        return {
-            'total_entities': len(self.entities),
-            'total_relationships': len(self.relationships),
-            'average_degree': sum(degrees.values()) / max(len(degrees), 1),
-            'max_degree': max(degrees.values()) if degrees else 0,
-            'hubs': hubs,
-            'isolated_entities': [e.name for e in self.entities if degrees.get(e.name, 0) == 0]
-        }
-    
-    def to_graph_data(self) -> Dict[str, Any]:
-        """Convertit en données pour visualisation graphique"""
-        nodes = []
-        edges = []
-        
-        # Créer les nœuds
-        for entity in self.entities:
-            nodes.append({
-                'id': entity.name,
-                'label': entity.name,
-                'type': entity.type,
-                'size': entity.importance * 50,  # Taille proportionnelle à l'importance
-                'attributes': entity.attributes
-            })
-        
-        # Créer les arêtes
-        for rel in self.relationships:
-            edges.append({
-                'source': rel.source,
-                'target': rel.target,
-                'type': rel.type,
-                'weight': rel.strength,
-                'directed': rel.direction == "unidirectional"
-            })
-        
-        return {
-            'nodes': nodes,
-            'edges': edges,
-            'stats': self.get_network_stats()
-        }
-
-@dataclass
-class ComparisonResult:
-    """Résultat de comparaison de documents"""
-    type: str  # versions, témoignages, documents, chronologies
-    document_count: int
-    comparison: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.now)
-    visualizations: Dict[str, Any] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    differences: List[Dict[str, Any]] = field(default_factory=list)
-    similarities: List[Dict[str, Any]] = field(default_factory=list)
-    
-    def add_difference(self, category: str, doc1_content: str, doc2_content: str, importance: int = 5):
-        """Ajoute une différence identifiée"""
-        self.differences.append({
-            'category': category,
-            'doc1': doc1_content,
-            'doc2': doc2_content,
-            'importance': importance,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    def add_similarity(self, category: str, content: str, confidence: float = 0.8):
-        """Ajoute une similarité identifiée"""
-        self.similarities.append({
-            'category': category,
-            'content': content,
-            'confidence': confidence
-        })
-    
-    def get_summary(self) -> Dict[str, Any]:
-        """Génère un résumé de la comparaison"""
-        return {
-            'documents_compared': self.document_count,
-            'differences_found': len(self.differences),
-            'similarities_found': len(self.similarities),
-            'major_differences': len([d for d in self.differences if d.get('importance', 5) >= 7]),
-            'categories': list(set(d['category'] for d in self.differences))
-        }
-
-@dataclass
-class SynthesisResult:
-    """Résultat de synthèse de documents"""
-    content: str
-    piece_count: int
-    categories: List[str]
-    timestamp: datetime = field(default_factory=datetime.now)
-    key_points: List[str] = field(default_factory=list)
-    chronology: Optional[List[TimelineEvent]] = None
-    legal_points: List[str] = field(default_factory=list)
-    recommendations: List[str] = field(default_factory=list)
-    sources_used: List[str] = field(default_factory=list)
-    confidence: float = 0.8
-    
-    def add_key_point(self, point: str, source: Optional[str] = None):
-        """Ajoute un point clé"""
-        self.key_points.append(point)
-        if source and source not in self.sources_used:
-            self.sources_used.append(source)
-    
-    def add_legal_point(self, point: str, articles: List[str] = None):
-        """Ajoute un point d'attention juridique"""
-        legal_point = point
-        if articles:
-            legal_point += f" (Articles : {', '.join(articles)})"
-        self.legal_points.append(legal_point)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'content': self.content,
-            'piece_count': self.piece_count,
-            'categories': self.categories,
-            'timestamp': self.timestamp.isoformat(),
-            'key_points': self.key_points,
-            'has_chronology': self.chronology is not None,
-            'legal_points': self.legal_points,
-            'recommendations': self.recommendations,
-            'sources_count': len(self.sources_used),
-            'confidence': self.confidence
-        }
-
-# ========== SESSION ET COMMUNICATION ==========
-
-@dataclass
-class Session:
-    """Session utilisateur avec état de travail"""
-    id: str
-    created_at: datetime = field(default_factory=datetime.now)
-    last_activity: datetime = field(default_factory=datetime.now)
-    documents: Dict[str, Document] = field(default_factory=dict)
-    search_history: List[QueryAnalysis] = field(default_factory=list)
-    preferences: Dict[str, Any] = field(default_factory=dict)
-    temp_data: Dict[str, Any] = field(default_factory=dict)
-    
-    # État de travail
-    current_case: Optional[CasJuridique] = None
-    selected_pieces: List[PieceSelectionnee] = field(default_factory=list)
-    draft_documents: Dict[str, RedactionResult] = field(default_factory=dict)
-    analysis_results: Dict[str, AnalysisResult] = field(default_factory=dict)
-    
-    def is_expired(self, timeout_minutes: int = 60) -> bool:
-        """Vérifie si la session a expiré"""
-        return (datetime.now() - self.last_activity).seconds > timeout_minutes * 60
-    
-    def update_activity(self):
-        """Met à jour l'heure de dernière activité"""
-        self.last_activity = datetime.now()
-    
-    def add_search(self, query_analysis: QueryAnalysis):
-        """Ajoute une recherche à l'historique"""
-        self.search_history.append(query_analysis)
-        self.update_activity()
-    
-    def save_draft(self, doc_type: str, result: RedactionResult):
-        """Sauvegarde un brouillon de document"""
-        self.draft_documents[doc_type] = result
-        self.update_activity()
-    
-    def get_recent_searches(self, n: int = 10) -> List[QueryAnalysis]:
-        """Retourne les N dernières recherches"""
-        return self.search_history[-n:]
-    
-    def export_work(self) -> Dict[str, Any]:
-        """Exporte tout le travail de la session"""
-        return {
-            'session_id': self.id,
-            'created_at': self.created_at.isoformat(),
-            'duration_minutes': int((self.last_activity - self.created_at).seconds / 60),
-            'documents_count': len(self.documents),
-            'searches_count': len(self.search_history),
-            'drafts_count': len(self.draft_documents),
-            'analyses_count': len(self.analysis_results),
-            'current_case': self.current_case.to_dict() if self.current_case else None,
-            'selected_pieces_count': len(self.selected_pieces)
-        }
-
-@dataclass
-class EmailConfig:
-    """Configuration d'envoi d'email"""
-    to: List[str]
-    subject: str
-    body: str
-    cc: List[str] = field(default_factory=list)
-    bcc: List[str] = field(default_factory=list)
-    attachments: List[Dict[str, Any]] = field(default_factory=list)
-    reply_to: Optional[str] = None
-    priority: str = "normal"  # low, normal, high
-    is_encrypted: bool = False
-    requires_receipt: bool = False
-    
-    def add_attachment(self, filename: str, data: bytes, mime_type: str = "application/octet-stream"):
-        """Ajoute une pièce jointe"""
-        self.attachments.append({
-            'filename': filename,
-            'data': data,
-            'mime_type': mime_type,
-            'size': len(data)
-        })
-    
-    def add_document_attachment(self, doc: Document):
-        """Ajoute un document comme pièce jointe"""
-        self.add_attachment(
-            f"{doc.title}.txt",
-            doc.content.encode('utf-8'),
-            'text/plain'
-        )
-    
-    def validate(self) -> Tuple[bool, List[str]]:
-        """Valide la configuration email"""
-        errors = []
-        
-        if not self.to:
-            errors.append("Au moins un destinataire requis")
-        
-        if not self.subject:
-            errors.append("Objet requis")
-        
-        if not self.body:
-            errors.append("Corps du message requis")
-        
-        # Vérifier les adresses email
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        for email in self.to + self.cc + self.bcc:
-            if not re.match(email_pattern, email):
-                errors.append(f"Adresse email invalide : {email}")
-        
-        return len(errors) == 0, errors
-
-# ========== HELPERS ET UTILITIES ==========
-
-class SourceTracker:
-    """Classe helper pour gérer la traçabilité complète des sources"""
-    
-    def __init__(self):
-        self.documents: Dict[str, Document] = {}
-        self.facts: Dict[str, FactWithSource] = {}
-        self.source_cache: Dict[str, SourceReference] = {}
-        self.elements_procedure: Dict[str, ElementProcedure] = {}
-        self.pieces_versees: Dict[str, PieceVersee] = {}
-        self.cas_juridiques: Dict[str, CasJuridique] = {}
-    
-    def register_document(self, doc: Document) -> str:
-        """Enregistre un document et retourne son ID"""
-        self.documents[doc.id] = doc
-        return doc.id
-    
-    def create_source_reference(self, document_id: str, **kwargs) -> SourceReference:
-        """Crée une référence de source"""
-        if document_id not in self.documents:
-            raise ValueError(f"Document {document_id} non trouvé")
-        
-        doc = self.documents[document_id]
-        source_ref = SourceReference(
-            document_id=document_id,
-            document_title=doc.title,
-            **kwargs
-        )
-        
-        # Cache pour éviter les doublons
-        cache_key = f"{document_id}_{kwargs.get('page')}_{kwargs.get('paragraph')}"
-        self.source_cache[cache_key] = source_ref
-        
-        return source_ref
-    
-    def create_fact(self, content: str, category: str, source_refs: List[SourceReference]) -> FactWithSource:
-        """Crée un fait avec ses sources"""
-        fact = FactWithSource(
-            id=f"fact_{len(self.facts)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            content=content,
-            category=category,
-            sources=source_refs,
-            verified=bool(source_refs)
-        )
-        self.facts[fact.id] = fact
-        return fact
-    
-    def create_element_procedure(self, type_acte: str, intitule: str, 
-                               date: datetime, auteur: str, **kwargs) -> ElementProcedure:
-        """Crée un élément de procédure tracé"""
-        element = ElementProcedure(
-            id=f"proc_{type_acte}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            type=type_acte,
-            intitule=intitule,
-            date=date,
-            auteur=auteur,
-            **kwargs
-        )
-        self.elements_procedure[element.id] = element
-        return element
-    
-    def create_piece_versee(self, numero: int, cote: str, intitule: str, 
-                          partie_versante: str, **kwargs) -> PieceVersee:
-        """Crée une pièce versée aux débats"""
-        piece = PieceVersee(
-            id=f"piece_{cote}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            numero_ordre=numero,
-            cote=cote,
-            intitule=intitule,
-            partie_versante=partie_versante,
-            **kwargs
-        )
-        self.pieces_versees[piece.id] = piece
-        return piece
-    
-    def link_piece_to_facts(self, piece_id: str, fact_ids: List[str]):
-        """Lie une pièce aux faits qu'elle établit"""
-        if piece_id not in self.pieces_versees:
-            raise ValueError(f"Pièce {piece_id} non trouvée")
-        
-        piece = self.pieces_versees[piece_id]
-        for fact_id in fact_ids:
-            if fact_id in self.facts:
-                piece.facts_etablis.append(self.facts[fact_id])
-    
-    def link_element_to_sources(self, element_id: str, source_refs: List[SourceReference]):
-        """Lie un élément de procédure à ses sources"""
-        if element_id not in self.elements_procedure:
-            raise ValueError(f"Élément {element_id} non trouvé")
-        
-        element = self.elements_procedure[element_id]
-        element.source_references.extend(source_refs)
-    
-    def find_documents_by_reference(self, reference: str) -> List[Document]:
-        """Trouve tous les documents correspondant à une référence @"""
-        ref_clean = reference.replace('@', '').strip().lower()
-        matching_docs = []
-        
-        for doc in self.documents.values():
-            if doc.has_reference(ref_clean):
-                matching_docs.append(doc)
-        
-        return matching_docs
-    
-    def generate_source_report(self) -> Dict[str, Any]:
-        """Génère un rapport global sur les sources utilisées"""
-        return {
-            'total_documents': len(self.documents),
-            'total_facts': len(self.facts),
-            'facts_with_sources': len([f for f in self.facts.values() if f.sources]),
-            'facts_without_sources': len([f for f in self.facts.values() if not f.sources]),
-            'total_elements_procedure': len(self.elements_procedure),
-            'total_pieces_versees': len(self.pieces_versees),
-            'pieces_contestees': len([p for p in self.pieces_versees.values() if p.contestee]),
-            'source_distribution': self._get_source_distribution(),
-            'procedure_distribution': {
-                type_acte: len([e for e in self.elements_procedure.values() if e.type == type_acte])
-                for type_acte in set(e.type for e in self.elements_procedure.values())
-            }
-        }
-    
-    def _get_source_distribution(self) -> Dict[str, int]:
-        """Analyse la distribution des sources"""
-        distribution = {}
-        
-        # Sources des faits
-        for fact in self.facts.values():
-            for source in fact.sources:
-                doc_title = source.document_title
-                distribution[doc_title] = distribution.get(doc_title, 0) + 1
-        
-        # Sources des éléments de procédure
-        for element in self.elements_procedure.values():
-            for source in element.source_references:
-                doc_title = source.document_title
-                distribution[doc_title] = distribution.get(doc_title, 0) + 1
-        
-        # Sources des pièces
-        for piece in self.pieces_versees.values():
-            for source in piece.source_references:
-                doc_title = source.document_title
-                distribution[doc_title] = distribution.get(doc_title, 0) + 1
-        
-        return distribution
-
-class DocumentFormatter:
-    """Classe pour formater les documents avec liens sources"""
-    
-    def __init__(self, source_tracker: SourceTracker):
-        self.tracker = source_tracker
-    
-    def format_with_sources(self, content: str, fact_ids: List[str]) -> str:
-        """Formate un contenu en ajoutant les liens vers les sources"""
-        fact_map = {fid: self.tracker.facts[fid] for fid in fact_ids if fid in self.tracker.facts}
-        return inject_source_links(content, fact_map)
-    
-    def format_plaidoirie_with_sources(self, plaidoirie: PlaidoirieResult) -> str:
-        """Formate une plaidoirie avec tous les liens sources"""
-        content = plaidoirie.content
-        
-        # Ajouter les liens pour chaque paragraphe
-        paragraphs = content.split('\n\n')
-        formatted_paragraphs = []
-        
-        for i, para in enumerate(paragraphs):
-            # Si des sources sont mappées pour ce paragraphe
-            if i in plaidoirie.source_mapping:
-                sources = plaidoirie.source_mapping[i]
-                # Ajouter une note de bas de page avec les sources
-                source_notes = []
-                for j, source in enumerate(sources):
-                    note_num = f"{i+1}.{j+1}"
-                    para += f"[^{note_num}]"
-                    source_notes.append(f"[^{note_num}]: {source.get_citation()}")
-                
-                formatted_paragraphs.append(para)
-                if source_notes:
-                    formatted_paragraphs.append("\n".join(source_notes))
-            else:
-                formatted_paragraphs.append(para)
-        
-        return "\n\n".join(formatted_paragraphs)
-    
-    def generate_source_footnotes(self, sources: List[SourceReference]) -> str:
-        """Génère des notes de bas de page pour les sources"""
-        footnotes = []
-        for i, source in enumerate(sources, 1):
-            citation = source.get_citation()
-            if source.excerpt:
-                citation += f' - "{source.excerpt}"'
-            footnotes.append(f"[^{i}]: {citation}")
-        
-        return "\n".join(footnotes)
-    
-    def create_hyperlinked_document(self, doc_type: str, content: str, 
-                                  sources: List[SourceReference]) -> str:
-        """Crée un document avec hyperliens vers les sources"""
-        header = f"# {doc_type.upper()}\n\n"
-        header += f"*Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}*\n\n"
-        
-        # Ajouter un sommaire des sources
-        header += "## Sources utilisées\n\n"
-        for i, source in enumerate(sources, 1):
-            header += f"{i}. {source.get_citation()}\n"
-        header += "\n---\n\n"
-        
-        # Contenu avec notes
-        footer = "\n\n---\n\n## Notes et références\n\n"
-        footer += self.generate_source_footnotes(sources)
-        
-        return header + content + footer
-
-# ========== FONCTIONS HELPER ==========
-
-def get_all_juridictions() -> List[str]:
-    """Retourne la liste de toutes les juridictions"""
-    return [j.value for j in TypeJuridiction]
-
-def get_juridiction_type(juridiction_name: str) -> Optional[TypeJuridiction]:
-    """Retourne le type de juridiction à partir du nom"""
-    for jur_type in TypeJuridiction:
-        if jur_type.value.lower() == juridiction_name.lower():
-            return jur_type
-    return None
-
-def format_source_link(source_ref: SourceReference, text: str) -> str:
-    """Formate un texte avec un lien vers sa source"""
-    # Format : [texte](source:document_id#page_X_para_Y)
-    link_parts = [f"source:{source_ref.document_id}"]
-    if source_ref.page:
-        link_parts.append(f"page_{source_ref.page}")
-    if source_ref.paragraph:
-        link_parts.append(f"para_{source_ref.paragraph}")
-    
-    link = "#".join(link_parts)
-    return f"[{text}]({link})"
-
-def format_piece_link(piece: PieceVersee, text: str) -> str:
-    """Formate un texte avec un lien vers une pièce"""
-    # Format : [texte](piece:cote)
-    return f"[{text}](piece:{piece.cote})"
-
-def format_procedure_link(element: ElementProcedure, text: str) -> str:
-    """Formate un texte avec un lien vers un élément de procédure"""
-    # Format : [texte](procedure:element_id)
-    return f"[{text}](procedure:{element.id})"
-
-def parse_source_link(link: str) -> Optional[Dict[str, Any]]:
-    """Parse un lien source pour extraire ses composants"""
-    # Pattern : [texte](type:reference#details)
-    pattern = r'\[([^\]]+)\]\((\w+):([^#\)]+)(?:#([^\)]+))?\)'
-    match = re.match(pattern, link)
-    
-    if not match:
-        return None
-    
-    text, link_type, reference, details = match.groups()
-    
-    result = {
-        'text': text,
-        'type': link_type,
-        'reference': reference
-    }
-    
-    # Parser les détails si présents
-    if details:
-        detail_parts = details.split('_')
-        if 'page' in details:
-            result['page'] = int(detail_parts[1])
-        if 'para' in details:
-            result['paragraph'] = int(detail_parts[-1])
-    
-    return result
-
-def inject_source_links(text: str, fact_map: Dict[str, FactWithSource]) -> str:
-    """Injecte automatiquement les liens sources dans un texte"""
-    # Cette fonction recherche les faits dans le texte et ajoute les liens
-    for fact_id, fact in fact_map.items():
-        if fact.content in text and fact.sources:
-            # Prendre la première source
-            source = fact.sources[0]
-            linked_text = format_source_link(source, fact.content)
-            text = text.replace(fact.content, linked_text, 1)
-    
-    return text
-
-def extract_parties_from_query(query: str) -> Dict[str, List[str]]:
-    """Extrait les parties mentionnées dans une requête"""
-    parties = {
-        'demandeurs': [],
-        'defendeurs': []
-    }
-    
-    query_lower = query.lower()
-    
-    # Patterns pour les demandeurs (entreprises BTP principalement)
-    demandeurs_patterns = [
-        ('interconstruction', 'INTERCONSTRUCTION'),
-        ('vinci', 'VINCI'),
-        ('sogeprom', 'SOGEPROM RÉALISATIONS'),
-        ('demathieu bard', 'DEMATHIEU BARD'),
-        ('bouygues', 'BOUYGUES'),
-        ('eiffage', 'EIFFAGE'),
-        ('spie', 'SPIE BATIGNOLLES'),
-        ('leon grosse', 'LEON GROSSE'),
-        ('fayat', 'FAYAT'),
-        ('colas', 'COLAS'),
-        ('eurovia', 'EUROVIA'),
-        ('razel-bec', 'RAZEL-BEC'),
-        ('nge', 'NGE'),
-        ('gtm', 'GTM Bâtiment')
-    ]
-    
-    # Patterns pour les défendeurs
-    defendeurs_patterns = [
-        ('perinet', 'M. PERINET'),
-        ('périnet', 'M. PÉRINET'),
-        ('vp invest', 'VP INVEST'),
-        ('perraud', 'M. PERRAUD'),
-        ('martin', 'M. MARTIN'),
-        ('dupont', 'M. DUPONT'),
-        ('durand', 'M. DURAND'),
-        ('laurent', 'M. LAURENT'),
-        ('michel', 'M. MICHEL')
-    ]
-    
-    # Analyser la structure de la requête
-    if ' pour ' in query_lower and ' contre ' in query_lower:
-        # Extraire les parties selon la structure
-        partie_pour = query_lower.split(' pour ')[1].split(' contre ')[0]
-        partie_contre = query_lower.split(' contre ')[1]
-        
-        # Chercher les demandeurs
-        for keyword, nom_formate in demandeurs_patterns:
-            if keyword in partie_pour:
-                parties['demandeurs'].append(nom_formate)
-        
-        # Chercher les défendeurs
-        for keyword, nom_formate in defendeurs_patterns:
-            if keyword in partie_contre:
-                parties['defendeurs'].append(nom_formate)
-    else:
-        # Recherche globale
-        if ' contre ' in query_lower:
-            partie_contre = query_lower.split(' contre ')[1]
-            for keyword, nom_formate in defendeurs_patterns:
-                if keyword in partie_contre:
-                    parties['defendeurs'].append(nom_formate)
-        
-        # Chercher les demandeurs dans le reste
-        for keyword, nom_formate in demandeurs_patterns:
-            if keyword in query_lower and nom_formate not in parties['defendeurs']:
-                if ' contre ' not in query_lower or keyword not in query_lower.split(' contre ')[1]:
-                    parties['demandeurs'].append(nom_formate)
-    
-    return parties
-
-def extract_infractions_from_query(query: str) -> List[str]:
-    """Extrait les infractions mentionnées dans une requête"""
-    query_lower = query.lower()
-    infractions = []
-    
-    infractions_keywords = {
-        'escroquerie': 'Escroquerie (art. 313-1 Code pénal)',
-        'abus de confiance': 'Abus de confiance (art. 314-1 Code pénal)',
-        'abus de biens sociaux': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
-        'abs': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
-        'faux': 'Faux et usage de faux (art. 441-1 Code pénal)',
-        'corruption': 'Corruption (art. 432-11 et 433-1 Code pénal)',
-        'trafic d\'influence': 'Trafic d\'influence (art. 432-11 et 433-2 Code pénal)',
-        'favoritisme': 'Favoritisme (art. 432-14 Code pénal)',
-        'prise illégale': 'Prise illégale d\'intérêts (art. 432-12 Code pénal)',
-        'blanchiment': 'Bl
+# ========== FIN DU MODULE ==========
