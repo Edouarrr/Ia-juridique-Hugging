@@ -1,2 +1,12 @@
 # config/__init__.py
-# Fichier vide pour faire du dossier un module Python
+"""Module de configuration"""
+
+from .app_config import app_config, api_config, DEFAULT_TEMPLATES, DOCUMENT_CATEGORIES, JURIDICTIONS
+
+__all__ = [
+    'app_config',
+    'api_config', 
+    'DEFAULT_TEMPLATES',
+    'DOCUMENT_CATEGORIES',
+    'JURIDICTIONS'
+]
