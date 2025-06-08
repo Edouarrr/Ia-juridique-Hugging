@@ -99,3 +99,86 @@ class JurisprudenceAnalysis:
             self.recommandations = []
         if self.date_analyse is None:
             self.date_analyse = datetime.now()
+
+@dataclass
+class JurisprudenceSearch:
+    """Recherche de jurisprudence"""
+    query: str
+    criteria: JurisprudenceSearchCriteria
+    results: List[JurisprudenceReference] = None
+    total_results: int = 0
+    search_date: datetime = None
+    search_duration: float = 0.0
+    metadata: Dict[str, Any] = None
+    
+    def __post_init__(self):
+        if self.results is None:
+            self.results = []
+        if self.search_date is None:
+            self.search_date = datetime.now()
+        if self.metadata is None:
+            self.metadata = {}
+    
+    def add_result(self, reference: JurisprudenceReference):
+        """Ajoute un résultat à la recherche"""
+        self.results.append(reference)
+        self.total_results = len(self.results)
+    
+    def filter_by_juridiction(self, juridiction: str) -> List[JurisprudenceReference]:
+        """Filtre les résultats par juridiction"""
+        return [r for r in self.results if r.juridiction == juridiction]
+    
+    def filter_by_date_range(self, start: datetime, end: datetime) -> List[JurisprudenceReference]:
+        """Filtre les résultats par plage de dates"""
+        return [r for r in self.results if start <= r.date <= end]
+    
+    def sort_by_date(self, reverse: bool = True) -> List[JurisprudenceReference]:
+        """Trie les résultats par date"""
+        return sorted(self.results, key=lambda x: x.date, reverse=reverse)
+    
+    def sort_by_importance(self, reverse: bool = True) -> List[JurisprudenceReference]:
+        """Trie les résultats par importance"""
+        return sorted(self.results, key=lambda x: x.importance, reverse=reverse)
+
+@dataclass
+class JurisprudenceStats:
+    """Statistiques sur la jurisprudence"""
+    total_decisions: int = 0
+    by_juridiction: Dict[str, int] = None
+    by_year: Dict[int, int] = None
+    by_source: Dict[str, int] = None
+    most_cited_articles: List[tuple] = None
+    trending_topics: List[str] = None
+    last_update: datetime = None
+    
+    def __post_init__(self):
+        if self.by_juridiction is None:
+            self.by_juridiction = {}
+        if self.by_year is None:
+            self.by_year = {}
+        if self.by_source is None:
+            self.by_source = {}
+        if self.most_cited_articles is None:
+            self.most_cited_articles = []
+        if self.trending_topics is None:
+            self.trending_topics = []
+        if self.last_update is None:
+            self.last_update = datetime.now()
+
+@dataclass
+class JurisprudenceAlert:
+    """Alerte jurisprudence"""
+    id: str
+    name: str
+    criteria: JurisprudenceSearchCriteria
+    frequency: str  # "daily", "weekly", "monthly"
+    active: bool = True
+    created_date: datetime = None
+    last_run: Optional[datetime] = None
+    recipients: List[str] = None
+    
+    def __post_init__(self):
+        if self.created_date is None:
+            self.created_date = datetime.now()
+        if self.recipients is None:
+            self.recipients = []
