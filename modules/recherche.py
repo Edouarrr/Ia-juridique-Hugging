@@ -272,8 +272,8 @@ def show_page():
     with col1:
         default_value = ""
         if 'pending_query' in st.session_state:
-        default_value = st.session_state.pending_query
-        del st.session_state.pending_query
+            default_value = st.session_state.pending_query
+            del st.session_state.pending_query
     elif 'universal_query' in st.session_state:
         default_value = st.session_state.universal_query
 
