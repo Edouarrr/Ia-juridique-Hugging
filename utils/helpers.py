@@ -1,318 +1,509 @@
 # utils/helpers.py
-"""Fonctions utilitaires pour l'application"""
+"""Fonctions utilitaires pour l'application juridique"""
 
 import re
+import unicodedata
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional, Tuple, Union
+import hashlib
+import base64
+import json
 import os
-import io
-import streamlit as st
-from typing import Dict, List, Any
-from collections import defaultdict, Counter
-
-from models.dataclasses import Document, PieceSelectionnee
-
-try:
-    from docx import Document as DocxDocument
-    from docx.shared import Pt, Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
+from pathlib import Path
 
 def clean_key(text: str) -> str:
-    """Nettoie une chaîne pour en faire une clé Streamlit valide"""
-    replacements = {
-        'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-        'à': 'a', 'â': 'a', 'ä': 'a',
-        'ù': 'u', 'û': 'u', 'ü': 'u',
-        'ô': 'o', 'ö': 'o',
-        'î': 'i', 'ï': 'i',
-        'ç': 'c',
-        ' ': '_', '-': '_', "'": '_', '"': '_',
-        '.': '_', ',': '_', '(': '_', ')': '_',
-        '[': '_', ']': '_', '/': '_', '\\': '_'
-    }
+    """Nettoie une chaîne pour en faire une clé valide"""
+    if not text:
+        return ""
     
-    cleaned = text.lower()
-    for old, new in replacements.items():
-        cleaned = cleaned.replace(old, new)
+    # Supprimer les accents
+    text = ''.join(c for c in unicodedata.normalize('NFD', text)
+                   if unicodedata.category(c) != 'Mn')
     
-    cleaned = ''.join(c if c.isalnum() or c == '_' else '_' for c in cleaned)
-    cleaned = re.sub(r'_+', '_', cleaned)
-    cleaned = cleaned.strip('_')
+    # Remplacer les espaces et caractères spéciaux par des underscores
+    text = re.sub(r'[^a-zA-Z0-9_-]', '_', text)
     
-    return cleaned
+    # Supprimer les underscores multiples
+    text = re.sub(r'_+', '_', text)
+    
+    # Supprimer les underscores au début et à la fin
+    text = text.strip('_')
+    
+    # Limiter la longueur
+    if len(text) > 64:
+        text = text[:64]
+    
+    # S'assurer qu'il n'est pas vide
+    if not text:
+        text = "key_" + hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
+    
+    return text.lower()
 
-def initialize_session_state():
-    """Initialise toutes les variables de session"""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = True
-        st.session_state.dossier_actif = None
-        st.session_state.dossiers = {}
-        st.session_state.pieces_selectionnees = {}
-        st.session_state.current_page = 1
-        st.session_state.search_query = ""
-        st.session_state.docs_for_analysis = []
-        st.session_state.document_content = ""
-        st.session_state.custom_templates = {}
-        st.session_state.letterhead = None
-        st.session_state.citation_manager = None
-        st.session_state.victimes_adapter = []
-        st.session_state.plainte_originale = None
-        st.session_state.plaintes_adaptees = {}
-        st.session_state.azure_documents = {}
-        st.session_state.selected_container = None
-        st.session_state.current_folder_path = ""
-        st.session_state.style_models = {}
-        st.session_state.learned_styles = {}
-        st.session_state.vector_store = None
-        st.session_state.azure_search_client = None
-        st.session_state.azure_blob_manager = None
-        st.session_state.azure_search_manager = None
-        st.session_state.dynamic_search_prompts = {}
-        st.session_state.dynamic_templates = {}
-        st.session_state.selected_folders = set()
-        st.session_state.letterhead_template = None
-        st.session_state.letterhead_image = None
-
-def clean_env_for_azure():
-    """Nettoie l'environnement pour Azure sur Hugging Face Spaces"""
-    # Supprimer les variables de proxy qui interfèrent avec Azure
-    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 
-                  'NO_PROXY', 'no_proxy', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE']
-    
-    for var in proxy_vars:
-        if var in os.environ:
-            del os.environ[var]
-    
-    # Désactiver les proxies dans requests
-    os.environ['CURL_CA_BUNDLE'] = ""
-    os.environ['REQUESTS_CA_BUNDLE'] = ""
-
-def create_env_example() -> str:
-    """Crée un fichier .env exemple"""
-    return """# Azure Search
-AZURE_SEARCH_ENDPOINT=https://search-rag-juridique.search.windows.net
-AZURE_SEARCH_KEY=Votre_Clé_Azure_Search
-
-# Azure OpenAI pour les embeddings
-AZURE_OPENAI_ENDPOINT=https://openai-juridique-rag2.openai.azure.com
-AZURE_OPENAI_KEY=Votre_Clé_Azure_OpenAI
-AZURE_OPENAI_DEPLOYMENT=text-embedding-ada-002
-
-# Azure Blob Storage
-AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=VOTRE_COMPTE;AccountKey=VOTRE_CLE;EndpointSuffix=core.windows.net
-
-# Autres IA (optionnel)
-ANTHROPIC_API_KEY=Votre_Clé_Anthropic
-OPENAI_API_KEY=Votre_Clé_OpenAI
-GOOGLE_API_KEY=Votre_Clé_Google
-PERPLEXITY_API_KEY=Votre_Clé_Perplexity"""
-
-def create_letterhead_from_template(template, content: str) -> io.BytesIO:
-    """Crée un document avec papier en-tête à partir d'un template"""
-    if not DOCX_AVAILABLE:
-        return None
-    
-    try:
-        doc = DocxDocument()
-        
-        # Définir les marges
-        sections = doc.sections
-        for section in sections:
-            section.top_margin = Inches(template.margins['top'])
-            section.bottom_margin = Inches(template.margins['bottom'])
-            section.left_margin = Inches(template.margins['left'])
-            section.right_margin = Inches(template.margins['right'])
-        
-        # Ajouter l'en-tête
-        if template.header_content:
-            header = doc.sections[0].header
-            header_para = header.paragraphs[0]
-            header_para.text = template.header_content
-            header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Ajouter le contenu principal
-        paragraphs = content.split('\n')
-        for para_text in paragraphs:
-            if para_text.strip():
-                p = doc.add_paragraph(para_text)
-                p.style.font.name = template.font_family
-                p.style.font.size = Pt(template.font_size)
-                p.paragraph_format.line_spacing = template.line_spacing
-        
-        # Ajouter le pied de page
-        if template.footer_content:
-            footer = doc.sections[0].footer
-            footer_para = footer.paragraphs[0]
-            footer_para.text = template.footer_content
-            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Sauvegarder en mémoire
-        docx_buffer = io.BytesIO()
-        doc.save(docx_buffer)
-        docx_buffer.seek(0)
-        
-        return docx_buffer
-        
-    except Exception as e:
-        st.error(f"Erreur création document avec papier en-tête: {e}")
-        return None
-
-# Fonctions de fusion pour les styles
-def merge_structures(structures: List[Dict]) -> Dict[str, Any]:
-    """Fusionne plusieurs structures de documents"""
-    if not structures:
-        return {}
-    
-    merged = {
-        'sections_communes': [],
-        'longueur_moyenne': 0
-    }
-    
-    # Trouver les sections communes
-    all_sections = []
-    for struct in structures:
-        all_sections.extend([s['titre'] for s in struct.get('sections', [])])
-    
-    # Compter les occurrences
-    section_counts = Counter(all_sections)
-    
-    # Garder les sections présentes dans au moins 50% des documents
-    threshold = len(structures) / 2
-    merged['sections_communes'] = [
-        section for section, count in section_counts.items()
-        if count >= threshold
+def extract_date(text: str) -> Optional[datetime]:
+    """Extrait une date d'un texte"""
+    # Patterns de dates courants
+    date_patterns = [
+        (r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', '%d/%m/%Y'),
+        (r'(\d{1,2})\.(\d{1,2})\.(\d{4})', '%d.%m.%Y'),
+        (r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})', None),
+        (r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', '%Y-%m-%d'),
     ]
     
-    # Ajouter les informations Word si présentes
-    word_styles = []
-    for struct in structures:
-        if 'word_styles' in struct:
-            word_styles.extend(struct['word_styles'])
+    # Mapping des mois français
+    mois_fr = {
+        'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
+        'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
+        'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
+    }
     
-    if word_styles:
-        merged['word_styles'] = list(set(word_styles))
+    for pattern, date_format in date_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            if date_format:
+                try:
+                    return datetime.strptime(match.group(0), date_format)
+                except ValueError:
+                    continue
+            else:
+                # Format avec mois en français
+                try:
+                    day = int(match.group(1))
+                    month = mois_fr.get(match.group(2).lower())
+                    year = int(match.group(3))
+                    if month:
+                        return datetime(year, month, day)
+                except (ValueError, AttributeError):
+                    continue
     
-    return merged
+    return None
 
-def merge_formules(formules_list: List[List[str]]) -> List[str]:
-    """Fusionne les formules types"""
-    all_formules = []
-    for formules in formules_list:
-        all_formules.extend(formules)
+def extract_dates(text: str) -> List[Tuple[datetime, str]]:
+    """Extrait toutes les dates d'un texte avec leur contexte"""
+    dates = []
+    sentences = text.split('.')
     
-    # Compter et garder les plus fréquentes
-    formule_counts = Counter(all_formules)
+    for sentence in sentences:
+        date = extract_date(sentence)
+        if date:
+            # Nettoyer le contexte
+            context = sentence.strip()
+            if len(context) > 200:
+                context = context[:200] + "..."
+            dates.append((date, context))
     
-    return [formule for formule, count in formule_counts.most_common(20)]
+    # Trier par date
+    dates.sort(key=lambda x: x[0])
+    
+    return dates
 
-def merge_formatting(formats: List[Dict]) -> Dict[str, Any]:
-    """Fusionne les paramètres de mise en forme"""
-    if not formats:
+def extract_amounts(text: str) -> List[Tuple[float, str]]:
+    """Extrait les montants monétaires d'un texte"""
+    amounts = []
+    
+    # Patterns pour les montants
+    amount_patterns = [
+        r'(\d{1,3}(?:\s?\d{3})*(?:,\d{2})?)\s*(?:€|EUR|euros?)',
+        r'(\d+(?:\.\d{3})*(?:,\d{2})?)\s*(?:€|EUR|euros?)',
+        r'(\d+(?:,\d{2})?)\s*(?:€|EUR|euros?)',
+    ]
+    
+    for pattern in amount_patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE)
+        for match in matches:
+            amount_str = match.group(1)
+            # Normaliser le format
+            amount_str = amount_str.replace(' ', '').replace('.', '')
+            amount_str = amount_str.replace(',', '.')
+            
+            try:
+                amount = float(amount_str)
+                context = text[max(0, match.start()-50):min(len(text), match.end()+50)]
+                amounts.append((amount, context))
+            except ValueError:
+                continue
+    
+    # Dédupliquer et trier
+    amounts = list(set(amounts))
+    amounts.sort(key=lambda x: x[0], reverse=True)
+    
+    return amounts
+
+def extract_entities(text: str) -> Dict[str, List[str]]:
+    """Extrait les entités nommées d'un texte"""
+    entities = {
+        'persons': [],
+        'organizations': [],
+        'locations': [],
+        'dates': [],
+        'amounts': [],
+        'legal_refs': []
+    }
+    
+    # Personnes (patterns simples)
+    # Noms propres (2-3 mots commençant par majuscule)
+    person_pattern = r'\b([A-Z][a-zàâäéèêëïîôùûç]+ (?:[A-Z][a-zàâäéèêëïîôùûç]+ ?){0,2})\b'
+    persons = re.findall(person_pattern, text)
+    entities['persons'] = list(set(persons))
+    
+    # Organisations (SA, SARL, SAS, etc.)
+    org_pattern = r'\b([A-Z][A-Za-zàâäéèêëïîôùûç\-]+(?: [A-Z][A-Za-zàâäéèêëïîôùûç\-]+)*)\s*(?:SA|SARL|SAS|SCI|EURL|GIE|S\.A\.|S\.A\.R\.L\.|S\.A\.S\.)\b'
+    orgs = re.findall(org_pattern, text)
+    entities['organizations'] = list(set(orgs))
+    
+    # Lieux (villes, adresses)
+    location_keywords = ['rue', 'avenue', 'boulevard', 'place', 'Paris', 'Lyon', 'Marseille']
+    for keyword in location_keywords:
+        pattern = rf'\b(\d+\s+)?{keyword}\s+[A-Z][a-zàâäéèêëïîôùûç\-]+(?:\s+[A-Z]?[a-zàâäéèêëïîôùûç\-]+)*\b'
+        locations = re.findall(pattern, text, re.IGNORECASE)
+        entities['locations'].extend(locations)
+    
+    entities['locations'] = list(set(entities['locations']))
+    
+    # Dates
+    dates = extract_dates(text)
+    entities['dates'] = [date[0].strftime('%d/%m/%Y') for date in dates]
+    
+    # Montants
+    amounts = extract_amounts(text)
+    entities['amounts'] = [f"{amount[0]:,.2f} €" for amount in amounts]
+    
+    # Références juridiques
+    legal_refs = extract_legal_references(text)
+    entities['legal_refs'] = legal_refs
+    
+    return entities
+
+def extract_legal_references(text: str) -> List[str]:
+    """Extrait les références juridiques (articles, jurisprudence)"""
+    references = []
+    
+    # Articles de loi
+    article_patterns = [
+        r'articles?\s+L\.?\s*\d+(?:-\d+)?(?:\s+et\s+L\.?\s*\d+(?:-\d+)?)*',
+        r'articles?\s+R\.?\s*\d+(?:-\d+)?(?:\s+et\s+R\.?\s*\d+(?:-\d+)?)*',
+        r'articles?\s+\d+(?:-\d+)?(?:\s+et\s+\d+(?:-\d+)?)*\s+du\s+code\s+\w+',
+        r'articles?\s+\d+(?:-\d+)?(?:\s+(?:et|à)\s+\d+(?:-\d+)?)*',
+    ]
+    
+    for pattern in article_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        references.extend(matches)
+    
+    # Jurisprudence
+    juris_patterns = [
+        r'Cass\.?\s*(?:civ\.|crim\.|com\.|soc\.)?,?\s*\d{1,2}\s+\w+\s+\d{4}',
+        r'C\.?\s*cass\.?,?\s*\d{1,2}\s+\w+\s+\d{4}',
+        r'CA\s+[A-Z][a-z]+,?\s*\d{1,2}\s+\w+\s+\d{4}',
+        r'CE,?\s*\d{1,2}\s+\w+\s+\d{4}',
+        r'Cons\.\s*const\.,?\s*\d{1,2}\s+\w+\s+\d{4}',
+    ]
+    
+    for pattern in juris_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        references.extend(matches)
+    
+    return list(set(references))
+
+def format_legal_date(date: datetime) -> str:
+    """Formate une date au format juridique français"""
+    mois = [
+        'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+        'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+    ]
+    
+    return f"{date.day} {mois[date.month - 1]} {date.year}"
+
+def generate_document_id(prefix: str = "doc") -> str:
+    """Génère un ID unique pour un document"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    random_part = hashlib.md5(os.urandom(16)).hexdigest()[:8]
+    return f"{prefix}_{timestamp}_{random_part}"
+
+def calculate_reading_time(text: str, words_per_minute: int = 200) -> int:
+    """Calcule le temps de lecture estimé en minutes"""
+    word_count = len(text.split())
+    return max(1, round(word_count / words_per_minute))
+
+def truncate_text(text: str, max_length: int = 500, suffix: str = "...") -> str:
+    """Tronque un texte en préservant les mots complets"""
+    if len(text) <= max_length:
+        return text
+    
+    # Trouver le dernier espace avant la limite
+    truncated = text[:max_length]
+    last_space = truncated.rfind(' ')
+    
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    
+    return truncated + suffix
+
+def highlight_text(text: str, terms: List[str], tag: str = "mark") -> str:
+    """Surligne des termes dans un texte"""
+    if not terms:
+        return text
+    
+    # Échapper les caractères spéciaux regex
+    escaped_terms = [re.escape(term) for term in terms]
+    pattern = r'\b(' + '|'.join(escaped_terms) + r')\b'
+    
+    def replace_func(match):
+        return f'<{tag}>{match.group(0)}</{tag}>'
+    
+    return re.sub(pattern, replace_func, text, flags=re.IGNORECASE)
+
+def extract_section(content: str, section_title: str) -> Optional[str]:
+    """Extrait une section spécifique d'un document"""
+    # Patterns pour identifier les sections
+    patterns = [
+        rf'^{re.escape(section_title)}.*?(?=^[IVX]+\.|^[A-Z]\.|$)',
+        rf'^[IVX]+\.\s*{re.escape(section_title)}.*?(?=^[IVX]+\.|$)',
+        rf'^[A-Z]\.\s*{re.escape(section_title)}.*?(?=^[A-Z]\.|^[IVX]+\.|$)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, content, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+    
+    return None
+
+def normalize_whitespace(text: str) -> str:
+    """Normalise les espaces dans un texte"""
+    # Remplacer les espaces multiples par un seul
+    text = re.sub(r'\s+', ' ', text)
+    # Supprimer les espaces en début et fin de ligne
+    lines = [line.strip() for line in text.split('\n')]
+    # Rejoindre en préservant les sauts de ligne significatifs
+    return '\n'.join(line for line in lines if line)
+
+def create_summary(text: str, max_sentences: int = 3) -> str:
+    """Crée un résumé simple basé sur les premières phrases"""
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    if len(sentences) <= max_sentences:
+        return text
+    
+    summary = '. '.join(sentences[:max_sentences])
+    if not summary.endswith('.'):
+        summary += '.'
+    
+    return summary
+
+def format_file_size(size_bytes: int) -> str:
+    """Formate une taille de fichier en unités lisibles"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
+
+def is_valid_email(email: str) -> bool:
+    """Vérifie si une adresse email est valide"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def sanitize_filename(filename: str) -> str:
+    """Nettoie un nom de fichier pour le rendre sûr"""
+    # Remplacer les caractères interdits
+    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    # Limiter la longueur
+    name, ext = os.path.splitext(filename)
+    if len(name) > 200:
+        name = name[:200]
+    return name + ext
+
+def parse_reference(reference: str) -> Dict[str, str]:
+    """Parse une référence juridique"""
+    result = {
+        'type': 'unknown',
+        'jurisdiction': '',
+        'date': '',
+        'number': '',
+        'full': reference
+    }
+    
+    # Cour de cassation
+    if re.search(r'Cass\.?|C\.\s*cass\.?', reference, re.IGNORECASE):
+        result['type'] = 'cassation'
+        result['jurisdiction'] = 'Cour de cassation'
+        
+        # Extraire la chambre
+        chamber = re.search(r'(civ\.|crim\.|com\.|soc\.)', reference, re.IGNORECASE)
+        if chamber:
+            result['chamber'] = chamber.group(1)
+    
+    # Cour d'appel
+    elif re.search(r'CA\s+', reference, re.IGNORECASE):
+        result['type'] = 'appel'
+        city = re.search(r'CA\s+([A-Z][a-z]+)', reference)
+        if city:
+            result['jurisdiction'] = f"CA {city.group(1)}"
+    
+    # Date
+    date = extract_date(reference)
+    if date:
+        result['date'] = date.strftime('%d/%m/%Y')
+    
+    return result
+
+def detect_language(text: str) -> str:
+    """Détecte la langue d'un texte (basique)"""
+    # Mots français courants
+    fr_words = ['le', 'de', 'un', 'et', 'la', 'les', 'des', 'que', 'pour', 'dans']
+    # Mots anglais courants
+    en_words = ['the', 'of', 'and', 'to', 'in', 'is', 'it', 'that', 'for', 'with']
+    
+    text_lower = text.lower()
+    text_words = text_lower.split()
+    
+    fr_count = sum(1 for word in text_words if word in fr_words)
+    en_count = sum(1 for word in text_words if word in en_words)
+    
+    if fr_count > en_count:
+        return 'fr'
+    elif en_count > fr_count:
+        return 'en'
+    else:
+        return 'unknown'
+
+def merge_documents(docs: List[Dict[str, Any]], separator: str = "\n\n---\n\n") -> str:
+    """Fusionne plusieurs documents en un seul texte"""
+    merged = []
+    
+    for doc in docs:
+        header = f"# {doc.get('title', 'Sans titre')}\n"
+        if doc.get('date'):
+            header += f"Date: {doc['date']}\n"
+        if doc.get('source'):
+            header += f"Source: {doc['source']}\n"
+        
+        content = doc.get('content', '')
+        merged.append(header + "\n" + content)
+    
+    return separator.join(merged)
+
+def calculate_similarity(text1: str, text2: str) -> float:
+    """Calcule la similarité entre deux textes (méthode basique)"""
+    # Tokenisation simple
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+    
+    # Coefficient de Jaccard
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    
+    return len(intersection) / len(union)
+
+def extract_questions(text: str) -> List[str]:
+    """Extrait les questions d'un texte"""
+    # Patterns pour les questions
+    sentences = re.split(r'[.!?]+', text)
+    questions = []
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        # Vérifier si c'est une question
+        if sentence and ('?' in sentence or 
+                        sentence.lower().startswith(('qui', 'que', 'quoi', 'quand', 
+                                                    'où', 'comment', 'pourquoi', 
+                                                    'est-ce', 'combien'))):
+            if not sentence.endswith('?'):
+                sentence += '?'
+            questions.append(sentence)
+    
+    return questions
+
+def format_duration(minutes: int) -> str:
+    """Formate une durée en heures et minutes"""
+    if minutes < 60:
+        return f"{minutes} minutes"
+    
+    hours = minutes // 60
+    mins = minutes % 60
+    
+    if mins == 0:
+        return f"{hours} heure{'s' if hours > 1 else ''}"
+    else:
+        return f"{hours}h{mins:02d}"
+
+def extract_phone_numbers(text: str) -> List[str]:
+    """Extrait les numéros de téléphone"""
+    # Pattern pour les numéros français
+    pattern = r'(?:(?:\+33|0)\s?[1-9](?:\s?\d{2}){4})'
+    phones = re.findall(pattern, text)
+    
+    # Normaliser
+    normalized = []
+    for phone in phones:
+        # Supprimer les espaces
+        phone = re.sub(r'\s', '', phone)
+        # Format standard
+        if phone.startswith('+33'):
+            phone = '0' + phone[3:]
+        # Ajouter les espaces
+        if len(phone) == 10:
+            phone = ' '.join([phone[i:i+2] for i in range(0, 10, 2)])
+        normalized.append(phone)
+    
+    return list(set(normalized))
+
+def create_safe_dict(data: Any) -> Dict[str, Any]:
+    """Crée un dictionnaire sûr à partir de données potentiellement invalides"""
+    if isinstance(data, dict):
+        return {k: v for k, v in data.items() if k and isinstance(k, str)}
+    elif hasattr(data, '__dict__'):
+        return create_safe_dict(data.__dict__)
+    else:
         return {}
-    
-    merged = {}
-    
-    # Moyennes et valeurs communes
-    for key in formats[0].keys():
-        values = [f.get(key) for f in formats if key in f]
-        
-        if all(isinstance(v, bool) for v in values):
-            # Pour les booléens, prendre la majorité
-            merged[key] = sum(values) > len(values) / 2
-        elif all(isinstance(v, (int, float)) for v in values):
-            # Pour les nombres, prendre la moyenne
-            merged[key] = sum(values) / len(values)
-        else:
-            # Pour le reste, prendre la valeur la plus fréquente
-            merged[key] = Counter(values).most_common(1)[0][0] if values else None
-    
-    return merged
 
-def merge_vocabulary(vocab_list: List[Dict[str, int]]) -> Dict[str, int]:
-    """Fusionne les vocabulaires"""
-    merged = defaultdict(int)
-    
-    for vocab in vocab_list:
-        for word, count in vocab.items():
-            merged[word] += count
-    
-    # Garder les 100 mots les plus fréquents
-    return dict(sorted(merged.items(), key=lambda x: x[1], reverse=True)[:100])
+def format_percentage(value: float, decimals: int = 1) -> str:
+    """Formate un pourcentage"""
+    return f"{value * 100:.{decimals}f}%"
 
-# Gestionnaire de pièces sélectionnées
-class GestionnairePiecesSelectionnees:
-    """Gère la sélection et l'organisation des pièces pour un dossier"""
+def generate_unique_id(prefix: str = "") -> str:
+    """Génère un ID unique"""
+    timestamp = int(datetime.now().timestamp() * 1000000)
+    random_part = hashlib.md5(os.urandom(16)).hexdigest()[:6]
     
-    def __init__(self):
-        self.pieces: Dict[str, PieceSelectionnee] = {}
-        self.categories = [
-            "📄 Procédure",
-            "💰 Comptabilité",
-            "📊 Expertise",
-            "📧 Correspondances",
-            "📋 Contrats",
-            "🏢 Documents sociaux",
-            "🔍 Preuves",
-            "📑 Autres"
-        ]
+    if prefix:
+        return f"{prefix}_{timestamp}_{random_part}"
+    else:
+        return f"{timestamp}_{random_part}"
+
+# Fonctions de validation
+def validate_document(doc: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    """Valide un document et retourne les erreurs"""
+    errors = []
     
-    def ajouter_piece(self, document: Document, categorie: str, notes: str = "", pertinence: int = 5):
-        """Ajoute une pièce à la sélection"""
-        piece = PieceSelectionnee(
-            document_id=document.id,
-            titre=document.title,
-            categorie=categorie,
-            notes=notes,
-            pertinence=pertinence
-        )
-        
-        self.pieces[document.id] = piece
-        
-        # Sauvegarder dans session state
-        if 'pieces_selectionnees' not in st.session_state:
-            st.session_state.pieces_selectionnees = {}
-        st.session_state.pieces_selectionnees[document.id] = piece
+    if not doc.get('title'):
+        errors.append("Le titre est requis")
     
-    def retirer_piece(self, document_id: str):
-        """Retire une pièce de la sélection"""
-        if document_id in self.pieces:
-            del self.pieces[document_id]
-        
-        if document_id in st.session_state.pieces_selectionnees:
-            del st.session_state.pieces_selectionnees[document_id]
+    if not doc.get('content'):
+        errors.append("Le contenu est requis")
+    elif len(doc['content']) < 10:
+        errors.append("Le contenu est trop court")
     
-    def get_pieces_par_categorie(self) -> Dict[str, List[PieceSelectionnee]]:
-        """Retourne les pièces organisées par catégorie"""
-        pieces_par_cat = {cat: [] for cat in self.categories}
-        
-        for piece in self.pieces.values():
-            if piece.categorie in pieces_par_cat:
-                pieces_par_cat[piece.categorie].append(piece)
-        
-        return pieces_par_cat
+    if not doc.get('source'):
+        errors.append("La source est requise")
     
-    def generer_bordereau(self) -> str:
-        """Génère un bordereau des pièces sélectionnées"""
-        from datetime import datetime
-        
-        bordereau = "BORDEREAU DES PIÈCES SÉLECTIONNÉES\n"
-        bordereau += "=" * 50 + "\n\n"
-        bordereau += f"Date : {datetime.now().strftime('%d/%m/%Y')}\n\n"
-        
-        pieces_par_cat = self.get_pieces_par_categorie()
-        numero = 1
-        
-        for categorie, pieces in pieces_par_cat.items():
-            if pieces:
-                bordereau += f"\n{categorie}\n{'-' * len(categorie)}\n"
-                for piece in sorted(pieces, key=lambda x: x.pertinence, reverse=True):
-                    bordereau += f"{numero}. {piece.titre}"
-                    if piece.notes:
-                        bordereau += f" - {piece.notes}"
-                    bordereau += f" (Pertinence: {piece.pertinence}/10)\n"
-                    numero += 1
-        
-        bordereau += f"\n\nTOTAL : {len(self.pieces)} pièces\n"
-        
-        return bordereau
+    return len(errors) == 0, errors
+
+def extract_metadata(file_path: str) -> Dict[str, Any]:
+    """Extrait les métadonnées d'un fichier"""
+    metadata = {}
+    
+    try:
+        stat = os.stat(file_path)
+        metadata['size'] = stat.st_size
+        metadata['created'] = datetime.fromtimestamp(stat.st_ctime)
+        metadata['modified'] = datetime.fromtimestamp(stat.st_mtime)
+        metadata['extension'] = os.path.splitext(file_path)[1]
+    except Exception:
+        pass
+    
+    return metadata
