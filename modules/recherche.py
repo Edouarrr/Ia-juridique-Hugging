@@ -283,7 +283,6 @@ def show_page():
             placeholder="Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...",
             key="universal_query",
             help="Utilisez @ pour référencer une affaire spécifique")
-        )
     
     with col2:
         search_button = st.button("🔍 Rechercher", key="search_button", use_container_width=True)
