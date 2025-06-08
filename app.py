@@ -13,7 +13,8 @@ import traceback
 
 print("=== DÉMARRAGE APPLICATION ===")
 
-from config.app_config import APP_CONFIG
+# Import corrigé - utiliser app_config au lieu de APP_CONFIG
+from config.app_config import app_config, api_config
 from utils.helpers import initialize_session_state
 from utils.styles import load_custom_css
 
@@ -286,15 +287,38 @@ def show_configuration_modal():
         with tabs[2]:
             st.subheader("Tests de connexion")
             
-            if st.button("🧪 Tester Azure Blob", key="test_blob"):
-                test_azure_blob()
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("🧪 Tester Azure Blob", key="test_blob", use_container_width=True):
+                    test_azure_blob()
+            
+            with col2:
+                if st.button("🧪 Tester Azure Search", key="test_search", use_container_width=True):
+                    test_azure_search()
+            
+            with col3:
+                if st.button("🧪 Tester tout", key="test_all", use_container_width=True):
+                    test_azure_blob()
+                    test_azure_search()
+            
+            # Affichage des informations de configuration
+            if app_config:
+                st.markdown("---")
+                st.subheader("Configuration actuelle")
                 
-            if st.button("🧪 Tester Azure Search", key="test_search"):
-                test_azure_search()
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Version app:** {app_config.version}")
+                    st.write(f"**Debug mode:** {app_config.debug}")
+                    st.write(f"**Max file size:** {app_config.max_file_size_mb} MB")
+                    st.write(f"**Max files:** {app_config.max_files_per_upload}")
                 
-            if st.button("🧪 Tester tout", key="test_all"):
-                test_azure_blob()
-                test_azure_search()
+                with col2:
+                    st.write(f"**Azure Storage:** {'✅' if app_config.enable_azure_storage else '❌'}")
+                    st.write(f"**Azure Search:** {'✅' if app_config.enable_azure_search else '❌'}")
+                    st.write(f"**Multi-LLM:** {'✅' if app_config.enable_multi_llm else '❌'}")
+                    st.write(f"**Email:** {'✅' if app_config.enable_email else '❌'}")
         
         if st.button("❌ Fermer", key="close_config"):
             st.session_state.show_config_modal = False
