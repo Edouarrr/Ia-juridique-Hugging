@@ -374,46 +374,262 @@ def process_universal_query(query: str):
     # Analyser la requête pour détecter le type
     query_lower = query.lower()
     
+    # Dans process_universal_query (vers la ligne 265), remplacez la section de détection de rédaction par :
+
     # DÉTECTION POUR RÉDACTION (incluant votre cas de plainte)
     if any(word in query_lower for word in ['rédige', 'rédiger', 'écrire', 'créer', 'plainte', 'conclusions', 'courrier', 'assignation']):
         st.info("📝 Détection d'une demande de rédaction...")
         
         # Cas spécifique : plainte avec parties multiples
         if 'plainte' in query_lower:
+            # Déterminer le type de plainte
+            is_partie_civile = any(term in query_lower for term in [
+                'partie civile', 'constitution de partie civile', 'cpc', 
+                'doyen', 'juge d\'instruction', 'instruction'
+            ])
+            
+            # Débogage
+            st.write("🔍 Analyse de la demande de plainte...")
+            if is_partie_civile:
+                st.info("📋 Type : Plainte avec constitution de partie civile (au Doyen des Juges d'Instruction)")
+            else:
+                st.info("📋 Type : Plainte simple (au Procureur de la République)")
+            
             # Extraire les parties de la requête
-            parties = []
-            parties_keywords = [
-                'interconstruction', 'vinci', 'sogeprom', 'demathieu bard',
-                'bouygues', 'eiffage', 'spie', 'leon grosse'
+            parties_demanderesses = []
+            parties_defenderesses = []
+            
+            # Parties demanderesses potentielles (entreprises du BTP principalement)
+            demandeurs_keywords = [
+                ('interconstruction', 'INTERCONSTRUCTION'),
+                ('vinci', 'VINCI'),
+                ('sogeprom', 'SOGEPROM RÉALISATIONS'),
+                ('demathieu bard', 'DEMATHIEU BARD'),
+                ('demathieu', 'DEMATHIEU BARD'),  # Variante
+                ('bouygues', 'BOUYGUES'),
+                ('eiffage', 'EIFFAGE'),
+                ('spie', 'SPIE BATIGNOLLES'),
+                ('leon grosse', 'LEON GROSSE'),
+                ('fayat', 'FAYAT'),
+                ('colas', 'COLAS'),
+                ('eurovia', 'EUROVIA'),
+                ('razel-bec', 'RAZEL-BEC'),
+                ('nge', 'NGE'),
+                ('gtm', 'GTM Bâtiment')
             ]
             
-            for partie in parties_keywords:
-                if partie in query_lower:
-                    # Formatage correct du nom
-                    if partie == 'sogeprom':
-                        parties.append('SOGEPROM Réalisations')
-                    elif partie == 'demathieu bard':
-                        parties.append('Demathieu Bard')
-                    else:
-                        parties.append(partie.title())
+            # Parties défenderesses potentielles
+            defendeurs_keywords = [
+                ('perinet', 'M. PERINET'),
+                ('périnet', 'M. PÉRINET'),
+                ('vp invest', 'VP INVEST'),
+                ('perraud', 'M. PERRAUD'),
+                ('martin', 'M. MARTIN'),
+                ('dupont', 'M. DUPONT'),
+                ('durand', 'M. DURAND'),
+                ('laurent', 'M. LAURENT'),
+                ('michel', 'M. MICHEL')
+            ]
+            
+            # Analyser la structure de la requête
+            # Méthode 1 : Recherche avec "pour" et "contre"
+            if ' pour ' in query_lower and ' contre ' in query_lower:
+                # Extraire la partie entre "pour" et "contre" pour les demandeurs
+                partie_pour = query_lower.split(' pour ')[1].split(' contre ')[0]
+                # Extraire la partie après "contre" pour les défendeurs
+                partie_contre = query_lower.split(' contre ')[1]
+                
+                # Chercher les demandeurs dans la partie "pour"
+                for keyword, nom_formate in demandeurs_keywords:
+                    if keyword in partie_pour:
+                        parties_demanderesses.append(nom_formate)
+                        st.write(f"✅ Demandeur identifié : {nom_formate}")
+                
+                # Chercher les défendeurs dans la partie "contre"
+                for keyword, nom_formate in defendeurs_keywords:
+                    if keyword in partie_contre:
+                        parties_defenderesses.append(nom_formate)
+                        st.write(f"⚖️ Défendeur identifié : {nom_formate}")
+            
+            # Méthode 2 : Si pas de structure claire, recherche globale
+            else:
+                # Identifier d'abord les défendeurs (souvent après "contre")
+                if ' contre ' in query_lower:
+                    partie_contre = query_lower.split(' contre ')[1]
+                    for keyword, nom_formate in defendeurs_keywords:
+                        if keyword in partie_contre:
+                            parties_defenderesses.append(nom_formate)
+                            st.write(f"⚖️ Défendeur identifié : {nom_formate}")
+                
+                # Puis identifier les demandeurs dans le reste
+                for keyword, nom_formate in demandeurs_keywords:
+                    if keyword in query_lower and nom_formate not in parties_defenderesses:
+                        # Vérifier que ce n'est pas dans la partie "contre"
+                        if ' contre ' not in query_lower or keyword not in query_lower.split(' contre ')[1]:
+                            parties_demanderesses.append(nom_formate)
+                            st.write(f"✅ Demandeur identifié : {nom_formate}")
+            
+            # Extraire les infractions mentionnées
+            infractions_detectees = []
+            infractions_keywords = {
+                'escroquerie': 'Escroquerie',
+                'abus de confiance': 'Abus de confiance',
+                'abus de biens sociaux': 'Abus de biens sociaux',
+                'abs': 'Abus de biens sociaux',  # Abréviation
+                'faux': 'Faux et usage de faux',
+                'corruption': 'Corruption',
+                'trafic d\'influence': 'Trafic d\'influence',
+                'favoritisme': 'Favoritisme',
+                'prise illégale': 'Prise illégale d\'intérêts',
+                'blanchiment': 'Blanchiment',
+                'fraude fiscale': 'Fraude fiscale',
+                'travail dissimulé': 'Travail dissimulé',
+                'marchandage': 'Marchandage',
+                'entrave': 'Entrave',
+                'banqueroute': 'Banqueroute',
+                'recel': 'Recel'
+            }
+            
+            for keyword, infraction in infractions_keywords.items():
+                if keyword in query_lower:
+                    infractions_detectees.append(infraction)
+                    st.write(f"🎯 Infraction détectée : {infraction}")
             
             # Extraire la référence
             reference = None
+            modele = None
+            
+            # Recherche de référence avec @
             if '@' in query:
                 ref_match = re.search(r'@(\w+)', query)
                 if ref_match:
                     reference = ref_match.group(1)
+                    st.write(f"📁 Référence : @{reference}")
             
-            # Créer la demande de rédaction
+            # Recherche de modèle de date
+            date_patterns = [
+                r'(\d{1,2}[\s\-/]\d{1,2}[\s\-/]\d{2,4})',
+                r'(\d{1,2}\s+\w+\s+\d{2,4})'
+            ]
+            
+            for pattern in date_patterns:
+                date_match = re.search(pattern, query)
+                if date_match:
+                    modele = f"Modèle du {date_match.group(1)}"
+                    st.write(f"📅 {modele}")
+                    break
+            
+            # Validation et suggestions
+            st.markdown("### 📋 Résumé de l'analyse")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("**🏢 Demandeurs (victimes) :**")
+                if parties_demanderesses:
+                    for p in parties_demanderesses:
+                        st.write(f"• {p}")
+                else:
+                    st.warning("❌ Aucun demandeur identifié")
+                    st.info("💡 Précisez : 'pour [société X]'")
+            
+            with col2:
+                st.markdown("**⚖️ Défendeurs (mis en cause) :**")
+                if parties_defenderesses:
+                    for p in parties_defenderesses:
+                        st.write(f"• {p}")
+                else:
+                    st.warning("❌ Aucun défendeur identifié")
+                    st.info("💡 Précisez : 'contre [M. X]'")
+            
+            with col3:
+                st.markdown("**🎯 Infractions :**")
+                if infractions_detectees:
+                    for inf in infractions_detectees[:3]:  # Limiter l'affichage
+                        st.write(f"• {inf}")
+                    if len(infractions_detectees) > 3:
+                        st.write(f"• + {len(infractions_detectees) - 3} autres")
+                else:
+                    st.info("📌 Infractions standards")
+            
+            # Options supplémentaires
+            with st.expander("⚙️ Options de la plainte", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Forcer le type de plainte
+                    type_force = st.radio(
+                        "Type de plainte",
+                        ["Auto-détection", "Plainte simple", "Plainte avec CPC"],
+                        index=0 if not is_partie_civile else 2,
+                        key="type_plainte_force"
+                    )
+                    
+                    if type_force == "Plainte simple":
+                        is_partie_civile = False
+                    elif type_force == "Plainte avec CPC":
+                        is_partie_civile = True
+                
+                with col2:
+                    # Options de contenu
+                    st.markdown("**Options de contenu :**")
+                    include_chronologie = st.checkbox("Inclure chronologie détaillée", value=True)
+                    include_prejudices = st.checkbox("Détailler les préjudices", value=True)
+                    include_jurisprudence = st.checkbox("Citer jurisprudences", value=is_partie_civile)
+            
+            # Créer la demande de rédaction enrichie
             st.session_state.redaction_request = {
-                'type': 'plainte',
-                'parties': parties,
+                'type': 'plainte_avec_cpc' if is_partie_civile else 'plainte_simple',
+                'demandeurs': parties_demanderesses,
+                'defendeurs': parties_defenderesses,
+                'infractions': infractions_detectees,
                 'reference': reference,
-                'query': query
+                'modele': modele,
+                'query': query,
+                'options': {
+                    'chronologie': include_chronologie if 'include_chronologie' in locals() else True,
+                    'prejudices': include_prejudices if 'include_prejudices' in locals() else True,
+                    'jurisprudence': include_jurisprudence if 'include_jurisprudence' in locals() else is_partie_civile
+                }
             }
             
-            # Générer la plainte
-            generate_plainte(query, parties)
+            # Bouton de génération manuel
+            if st.button("🚀 Générer la plainte", type="primary", key="generate_plainte_btn"):
+                # Générer la plainte avec toutes les parties
+                toutes_parties = parties_demanderesses + parties_defenderesses
+                generate_plainte(query, toutes_parties)
+            
+            # Ou génération automatique si parties identifiées
+            elif parties_demanderesses or parties_defenderesses:
+                toutes_parties = parties_demanderesses + parties_defenderesses
+                generate_plainte(query, toutes_parties)
+            else:
+                st.error("❌ Impossible d'identifier les parties dans la requête")
+                
+                # Formulaire pour saisir manuellement
+                with st.form("saisie_parties"):
+                    st.markdown("### 📝 Saisie manuelle des parties")
+                    
+                    demandeurs_manuel = st.text_area(
+                        "Demandeurs (un par ligne)",
+                        placeholder="INTERCONSTRUCTION\nVINCI\nSOGEPROM RÉALISATIONS",
+                        height=100
+                    )
+                    
+                    defendeurs_manuel = st.text_area(
+                        "Défendeurs (un par ligne)",
+                        placeholder="M. PERINET\nVP INVEST",
+                        height=100
+                    )
+                    
+                    if st.form_submit_button("Générer avec ces parties"):
+                        if demandeurs_manuel or defendeurs_manuel:
+                            parties_demanderesses = [p.strip() for p in demandeurs_manuel.split('\n') if p.strip()]
+                            parties_defenderesses = [p.strip() for p in defendeurs_manuel.split('\n') if p.strip()]
+                            toutes_parties = parties_demanderesses + parties_defenderesses
+                            generate_plainte(query, toutes_parties)
+                        else:
+                            st.error("Veuillez saisir au moins une partie")
         else:
             # Autres types de rédaction
             process_redaction_request(query, analyze_query(query))
@@ -1268,46 +1484,556 @@ def process_redaction_request(query: str, analysis: dict):
     # TODO: Implémenter ou importer depuis recherche_redaction
 
 def generate_plainte(query: str, parties: list):
-    """Génère une plainte avec les parties spécifiées"""
-    
-    llm_manager = MultiLLMManager()
-    if not llm_manager.clients:
-        st.error("❌ Aucune IA disponible")
-        return
-    
-    # Construire le prompt
-    plainte_prompt = f"""Rédige une plainte pénale professionnelle.
-DEMANDEUR: {st.session_state.get('client_nom', 'Le plaignant')}
-PARTIES MISES EN CAUSE: {', '.join(parties)}
-CONTEXTE: {query}
-Structure la plainte avec:
-1. En-tête (Tribunal compétent, identité du plaignant)
-2. EXPOSÉ DES FAITS (chronologique et détaillé)
-3. QUALIFICATION JURIDIQUE (infractions caractérisées)
-4. PRÉJUDICES SUBIS (moral, matériel, financier)
-5. DEMANDES (poursuites pénales, dommages-intérêts)
-6. PIÈCES JOINTES
-Style: Formel, juridique, factuel."""
+    """Génère une plainte simple ou avec constitution de partie civile"""
     
     try:
-        provider = list(llm_manager.clients.keys())[0]
-        response = llm_manager.query_single_llm(
-            provider,
-            plainte_prompt,
-            "Tu es un avocat expert en rédaction de plaintes pénales."
-        )
+        # Débogage
+        st.write("🔍 Génération de la plainte en cours...")
+        st.write(f"Requête originale : {query}")
+        
+        # Initialiser le manager
+        llm_manager = MultiLLMManager()
+        
+        # Debug pour voir les clients disponibles
+        llm_manager.debug_status()
+        
+        if not llm_manager.clients:
+            st.error("❌ Aucune IA n'est configurée")
+            st.info("💡 Veuillez configurer au moins une clé API dans les variables d'environnement")
+            
+            # Afficher les instructions détaillées
+            with st.expander("📋 Instructions de configuration"):
+                st.markdown("""
+                **Sur Hugging Face Spaces :**
+                1. Allez dans Settings → Variables and secrets
+                2. Ajoutez une ou plusieurs de ces clés :
+                   - `OPENAI_API_KEY` - Pour GPT-4
+                   - `ANTHROPIC_API_KEY` - Pour Claude 3
+                   - `GOOGLE_API_KEY` - Pour Gemini
+                   - `MISTRAL_API_KEY` - Pour Mistral
+                   - `GROQ_API_KEY` - Pour Groq (Mixtral)
+                
+                **Recommandé :** Au moins une clé parmi OpenAI, Anthropic ou Google
+                """)
+            return
+        
+        # Afficher les providers disponibles
+        providers = llm_manager.get_available_providers()
+        st.success(f"✅ {len(providers)} IA(s) disponible(s) : {', '.join(providers)}")
+        
+        # DÉTERMINER LE TYPE DE PLAINTE
+        query_lower = query.lower()
+        is_partie_civile = any(term in query_lower for term in [
+            'partie civile', 'constitution de partie civile', 'cpc', 
+            'doyen', 'juge d\'instruction', 'instruction'
+        ])
+        
+        type_plainte = 'plainte_avec_cpc' if is_partie_civile else 'plainte_simple'
+        destinataire = "Monsieur le Doyen des Juges d'Instruction" if is_partie_civile else "Monsieur le Procureur de la République"
+        
+        st.info(f"📋 Type détecté : {'Plainte avec constitution de partie civile' if is_partie_civile else 'Plainte simple au Procureur'}")
+        
+        # Analyser la requête pour extraire les informations
+        parties_demanderesses = []
+        parties_defenderesses = []
+        reference = ""
+        infractions_mentionnees = []
+        
+        # Extraction intelligente depuis la requête
+        
+        # Parties demanderesses (ordre dans la requête)
+        demandeurs_patterns = [
+            ('interconstruction', 'INTERCONSTRUCTION'),
+            ('vinci', 'VINCI'),
+            ('sogeprom', 'SOGEPROM RÉALISATIONS'),
+            ('demathieu bard', 'DEMATHIEU BARD'),
+            ('bouygues', 'BOUYGUES'),
+            ('eiffage', 'EIFFAGE'),
+            ('spie', 'SPIE BATIGNOLLES'),
+            ('leon grosse', 'LEON GROSSE')
+        ]
+        
+        # Parties défenderesses
+        defendeurs_patterns = [
+            ('perinet', 'M. PERINET'),
+            ('périnet', 'M. PÉRINET'),
+            ('vp invest', 'VP INVEST'),
+            ('perraud', 'M. PERRAUD'),
+            ('martin', 'M. MARTIN'),
+            ('dupont', 'M. DUPONT')
+        ]
+        
+        # Extraction des parties
+        for pattern, nom in demandeurs_patterns:
+            if pattern in query_lower:
+                parties_demanderesses.append(nom)
+        
+        for pattern, nom in defendeurs_patterns:
+            if pattern in query_lower:
+                parties_defenderesses.append(nom)
+        
+        # Extraction des infractions mentionnées
+        infractions_patterns = {
+            'escroquerie': 'Escroquerie (art. 313-1 Code pénal)',
+            'abus de confiance': 'Abus de confiance (art. 314-1 Code pénal)',
+            'abus de biens sociaux': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
+            'faux': 'Faux et usage de faux (art. 441-1 Code pénal)',
+            'corruption': 'Corruption (art. 432-11 et 433-1 Code pénal)',
+            'trafic d\'influence': 'Trafic d\'influence (art. 432-11 et 433-2 Code pénal)',
+            'favoritisme': 'Favoritisme (art. 432-14 Code pénal)',
+            'prise illégale': 'Prise illégale d\'intérêts (art. 432-12 Code pénal)',
+            'blanchiment': 'Blanchiment (art. 324-1 Code pénal)',
+            'fraude fiscale': 'Fraude fiscale (art. 1741 Code général des impôts)',
+            'travail dissimulé': 'Travail dissimulé (art. L8221-3 Code du travail)',
+            'marchandage': 'Marchandage (art. L8231-1 Code du travail)',
+            'entrave': 'Entrave (art. L2328-1 Code du travail)',
+            'banqueroute': 'Banqueroute (art. L654-2 Code de commerce)',
+            'recel': 'Recel (art. 321-1 Code pénal)'
+        }
+        
+        for pattern, infraction in infractions_patterns.items():
+            if pattern in query_lower:
+                infractions_mentionnees.append(infraction)
+        
+        # Si aucune infraction détectée, ajouter les plus courantes
+        if not infractions_mentionnees:
+            infractions_mentionnees = [
+                'Escroquerie (art. 313-1 Code pénal)',
+                'Abus de confiance (art. 314-1 Code pénal)',
+                'Faux et usage de faux (art. 441-1 Code pénal)'
+            ]
+        
+        # Référence au modèle
+        if '26 05 2025' in query or '26/05/2025' in query or '26-05-2025' in query:
+            reference = "projet de complément de plainte du 26/05/2025"
+        
+        # Afficher les informations extraites
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**🏢 Demandeurs (victimes) :**")
+            for partie in parties_demanderesses:
+                st.write(f"• {partie}")
+            
+            st.markdown("**📋 Infractions visées :**")
+            for infraction in infractions_mentionnees[:5]:  # Limiter l'affichage
+                st.write(f"• {infraction}")
+        
+        with col2:
+            st.markdown("**⚖️ Défendeurs (mis en cause) :**")
+            for partie in parties_defenderesses:
+                st.write(f"• {partie}")
+            
+            if reference:
+                st.info(f"📄 Modèle : {reference}")
+        
+        # CONSTRUIRE LE PROMPT SELON LE TYPE DE PLAINTE
+        if is_partie_civile:
+            # Prompt pour plainte avec constitution de partie civile
+            plainte_prompt = f"""Tu es un avocat pénaliste expert en droit pénal des affaires avec 25 ans d'expérience. Tu maîtrises particulièrement les affaires complexes de criminalité économique et financière.
+
+MISSION : Rédiger une plainte avec constitution de partie civile EXHAUSTIVE et PERCUTANTE pour un dossier complexe.
+
+CONTEXTE DE LA REQUÊTE :
+{query}
+
+PARTIES IDENTIFIÉES :
+- Demandeurs (victimes) : {', '.join(parties_demanderesses) if parties_demanderesses else '[À COMPLÉTER]'}
+- Défendeurs (mis en cause) : {', '.join(parties_defenderesses) if parties_defenderesses else '[À IDENTIFIER dans les faits]'}
+- Référence : {reference if reference else 'Dossier complexe de criminalité économique'}
+
+INFRACTIONS À EXAMINER :
+{chr(10).join(f'- {inf}' for inf in infractions_mentionnees)}
+
+INSTRUCTIONS POUR UNE PLAINTE EXHAUSTIVE :
+
+1. **EN-TÊTE FORMEL**
+   {destinataire}
+   Tribunal judiciaire de [DÉTERMINER selon le siège social]
+   [Adresse complète]
+   
+   Date : [Date du jour]
+   
+   OBJET : PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+   
+   Références : {reference if reference else 'Votre réf. : / Notre réf. : '}
+
+2. **IDENTIFICATION COMPLÈTE DES PARTIES**
+   
+   POUR :
+   {chr(10).join(f'   - {p}, société [FORME JURIDIQUE À PRÉCISER - SA/SARL/SAS], au capital de [MONTANT] euros, immatriculée au RCS de [VILLE] sous le numéro [NUMÉRO], dont le siège social est situé [ADRESSE COMPLÈTE], représentée par [PRÉSIDENT/GÉRANT], dûment habilité' for p in parties_demanderesses)}
+   
+   Ayant pour conseil :
+   Maître [NOM], Avocat au Barreau de [VILLE]
+   [Adresse complète du cabinet]
+   Tél : [NUMÉRO] - Email : [EMAIL]
+   
+   CONTRE :
+   {chr(10).join(f'   - {p}, [COMPLÉTER : né le XX/XX/XXXX à VILLE si personne physique OU forme juridique si société], demeurant/siège social [ADRESSE]' for p in parties_defenderesses)}
+   
+   ET CONTRE :
+   - Toute autre personne que l'instruction révélerait comme auteur, coauteur ou complice des faits dénoncés
+
+3. **EXPOSÉ EXHAUSTIF DES FAITS** (PARTIE CRUCIALE - MINIMUM 3000 MOTS)
+   
+   A. CONTEXTE GÉNÉRAL ET HISTORIQUE DES RELATIONS
+      - Genèse du projet/de la relation d'affaires
+      - Chronologie détaillée des événements
+      - Acteurs impliqués et leurs rôles respectifs
+      - Documents contractuels de référence
+   
+   B. MÉCANISME FRAUDULEUX DÉTAILLÉ
+      - Description précise du montage frauduleux
+      - Modus operandi des mis en cause
+      - Flux financiers suspects (avec montants)
+      - Documents falsifiés ou manipulés
+      - Témoignages et preuves matérielles
+   
+   C. DÉCOUVERTE DE LA FRAUDE
+      - Circonstances de la découverte
+      - Premiers indices et soupçons
+      - Investigations menées
+      - Confrontations éventuelles
+   
+   D. AGGRAVATION DU PRÉJUDICE
+      - Manœuvres dilatoires
+      - Dissimulation d'actifs
+      - Tentatives d'intimidation
+      - Destruction de preuves
+
+4. **QUALIFICATION JURIDIQUE APPROFONDIE**
+   
+   Pour CHAQUE infraction, développer :
+   
+   A. L'ÉLÉMENT MATÉRIEL
+      - Actes précis constituant l'infraction
+      - Preuves matérielles (documents, emails, enregistrements)
+      - Témoignages corroborants
+      - Expertises éventuelles
+   
+   B. L'ÉLÉMENT INTENTIONNEL
+      - Conscience de l'illégalité
+      - Volonté de nuire
+      - Préméditation
+      - Mobile (enrichissement, vengeance, etc.)
+   
+   C. LE LIEN DE CAUSALITÉ
+      - Lien direct entre les actes et le préjudice
+      - Absence de cause étrangère
+   
+   D. CIRCONSTANCES AGGRAVANTES
+      - Bande organisée
+      - Abus de fonction
+      - Vulnérabilité de la victime
+      - Montant du préjudice
+
+5. **ÉVALUATION DÉTAILLÉE DES PRÉJUDICES**
+   
+   Pour CHAQUE société demanderesse :
+   
+   A. PRÉJUDICE FINANCIER DIRECT
+      - Détournements : [MONTANT] €
+      - Surfacturations : [MONTANT] €
+      - Manque à gagner : [MONTANT] €
+      - Frais supplémentaires : [MONTANT] €
+      SOUS-TOTAL : [MONTANT] € HT
+   
+   B. PRÉJUDICE FINANCIER INDIRECT
+      - Perte de marchés : [MONTANT] €
+      - Coûts de restructuration : [MONTANT] €
+      - Frais d'expertise : [MONTANT] €
+      - Frais de justice : [MONTANT] €
+      SOUS-TOTAL : [MONTANT] € HT
+   
+   C. PRÉJUDICE MORAL ET COMMERCIAL
+      - Atteinte à la réputation
+      - Perte de confiance des partenaires
+      - Désorganisation de l'entreprise
+      - Souffrance morale des dirigeants
+      ÉVALUATION : [MONTANT] € (provisoire)
+   
+   TOTAL GÉNÉRAL : [MONTANT] € (sous réserve d'augmentation)
+
+6. **CONSTITUTION DE PARTIE CIVILE**
+   
+   Les sociétés demanderesses déclarent expressément se constituer partie civile dans la présente procédure et :
+   
+   - Consignent la somme de [3000 à 15000] euros à titre de consignation
+   - Se réservent le droit de solliciter tous dommages-intérêts complémentaires
+   - Demandent la condamnation solidaire des mis en cause
+   - Sollicitent l'exécution provisoire de la décision à intervenir
+
+7. **DEMANDES D'ACTES D'INSTRUCTION**
+   
+   Les parties civiles sollicitent :
+   - Auditions des mis en cause et témoins
+   - Perquisitions aux sièges sociaux et domiciles
+   - Saisies conservatoires sur les biens
+   - Expertises comptables et financières
+   - Exploitation des données informatiques
+   - Commissions rogatoires internationales si nécessaire
+   - Interceptions téléphoniques si justifiées
+
+8. **PAR CES MOTIFS**
+   
+   Les sociétés demanderesses demandent qu'il plaise à Monsieur le Doyen des Juges d'Instruction de :
+   
+   - RECEVOIR leur plainte avec constitution de partie civile
+   - ORDONNER l'ouverture d'une information judiciaire
+   - PROCÉDER à tous actes utiles à la manifestation de la vérité
+   - TRANSMETTRE le dossier au Parquet pour réquisitions
+   - DÉLIVRER récépissé de la présente plainte
+
+9. **BORDEREAU DE PIÈCES DÉTAILLÉ**
+   
+   [Liste numérotée de 1 à XX avec description précise de chaque pièce]
+
+10. **SOUS TOUTES RÉSERVES**
+    
+    Notamment de :
+    - Compléter et préciser les présentes
+    - Produire toutes pièces nouvelles
+    - Se constituer partie civile contre toute autre personne
+    - Modifier la qualification des faits
+    - Majorer l'évaluation des préjudices
+
+SIGNATURE
+[Nom et qualité du signataire]
+
+IMPORTANT : Cette plainte doit être EXHAUSTIVE (minimum 8000 mots), PRÉCISE (dates, montants, références), PERCUTANTE (démonstration implacable) et IRRÉFUTABLE (preuves solides)."""
+        
+        else:
+            # Prompt pour plainte simple au Procureur
+            plainte_prompt = f"""Tu es un avocat pénaliste expert en droit pénal des affaires. Tu dois rédiger une plainte simple mais complète et professionnelle.
+
+CONTEXTE : {query}
+
+PARTIES :
+- Plaignants : {', '.join(parties_demanderesses) if parties_demanderesses else '[À IDENTIFIER]'}
+- Mis en cause : {', '.join(parties_defenderesses) if parties_defenderesses else '[À IDENTIFIER]'}
+
+STRUCTURE DE LA PLAINTE SIMPLE :
+
+1. **EN-TÊTE**
+   Monsieur le Procureur de la République
+   Tribunal judiciaire de [VILLE]
+   [Adresse]
+   
+   [Lieu], le [Date]
+   
+   OBJET : Plainte
+   
+   Lettre recommandée avec AR
+
+2. **IDENTITÉ DU PLAIGNANT**
+   Je soussigné(e) / Nous soussignons :
+   [Identité complète avec adresse]
+
+3. **EXPOSÉ DES FAITS**
+   Développer de manière claire et chronologique :
+   - Contexte
+   - Faits reprochés
+   - Préjudice subi
+   - Preuves disponibles
+
+4. **QUALIFICATION JURIDIQUE**
+   Les faits exposés sont susceptibles de recevoir les qualifications suivantes :
+   {chr(10).join(f'- {inf}' for inf in infractions_mentionnees)}
+
+5. **PRÉJUDICE**
+   Description et évaluation du préjudice subi
+
+6. **DEMANDES**
+   Je demande/Nous demandons :
+   - L'ouverture d'une enquête
+   - L'audition des personnes mises en cause
+   - Toutes investigations utiles
+   - L'engagement de poursuites
+
+7. **PIÈCES JOINTES**
+   Liste des pièces
+
+8. **FORMULE FINALE**
+   Je me tiens/Nous nous tenons à votre disposition...
+   
+   Signature
+
+Rédige une plainte COMPLÈTE (minimum 3000 mots) et PROFESSIONNELLE."""
+        
+        # Sélectionner le meilleur provider disponible
+        preferred_providers = ['anthropic', 'openai', 'google', 'mistral', 'groq']
+        selected_provider = None
+        
+        for pref in preferred_providers:
+            if pref in providers:
+                selected_provider = pref
+                break
+        
+        if not selected_provider:
+            selected_provider = providers[0]
+        
+        st.info(f"🤖 Utilisation de : {selected_provider}")
+        
+        # Options de génération avancées
+        with st.expander("⚙️ Options avancées", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                temperature = st.slider(
+                    "Créativité",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=0.3,
+                    step=0.1,
+                    help="Plus bas = plus factuel, plus haut = plus créatif"
+                )
+            with col2:
+                max_tokens = st.number_input(
+                    "Longueur maximale",
+                    min_value=2000,
+                    max_value=10000,
+                    value=8000,
+                    step=1000,
+                    help="Nombre de tokens maximum pour la réponse"
+                )
+        
+        # Générer la plainte
+        with st.spinner(f"⚖️ Génération de la {'plainte avec constitution de partie civile' if is_partie_civile else 'plainte simple'} via {selected_provider}..."):
+            response = llm_manager.query_single_llm(
+                selected_provider,
+                plainte_prompt,
+                "Tu es Maître Jean-Michel Durand, avocat au Barreau de Paris depuis 25 ans, spécialisé en droit pénal des affaires et criminalité en col blanc. Tu as plaidé dans les plus grandes affaires de corruption et d'escroquerie. Tu rédiges des plaintes qui ont mené à de nombreuses condamnations.",
+                temperature=temperature if 'temperature' in locals() else 0.3,
+                max_tokens=max_tokens if 'max_tokens' in locals() else 8000
+            )
         
         if response['success']:
+            # Enrichir la réponse si nécessaire
+            document_final = response['response']
+            
+            # Vérifier que le document contient les éléments essentiels
+            if is_partie_civile:
+                elements_requis = [
+                    "POUR :", "CONTRE :", "EXPOSÉ", "FAITS", 
+                    "QUALIFICATION JURIDIQUE", "PRÉJUDICES", 
+                    "CONSTITUTION DE PARTIE CIVILE", "DEMANDES"
+                ]
+            else:
+                elements_requis = [
+                    "Monsieur le Procureur", "EXPOSÉ DES FAITS", 
+                    "QUALIFICATION", "DEMANDES"
+                ]
+            
+            missing_elements = [elem for elem in elements_requis if elem.upper() not in document_final.upper()]
+            
+            if missing_elements:
+                st.warning(f"⚠️ Éléments manquants détectés : {', '.join(missing_elements)}")
+                st.info("💡 Vous pouvez éditer le document pour ajouter les sections manquantes")
+            
+            # Analyse de la qualité
+            word_count = len(document_final.split())
+            char_count = len(document_final)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Mots", f"{word_count:,}")
+                if word_count < 3000:
+                    st.warning("⚠️ Document un peu court pour un dossier complexe")
+            with col2:
+                st.metric("Caractères", f"{char_count:,}")
+            with col3:
+                st.metric("Pages estimées", f"~{word_count // 250}")
+            
+            # Sauvegarder le résultat
             st.session_state.redaction_result = {
-                'type': 'plainte',
-                'document': response['response'],
-                'provider': provider.value,
+                'type': type_plainte,
+                'document': document_final,
+                'provider': selected_provider,
                 'timestamp': datetime.now(),
-                'parties': parties
+                'metadata': {
+                    'demandeurs': parties_demanderesses,
+                    'defendeurs': parties_defenderesses,
+                    'reference': reference,
+                    'infractions': infractions_mentionnees,
+                    'requete_originale': query,
+                    'generation_time': response.get('elapsed_time', 0),
+                    'word_count': word_count,
+                    'destinataire': destinataire
+                }
             }
-            st.rerun()
+            
+            st.success(f"✅ {'Plainte avec constitution de partie civile' if is_partie_civile else 'Plainte simple'} générée avec succès !")
+            
+            # Proposer des actions supplémentaires
+            st.markdown("### 🎯 Actions disponibles")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                if st.button("🔄 Régénérer", key="regen_same"):
+                    st.session_state.force_regenerate = True
+                    st.rerun()
+            
+            with col2:
+                if st.button("📈 Version plus détaillée", key="more_detailed"):
+                    st.session_state.request_detailed = True
+                    st.rerun()
+            
+            with col3:
+                if st.button("🔀 Autre IA", key="try_other_ai"):
+                    other_providers = [p for p in providers if p != selected_provider]
+                    if other_providers:
+                        st.session_state.next_provider = other_providers[0]
+                        st.rerun()
+            
+            with col4:
+                if st.button("📊 Comparer les IA", key="compare_all"):
+                    st.session_state.compare_all_providers = True
+                    st.rerun()
+            
+            # Suggestions d'amélioration
+            with st.expander("💡 Suggestions d'amélioration", expanded=False):
+                st.markdown("""
+                **Pour enrichir votre plainte :**
+                
+                1. **Ajoutez des détails factuels** :
+                   - Dates précises des faits
+                   - Montants exacts des préjudices
+                   - Noms complets et fonctions des personnes
+                   - Références des contrats ou factures
+                
+                2. **Renforcez les preuves** :
+                   - Emails et correspondances
+                   - Rapports d'expertise
+                   - Témoignages écrits
+                   - Documents comptables
+                
+                3. **Précisez les infractions** :
+                   - Articles de loi exacts
+                   - Jurisprudences applicables
+                   - Circonstances aggravantes
+                
+                4. **Complétez les demandes** :
+                   - Mesures conservatoires
+                   - Expertises judiciaires
+                   - Auditions spécifiques
+                """)
+            
+        else:
+            st.error(f"❌ Erreur lors de la génération : {response.get('error', 'Erreur inconnue')}")
+            
+            # Proposer des alternatives
+            if len(providers) > 1:
+                st.info("💡 Essayez avec un autre provider disponible")
+                for provider in providers:
+                    if st.button(f"Essayer avec {provider}", key=f"try_{provider}"):
+                        st.session_state.next_provider = provider
+                        st.rerun()
+            
     except Exception as e:
-        st.error(f"❌ Erreur génération: {str(e)}")
+        st.error(f"❌ Erreur inattendue : {str(e)}")
+        with st.expander("🔍 Détails techniques"):
+            import traceback
+            st.code(traceback.format_exc())
 
 def process_plaidoirie_request(query: str, analysis: dict):
     """Traite une demande de plaidoirie"""
