@@ -53,7 +53,16 @@ except ImportError:
     logger.warning("Groq SDK non installé")
 
 # Import de la configuration
-from config.app_config import LLMProvider
+try:
+    from config.app_config import LLMProvider
+except ImportError:
+    # Fallback si l'import échoue
+    class LLMProvider:
+        OPENAI = "openai"
+        ANTHROPIC = "anthropic"
+        GOOGLE = "google"
+        MISTRAL = "mistral"
+        GROQ = "groq"
 
 class MultiLLMManager:
     """Gestionnaire pour interroger plusieurs LLMs"""
@@ -68,7 +77,7 @@ class MultiLLMManager:
         # OpenAI
         if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
             try:
-                self.clients[LLMProvider.OPENAI] = OpenAI(
+                self.clients["openai"] = OpenAI(
                     api_key=os.getenv("OPENAI_API_KEY")
                 )
                 logger.info("OpenAI initialisé")
@@ -78,7 +87,7 @@ class MultiLLMManager:
         # Azure OpenAI
         if OPENAI_AVAILABLE and os.getenv("AZURE_OPENAI_ENDPOINT"):
             try:
-                self.clients["AZURE_OPENAI"] = AzureOpenAI(
+                self.clients["azure_openai"] = AzureOpenAI(
                     api_key=os.getenv("AZURE_OPENAI_KEY"),
                     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
                     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -90,7 +99,7 @@ class MultiLLMManager:
         # Anthropic Claude
         if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
             try:
-                self.clients[LLMProvider.ANTHROPIC] = anthropic.Anthropic(
+                self.clients["anthropic"] = anthropic.Anthropic(
                     api_key=os.getenv("ANTHROPIC_API_KEY")
                 )
                 logger.info("Anthropic Claude initialisé")
@@ -101,7 +110,7 @@ class MultiLLMManager:
         if GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
             try:
                 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-                self.clients[LLMProvider.GOOGLE] = genai.GenerativeModel('gemini-pro')
+                self.clients["google"] = genai.GenerativeModel('gemini-pro')
                 logger.info("Google Gemini initialisé")
             except Exception as e:
                 logger.error(f"Erreur initialisation Google Gemini: {e}")
@@ -109,7 +118,7 @@ class MultiLLMManager:
         # Mistral
         if MISTRAL_AVAILABLE and os.getenv("MISTRAL_API_KEY"):
             try:
-                self.clients[LLMProvider.MISTRAL] = MistralClient(
+                self.clients["mistral"] = MistralClient(
                     api_key=os.getenv("MISTRAL_API_KEY")
                 )
                 logger.info("Mistral initialisé")
@@ -119,7 +128,7 @@ class MultiLLMManager:
         # Groq
         if GROQ_AVAILABLE and os.getenv("GROQ_API_KEY"):
             try:
-                self.clients[LLMProvider.GROQ] = Groq(
+                self.clients["groq"] = Groq(
                     api_key=os.getenv("GROQ_API_KEY")
                 )
                 logger.info("Groq initialisé")
@@ -128,7 +137,7 @@ class MultiLLMManager:
     
     def query_single_llm(
         self, 
-        provider: LLMProvider, 
+        provider: Any,  # Peut être string ou enum
         prompt: str, 
         system_prompt: str = "Tu es un assistant juridique expert en droit pénal des affaires français.",
         temperature: float = 0.7,
@@ -136,33 +145,48 @@ class MultiLLMManager:
     ) -> Dict[str, Any]:
         """Interroge un LLM spécifique de manière synchrone"""
         
-        # Vérifier si le provider est une string (pour Azure)
-        if isinstance(provider, str):
-            provider_key = provider
-            provider_name = provider
-        else:
-            provider_key = provider
+        # Normaliser le provider en string
+        if hasattr(provider, 'value'):
             provider_name = provider.value
+            provider_key = provider.name.lower()
+        else:
+            provider_name = str(provider)
+            provider_key = provider_name.lower().replace(' ', '_')
+        
+        # Mapping pour compatibilité
+        provider_mapping = {
+            'openai': 'openai',
+            'anthropic': 'anthropic',
+            'anthropic_claude': 'anthropic',
+            'google': 'google',
+            'google_gemini': 'google',
+            'mistral': 'mistral',
+            'mistral_ai': 'mistral',
+            'groq': 'groq',
+            'azure_openai': 'azure_openai'
+        }
+        
+        provider_key = provider_mapping.get(provider_key, provider_key)
         
         if provider_key not in self.clients:
             return {
                 'success': False,
                 'provider': provider_name,
-                'error': f"Provider {provider_name} non disponible"
+                'error': f"Provider {provider_name} non disponible. Providers disponibles: {list(self.clients.keys())}"
             }
         
         try:
             start_time = time.time()
             
-            if provider_key == LLMProvider.OPENAI or provider_key == "AZURE_OPENAI":
+            if provider_key == "openai" or provider_key == "azure_openai":
                 response = self._query_openai(provider_key, prompt, system_prompt, temperature, max_tokens)
-            elif provider_key == LLMProvider.ANTHROPIC:
+            elif provider_key == "anthropic":
                 response = self._query_claude(prompt, system_prompt, temperature, max_tokens)
-            elif provider_key == LLMProvider.GOOGLE:
+            elif provider_key == "google":
                 response = self._query_gemini(prompt, system_prompt, temperature, max_tokens)
-            elif provider_key == LLMProvider.MISTRAL:
+            elif provider_key == "mistral":
                 response = self._query_mistral(prompt, system_prompt, temperature, max_tokens)
-            elif provider_key == LLMProvider.GROQ:
+            elif provider_key == "groq":
                 response = self._query_groq(prompt, system_prompt, temperature, max_tokens)
             else:
                 return {
@@ -192,8 +216,12 @@ class MultiLLMManager:
         """Interroge OpenAI ou Azure OpenAI"""
         client = self.clients[provider_key]
         
+        model = "gpt-4-turbo-preview"
+        if provider_key == "azure_openai":
+            model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
+        
         response = client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4") if provider_key == "AZURE_OPENAI" else "gpt-4-turbo-preview",
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -206,7 +234,7 @@ class MultiLLMManager:
     
     def _query_claude(self, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> str:
         """Interroge Claude"""
-        client = self.clients[LLMProvider.ANTHROPIC]
+        client = self.clients["anthropic"]
         
         response = client.messages.create(
             model="claude-3-opus-20240229",
@@ -220,7 +248,7 @@ class MultiLLMManager:
     
     def _query_gemini(self, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> str:
         """Interroge Google Gemini"""
-        model = self.clients[LLMProvider.GOOGLE]
+        model = self.clients["google"]
         
         # Gemini n'a pas de system prompt séparé, on le combine
         full_prompt = f"{system_prompt}\n\n{prompt}"
@@ -237,7 +265,7 @@ class MultiLLMManager:
     
     def _query_mistral(self, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> str:
         """Interroge Mistral"""
-        client = self.clients[LLMProvider.MISTRAL]
+        client = self.clients["mistral"]
         
         messages = [
             ChatMessage(role="system", content=system_prompt),
@@ -255,7 +283,7 @@ class MultiLLMManager:
     
     def _query_groq(self, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> str:
         """Interroge Groq"""
-        client = self.clients[LLMProvider.GROQ]
+        client = self.clients["groq"]
         
         response = client.chat.completions.create(
             model="mixtral-8x7b-32768",
@@ -271,7 +299,7 @@ class MultiLLMManager:
     
     def query_multiple_llms(
         self,
-        providers: List[LLMProvider],
+        providers: List[Any],
         prompt: str,
         system_prompt: str = "Tu es un assistant juridique expert en droit pénal des affaires français.",
         temperature: float = 0.7,
@@ -280,19 +308,28 @@ class MultiLLMManager:
     ) -> List[Dict[str, Any]]:
         """Interroge plusieurs LLMs"""
         
-        # Filtrer les providers disponibles
-        available_providers = [p for p in providers if p in self.clients]
+        # Normaliser les providers
+        normalized_providers = []
+        for p in providers:
+            if hasattr(p, 'value'):
+                key = p.name.lower()
+            else:
+                key = str(p).lower()
+            
+            # Vérifier si disponible
+            if key in self.clients or key.replace('_', '') in self.clients:
+                normalized_providers.append(p)
         
-        if not available_providers:
+        if not normalized_providers:
             return [{
                 'success': False,
                 'error': 'Aucun provider disponible'
             }]
         
         if parallel:
-            return self._query_parallel(available_providers, prompt, system_prompt, temperature, max_tokens)
+            return self._query_parallel(normalized_providers, prompt, system_prompt, temperature, max_tokens)
         else:
-            return self._query_sequential(available_providers, prompt, system_prompt, temperature, max_tokens)
+            return self._query_sequential(normalized_providers, prompt, system_prompt, temperature, max_tokens)
     
     def _query_parallel(self, providers, prompt, system_prompt, temperature, max_tokens):
         """Interroge les LLMs en parallèle"""
@@ -373,7 +410,7 @@ Présente une synthèse structurée et complète.
     
     def get_available_providers(self) -> List[str]:
         """Retourne la liste des providers disponibles"""
-        return [provider.value if hasattr(provider, 'value') else str(provider) for provider in self.clients.keys()]
+        return list(self.clients.keys())
     
     def test_connections(self) -> Dict[str, bool]:
         """Teste la connexion à chaque LLM"""
@@ -381,14 +418,24 @@ Présente une synthèse structurée et complète.
         
         test_prompt = "Réponds simplement 'OK' si tu reçois ce message."
         
-        for provider in self.clients.keys():
+        for provider_key in self.clients.keys():
             try:
-                result = self.query_single_llm(provider, test_prompt, "Réponds uniquement 'OK'.", 0.1, 10)
-                results[provider.value if hasattr(provider, 'value') else str(provider)] = result['success']
+                result = self.query_single_llm(provider_key, test_prompt, "Réponds uniquement 'OK'.", 0.1, 10)
+                results[provider_key] = result['success']
             except:
-                results[provider.value if hasattr(provider, 'value') else str(provider)] = False
+                results[provider_key] = False
         
         return results
+    
+    def debug_status(self):
+        """Affiche le statut de debug des LLMs"""
+        print("=== DEBUG MultiLLMManager ===")
+        print(f"Clients initialisés: {list(self.clients.keys())}")
+        print(f"Variables d'environnement:")
+        for key in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY"]:
+            value = os.getenv(key)
+            print(f"  {key}: {'✅ Défini' if value else '❌ Non défini'}")
+        print("="*30)
 
 # Fonction helper pour Streamlit
 def display_llm_status():
@@ -398,6 +445,10 @@ def display_llm_status():
     st.markdown("### 🤖 État des IA")
     
     status = llm_manager.test_connections()
+    
+    if not status:
+        st.warning("Aucune IA configurée")
+        return
     
     cols = st.columns(len(status))
     for i, (provider, is_connected) in enumerate(status.items()):
