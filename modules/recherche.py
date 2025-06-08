@@ -6429,7 +6429,7 @@ def extract_plaidoirie_structure(content: str) -> dict:
         section_content = content[start:end]
         
         # Extraire les sous-sections
-        subsections = re.findall(r'^([A-Z]\.\s+.*), section_content, re.MULTILINE)
+        subsections = re.findall(r'^([A-Z]\.\s+.*)', section_content, re.MULTILINE)
         
         structure[section] = subsections
     
