@@ -274,8 +274,8 @@ def show_page():
         if 'pending_query' in st.session_state:
             default_value = st.session_state.pending_query
             del st.session_state.pending_query
-    elif 'universal_query' in st.session_state:
-        default_value = st.session_state.universal_query
+        elif 'universal_query' in st.session_state:
+            default_value = st.session_state.universal_query
 
         query = st.text_input(
             "Entrez votre commande ou recherche",
