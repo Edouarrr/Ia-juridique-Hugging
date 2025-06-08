@@ -18,6 +18,24 @@ class SourceJurisprudence(Enum):
     CONSEILCONSTITUTIONNEL = "conseilconstitutionnel"
 
 @dataclass
+class DocumentJuridique:
+    """Document juridique avec métadonnées"""
+    id: str
+    titre: str
+    contenu: str
+    type_document: str
+    date_creation: datetime
+    source: str
+    metadata: Dict[str, Any] = None
+    tags: List[str] = None
+    
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+        if self.tags is None:
+            self.tags = []
+
+@dataclass
 class JurisprudenceReference:
     """Référence de jurisprudence"""
     numero: str
