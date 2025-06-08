@@ -270,11 +270,19 @@ def show_page():
     col1, col2 = st.columns([5, 1])
     
     with col1:
+        default_value = ""
+        if 'pending_query' in st.session_state:
+        default_value = st.session_state.pending_query
+        del st.session_state.pending_query
+    elif 'universal_query' in st.session_state:
+        default_value = st.session_state.universal_query
+
         query = st.text_input(
             "Entrez votre commande ou recherche",
+            value=default_value,
             placeholder="Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...",
             key="universal_query",
-            help="Utilisez @ pour référencer une affaire spécifique"
+            help="Utilisez @ pour référencer une affaire spécifique")
         )
     
     with col2:
@@ -318,18 +326,21 @@ def show_page():
     
     with col1:
         if st.button("📄 Nouvelle rédaction", key="quick_redaction"):
-            st.session_state.universal_query = "rédiger "
+            st.session_state.pending_query = "rédiger "
             st.session_state.process_query = True
-    
+            st.rerun()
+
     with col2:
         if st.button("🤖 Analyser dossier", key="quick_analysis"):
-            st.session_state.universal_query = "analyser "
+            st.session_state.pending_query = "analyser "
             st.session_state.process_query = True
-    
+            st.rerun()
+
     with col3:
         if st.button("📥 Importer", key="quick_import"):
-            st.session_state.universal_query = "importer documents"
+            st.session_state.pending_query = "importer documents"
             st.session_state.process_query = True
+            st.rerun()
     
     with col4:
         if st.button("🔄 Réinitialiser", key="quick_reset"):
