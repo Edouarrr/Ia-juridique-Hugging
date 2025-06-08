@@ -1257,6 +1257,95 @@ class PieceSelectionnee:
             'source_link': self.source_link,
             'footnote_text': self.footnote_text
         }
+    
+    @staticmethod
+    def create_piece_from_document(doc: Document, numero: int, 
+                                   categorie: Optional[str] = None,
+                                   pertinence: float = 0.5,
+                                   force_probante: Optional[ForceProbante] = None) -> 'PieceSelectionnee':
+        """
+        Crée une pièce à partir d'un document
+        
+        Args:
+            doc: Le document source
+            numero: Le numéro de la pièce
+            categorie: La catégorie de la pièce (optionnel)
+            pertinence: Score de pertinence (0-1)
+            force_probante: Force probante de la pièce
+            
+        Returns:
+            Une nouvelle PieceSelectionnee
+        """
+        # Déterminer la catégorie
+        if not categorie:
+            # Essayer de déduire la catégorie du document
+            if hasattr(doc, 'category') and doc.category:
+                categorie = doc.category
+            elif hasattr(doc, 'metadata') and doc.metadata:
+                categorie = doc.metadata.get('category', 'Autre')
+            else:
+                categorie = 'Autre'
+        
+        # Extraire la date
+        date = None
+        if hasattr(doc, 'metadata') and doc.metadata:
+            date_value = doc.metadata.get('date')
+            if date_value:
+                if isinstance(date_value, datetime):
+                    date = date_value
+                elif isinstance(date_value, str):
+                    try:
+                        date = datetime.fromisoformat(date_value)
+                    except:
+                        pass
+        
+        # Si c'est un DocumentJuridique, utiliser date_document
+        if hasattr(doc, 'date_document') and doc.date_document:
+            date = doc.date_document
+        
+        # Créer la description
+        max_desc_length = 200
+        if len(doc.content) > max_desc_length:
+            description = doc.content[:max_desc_length].strip() + '...'
+        else:
+            description = doc.content.strip()
+        
+        # Déterminer le format et la taille
+        format_doc = None
+        taille = None
+        pages = None
+        
+        if hasattr(doc, 'metadata') and doc.metadata:
+            format_doc = doc.metadata.get('mime_type') or doc.metadata.get('format')
+            taille = doc.metadata.get('file_size')
+            pages = doc.metadata.get('pages') or doc.metadata.get('page_count')
+        
+        # Créer la pièce
+        piece = PieceSelectionnee(
+            numero=numero,
+            titre=doc.title,
+            description=description,
+            categorie=categorie,
+            date=date,
+            source=doc.source,
+            pertinence=pertinence,
+            pages=pages,
+            format=format_doc,
+            taille=taille,
+            source_link=f"#doc_{doc.id}",
+            force_probante=force_probante or ForceProbante.NORMALE
+        )
+        
+        # Ajouter une référence source si possible
+        if hasattr(doc, 'id') and hasattr(doc, 'title'):
+            source_ref = SourceReference(
+                document_id=doc.id,
+                document_title=doc.title,
+                confidence=1.0
+            )
+            piece.add_source_reference(source_ref)
+        
+        return piece
 
 @dataclass
 class BordereauPieces:
@@ -1741,6 +1830,70 @@ class ArgumentStructure:
                 lines.extend(sub.to_outline(level + 2).split('\n'))
         
         return '\n'.join(lines)
+
+@dataclass
+class SourceTracker:
+    """Suivi des sources documentaires pour la traçabilité complète"""
+    sources: Dict[str, SourceReference] = field(default_factory=dict)
+    documents: Dict[str, Document] = field(default_factory=dict)
+    facts: List[FactWithSource] = field(default_factory=list)
+    references_map: Dict[str, List[str]] = field(default_factory=dict)  # doc_id -> [fact_ids]
+    
+    def add_source(self, source_ref: SourceReference):
+        """Ajoute une référence source"""
+        self.sources[source_ref.document_id] = source_ref
+    
+    def add_document(self, document: Document):
+        """Ajoute un document au tracker"""
+        self.documents[document.id] = document
+    
+    def add_fact(self, fact: FactWithSource):
+        """Ajoute un fait avec ses sources"""
+        self.facts.append(fact)
+        # Mettre à jour la carte des références
+        for source in fact.sources:
+            if source.document_id not in self.references_map:
+                self.references_map[source.document_id] = []
+            self.references_map[source.document_id].append(fact.id)
+    
+    def get_source_for_document(self, doc_id: str) -> Optional[SourceReference]:
+        """Récupère la source pour un document"""
+        return self.sources.get(doc_id)
+    
+    def get_document(self, doc_id: str) -> Optional[Document]:
+        """Récupère un document par son ID"""
+        return self.documents.get(doc_id)
+    
+    def get_facts_for_document(self, doc_id: str) -> List[FactWithSource]:
+        """Récupère tous les faits sourcés par un document"""
+        fact_ids = self.references_map.get(doc_id, [])
+        return [f for f in self.facts if f.id in fact_ids]
+    
+    def get_all_sources_for_facts(self, facts: List[FactWithSource]) -> List[SourceReference]:
+        """Récupère toutes les sources pour une liste de faits"""
+        sources = []
+        for fact in facts:
+            sources.extend(fact.sources)
+        # Dédupliquer par document_id
+        unique_sources = {}
+        for source in sources:
+            unique_sources[source.document_id] = source
+        return list(unique_sources.values())
+    
+    def generate_citation_report(self) -> Dict[str, Any]:
+        """Génère un rapport sur les citations"""
+        return {
+            'total_sources': len(self.sources),
+            'total_documents': len(self.documents),
+            'total_facts': len(self.facts),
+            'documents_with_facts': len(self.references_map),
+            'average_facts_per_document': sum(len(facts) for facts in self.references_map.values()) / max(len(self.references_map), 1),
+            'most_cited_documents': sorted(
+                [(doc_id, len(fact_ids)) for doc_id, fact_ids in self.references_map.items()],
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]
+        }
 
 # ========== ENTITÉS ==========
 
@@ -2492,6 +2645,198 @@ def generate_bordereau_with_full_links(bordereau: BordereauPieces,
     
     return content
 
+def format_company_for_legal_document(info: InformationEntreprise, style: str = 'complet') -> str:
+    """
+    Formate les informations d'entreprise pour un document juridique
+    
+    Args:
+        info: Les informations de l'entreprise
+        style: Le style de formatage ('complet', 'simple', 'standard')
+        
+    Returns:
+        La désignation formatée de l'entreprise
+    """
+    if style == 'complet':
+        # Format complet avec toutes les informations
+        designation = info.get_denomination_complete()
+        if info.capital_social:
+            designation += f" au capital de {info.format_capital()}"
+        if info.get_immatriculation_complete():
+            designation += f", {info.get_immatriculation_complete()}"
+        if info.siege_social:
+            designation += f", dont le siège social est situé {info.siege_social}"
+        if info.representants_legaux:
+            rep = info.representants_legaux[0]
+            designation += f", représentée par {rep.get('nom', 'N/A')}"
+        return designation
+    elif style == 'simple':
+        # Format simple : juste la dénomination
+        return info.denomination
+    elif style == 'standard':
+        # Format standard : dénomination + forme juridique
+        return info.get_denomination_complete()
+    elif style == 'immatriculation':
+        # Format avec focus sur l'immatriculation
+        base = info.get_denomination_complete()
+        if info.get_immatriculation_complete():
+            base += f", {info.get_immatriculation_complete()}"
+        return base
+    else:
+        # Par défaut, retourner le format standard
+        return info.get_denomination_complete()
+
+def get_phase_from_string(phase_str: str) -> PhaseProcedure:
+    """
+    Convertit une string en PhaseProcedure
+    
+    Args:
+        phase_str: La chaîne représentant la phase
+        
+    Returns:
+        L'enum PhaseProcedure correspondant
+    """
+    # Nettoyer la string
+    phase_clean = phase_str.lower().strip().replace(' ', '_').replace("'", "")
+    
+    # Mapping des différentes variantes possibles
+    phase_map = {
+        # Variantes standards
+        'enquete_preliminaire': PhaseProcedure.ENQUETE_PRELIMINAIRE,
+        'enquête_préliminaire': PhaseProcedure.ENQUETE_PRELIMINAIRE,
+        'enquete_flagrance': PhaseProcedure.ENQUETE_FLAGRANCE,
+        'enquête_de_flagrance': PhaseProcedure.ENQUETE_FLAGRANCE,
+        'instruction': PhaseProcedure.INSTRUCTION,
+        'jugement': PhaseProcedure.JUGEMENT,
+        'appel': PhaseProcedure.APPEL,
+        'cassation': PhaseProcedure.CASSATION,
+        'execution': PhaseProcedure.EXECUTION,
+        'exécution': PhaseProcedure.EXECUTION,
+        
+        # Variantes alternatives
+        'préliminaire': PhaseProcedure.ENQUETE_PRELIMINAIRE,
+        'flagrance': PhaseProcedure.ENQUETE_FLAGRANCE,
+        'juge_instruction': PhaseProcedure.INSTRUCTION,
+        'première_instance': PhaseProcedure.JUGEMENT,
+        'cour_appel': PhaseProcedure.APPEL,
+        'cour_cassation': PhaseProcedure.CASSATION,
+        
+        # Valeurs directes de l'enum
+        PhaseProcedure.ENQUETE_PRELIMINAIRE.value: PhaseProcedure.ENQUETE_PRELIMINAIRE,
+        PhaseProcedure.ENQUETE_FLAGRANCE.value: PhaseProcedure.ENQUETE_FLAGRANCE,
+        PhaseProcedure.INSTRUCTION.value: PhaseProcedure.INSTRUCTION,
+        PhaseProcedure.JUGEMENT.value: PhaseProcedure.JUGEMENT,
+        PhaseProcedure.APPEL.value: PhaseProcedure.APPEL,
+        PhaseProcedure.CASSATION.value: PhaseProcedure.CASSATION,
+        PhaseProcedure.EXECUTION.value: PhaseProcedure.EXECUTION,
+    }
+    
+    # Recherche dans le mapping
+    phase = phase_map.get(phase_clean)
+    if phase:
+        return phase
+    
+    # Recherche par valeur d'enum
+    for p in PhaseProcedure:
+        if p.value.lower() == phase_clean:
+            return p
+    
+    # Par défaut, retourner enquête préliminaire
+    return PhaseProcedure.ENQUETE_PRELIMINAIRE
+
+def get_type_partie_from_string(type_str: str) -> TypePartie:
+    """
+    Convertit une string en TypePartie
+    
+    Args:
+        type_str: La chaîne représentant le type de partie
+        
+    Returns:
+        L'enum TypePartie correspondant
+    """
+    type_clean = type_str.lower().strip()
+    
+    type_map = {
+        'demandeur': TypePartie.DEMANDEUR,
+        'defendeur': TypePartie.DEFENDEUR,
+        'défendeur': TypePartie.DEFENDEUR,
+        'plaignant': TypePartie.PLAIGNANT,
+        'mis_en_cause': TypePartie.MIS_EN_CAUSE,
+        'mis en cause': TypePartie.MIS_EN_CAUSE,
+        'temoin': TypePartie.TEMOIN,
+        'témoin': TypePartie.TEMOIN,
+        'expert': TypePartie.EXPERT,
+        'tiers': TypePartie.TIERS,
+        'partie_civile': TypePartie.PARTIE_CIVILE,
+        'partie civile': TypePartie.PARTIE_CIVILE,
+        'prevenu': TypePartie.PREVENU,
+        'prévenu': TypePartie.PREVENU,
+        'accuse': TypePartie.ACCUSE,
+        'accusé': TypePartie.ACCUSE,
+    }
+    
+    # Recherche dans le mapping
+    type_partie = type_map.get(type_clean)
+    if type_partie:
+        return type_partie
+    
+    # Recherche par valeur d'enum
+    for tp in TypePartie:
+        if tp.value.lower() == type_clean:
+            return tp
+    
+    # Par défaut
+    return TypePartie.TIERS
+
+def ensure_document_object(doc_data: Any) -> Document:
+    """
+    S'assure qu'on a bien un objet Document
+    
+    Args:
+        doc_data: Les données du document (dict ou Document)
+        
+    Returns:
+        Un objet Document
+        
+    Raises:
+        ValueError: Si le type n'est pas supporté
+    """
+    if isinstance(doc_data, Document):
+        return doc_data
+    elif isinstance(doc_data, DocumentJuridique):
+        # Retourner tel quel si c'est déjà un DocumentJuridique
+        return doc_data
+    elif isinstance(doc_data, dict):
+        # Vérifier si c'est un document juridique
+        if 'type_document' in doc_data or 'juridiction' in doc_data:
+            return DocumentJuridique(
+                id=doc_data.get('id', f"doc_{datetime.now().timestamp()}"),
+                title=doc_data.get('title', 'Sans titre'),
+                content=doc_data.get('content', ''),
+                source=doc_data.get('source', ''),
+                metadata=doc_data.get('metadata', {}),
+                type_document=doc_data.get('type_document'),
+                juridiction=doc_data.get('juridiction'),
+                numero_affaire=doc_data.get('numero_affaire'),
+                parties=doc_data.get('parties', {}),
+                mots_cles_juridiques=doc_data.get('mots_cles_juridiques', [])
+            )
+        else:
+            # Document simple
+            return Document(
+                id=doc_data.get('id', f"doc_{datetime.now().timestamp()}"),
+                title=doc_data.get('title', 'Sans titre'),
+                content=doc_data.get('content', ''),
+                source=doc_data.get('source', ''),
+                metadata=doc_data.get('metadata', {}),
+                created_at=doc_data.get('created_at', datetime.now()) if not isinstance(doc_data.get('created_at'), str) else datetime.fromisoformat(doc_data.get('created_at')),
+                tags=doc_data.get('tags', []),
+                category=doc_data.get('category'),
+                author=doc_data.get('author'),
+                reference=doc_data.get('reference')
+            )
+    else:
+        raise ValueError(f"Type de document non supporté: {type(doc_data)}")
+
 # ========== FONCTIONS D'INTÉGRATION ENTREPRISES ==========
 
 async def fetch_company_info_pappers(company_name: str, api_key: str) -> Optional[InformationEntreprise]:
@@ -2597,5 +2942,90 @@ DEFAULT_STYLE_CONFIGS = {
         formality_level=7
     )
 }
+
+# ========== EXPORTS EXPLICITES ==========
+__all__ = [
+    # Documents
+    'Document',
+    'DocumentJuridique',
+    
+    # Parties et affaires
+    'Partie',
+    'TypePartie',
+    'CasJuridique',
+    'InformationEntreprise',
+    'SourceEntreprise',
+    
+    # Pièces et procédure
+    'PieceSelectionnee',
+    'BordereauPieces',
+    'ElementProcedure',
+    'PieceVersee',
+    'ChaineProcedure',
+    
+    # Traçabilité
+    'FactWithSource',
+    'SourceReference',
+    'ArgumentStructure',
+    'SourceTracker',
+    
+    # Infractions
+    'InfractionIdentifiee',
+    'InfractionAffaires',
+    
+    # Enums
+    'SourceJurisprudence',
+    'SourceEntreprise',
+    'TypeDocument',
+    'TypeJuridiction',
+    'StatutProcedural',
+    'PhaseProcedure',
+    'InfractionAffaires',
+    'LLMProvider',
+    'SearchMode',
+    'TypeElementProcedure',
+    'NaturePiece',
+    'ForceProbante',
+    'StyleRedaction',
+    'TypeAnalyse',
+    'TypePartie',
+    
+    # Styles et templates
+    'StyleConfig',
+    'StyleLearningResult',
+    'StylePattern',
+    'DocumentTemplate',
+    
+    # Entités
+    'Entity',
+    
+    # Recherche universelle
+    'QueryAnalysis',
+    'SearchResult',
+    
+    # Analyse et rédaction
+    'AnalysisResult',
+    'AnalyseJuridique',  # Alias
+    'RedactionResult',
+    'JurisprudenceReference',
+    
+    # Fonctions helper
+    'get_statut_by_phase_and_role',
+    'format_partie_designation_by_phase',
+    'create_partie_from_name_with_lookup',
+    'extract_paragraph_numbering_style',
+    'learn_document_style',
+    'format_piece_with_source_and_footnote',
+    'generate_bordereau_with_full_links',
+    'format_company_for_legal_document',
+    'get_phase_from_string',
+    'get_type_partie_from_string',
+    'ensure_document_object',
+    'fetch_company_info_pappers',
+    'fetch_company_info_societe',
+    
+    # Configuration
+    'DEFAULT_STYLE_CONFIGS',
+]
 
 # ========== FIN DU MODULE ==========
