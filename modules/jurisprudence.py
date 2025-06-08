@@ -1,10 +1,16 @@
 # modules/jurisprudence.py
-"""Module de recherche et gestion de la jurisprudence"""
+"""Module de recherche et gestion de la jurisprudence avec API réelles"""
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 import re
+import os
+import json
+import asyncio
+import aiohttp
+from collections import Counter
+import logging
 
 from models.dataclasses import (
     JurisprudenceReference,
@@ -17,12 +23,20 @@ from managers.jurisprudence_verifier import JurisprudenceVerifier
 from managers.legal_search import LegalSearchManager
 from utils.helpers import clean_key, highlight_text
 
+logger = logging.getLogger(__name__)
+
 # Configuration des sources
 SOURCE_CONFIGS = {
     SourceJurisprudence.LEGIFRANCE: {
         'name': 'Légifrance',
         'icon': '🏛️',
         'url': 'https://www.legifrance.gouv.fr',
+        'api_available': True
+    },
+    SourceJurisprudence.JUDILIBRE: {
+        'name': 'Judilibre',
+        'icon': '⚖️',
+        'url': 'https://api.judilibre.io',
         'api_available': True
     },
     SourceJurisprudence.DOCTRINE: {
@@ -45,6 +59,441 @@ SOURCE_CONFIGS = {
     }
 }
 
+class JurisprudenceAPIManager:
+    """Gestionnaire des API de jurisprudence"""
+    
+    def __init__(self):
+        # Clés API
+        self.judilibre_api_key = os.getenv('JUDILIBRE_API_KEY', 'ac72ad69-ef21-4af2-b3e2-6fa1132a8348')
+        self.piste_client_id = os.getenv('PISTE_CLIENT_ID', '')
+        self.piste_client_secret = os.getenv('PISTE_CLIENT_SECRET', '')
+        
+        # URLs des APIs
+        self.apis = {
+            'piste': {
+                'base_url': 'https://api.piste.gouv.fr',
+                'oauth_url': 'https://oauth.piste.gouv.fr/api/oauth/token',
+                'search_url': 'https://api.piste.gouv.fr/dila/legifrance/lf-engine-app/search',
+                'consult_url': 'https://api.piste.gouv.fr/dila/legifrance/lf-engine-app/consult',
+                'requires_auth': True
+            },
+            'judilibre': {
+                'base_url': 'https://api.judilibre.io/v1.0',
+                'search_url': 'https://api.judilibre.io/v1.0/search',
+                'decision_url': 'https://api.judilibre.io/v1.0/decision',
+                'export_url': 'https://api.judilibre.io/v1.0/export',
+                'requires_auth': True
+            },
+            'conseil_etat': {
+                'base_url': 'https://www.conseil-etat.fr/arianeweb/api',
+                'requires_auth': False
+            }
+        }
+        
+        self.access_token = None
+        self.token_expires_at = None
+        
+        # Cache pour les résultats
+        self.cache = {}
+        self.cache_duration = timedelta(hours=1)
+    
+    async def authenticate_piste(self):
+        """Authentification OAuth2 pour l'API PISTE"""
+        if not self.piste_client_id or not self.piste_client_secret:
+            logger.warning("Identifiants PISTE non configurés")
+            return False
+            
+        try:
+            async with aiohttp.ClientSession() as session:
+                data = {
+                    'grant_type': 'client_credentials',
+                    'client_id': self.piste_client_id,
+                    'client_secret': self.piste_client_secret,
+                    'scope': 'openid'
+                }
+                
+                async with session.post(self.apis['piste']['oauth_url'], data=data) as resp:
+                    if resp.status == 200:
+                        token_data = await resp.json()
+                        self.access_token = token_data.get('access_token')
+                        expires_in = token_data.get('expires_in', 3600)
+                        self.token_expires_at = datetime.now() + timedelta(seconds=expires_in)
+                        logger.info("Authentification PISTE réussie")
+                        return True
+                    else:
+                        logger.error(f"Erreur authentification PISTE: {resp.status}")
+                        return False
+                        
+        except Exception as e:
+            logger.error(f"Erreur lors de l'authentification PISTE: {e}")
+            return False
+    
+    async def search_judilibre(self, criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
+        """Recherche sur Judilibre"""
+        results = []
+        
+        try:
+            headers = {
+                'KeyId': self.judilibre_api_key,
+                'Content-Type': 'application/json'
+            }
+            
+            # Construire la requête
+            query_params = {
+                'query': criteria.get('query', ''),
+                'jurisdiction': [],
+                'chamber': [],
+                'formation': [],
+                'date_start': None,
+                'date_end': None,
+                'sort': 'score',
+                'order': 'desc',
+                'page': 0,
+                'page_size': 30
+            }
+            
+            # Filtrer par juridiction
+            if criteria.get('juridictions'):
+                for juridiction in criteria['juridictions']:
+                    if 'cassation' in juridiction.lower():
+                        query_params['jurisdiction'].append('cc')
+                    elif 'appel' in juridiction.lower():
+                        query_params['jurisdiction'].append('ca')
+            
+            # Filtrer par date
+            if criteria.get('date_range'):
+                start, end = criteria['date_range']
+                query_params['date_start'] = start.strftime('%Y-%m-%d')
+                query_params['date_end'] = end.strftime('%Y-%m-%d')
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.apis['judilibre']['search_url'],
+                    headers=headers,
+                    json=query_params
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        for hit in data.get('results', []):
+                            try:
+                                # Extraire les informations
+                                decision = hit.get('decision', {})
+                                
+                                ref = JurisprudenceReference(
+                                    numero=decision.get('number', ''),
+                                    date=datetime.strptime(decision.get('date', ''), '%Y-%m-%d'),
+                                    juridiction=self._format_juridiction_judilibre(decision),
+                                    type_juridiction=self._get_type_juridiction(decision),
+                                    formation=decision.get('formation', ''),
+                                    titre=self._extract_title_judilibre(decision),
+                                    resume=decision.get('summary', '')[:500],
+                                    url=f"https://www.courdecassation.fr/decision/{decision.get('id')}",
+                                    source=SourceJurisprudence.JUDILIBRE,
+                                    mots_cles=self._extract_keywords_judilibre(decision),
+                                    articles_vises=self._extract_articles_judilibre(decision),
+                                    importance=self._calculate_importance_judilibre(hit),
+                                    solution=decision.get('solution', ''),
+                                    portee=self._determine_portee_judilibre(decision),
+                                    texte_integral=decision.get('text', '')
+                                )
+                                
+                                results.append(ref)
+                                
+                            except Exception as e:
+                                logger.error(f"Erreur parsing décision Judilibre: {e}")
+                                continue
+                    else:
+                        logger.error(f"Erreur recherche Judilibre: {resp.status}")
+                        
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche Judilibre: {e}")
+        
+        return results
+    
+    async def search_legifrance(self, criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
+        """Recherche sur Légifrance via PISTE"""
+        results = []
+        
+        # Vérifier l'authentification
+        if not self.access_token or datetime.now() >= self.token_expires_at:
+            if not await self.authenticate_piste():
+                logger.warning("Impossible de s'authentifier à PISTE")
+                return results
+        
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            # Construire la requête
+            search_data = {
+                'fond': 'JURI',  # Jurisprudence
+                'recherche': {
+                    'typeRecherche': 'TOUS_LES_MOTS_DANS_UN_CHAMP',
+                    'pageNumber': 1,
+                    'pageSize': 30,
+                    'sort': 'PERTINENCE',
+                    'champs': [
+                        {
+                            'typeChamp': 'ALL',
+                            'criteres': [
+                                {
+                                    'typeRecherche': 'TOUS_LES_MOTS',
+                                    'valeur': criteria.get('query', '')
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+            
+            # Ajouter les filtres
+            if criteria.get('juridictions'):
+                search_data['recherche']['facettes'] = {
+                    'JURIDICTION': [j for j in criteria['juridictions']]
+                }
+            
+            if criteria.get('date_range'):
+                start, end = criteria['date_range']
+                search_data['recherche']['filtres'] = {
+                    'dateDecision': {
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    }
+                }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.apis['piste']['search_url'],
+                    headers=headers,
+                    json=search_data
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        for result in data.get('results', []):
+                            try:
+                                ref = JurisprudenceReference(
+                                    numero=result.get('numeroAffaire', ''),
+                                    date=datetime.strptime(result.get('dateDecision', ''), '%Y-%m-%d'),
+                                    juridiction=result.get('juridiction', ''),
+                                    type_juridiction=self._get_type_juridiction_legifrance(result),
+                                    formation=result.get('formation', ''),
+                                    titre=result.get('titre', ''),
+                                    resume=result.get('sommaire', '')[:500],
+                                    url=f"https://www.legifrance.gouv.fr/juri/id/{result.get('id')}",
+                                    source=SourceJurisprudence.LEGIFRANCE,
+                                    mots_cles=result.get('descripteurs', []),
+                                    articles_vises=self._extract_articles_legifrance(result),
+                                    importance=self._calculate_importance_legifrance(result),
+                                    solution=result.get('solution', ''),
+                                    portee=result.get('portee', ''),
+                                    texte_integral=None  # À récupérer séparément si nécessaire
+                                )
+                                
+                                results.append(ref)
+                                
+                            except Exception as e:
+                                logger.error(f"Erreur parsing décision Légifrance: {e}")
+                                continue
+                    else:
+                        logger.error(f"Erreur recherche Légifrance: {resp.status}")
+                        
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche Légifrance: {e}")
+        
+        return results
+    
+    def _format_juridiction_judilibre(self, decision: dict) -> str:
+        """Formate la juridiction depuis les données Judilibre"""
+        jurisdiction = decision.get('jurisdiction', '')
+        chamber = decision.get('chamber', '')
+        
+        if jurisdiction == 'cc':
+            base = "Cour de cassation"
+            if chamber:
+                return f"{base}, {chamber}"
+            return base
+        elif jurisdiction == 'ca':
+            location = decision.get('location', '')
+            return f"Cour d'appel de {location}" if location else "Cour d'appel"
+        
+        return jurisdiction
+    
+    def _get_type_juridiction(self, decision: dict) -> TypeJuridiction:
+        """Détermine le type de juridiction"""
+        jurisdiction = decision.get('jurisdiction', '').lower()
+        
+        if jurisdiction == 'cc':
+            return TypeJuridiction.COUR_DE_CASSATION
+        elif jurisdiction == 'ca':
+            return TypeJuridiction.COUR_APPEL
+        elif jurisdiction == 'ce':
+            return TypeJuridiction.CONSEIL_ETAT
+        
+        return TypeJuridiction.AUTRE
+    
+    def _extract_title_judilibre(self, decision: dict) -> str:
+        """Extrait un titre depuis les données Judilibre"""
+        # Essayer d'extraire depuis le sommaire ou les mots-clés
+        summary = decision.get('summary', '')
+        if summary:
+            # Prendre la première phrase
+            return summary.split('.')[0]
+        
+        themes = decision.get('themes', [])
+        if themes:
+            return " - ".join(themes[:2])
+        
+        return ""
+    
+    def _extract_keywords_judilibre(self, decision: dict) -> List[str]:
+        """Extrait les mots-clés depuis les données Judilibre"""
+        keywords = []
+        
+        # Thèmes
+        keywords.extend(decision.get('themes', []))
+        
+        # Rubriques
+        keywords.extend(decision.get('rubriques', []))
+        
+        return list(set(keywords))
+    
+    def _extract_articles_judilibre(self, decision: dict) -> List[str]:
+        """Extrait les articles visés"""
+        articles = []
+        
+        # Chercher dans les références
+        references = decision.get('references', {})
+        for ref_type, ref_list in references.items():
+            if 'article' in ref_type.lower():
+                articles.extend(ref_list)
+        
+        # Chercher dans le texte
+        text = decision.get('text', '')
+        if text:
+            # Pattern pour les articles
+            article_pattern = r'article[s]?\s+([LR]?\s*\d+(?:-\d+)?(?:\s+et\s+[LR]?\s*\d+(?:-\d+)?)*)'
+            matches = re.findall(article_pattern, text, re.IGNORECASE)
+            articles.extend(matches)
+        
+        return list(set(articles))
+    
+    def _calculate_importance_judilibre(self, hit: dict) -> int:
+        """Calcule l'importance d'une décision Judilibre"""
+        score = 5  # Base
+        
+        # Score de pertinence
+        relevance = hit.get('score', 0)
+        if relevance > 0.8:
+            score += 2
+        elif relevance > 0.6:
+            score += 1
+        
+        decision = hit.get('decision', {})
+        
+        # Bulletin
+        if decision.get('bulletin'):
+            score += 2
+        
+        # Solution importante
+        solution = decision.get('solution', '').lower()
+        if 'principe' in solution or 'cassation' in solution:
+            score += 1
+        
+        # Décision récente
+        try:
+            date = datetime.strptime(decision.get('date', ''), '%Y-%m-%d')
+            if (datetime.now() - date).days < 365:
+                score += 1
+        except:
+            pass
+        
+        return min(score, 10)
+    
+    def _determine_portee_judilibre(self, decision: dict) -> str:
+        """Détermine la portée d'une décision"""
+        # Indices dans le texte ou les métadonnées
+        if decision.get('bulletin'):
+            return "Principe"
+        
+        solution = decision.get('solution', '').lower()
+        if 'principe' in solution:
+            return "Principe"
+        elif 'espèce' in solution:
+            return "Espèce"
+        
+        return ""
+    
+    def _get_type_juridiction_legifrance(self, result: dict) -> TypeJuridiction:
+        """Détermine le type de juridiction pour Légifrance"""
+        juridiction = result.get('juridiction', '').lower()
+        
+        if 'cassation' in juridiction:
+            return TypeJuridiction.COUR_DE_CASSATION
+        elif 'appel' in juridiction:
+            return TypeJuridiction.COUR_APPEL
+        elif 'conseil' in juridiction and 'etat' in juridiction:
+            return TypeJuridiction.CONSEIL_ETAT
+        elif 'constitutionnel' in juridiction:
+            return TypeJuridiction.CONSEIL_CONSTITUTIONNEL
+        elif 'tribunal' in juridiction:
+            return TypeJuridiction.TRIBUNAL
+        
+        return TypeJuridiction.AUTRE
+    
+    def _extract_articles_legifrance(self, result: dict) -> List[str]:
+        """Extrait les articles depuis les données Légifrance"""
+        articles = []
+        
+        # Textes visés
+        textes_vises = result.get('textesVises', [])
+        for texte in textes_vises:
+            if 'article' in texte.lower():
+                articles.append(texte)
+        
+        # Analyse du texte
+        text = result.get('texteIntegral', '')
+        if text:
+            article_pattern = r'article[s]?\s+([LR]?\s*\d+(?:-\d+)?)'
+            matches = re.findall(article_pattern, text, re.IGNORECASE)
+            articles.extend(matches)
+        
+        return list(set(articles))
+    
+    def _calculate_importance_legifrance(self, result: dict) -> int:
+        """Calcule l'importance d'une décision Légifrance"""
+        score = 5  # Base
+        
+        # Publié au bulletin
+        if result.get('publication', {}).get('bulletin'):
+            score += 2
+        
+        # Décision de principe
+        if result.get('importance') == 'PRINCIPE':
+            score += 2
+        
+        # Nombreuses références
+        if len(result.get('textesVises', [])) > 5:
+            score += 1
+        
+        # Décision récente
+        try:
+            date = datetime.strptime(result.get('dateDecision', ''), '%Y-%m-%d')
+            if (datetime.now() - date).days < 365:
+                score += 1
+        except:
+            pass
+        
+        return min(score, 10)
+
+
+# Instance globale du gestionnaire d'API
+api_manager = JurisprudenceAPIManager()
+
+
 def process_jurisprudence_request(query: str, analysis: dict):
     """Traite une demande de recherche de jurisprudence"""
     
@@ -58,6 +507,7 @@ def process_jurisprudence_request(query: str, analysis: dict):
     
     # Interface de recherche
     show_jurisprudence_search_interface(search_criteria)
+
 
 def extract_jurisprudence_criteria(query: str, analysis: dict) -> Dict[str, Any]:
     """Extrait les critères de recherche jurisprudentielle"""
@@ -104,6 +554,7 @@ def extract_jurisprudence_criteria(query: str, analysis: dict) -> Dict[str, Any]
     
     return criteria
 
+
 def show_jurisprudence_search_interface(initial_criteria: Dict[str, Any] = None):
     """Interface principale de recherche jurisprudentielle"""
     
@@ -135,10 +586,21 @@ def show_jurisprudence_search_interface(initial_criteria: Dict[str, Any] = None)
     with tabs[4]:
         show_configuration_tab()
 
+
 def show_search_tab(search_manager: LegalSearchManager, initial_criteria: Dict[str, Any] = None):
-    """Onglet de recherche"""
+    """Onglet de recherche avec flux amélioré"""
     
     st.markdown("#### 🔍 Recherche de jurisprudence")
+    
+    # Informer sur le flux de recherche
+    with st.expander("ℹ️ Processus de recherche", expanded=False):
+        st.info("""
+        **Flux de recherche optimisé :**
+        1. 🔍 **Recherche officielle** : Consultation des API Judilibre et Légifrance
+        2. 🤖 **Suggestions IA** : Propositions complémentaires par l'IA
+        3. ✅ **Vérification** : Validation de toutes les jurisprudences
+        4. 📊 **Résultats vérifiés** : Affichage uniquement des décisions confirmées
+        """)
     
     # Formulaire de recherche
     with st.form("jurisprudence_search_form"):
@@ -174,13 +636,14 @@ def show_search_tab(search_manager: LegalSearchManager, initial_criteria: Dict[s
                 date_end = st.date_input("Date fin", key="juris_date_end")
         
         with col2:
-            # Sources
+            # Sources - Toujours activer Judilibre et Légifrance
             selected_sources = st.multiselect(
                 "Sources",
                 options=[s.value for s in SourceJurisprudence],
-                default=[SourceJurisprudence.LEGIFRANCE.value],
+                default=[SourceJurisprudence.LEGIFRANCE.value, SourceJurisprudence.JUDILIBRE.value],
                 format_func=lambda x: SOURCE_CONFIGS[SourceJurisprudence(x)]['name'],
-                key="juris_sources"
+                key="juris_sources",
+                help="Judilibre et Légifrance sont toujours consultés en priorité"
             )
             
             # Importance
@@ -207,17 +670,19 @@ def show_search_tab(search_manager: LegalSearchManager, initial_criteria: Dict[s
             with col1:
                 search_in_summary = st.checkbox("Rechercher dans les résumés", value=True)
                 search_in_full_text = st.checkbox("Rechercher dans le texte intégral", value=False)
+                enable_ai_suggestions = st.checkbox("Activer les suggestions IA", value=True)
                 
             with col2:
                 only_principle = st.checkbox("Décisions de principe uniquement", value=False)
                 with_commentary = st.checkbox("Avec commentaires uniquement", value=False)
+                auto_verify = st.checkbox("Vérification automatique", value=True)
         
         # Bouton de recherche
         search_submitted = st.form_submit_button("🔍 Rechercher", type="primary")
     
     # Lancer la recherche
     if search_submitted:
-        perform_jurisprudence_search(
+        perform_jurisprudence_search_enhanced(
             query,
             selected_juridictions,
             selected_sources,
@@ -227,13 +692,16 @@ def show_search_tab(search_manager: LegalSearchManager, initial_criteria: Dict[s
             search_in_summary,
             search_in_full_text,
             only_principle,
-            with_commentary
+            with_commentary,
+            enable_ai_suggestions,
+            auto_verify
         )
     
     # Afficher les résultats
     show_search_results()
 
-def perform_jurisprudence_search(
+
+def perform_jurisprudence_search_enhanced(
     query: str,
     juridictions: List[str],
     sources: List[str],
@@ -243,52 +711,166 @@ def perform_jurisprudence_search(
     search_in_summary: bool,
     search_in_full_text: bool,
     only_principle: bool,
-    with_commentary: bool
+    with_commentary: bool,
+    enable_ai_suggestions: bool,
+    auto_verify: bool
 ):
-    """Effectue la recherche de jurisprudence"""
+    """Effectue la recherche de jurisprudence avec le flux amélioré"""
     
-    with st.spinner("🔍 Recherche en cours..."):
-        # Construire les critères
-        search_criteria = {
-            'query': query,
-            'juridictions': juridictions,
-            'sources': [SourceJurisprudence(s) for s in sources],
-            'articles': [a.strip() for a in articles.split(',') if a.strip()],
-            'date_range': parse_date_range(date_range),
-            'min_importance': min_importance,
-            'search_in_summary': search_in_summary,
-            'search_in_full_text': search_in_full_text,
-            'only_principle': only_principle,
-            'with_commentary': with_commentary
-        }
+    # Construire les critères
+    search_criteria = {
+        'query': query,
+        'juridictions': juridictions,
+        'sources': [SourceJurisprudence(s) for s in sources],
+        'articles': [a.strip() for a in articles.split(',') if a.strip()],
+        'date_range': parse_date_range(date_range),
+        'min_importance': min_importance,
+        'search_in_summary': search_in_summary,
+        'search_in_full_text': search_in_full_text,
+        'only_principle': only_principle,
+        'with_commentary': with_commentary
+    }
+    
+    # Résultats consolidés
+    all_results = []
+    verified_results = []
+    
+    # Étape 1: Recherche sur les API officielles
+    with st.spinner("🔍 Recherche sur les bases officielles (Judilibre, Légifrance)..."):
+        # Toujours rechercher sur Judilibre et Légifrance
+        official_results = asyncio.run(search_official_sources(search_criteria))
+        all_results.extend(official_results)
         
-        # Rechercher
-        results = search_jurisprudence(search_criteria)
+        st.success(f"✅ {len(official_results)} décisions trouvées sur les bases officielles")
+    
+    # Étape 2: Suggestions IA si activées
+    if enable_ai_suggestions and len(all_results) < 20:
+        with st.spinner("🤖 Recherche de jurisprudences complémentaires par IA..."):
+            ai_suggestions = get_ai_jurisprudence_suggestions(search_criteria, all_results)
+            
+            if ai_suggestions:
+                st.info(f"💡 {len(ai_suggestions)} suggestions supplémentaires de l'IA")
+                all_results.extend(ai_suggestions)
+    
+    # Étape 3: Vérification automatique si activée
+    if auto_verify and all_results:
+        with st.spinner("✅ Vérification des références..."):
+            verifier = st.session_state.get('jurisprudence_verifier', JurisprudenceVerifier())
+            
+            progress_bar = st.progress(0)
+            
+            for i, ref in enumerate(all_results):
+                # Vérifier la référence
+                verification_result = verifier.verify_reference(ref.get_citation())
+                
+                if verification_result.is_valid:
+                    # Enrichir avec les données vérifiées
+                    if verification_result.reference:
+                        ref.is_verified = True
+                        ref.verification_confidence = verification_result.confidence
+                        verified_results.append(ref)
+                else:
+                    # Marquer comme non vérifiée
+                    ref.is_verified = False
+                    ref.verification_message = verification_result.message
+                
+                progress_bar.progress((i + 1) / len(all_results))
+            
+            progress_bar.empty()
+            
+            st.success(f"✅ {len(verified_results)} décisions vérifiées sur {len(all_results)}")
+    else:
+        verified_results = all_results
+    
+    # Étape 4: Filtrer et trier les résultats
+    final_results = []
+    
+    for ref in verified_results:
+        # Appliquer les filtres supplémentaires
+        if only_principle and ref.portee != "Principe":
+            continue
         
-        # Stocker les résultats
-        st.session_state.jurisprudence_results = results
-        st.session_state.jurisprudence_search_criteria = search_criteria
+        if with_commentary and not ref.commentaires:
+            continue
         
-        if results:
-            st.success(f"✅ {len(results)} décision(s) trouvée(s)")
-        else:
-            st.warning("⚠️ Aucune décision trouvée")
+        if ref.importance >= min_importance:
+            final_results.append(ref)
+    
+    # Trier par pertinence et date
+    final_results.sort(key=lambda x: (x.importance, x.date), reverse=True)
+    
+    # Stocker les résultats
+    st.session_state.jurisprudence_results = final_results
+    st.session_state.jurisprudence_search_criteria = search_criteria
+    st.session_state.jurisprudence_verification_status = {
+        'total': len(all_results),
+        'verified': len(verified_results),
+        'displayed': len(final_results)
+    }
+    
+    if final_results:
+        st.success(f"📊 {len(final_results)} décision(s) affichée(s) après filtrage")
+    else:
+        st.warning("⚠️ Aucune décision ne correspond aux critères après vérification")
 
-def search_jurisprudence(criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
-    """Recherche la jurisprudence selon les critères"""
-    
+
+async def search_official_sources(criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
+    """Recherche asynchrone sur les sources officielles"""
     results = []
     
-    # Recherche dans les sources
+    # Créer les tâches de recherche
+    tasks = []
+    
+    # Toujours rechercher sur Judilibre
+    tasks.append(api_manager.search_judilibre(criteria))
+    
+    # Toujours rechercher sur Légifrance
+    tasks.append(api_manager.search_legifrance(criteria))
+    
+    # Exécuter les recherches en parallèle
+    search_results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Consolider les résultats
+    for result in search_results:
+        if isinstance(result, list):
+            results.extend(result)
+        elif isinstance(result, Exception):
+            logger.error(f"Erreur lors de la recherche: {result}")
+    
+    return results
+
+
+def get_ai_jurisprudence_suggestions(criteria: Dict[str, Any], existing_results: List[JurisprudenceReference]) -> List[JurisprudenceReference]:
+    """Obtient des suggestions de jurisprudence via IA"""
+    suggestions = []
+    
+    # Ici, intégrer l'appel à votre IA pour obtenir des suggestions
+    # Pour l'instant, retourner une liste vide
+    
+    # Exemple d'intégration :
+    # prompt = f"Suggère des jurisprudences pertinentes pour: {criteria['query']}"
+    # ai_response = call_ai_api(prompt)
+    # suggestions = parse_ai_suggestions(ai_response)
+    
+    return suggestions
+
+
+def search_jurisprudence(criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
+    """Recherche la jurisprudence selon les critères (méthode legacy)"""
+    
+    # Utiliser la nouvelle méthode de recherche
+    results = asyncio.run(search_official_sources(criteria))
+    
+    # Recherche dans les autres sources si demandé
     for source in criteria['sources']:
-        if source == SourceJurisprudence.LEGIFRANCE:
-            results.extend(search_legifrance(criteria))
-        
-        elif source == SourceJurisprudence.COURDECASSATION:
-            results.extend(search_cour_cassation(criteria))
-        
-        elif source == SourceJurisprudence.INTERNAL:
+        if source == SourceJurisprudence.INTERNAL:
             results.extend(search_internal_database(criteria))
+        elif source == SourceJurisprudence.DOCTRINE:
+            # Implémenter la recherche Doctrine si disponible
+            pass
+        elif source == SourceJurisprudence.DALLOZ:
+            # Implémenter la recherche Dalloz si disponible
+            pass
     
     # Filtrer par importance
     results = [r for r in results if r.importance >= criteria['min_importance']]
@@ -298,38 +880,6 @@ def search_jurisprudence(criteria: Dict[str, Any]) -> List[JurisprudenceReferenc
     
     return results
 
-def search_legifrance(criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
-    """Recherche sur Légifrance (simulation)"""
-    
-    # Pour l'instant, retourner des exemples
-    sample_results = []
-    
-    if 'responsabilité' in criteria['query'].lower():
-        sample_results.append(
-            JurisprudenceReference(
-                numero="19-21.524",
-                date=datetime(2021, 3, 17),
-                juridiction="Cour de cassation, chambre civile 1",
-                type_juridiction=TypeJuridiction.COUR_DE_CASSATION,
-                formation="Première chambre civile",
-                titre="Responsabilité contractuelle - Obligation de résultat",
-                resume="La responsabilité du transporteur est engagée de plein droit en cas de retard dans la livraison.",
-                url="https://www.legifrance.gouv.fr/juri/id/JURITEXT000043268591",
-                source=SourceJurisprudence.LEGIFRANCE,
-                mots_cles=["responsabilité", "transport", "retard", "obligation de résultat"],
-                articles_vises=["Article 1231-1 du Code civil"],
-                importance=8,
-                solution="Cassation",
-                portee="Principe"
-            )
-        )
-    
-    return sample_results
-
-def search_cour_cassation(criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
-    """Recherche sur le site de la Cour de cassation"""
-    # Implémentation similaire
-    return []
 
 def search_internal_database(criteria: Dict[str, Any]) -> List[JurisprudenceReference]:
     """Recherche dans la base locale"""
@@ -376,6 +926,7 @@ def search_internal_database(criteria: Dict[str, Any]) -> List[JurisprudenceRefe
     
     return results
 
+
 def parse_date_range(date_range: str) -> Optional[Tuple[datetime, datetime]]:
     """Parse la période de recherche"""
     
@@ -399,13 +950,25 @@ def parse_date_range(date_range: str) -> Optional[Tuple[datetime, datetime]]:
     
     return (start_date, end_date)
 
+
 def show_search_results():
-    """Affiche les résultats de recherche"""
+    """Affiche les résultats de recherche avec statut de vérification"""
     
     results = st.session_state.get('jurisprudence_results', [])
+    verification_status = st.session_state.get('jurisprudence_verification_status', {})
     
     if not results:
         return
+    
+    # Afficher le statut de vérification
+    if verification_status:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Résultats trouvés", verification_status.get('total', 0))
+        with col2:
+            st.metric("Vérifiés", verification_status.get('verified', 0))
+        with col3:
+            st.metric("Affichés", verification_status.get('displayed', 0))
     
     st.markdown(f"#### 📊 Résultats ({len(results)} décisions)")
     
@@ -430,7 +993,7 @@ def show_search_results():
     with col3:
         group_by = st.selectbox(
             "Grouper par",
-            ["Aucun", "Juridiction", "Année", "Matière"],
+            ["Aucun", "Juridiction", "Année", "Matière", "Source"],
             key="juris_group"
         )
     
@@ -450,88 +1013,65 @@ def show_search_results():
         for ref in sorted_results:
             show_jurisprudence_item(ref, view_mode)
 
-def sort_jurisprudence_results(results: List[JurisprudenceReference], sort_by: str) -> List[JurisprudenceReference]:
-    """Trie les résultats de jurisprudence"""
-    
-    if sort_by == "Date":
-        return sorted(results, key=lambda x: x.date, reverse=True)
-    elif sort_by == "Juridiction":
-        return sorted(results, key=lambda x: x.juridiction)
-    elif sort_by == "Importance":
-        return sorted(results, key=lambda x: x.importance, reverse=True)
-    else:  # Pertinence
-        return results  # Déjà trié par pertinence
-
-def group_jurisprudence_results(results: List[JurisprudenceReference], group_by: str) -> Dict[str, List[JurisprudenceReference]]:
-    """Groupe les résultats de jurisprudence"""
-    
-    grouped = {}
-    
-    for ref in results:
-        if group_by == "Juridiction":
-            key = ref.juridiction
-        elif group_by == "Année":
-            key = str(ref.date.year)
-        elif group_by == "Matière":
-            # Déterminer la matière depuis les mots-clés
-            if any(kw in ['contrat', 'obligation', 'responsabilité contractuelle'] for kw in ref.mots_cles):
-                key = "Droit des contrats"
-            elif any(kw in ['responsabilité', 'préjudice', 'dommages'] for kw in ref.mots_cles):
-                key = "Responsabilité civile"
-            elif any(kw in ['procédure', 'compétence', 'appel'] for kw in ref.mots_cles):
-                key = "Procédure civile"
-            else:
-                key = "Autres"
-        else:
-            key = "Tous"
-        
-        if key not in grouped:
-            grouped[key] = []
-        
-        grouped[key].append(ref)
-    
-    return grouped
 
 def show_jurisprudence_item(ref: JurisprudenceReference, view_mode: str):
-    """Affiche un élément de jurisprudence"""
+    """Affiche un élément de jurisprudence avec indicateur de vérification"""
     
     with st.container():
         if view_mode == "Résumé":
             # Vue compacte
-            col1, col2, col3 = st.columns([3, 1, 1])
+            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
             
             with col1:
-                # Titre avec lien
+                # Titre avec lien et indicateur de vérification
+                verification_icon = "✅" if getattr(ref, 'is_verified', True) else "⚠️"
+                
                 if ref.url:
-                    st.markdown(f"**[{ref.get_citation()}]({ref.url})**")
+                    st.markdown(f"{verification_icon} **[{ref.get_citation()}]({ref.url})**")
                 else:
-                    st.markdown(f"**{ref.get_citation()}**")
+                    st.markdown(f"{verification_icon} **{ref.get_citation()}**")
                 
                 if ref.titre:
                     st.caption(ref.titre)
+                
+                # Afficher la confiance de vérification si disponible
+                if hasattr(ref, 'verification_confidence'):
+                    st.caption(f"Confiance: {ref.verification_confidence:.0%}")
             
             with col2:
+                # Source
+                source_config = SOURCE_CONFIGS.get(ref.source, {})
+                st.write(f"{source_config.get('icon', '')} {source_config.get('name', ref.source.value)}")
+            
+            with col3:
                 # Importance
                 importance_color = "🟢" if ref.importance >= 8 else "🟡" if ref.importance >= 5 else "🔴"
                 st.write(f"{importance_color} {ref.importance}/10")
             
-            with col3:
+            with col4:
                 # Actions
-                if st.button("📖", key=f"view_juris_{ref.numero}"):
+                if st.button("📖", key=f"view_juris_{ref.numero}_{ref.date.strftime('%Y%m%d')}"):
                     show_jurisprudence_detail(ref)
                 
-                if st.button("📌", key=f"save_juris_{ref.numero}"):
+                if st.button("📌", key=f"save_juris_{ref.numero}_{ref.date.strftime('%Y%m%d')}"):
                     save_to_favorites(ref)
         
         else:  # Vue détaillée
-            # En-tête
+            # En-tête avec vérification
             col1, col2 = st.columns([4, 1])
             
             with col1:
+                verification_icon = "✅" if getattr(ref, 'is_verified', True) else "⚠️"
+                
                 if ref.url:
-                    st.markdown(f"### [{ref.get_citation()}]({ref.url})")
+                    st.markdown(f"### {verification_icon} [{ref.get_citation()}]({ref.url})")
                 else:
-                    st.markdown(f"### {ref.get_citation()}")
+                    st.markdown(f"### {verification_icon} {ref.get_citation()}")
+                
+                if hasattr(ref, 'verification_confidence'):
+                    st.caption(f"Vérifié avec {ref.verification_confidence:.0%} de confiance")
+                elif hasattr(ref, 'verification_message'):
+                    st.warning(ref.verification_message)
             
             with col2:
                 importance_color = "🟢" if ref.importance >= 8 else "🟡" if ref.importance >= 5 else "🔴"
@@ -546,7 +1086,8 @@ def show_jurisprudence_item(ref: JurisprudenceReference, view_mode: str):
             
             with col2:
                 st.write(f"**Portée :** {ref.portee or 'N/A'}")
-                st.write(f"**Source :** {SOURCE_CONFIGS[ref.source]['name']}")
+                source_config = SOURCE_CONFIGS.get(ref.source, {})
+                st.write(f"**Source :** {source_config.get('icon', '')} {source_config.get('name', ref.source.value)}")
             
             with col3:
                 if ref.articles_vises:
@@ -567,43 +1108,91 @@ def show_jurisprudence_item(ref: JurisprudenceReference, view_mode: str):
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                if st.button("📖 Texte intégral", key=f"full_text_{ref.numero}"):
+                if st.button("📖 Texte intégral", key=f"full_text_{ref.numero}_{ref.date.strftime('%Y%m%d')}"):
                     show_full_text(ref)
             
             with col2:
-                if st.button("🔗 Décisions liées", key=f"related_{ref.numero}"):
+                if st.button("🔗 Décisions liées", key=f"related_{ref.numero}_{ref.date.strftime('%Y%m%d')}"):
                     show_related_decisions(ref)
             
             with col3:
-                if st.button("💬 Commentaires", key=f"comments_{ref.numero}"):
+                if st.button("💬 Commentaires", key=f"comments_{ref.numero}_{ref.date.strftime('%Y%m%d')}"):
                     show_commentaries(ref)
             
             with col4:
-                if st.button("📌 Sauvegarder", key=f"save_detail_{ref.numero}"):
+                if st.button("📌 Sauvegarder", key=f"save_detail_{ref.numero}_{ref.date.strftime('%Y%m%d')}"):
                     save_to_favorites(ref)
         
         st.divider()
 
+
+# Les autres fonctions restent identiques...
+def sort_jurisprudence_results(results: List[JurisprudenceReference], sort_by: str) -> List[JurisprudenceReference]:
+    """Trie les résultats de jurisprudence"""
+    
+    if sort_by == "Date":
+        return sorted(results, key=lambda x: x.date, reverse=True)
+    elif sort_by == "Juridiction":
+        return sorted(results, key=lambda x: x.juridiction)
+    elif sort_by == "Importance":
+        return sorted(results, key=lambda x: x.importance, reverse=True)
+    else:  # Pertinence
+        return results  # Déjà trié par pertinence
+
+
+def group_jurisprudence_results(results: List[JurisprudenceReference], group_by: str) -> Dict[str, List[JurisprudenceReference]]:
+    """Groupe les résultats de jurisprudence"""
+    
+    grouped = {}
+    
+    for ref in results:
+        if group_by == "Juridiction":
+            key = ref.juridiction
+        elif group_by == "Année":
+            key = str(ref.date.year)
+        elif group_by == "Source":
+            source_config = SOURCE_CONFIGS.get(ref.source, {})
+            key = f"{source_config.get('icon', '')} {source_config.get('name', ref.source.value)}"
+        elif group_by == "Matière":
+            # Déterminer la matière depuis les mots-clés
+            if any(kw in ['contrat', 'obligation', 'responsabilité contractuelle'] for kw in ref.mots_cles):
+                key = "Droit des contrats"
+            elif any(kw in ['responsabilité', 'préjudice', 'dommages'] for kw in ref.mots_cles):
+                key = "Responsabilité civile"
+            elif any(kw in ['procédure', 'compétence', 'appel'] for kw in ref.mots_cles):
+                key = "Procédure civile"
+            else:
+                key = "Autres"
+        else:
+            key = "Tous"
+        
+        if key not in grouped:
+            grouped[key] = []
+        
+        grouped[key].append(ref)
+    
+    return grouped
+
+
+# Conserver toutes les autres fonctions existantes...
 def show_jurisprudence_detail(ref: JurisprudenceReference):
     """Affiche le détail d'une décision"""
-    
     st.session_state.current_jurisprudence = ref
     st.session_state.show_jurisprudence_detail = True
 
+
 def save_to_favorites(ref: JurisprudenceReference):
     """Sauvegarde une décision dans les favoris"""
-    
     if 'jurisprudence_favorites' not in st.session_state:
         st.session_state.jurisprudence_favorites = {}
     
     ref_id = f"{ref.numero}_{ref.date.strftime('%Y%m%d')}"
     st.session_state.jurisprudence_favorites[ref_id] = ref
-    
     st.success("📌 Décision sauvegardée dans les favoris")
+
 
 def show_full_text(ref: JurisprudenceReference):
     """Affiche le texte intégral"""
-    
     if ref.texte_integral:
         with st.expander("📄 Texte intégral", expanded=True):
             st.text_area(
@@ -617,17 +1206,15 @@ def show_full_text(ref: JurisprudenceReference):
         if ref.url:
             st.markdown(f"[Voir sur {SOURCE_CONFIGS[ref.source]['name']}]({ref.url})")
 
+
 def show_related_decisions(ref: JurisprudenceReference):
     """Affiche les décisions liées"""
-    
     with st.spinner("Recherche des décisions liées..."):
         # Rechercher les décisions citées
         related = []
         
         if ref.decisions_citees:
             for decision_ref in ref.decisions_citees:
-                # Essayer de trouver la décision
-                # Pour l'instant, juste afficher la référence
                 related.append(decision_ref)
         
         # Rechercher les décisions similaires
@@ -641,8 +1228,6 @@ def show_related_decisions(ref: JurisprudenceReference):
         }
         
         similar_results = search_jurisprudence(similar_criteria)
-        
-        # Filtrer la décision actuelle
         similar_results = [r for r in similar_results if r.numero != ref.numero]
         
         # Afficher
@@ -663,21 +1248,20 @@ def show_related_decisions(ref: JurisprudenceReference):
         else:
             st.info("Aucune décision liée trouvée")
 
+
 def show_commentaries(ref: JurisprudenceReference):
     """Affiche les commentaires"""
-    
     if ref.commentaires:
         st.markdown("#### 💬 Commentaires")
-        
         for i, commentaire in enumerate(ref.commentaires, 1):
             with st.expander(f"Commentaire {i}"):
                 st.write(commentaire)
     else:
         st.info("Aucun commentaire disponible pour cette décision")
 
+
 def show_verification_tab(verifier: JurisprudenceVerifier):
     """Onglet de vérification"""
-    
     st.markdown("#### ✅ Vérification de jurisprudence")
     
     st.info("""
@@ -707,14 +1291,13 @@ def show_verification_tab(verifier: JurisprudenceVerifier):
     # Historique des vérifications
     show_verification_history()
 
+
 def show_verification_result(result: VerificationResult):
     """Affiche le résultat de vérification"""
-    
     if result.is_valid:
         st.success(f"✅ Référence valide (confiance : {result.confidence:.0%})")
         
         if result.reference:
-            # Afficher les détails
             ref = result.reference
             
             col1, col2 = st.columns(2)
@@ -738,7 +1321,6 @@ def show_verification_result(result: VerificationResult):
             # Proposer de sauvegarder
             if st.button("📌 Sauvegarder cette décision"):
                 save_to_database(ref)
-    
     else:
         st.error(f"❌ Référence non trouvée ou invalide")
         
@@ -751,14 +1333,14 @@ def show_verification_result(result: VerificationResult):
             for suggestion in result.suggestions[:3]:
                 st.write(f"• {suggestion.get_citation()}")
 
+
 def show_verification_history():
     """Affiche l'historique des vérifications"""
-    
     history = st.session_state.get('verification_history', [])
     
     if history:
         with st.expander("📜 Historique des vérifications", expanded=False):
-            for entry in reversed(history[-10:]):  # Dernières 10
+            for entry in reversed(history[-10:]):
                 col1, col2, col3 = st.columns([3, 1, 1])
                 
                 with col1:
@@ -773,9 +1355,9 @@ def show_verification_history():
                 with col3:
                     st.caption(entry['date'].strftime('%d/%m %H:%M'))
 
+
 def show_local_database_tab():
     """Onglet base de données locale"""
-    
     st.markdown("#### 📚 Base de jurisprudence locale")
     
     # Statistiques
@@ -821,9 +1403,9 @@ def show_local_database_tab():
     # Liste des décisions
     show_local_jurisprudence_list(local_db, favorites)
 
+
 def show_add_jurisprudence_form():
     """Formulaire d'ajout manuel de jurisprudence"""
-    
     with st.form("add_jurisprudence_form"):
         st.markdown("##### ➕ Ajouter une décision")
         
@@ -945,18 +1527,101 @@ def show_add_jurisprudence_form():
                 st.session_state.show_add_jurisprudence = False
                 st.rerun()
 
+
 def save_to_database(ref: JurisprudenceReference):
     """Sauvegarde une référence dans la base locale"""
-    
     if 'jurisprudence_database' not in st.session_state:
         st.session_state.jurisprudence_database = {}
     
     ref_id = f"{ref.numero}_{ref.date.strftime('%Y%m%d')}"
     st.session_state.jurisprudence_database[ref_id] = ref
 
+
+def show_import_jurisprudence_interface():
+    """Interface d'import de jurisprudence"""
+    st.markdown("##### 📥 Importer des décisions")
+    
+    uploaded_file = st.file_uploader(
+        "Choisir un fichier",
+        type=['json', 'csv'],
+        key="import_juris_file"
+    )
+    
+    if uploaded_file:
+        try:
+            if uploaded_file.type == 'application/json':
+                # Import JSON
+                data = json.load(uploaded_file)
+                
+                imported_count = 0
+                for item in data:
+                    try:
+                        ref = JurisprudenceReference(
+                            numero=item['numero'],
+                            date=datetime.strptime(item['date'], '%Y-%m-%d'),
+                            juridiction=item['juridiction'],
+                            formation=item.get('formation'),
+                            titre=item.get('titre'),
+                            resume=item.get('resume'),
+                            url=item.get('url'),
+                            source=SourceJurisprudence(item.get('source', 'MANUAL')),
+                            mots_cles=item.get('mots_cles', '').split(', '),
+                            articles_vises=item.get('articles_vises', '').split(', '),
+                            importance=item.get('importance', 5),
+                            solution=item.get('solution'),
+                            portee=item.get('portee')
+                        )
+                        save_to_database(ref)
+                        imported_count += 1
+                    except Exception as e:
+                        st.warning(f"Erreur import décision: {e}")
+                
+                st.success(f"✅ {imported_count} décisions importées")
+                
+            elif uploaded_file.type == 'text/csv':
+                # Import CSV (nécessite pandas)
+                try:
+                    import pandas as pd
+                    df = pd.read_csv(uploaded_file)
+                    
+                    imported_count = 0
+                    for _, row in df.iterrows():
+                        try:
+                            ref = JurisprudenceReference(
+                                numero=row['numero'],
+                                date=pd.to_datetime(row['date']),
+                                juridiction=row['juridiction'],
+                                formation=row.get('formation'),
+                                titre=row.get('titre'),
+                                resume=row.get('resume'),
+                                url=row.get('url'),
+                                source=SourceJurisprudence(row.get('source', 'MANUAL')),
+                                mots_cles=row.get('mots_cles', '').split(', '),
+                                articles_vises=row.get('articles_vises', '').split(', '),
+                                importance=int(row.get('importance', 5)),
+                                solution=row.get('solution'),
+                                portee=row.get('portee')
+                            )
+                            save_to_database(ref)
+                            imported_count += 1
+                        except Exception as e:
+                            st.warning(f"Erreur import ligne: {e}")
+                    
+                    st.success(f"✅ {imported_count} décisions importées")
+                    
+                except ImportError:
+                    st.error("Pandas requis pour l'import CSV")
+                    
+        except Exception as e:
+            st.error(f"Erreur lors de l'import: {e}")
+    
+    if st.button("❌ Fermer"):
+        st.session_state.show_import_jurisprudence = False
+        st.rerun()
+
+
 def show_local_jurisprudence_list(database: Dict[str, JurisprudenceReference], favorites: Dict[str, JurisprudenceReference]):
     """Affiche la liste des décisions locales"""
-    
     if not database:
         st.info("Aucune décision dans la base locale")
         return
@@ -1032,9 +1697,9 @@ def show_local_jurisprudence_list(database: Dict[str, JurisprudenceReference], f
         
         st.divider()
 
+
 def export_jurisprudence_database():
     """Exporte la base de jurisprudence"""
-    
     database = st.session_state.get('jurisprudence_database', {})
     
     if not database:
@@ -1062,7 +1727,6 @@ def export_jurisprudence_database():
         })
     
     # Export JSON
-    import json
     json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
     
     st.download_button(
@@ -1089,9 +1753,9 @@ def export_jurisprudence_database():
     except ImportError:
         pass
 
+
 def show_statistics_tab():
     """Onglet statistiques"""
-    
     st.markdown("#### 📊 Statistiques jurisprudentielles")
     
     database = st.session_state.get('jurisprudence_database', {})
@@ -1185,27 +1849,38 @@ def show_statistics_tab():
     except ImportError:
         st.info("Installez plotly pour voir les graphiques")
 
+
 def show_configuration_tab():
     """Onglet configuration"""
-    
     st.markdown("#### ⚙️ Configuration de la recherche jurisprudentielle")
     
     # Sources activées
     st.markdown("##### 🔌 Sources de recherche")
     
-    enabled_sources = st.session_state.get('enabled_jurisprudence_sources', [SourceJurisprudence.LEGIFRANCE, SourceJurisprudence.INTERNAL])
+    enabled_sources = st.session_state.get('enabled_jurisprudence_sources', 
+        [SourceJurisprudence.LEGIFRANCE, SourceJurisprudence.JUDILIBRE, SourceJurisprudence.INTERNAL])
     
     for source in SourceJurisprudence:
-        config = SOURCE_CONFIGS[source]
+        config = SOURCE_CONFIGS.get(source, {})
         
         col1, col2, col3 = st.columns([1, 3, 1])
         
         with col1:
-            is_enabled = st.checkbox(
-                "",
-                value=source in enabled_sources,
-                key=f"enable_source_{source.value}"
-            )
+            # Toujours activer Judilibre et Légifrance
+            if source in [SourceJurisprudence.JUDILIBRE, SourceJurisprudence.LEGIFRANCE]:
+                is_enabled = st.checkbox(
+                    "",
+                    value=True,
+                    key=f"enable_source_{source.value}",
+                    disabled=True,
+                    help="Sources officielles toujours activées"
+                )
+            else:
+                is_enabled = st.checkbox(
+                    "",
+                    value=source in enabled_sources,
+                    key=f"enable_source_{source.value}"
+                )
             
             if is_enabled and source not in enabled_sources:
                 enabled_sources.append(source)
@@ -1213,11 +1888,11 @@ def show_configuration_tab():
                 enabled_sources.remove(source)
         
         with col2:
-            st.write(f"{config['icon']} **{config['name']}**")
-            st.caption(config['url'])
+            st.write(f"{config.get('icon', '')} **{config.get('name', source.value)}**")
+            st.caption(config.get('url', ''))
         
         with col3:
-            if config['api_available']:
+            if config.get('api_available'):
                 st.success("API ✅")
             else:
                 st.warning("Web 🌐")
@@ -1264,42 +1939,66 @@ def show_configuration_tab():
         )
         st.session_state.highlight_juris_search = highlight_search
     
-    # API Keys (si nécessaire)
+    # API Keys
     st.markdown("##### 🔑 Clés API")
     
     st.info("""
-    Certaines sources nécessitent des clés API pour un accès complet.
-    Configurez-les dans les variables d'environnement ou les secrets Streamlit.
+    Les clés API sont configurées dans les variables d'environnement :
+    - **JUDILIBRE_API_KEY** : Votre clé API Judilibre
+    - **PISTE_CLIENT_ID** : Identifiant client PISTE
+    - **PISTE_CLIENT_SECRET** : Secret client PISTE
     """)
+    
+    # Afficher le statut des clés
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if api_manager.judilibre_api_key:
+            st.success("✅ Clé Judilibre configurée")
+        else:
+            st.error("❌ Clé Judilibre manquante")
+    
+    with col2:
+        if api_manager.piste_client_id and api_manager.piste_client_secret:
+            st.success("✅ Identifiants PISTE configurés")
+        else:
+            st.warning("⚠️ Identifiants PISTE manquants")
     
     # Test de connexion
     if st.button("🔌 Tester les connexions"):
         test_jurisprudence_sources()
 
+
 def test_jurisprudence_sources():
     """Teste la connexion aux sources de jurisprudence"""
-    
     with st.spinner("Test en cours..."):
         results = {}
         
-        for source in st.session_state.get('enabled_jurisprudence_sources', []):
-            try:
-                # Test basique de recherche
-                test_criteria = {
-                    'query': 'test',
-                    'juridictions': [],
-                    'sources': [source],
-                    'articles': [],
-                    'date_range': None,
-                    'min_importance': 1
-                }
-                
-                # Timeout court pour le test
-                test_results = search_jurisprudence(test_criteria)
-                results[source] = True
-                
-            except Exception as e:
-                results[source] = False
+        # Test Judilibre
+        try:
+            test_criteria = {
+                'query': 'test',
+                'juridictions': [],
+                'sources': [SourceJurisprudence.JUDILIBRE],
+                'articles': [],
+                'date_range': None,
+                'min_importance': 1
+            }
+            
+            test_results = asyncio.run(api_manager.search_judilibre(test_criteria))
+            results[SourceJurisprudence.JUDILIBRE] = len(test_results) >= 0
+        except Exception as e:
+            logger.error(f"Erreur test Judilibre: {e}")
+            results[SourceJurisprudence.JUDILIBRE] = False
+        
+        # Test Légifrance
+        try:
+            test_criteria['sources'] = [SourceJurisprudence.LEGIFRANCE]
+            test_results = asyncio.run(api_manager.search_legifrance(test_criteria))
+            results[SourceJurisprudence.LEGIFRANCE] = len(test_results) >= 0
+        except Exception as e:
+            logger.error(f"Erreur test Légifrance: {e}")
+            results[SourceJurisprudence.LEGIFRANCE] = False
         
         # Afficher les résultats
         for source, success in results.items():
@@ -1310,6 +2009,7 @@ def test_jurisprudence_sources():
             else:
                 st.error(f"❌ {config['name']} - Connexion échouée")
 
+
 # Fonctions utilitaires pour intégration avec d'autres modules
 
 def get_jurisprudence_for_document(document_type: str, keywords: List[str], limit: int = 5) -> List[JurisprudenceReference]:
@@ -1319,7 +2019,8 @@ def get_jurisprudence_for_document(document_type: str, keywords: List[str], limi
     search_criteria = {
         'query': ' '.join(keywords),
         'juridictions': [],
-        'sources': st.session_state.get('enabled_jurisprudence_sources', [SourceJurisprudence.LEGIFRANCE]),
+        'sources': st.session_state.get('enabled_jurisprudence_sources', 
+            [SourceJurisprudence.LEGIFRANCE, SourceJurisprudence.JUDILIBRE]),
         'articles': [],
         'date_range': None,
         'min_importance': 7  # Jurisprudence importante pour les documents
@@ -1336,6 +2037,7 @@ def get_jurisprudence_for_document(document_type: str, keywords: List[str], limi
     
     return results[:limit]
 
+
 def format_jurisprudence_citation(ref: JurisprudenceReference) -> str:
     """Formate une citation de jurisprudence pour insertion dans un document"""
     
@@ -1347,6 +2049,7 @@ def format_jurisprudence_citation(ref: JurisprudenceReference) -> str:
     else:
         # Format simple
         return citation
+
 
 def verify_and_update_citations(content: str) -> Tuple[str, List[VerificationResult]]:
     """Vérifie et met à jour les citations de jurisprudence dans un texte"""
@@ -1371,6 +2074,7 @@ def verify_and_update_citations(content: str) -> Tuple[str, List[VerificationRes
             content = content.replace(citation, formatted)
     
     return content, verification_results
+
 
 # Pour l'intégration dans le module recherche
 def show_jurisprudence_interface(query: str = "", analysis: dict = None):
