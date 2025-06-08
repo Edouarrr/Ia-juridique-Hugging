@@ -57,6 +57,273 @@ class IntentType(Enum):
     PREPARATION_CLIENT = "preparation_client"
     QUESTIONS_REPONSES = "questions_reponses"
 
+class InfractionAffaires(Enum):
+    """Types d'infractions pénales des affaires"""
+    ABUS_BIENS_SOCIAUX = "Abus de biens sociaux"
+    CORRUPTION = "Corruption"
+    TRAFIC_INFLUENCE = "Trafic d'influence"
+    FAVORITISME = "Favoritisme"
+    PRISE_ILLEGALE_INTERETS = "Prise illégale d'intérêts"
+    BLANCHIMENT = "Blanchiment"
+    FRAUDE_FISCALE = "Fraude fiscale"
+    ESCROQUERIE = "Escroquerie"
+    ABUS_CONFIANCE = "Abus de confiance"
+    FAUX_USAGE_FAUX = "Faux et usage de faux"
+    BANQUEROUTE = "Banqueroute"
+    RECEL = "Recel"
+    DELIT_INITIE = "Délit d'initié"
+    MANIPULATION_COURS = "Manipulation de cours"
+    ENTRAVE = "Entrave"
+    TRAVAIL_DISSIMULE = "Travail dissimulé"
+    MARCHANDAGE = "Marchandage"
+    HARCELEMENT = "Harcèlement"
+    DISCRIMINATION = "Discrimination"
+
+# Après ANALYSIS_PROMPTS_AFFAIRES, ajoutez ces prompts spécialisés :
+
+ANALYSIS_PROMPTS_INFRACTIONS = {
+    'abus_biens_sociaux': {
+        'detection': """Analyse ces documents pour détecter des indices d'abus de biens sociaux.
+Recherche:
+1. Utilisation de biens sociaux contraire à l'intérêt social
+2. Usage personnel des biens de la société
+3. Mauvaise foi du dirigeant
+4. Préjudice causé à la société
+Articles: L241-3 et L242-6 Code de commerce""",
+        'elements': ['usage contraire', 'intérêt personnel', 'mauvaise foi', 'préjudice']
+    },
+    
+    'corruption': {
+        'detection': """Analyse ces documents pour identifier des faits de corruption.
+Recherche:
+1. Sollicitation ou agrément d'offres/promesses
+2. Dons ou présents
+3. Abus d'influence
+4. Contrepartie indue
+Articles: 432-11, 433-1, 435-1 Code pénal""",
+        'elements': ['sollicitation', 'avantage indu', 'contrepartie', 'abus fonction']
+    },
+    
+    'fraude_fiscale': {
+        'detection': """Identifie les éléments constitutifs de fraude fiscale.
+Recherche:
+1. Soustraction frauduleuse à l'impôt
+2. Dissimulation de sommes imposables
+3. Organisation d'insolvabilité
+4. Fausses écritures comptables
+Article: 1741 Code général des impôts""",
+        'elements': ['dissimulation', 'fausses écritures', 'minoration recettes', 'majoration charges']
+    },
+    
+    'blanchiment': {
+        'detection': """Recherche des opérations de blanchiment.
+Examine:
+1. Facilitation de justification mensongère
+2. Concours à placement/dissimulation
+3. Produits d'infraction
+4. Conversion de biens
+Articles: 324-1 et suivants Code pénal""",
+        'elements': ['origine frauduleuse', 'dissimulation', 'conversion', 'justification mensongère']
+    }
+}
+
+# Ajoutez ces configurations de sanctions et prescriptions :
+
+# Configuration des durées de prescription
+PRESCRIPTIONS = {
+    'delit': {
+        'duree': 6,
+        'unite': 'ans',
+        'depart': 'commission des faits'
+    },
+    'crime': {
+        'duree': 20,
+        'unite': 'ans',
+        'depart': 'commission des faits'
+    },
+    'contravention': {
+        'duree': 1,
+        'unite': 'an',
+        'depart': 'commission des faits'
+    }
+}
+
+# Sanctions types par infraction
+SANCTIONS_TYPES = {
+    'abus_biens_sociaux': {
+        'emprisonnement': '5 ans',
+        'amende': '375 000 €',
+        'complementaires': ['interdiction de gérer', 'interdiction droits civiques']
+    },
+    'corruption': {
+        'emprisonnement': '10 ans',
+        'amende': '1 000 000 €',
+        'complementaires': ['confiscation', 'interdiction fonction publique']
+    },
+    'fraude_fiscale': {
+        'emprisonnement': '5 ans',
+        'amende': '500 000 €',
+        'complementaires': ['publication jugement', 'interdiction droits civiques']
+    },
+    'blanchiment': {
+        'emprisonnement': '5 ans',
+        'amende': '375 000 €',
+        'complementaires': ['confiscation', 'interdiction exercice professionnel']
+    },
+    'escroquerie': {
+        'emprisonnement': '5 ans',
+        'amende': '375 000 €',
+        'complementaires': ['interdiction chéquier', 'interdiction droits civiques']
+    }
+}
+
+# Configuration des catégories de documents
+DOCUMENT_CATEGORIES = [
+    "Procédure",
+    "Pièces comptables",
+    "Correspondances",
+    "Expertises",
+    "Témoignages",
+    "Contrats",
+    "Décisions de justice",
+    "Rapports",
+    "Auditions",
+    "Perquisitions",
+    "Commissions rogatoires",
+    "Autre"
+]
+
+# Configuration des juridictions
+JURIDICTIONS = [
+    "Tribunal judiciaire",
+    "Tribunal de commerce", 
+    "Tribunal correctionnel",
+    "Cour d'appel",
+    "Cour de cassation",
+    "Conseil d'État",
+    "Tribunal administratif",
+    "Cour administrative d'appel",
+    "Conseil constitutionnel",
+    "Cour d'assises",
+    "Tribunal de police",
+    "Conseil de prud'hommes",
+    "Juge d'instruction",
+    "Chambre de l'instruction",
+    "Parquet",
+    "Parquet National Financier"
+]
+
+# Ajoutez cette configuration pour les templates supplémentaires
+DOCUMENT_TEMPLATES['plainte_avec_cpc'] = {
+    'name': 'Plainte avec constitution de partie civile',
+    'type': DocumentType.CONSTITUTION_PC,
+    'structure': [
+        'Monsieur le Doyen des Juges d\'Instruction',
+        'Tribunal Judiciaire de [Ville]',
+        '',
+        'PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE',
+        '',
+        'POUR :',
+        '[Identité complète du plaignant]',
+        'Ayant pour conseil : [Avocat]',
+        '',
+        'CONTRE :',
+        '[Identité du/des mis en cause ou X]',
+        '',
+        'OBJET : Constitution de partie civile des chefs de [infractions]',
+        '',
+        'Monsieur le Doyen,',
+        '',
+        'J\'ai l\'honneur de déposer plainte avec constitution de partie civile entre vos mains.',
+        '',
+        'I. EXPOSÉ DES FAITS',
+        '[Récit chronologique et détaillé]',
+        '',
+        'II. QUALIFICATION JURIDIQUE',
+        '[Analyse juridique des infractions]',
+        '',
+        'III. PRÉJUDICES',
+        'A. Préjudice matériel',
+        'B. Préjudice moral',
+        'C. Préjudice financier',
+        '',
+        'IV. DEMANDES',
+        '- Constater la constitution de partie civile',
+        '- Ordonner une information judiciaire',
+        '- Procéder à tous actes utiles',
+        '',
+        'V. CONSIGNATION',
+        'Je verse la consignation fixée',
+        '',
+        'PIÈCES COMMUNIQUÉES',
+        '[Liste numérotée des pièces]',
+        '',
+        'Veuillez agréer...'
+    ],
+    'style': 'formel',
+    'min_length': 4000
+}
+
+# Mises à jour de ANALYSIS_PROMPTS_AFFAIRES pour inclure les infractions économiques
+ANALYSIS_PROMPTS_AFFAIRES.update({
+    "analyse_infractions_economiques": """Analyse ces documents pour identifier toute infraction économique.
+Examine particulièrement :
+- Abus de biens sociaux (usage contraire à l'intérêt social)
+- Corruption et trafic d'influence
+- Fraude fiscale et blanchiment
+- Escroquerie et abus de confiance
+- Faux et usage de faux
+- Infractions boursières
+Pour chaque infraction détectée, précise :
+1. Qualification juridique exacte
+2. Articles du Code pénal ou autres codes applicables
+3. Éléments matériels caractérisés
+4. Élément intentionnel
+5. Préjudice identifié
+6. Personnes potentiellement responsables
+7. Sanctions encourues""",
+    
+    "analyse_responsabilites_penales": """Détermine les responsabilités pénales.
+Distingue :
+1. PERSONNES PHYSIQUES
+   - Auteurs principaux
+   - Coauteurs
+   - Complices
+   - Receleurs
+2. PERSONNES MORALES
+   - Conditions de mise en cause
+   - Organes ou représentants impliqués
+   - Actes commis pour leur compte
+3. CHAÎNE DE RESPONSABILITÉ
+   - Liens hiérarchiques
+   - Délégations de pouvoir
+   - Cumul de responsabilités"""
+})
+
+# Configuration pour l'analyse des risques
+RISK_LEVELS = {
+    'critical': {
+        'label': 'Critique',
+        'color': '#FF0000',
+        'threshold': 0.8
+    },
+    'high': {
+        'label': 'Élevé',
+        'color': '#FF6600',
+        'threshold': 0.6
+    },
+    'medium': {
+        'label': 'Moyen',
+        'color': '#FFAA00',
+        'threshold': 0.4
+    },
+    'low': {
+        'label': 'Faible',
+        'color': '#00AA00',
+        'threshold': 0.2
+    }
+}
+
 # Prompts d'analyse pour les affaires
 ANALYSIS_PROMPTS_AFFAIRES = {
     "identification_parties": """Identifie toutes les parties mentionnées dans ces documents.
