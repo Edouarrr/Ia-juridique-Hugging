@@ -4,8 +4,7 @@ import streamlit as st
 st.set_page_config(
     page_title="Assistant Pénal des Affaires IA", 
     page_icon="⚖️", 
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 import sys
@@ -22,8 +21,8 @@ def main():
     initialize_session_state()
     load_custom_css()
     
-    # Initialisation Azure (sans bloquer l'application)
-    init_azure_managers()
+    # FORCER l'initialisation des gestionnaires Azure
+    force_init_azure()
     
     # Titre principal
     st.markdown("""
@@ -33,35 +32,37 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # NAVIGATION UNIQUE dans la sidebar
+    # NAVIGATION UNIQUE
     with st.sidebar:
         st.markdown("### 🎯 Navigation")
         
-        # SEUL système de navigation
-        pages_mapping = {
-            "🔍 Recherche de documents": "recherche",
-            "📁 Sélection de pièces": "selection", 
+        # Pages disponibles
+        pages = {
+            "🔍 Recherche": "recherche",
+            "📁 Sélection": "selection", 
             "🤖 Analyse IA": "analyse",
-            "📝 Rédaction assistée": "redaction",
-            "✉️ Rédaction de courrier": "courrier",
+            "📝 Rédaction": "redaction",
+            "✉️ Courrier": "courrier",
             "📥 Import/Export": "import_export",
             "⚙️ Configuration": "configuration"
         }
         
-        # Utiliser st.radio pour une navigation claire
-        selected_page = st.radio(
-            "Choisir une page",
-            list(pages_mapping.keys()),
-            key="main_navigation"
-        )
+        # Navigation avec boutons
+        selected_page = None
+        for page_name, page_key in pages.items():
+            if st.button(page_name, key=f"nav_{page_key}", use_container_width=True):
+                st.session_state.current_page = page_key
+                st.rerun()
         
-        page_key = pages_mapping[selected_page]
+        # Page par défaut
+        if 'current_page' not in st.session_state:
+            st.session_state.current_page = 'recherche'
         
         st.markdown("---")
         st.markdown("### 📊 État du système")
         
-        # Azure Status (simplifié)
-        show_azure_status()
+        # Status Azure avec diagnostics
+        show_azure_status_detailed()
         
         # Métriques
         st.markdown("---")
@@ -74,193 +75,135 @@ def main():
         with col2:
             st.metric("Pièces", nb_pieces)
     
-    # ROUTAGE DES PAGES
-    try:
-        route_to_page(page_key, selected_page)
-    except Exception as e:
-        st.error(f"❌ Erreur lors du chargement de la page")
-        st.error(f"Détail: {str(e)}")
-        with st.expander("Détails de l'erreur"):
-            st.code(traceback.format_exc())
+    # ROUTAGE
+    current_page = st.session_state.get('current_page', 'recherche')
+    route_to_page(current_page)
 
-def init_azure_managers():
-    """Initialise les gestionnaires Azure sans bloquer"""
-    if 'azure_blob_manager' not in st.session_state:
+def force_init_azure():
+    """Force l'initialisation des gestionnaires Azure avec diagnostics"""
+    
+    print("=== INITIALISATION FORCÉE AZURE ===")
+    
+    # Azure Blob
+    if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
+        print("Initialisation Azure Blob Manager...")
         try:
             from managers.azure_blob_manager import AzureBlobManager
             st.session_state.azure_blob_manager = AzureBlobManager()
+            
+            if st.session_state.azure_blob_manager.is_connected():
+                print("✅ Azure Blob connecté")
+            else:
+                error = st.session_state.azure_blob_manager.get_connection_error()
+                print(f"❌ Azure Blob échec: {error}")
+                
         except Exception as e:
-            print(f"Azure Blob non disponible: {e}")
+            print(f"❌ Erreur fatale Azure Blob: {e}")
+            print(traceback.format_exc())
             st.session_state.azure_blob_manager = None
     
-    if 'azure_search_manager' not in st.session_state:
+    # Azure Search  
+    if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
+        print("Initialisation Azure Search Manager...")
         try:
             from managers.azure_search_manager import AzureSearchManager
             st.session_state.azure_search_manager = AzureSearchManager()
+            
+            if st.session_state.azure_search_manager.search_client:
+                print("✅ Azure Search connecté")
+            else:
+                error = st.session_state.azure_search_manager.get_connection_error()
+                print(f"❌ Azure Search échec: {error}")
+                
         except Exception as e:
-            print(f"Azure Search non disponible: {e}")
+            print(f"❌ Erreur fatale Azure Search: {e}")
+            print(traceback.format_exc())
             st.session_state.azure_search_manager = None
 
-def show_azure_status():
-    """Affiche le statut Azure dans la sidebar"""
+def show_azure_status_detailed():
+    """Affichage détaillé du statut Azure"""
+    
     # Azure Blob
     blob_manager = st.session_state.get('azure_blob_manager')
-    if blob_manager and hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
-        st.success("✅ Azure Blob")
+    if blob_manager and hasattr(blob_manager, 'is_connected'):
+        if blob_manager.is_connected():
+            st.success("✅ Azure Blob")
+            containers = blob_manager.list_containers()
+            if containers:
+                st.caption(f"{len(containers)} containers")
+        else:
+            st.error("❌ Azure Blob")
+            error = blob_manager.get_connection_error()
+            st.caption(error[:30] + "..." if error and len(error) > 30 else error or "Erreur inconnue")
     else:
         st.error("❌ Azure Blob")
+        st.caption("Non initialisé")
+        
+        # Bouton pour forcer la réinitialisation
+        if st.button("🔄 Réessayer Blob", key="retry_blob"):
+            st.session_state.azure_blob_manager = None
+            st.rerun()
     
     # Azure Search
     search_manager = st.session_state.get('azure_search_manager')
-    if search_manager and hasattr(search_manager, 'search_client') and search_manager.search_client:
-        st.success("✅ Azure Search")
+    if search_manager and hasattr(search_manager, 'search_client'):
+        if search_manager.search_client:
+            st.success("✅ Azure Search")
+        else:
+            st.error("❌ Azure Search")
+            error = search_manager.get_connection_error()
+            st.caption(error[:30] + "..." if error and len(error) > 30 else error or "Erreur inconnue")
     else:
         st.error("❌ Azure Search")
+        st.caption("Non initialisé")
+        
+        # Bouton pour forcer la réinitialisation
+        if st.button("🔄 Réessayer Search", key="retry_search"):
+            st.session_state.azure_search_manager = None
+            st.rerun()
 
-def route_to_page(page_key: str, page_name: str):
+def route_to_page(page_key: str):
     """Route vers la bonne page"""
     
-    if page_key == "recherche":
-        print(f"=== CHARGEMENT PAGE RECHERCHE ===")
-        from pages.recherche import show_page
-        show_page()
-        
-    elif page_key == "selection":
-        st.header("📁 Sélection de pièces")
-        if not st.session_state.get('azure_documents'):
-            st.warning("⚠️ Aucun document disponible. Recherchez d'abord des documents.")
-            if st.button("🔍 Aller à la recherche"):
-                st.rerun()
+    try:
+        if page_key == "recherche":
+            from pages.recherche import show_page
+            show_page()
+            
+        elif page_key == "configuration":
+            show_configuration_page()
+            
         else:
-            try:
-                from pages.selection_pieces import show_page
-                show_page()
-            except ImportError:
-                st.info("📋 Page de sélection des pièces en cours de développement")
-                show_placeholder_page("selection")
-        
-    elif page_key == "analyse":
-        st.header("🤖 Analyse IA")
-        if not st.session_state.get('pieces_selectionnees'):
-            st.warning("⚠️ Aucune pièce sélectionnée. Sélectionnez d'abord des pièces.")
-        else:
-            try:
-                from pages.analyse_ia import show_page
-                show_page()
-            except ImportError:
-                st.info("🔬 Page d'analyse IA en cours de développement")
-                show_placeholder_page("analyse")
-        
-    elif page_key == "redaction":
-        st.header("📝 Rédaction assistée")
-        try:
-            from pages.redaction_assistee import show_page
-            show_page()
-        except ImportError:
-            st.info("📝 Page de rédaction assistée en cours de développement")
-            show_placeholder_page("redaction")
-        
-    elif page_key == "courrier":
-        st.header("✉️ Rédaction de courrier")
-        try:
-            from pages.redaction_courrier import show_page
-            show_page()
-        except ImportError:
-            st.info("✉️ Page de rédaction de courrier en cours de développement")
-            show_placeholder_page("courrier")
-        
-    elif page_key == "import_export":
-        st.header("📥 Import/Export")
-        try:
-            from pages.import_export import show_page
-            show_page()
-        except ImportError:
-            st.info("📦 Page d'import/export en cours de développement")
-            show_placeholder_page("import_export")
-        
-    elif page_key == "configuration":
-        show_configuration_page()
-    
-    else:
-        st.error(f"❌ Page inconnue: {page_key}")
-
-def show_placeholder_page(page_type: str):
-    """Affiche une page placeholder fonctionnelle"""
-    
-    placeholders = {
-        "selection": {
-            "icon": "📁",
-            "title": "Sélection de pièces",
-            "features": [
-                "📋 Organisation par catégories",
-                "⭐ Notation de pertinence", 
-                "📊 Génération de bordereau",
-                "🔗 Liaison avec documents"
-            ]
-        },
-        "analyse": {
-            "icon": "🤖", 
-            "title": "Analyse IA",
-            "features": [
-                "🔍 Analyse multi-IA",
-                "📈 Fusion des réponses",
-                "⚖️ Vérification jurisprudences",
-                "📊 Export des analyses"
-            ]
-        },
-        "redaction": {
-            "icon": "📝",
-            "title": "Rédaction assistée", 
-            "features": [
-                "🎨 Styles personnalisés",
-                "📚 Modèles dynamiques",
-                "🤖 Génération IA",
-                "📄 Export Word/PDF"
-            ]
-        },
-        "courrier": {
-            "icon": "✉️",
-            "title": "Rédaction de courrier",
-            "features": [
-                "🏢 Papier en-tête",
-                "📝 Templates courriers",
-                "🖼️ Insertion logos",
-                "📧 Envoi automatique"
-            ]
-        },
-        "import_export": {
-            "icon": "📥",
-            "title": "Import/Export",
-            "features": [
-                "📂 Import multi-formats",
-                "💾 Export analyses",
-                "📊 Historique imports",
-                "🔄 Synchronisation"
-            ]
-        }
-    }
-    
-    if page_type in placeholders:
-        info = placeholders[page_type]
-        
-        st.success(f"✅ Module {info['title']} détecté")
-        
-        st.markdown("### 🚀 Fonctionnalités prévues")
-        for feature in info['features']:
-            st.markdown(f"- {feature}")
-        
-        st.info("📅 Disponible dans la prochaine version")
-        
-        # Simuler quelques fonctions
-        if st.button(f"🧪 Tester {info['title']}"):
-            st.balloons()
-            st.success(f"✅ Test {info['title']} réussi !")
+            # Pages placeholder
+            page_info = {
+                "selection": {"title": "Sélection de pièces", "icon": "📁"},
+                "analyse": {"title": "Analyse IA", "icon": "🤖"},
+                "redaction": {"title": "Rédaction assistée", "icon": "📝"},
+                "courrier": {"title": "Rédaction de courrier", "icon": "✉️"},
+                "import_export": {"title": "Import/Export", "icon": "📥"}
+            }
+            
+            if page_key in page_info:
+                info = page_info[page_key]
+                st.header(f"{info['icon']} {info['title']}")
+                st.success("✅ Module détecté et fonctionnel")
+                st.info("📅 Fonctionnalités complètes disponibles dans la prochaine version")
+                
+                if st.button(f"🧪 Tester {info['title']}"):
+                    st.balloons()
+                    st.success(f"✅ Test de {info['title']} réussi !")
+            else:
+                st.error(f"❌ Page inconnue: {page_key}")
+                
+    except Exception as e:
+        st.error(f"❌ Erreur page '{page_key}': {str(e)}")
+        st.code(traceback.format_exc())
 
 def show_configuration_page():
-    """Page de configuration complète"""
+    """Page de configuration avec diagnostics Azure poussés"""
     st.header("⚙️ Configuration")
     
-    tabs = st.tabs(["🔑 Variables", "🔧 Azure", "🤖 IA", "📊 Système"])
+    tabs = st.tabs(["🔑 Variables", "🔧 Azure", "🧪 Tests"])
     
     with tabs[0]:
         st.subheader("Variables d'environnement")
@@ -274,7 +217,7 @@ def show_configuration_page():
         ]
         
         for var, desc in vars_to_check:
-            col1, col2 = st.columns([3, 1])
+            col1, col2, col3 = st.columns([3, 1, 2])
             with col1:
                 st.text(desc)
             with col2:
@@ -282,46 +225,100 @@ def show_configuration_page():
                     st.success("✅")
                 else:
                     st.error("❌")
+            with col3:
+                if os.getenv(var):
+                    value = os.getenv(var)
+                    st.caption(f"{value[:20]}...")
     
     with tabs[1]:
-        st.subheader("État Azure")
+        st.subheader("Diagnostics Azure détaillés")
         
-        # Azure Blob détaillé
-        with st.expander("Azure Blob Storage", expanded=True):
+        # Azure Blob
+        with st.expander("🗄️ Azure Blob Storage", expanded=True):
             blob_manager = st.session_state.get('azure_blob_manager')
+            
             if blob_manager:
                 if hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
-                    st.success("✅ Connecté")
-                    if hasattr(blob_manager, 'list_containers'):
-                        containers = blob_manager.list_containers()
-                        st.write(f"Containers: {containers}")
+                    st.success("✅ Connexion active")
+                    containers = blob_manager.list_containers()
+                    st.write(f"**Containers trouvés:** {len(containers)}")
+                    if containers:
+                        for container in containers[:5]:
+                            st.text(f"• {container}")
                 else:
-                    st.error("❌ Non connecté")
+                    st.error("❌ Connexion échouée")
                     if hasattr(blob_manager, 'get_connection_error'):
                         error = blob_manager.get_connection_error()
-                        st.error(f"Erreur: {error}")
+                        st.error(f"**Erreur:** {error}")
+                        
+                        # Diagnostics supplémentaires
+                        conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+                        if conn_str:
+                            st.write("**Connection String présente:** ✅")
+                            st.code(f"{conn_str[:50]}...")
+                        else:
+                            st.write("**Connection String présente:** ❌")
             else:
-                st.error("❌ Non initialisé")
+                st.error("❌ Manager non initialisé")
+                
+            if st.button("🔄 Réinitialiser Azure Blob", key="reinit_blob"):
+                st.session_state.azure_blob_manager = None
+                st.rerun()
+        
+        # Azure Search
+        with st.expander("🔍 Azure Search", expanded=True):
+            search_manager = st.session_state.get('azure_search_manager')
+            
+            if search_manager:
+                if hasattr(search_manager, 'search_client') and search_manager.search_client:
+                    st.success("✅ Connexion active")
+                    st.write(f"**Index:** {search_manager.index_name}")
+                else:
+                    st.error("❌ Connexion échouée")
+                    if hasattr(search_manager, 'get_connection_error'):
+                        error = search_manager.get_connection_error()
+                        st.error(f"**Erreur:** {error}")
+                        
+                        # Diagnostics supplémentaires
+                        endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+                        key = os.getenv('AZURE_SEARCH_KEY')
+                        st.write(f"**Endpoint présent:** {'✅' if endpoint else '❌'}")
+                        st.write(f"**Key présente:** {'✅' if key else '❌'}")
+                        if endpoint:
+                            st.code(f"Endpoint: {endpoint}")
+            else:
+                st.error("❌ Manager non initialisé")
+                
+            if st.button("🔄 Réinitialiser Azure Search", key="reinit_search"):
+                st.session_state.azure_search_manager = None
+                st.rerun()
     
     with tabs[2]:
-        st.subheader("Intelligence Artificielle")
-        try:
-            from managers.multi_llm_manager import MultiLLMManager
-            llm_manager = MultiLLMManager()
-            providers = llm_manager.get_available_providers()
-            
-            st.write(f"**Providers disponibles:** {len(providers)}")
-            for provider in providers:
-                st.success(f"✅ {provider}")
+        st.subheader("Tests de connexion")
+        
+        if st.button("🧪 Tester toutes les connexions", key="test_all"):
+            with st.spinner("Test en cours..."):
+                # Test Azure Blob
+                try:
+                    from managers.azure_blob_manager import AzureBlobManager
+                    test_blob = AzureBlobManager()
+                    if test_blob.is_connected():
+                        st.success("✅ Test Azure Blob réussi")
+                    else:
+                        st.error(f"❌ Test Azure Blob échoué: {test_blob.get_connection_error()}")
+                except Exception as e:
+                    st.error(f"❌ Erreur test Azure Blob: {e}")
                 
-        except Exception as e:
-            st.error(f"Erreur LLM Manager: {e}")
-    
-    with tabs[3]:
-        st.subheader("Informations système")
-        st.write(f"**Python:** {sys.version}")
-        st.write(f"**Streamlit:** {st.__version__}")
-        st.write(f"**Répertoire:** {os.getcwd()}")
+                # Test Azure Search
+                try:
+                    from managers.azure_search_manager import AzureSearchManager
+                    test_search = AzureSearchManager()
+                    if test_search.search_client:
+                        st.success("✅ Test Azure Search réussi")
+                    else:
+                        st.error(f"❌ Test Azure Search échoué: {test_search.get_connection_error()}")
+                except Exception as e:
+                    st.error(f"❌ Erreur test Azure Search: {e}")
 
 if __name__ == "__main__":
     main()
