@@ -491,9 +491,9 @@ class MappingResult:
     entities: List[Entity]
     relationships: List[Relationship]
     analysis: Dict[str, Any]
+    document_count: int  # DÉPLACÉ ICI - AVANT LES CHAMPS AVEC VALEURS PAR DÉFAUT
     timestamp: datetime = field(default_factory=datetime.now)
     visualization: Optional[Any] = None
-    document_count: int
     config: Dict[str, Any] = field(default_factory=dict)
 
 # ========== HELPERS ==========
