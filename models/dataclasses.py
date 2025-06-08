@@ -49,6 +49,42 @@ class TypeJuridiction(Enum):
     JURIDICTION_PROXIMITE = "Juridiction de proximité"
     AUTRE = "Autre"
 
+class InfractionAffaires(Enum):
+    """Types d'infractions pénales des affaires"""
+    ABUS_BIENS_SOCIAUX = "Abus de biens sociaux"
+    CORRUPTION = "Corruption"
+    TRAFIC_INFLUENCE = "Trafic d'influence"
+    FAVORITISME = "Favoritisme"
+    PRISE_ILLEGALE_INTERETS = "Prise illégale d'intérêts"
+    BLANCHIMENT = "Blanchiment"
+    FRAUDE_FISCALE = "Fraude fiscale"
+    ESCROQUERIE = "Escroquerie"
+    ABUS_CONFIANCE = "Abus de confiance"
+    FAUX_USAGE_FAUX = "Faux et usage de faux"
+    BANQUEROUTE = "Banqueroute"
+    RECEL = "Recel"
+    DELIT_INITIE = "Délit d'initié"
+    MANIPULATION_COURS = "Manipulation de cours"
+    ENTRAVE = "Entrave"
+    TRAVAIL_DISSIMULE = "Travail dissimulé"
+    MARCHANDAGE = "Marchandage"
+    HARCELEMENT = "Harcèlement"
+    DISCRIMINATION = "Discrimination"
+
+class LLMProvider(Enum):
+    """Fournisseurs de modèles de langage"""
+    CLAUDE = "claude"
+    OPENAI = "openai"
+    GEMINI = "gemini"
+    LOCAL = "local"
+
+class SearchMode(Enum):
+    """Modes de recherche"""
+    SIMPLE = "simple"
+    ADVANCED = "advanced"
+    VECTOR = "vector"
+    HYBRID = "hybrid"
+
 # ========== DATACLASSES DE BASE ==========
 
 @dataclass
@@ -155,6 +191,66 @@ class PieceSelectionnee:
             'format': self.format,
             'taille': self.taille,
             'cote': self.cote
+        }
+
+# ========== ANALYSE JURIDIQUE ==========
+
+@dataclass
+class AnalyseJuridique:
+    """Résultat d'analyse juridique (alias pour compatibilité)"""
+    type: str  # risk_analysis, compliance, strategy, general, infractions
+    content: str
+    query: str
+    document_count: int
+    timestamp: datetime = field(default_factory=datetime.now)
+    provider: Optional[str] = None
+    confidence: float = 0.8
+    key_findings: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+    sources: List[str] = field(default_factory=list)
+    infractions_identifiees: List['InfractionIdentifiee'] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'type': self.type,
+            'content': self.content,
+            'query': self.query,
+            'document_count': self.document_count,
+            'timestamp': self.timestamp.isoformat(),
+            'provider': self.provider,
+            'confidence': self.confidence,
+            'key_findings': self.key_findings,
+            'recommendations': self.recommendations,
+            'sources': self.sources,
+            'infractions_identifiees': [inf.to_dict() for inf in self.infractions_identifiees]
+        }
+
+@dataclass
+class InfractionIdentifiee:
+    """Infraction identifiée dans les documents"""
+    type: InfractionAffaires
+    description: str
+    elements_constitutifs: List[str] = field(default_factory=list)
+    preuves: List[str] = field(default_factory=list)
+    articles_code_penal: List[str] = field(default_factory=list)
+    sanctions_encourues: Dict[str, str] = field(default_factory=dict)
+    personnes_impliquees: List[str] = field(default_factory=list)
+    prescription: Optional[str] = None
+    gravite: int = 5  # 1-10
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'type': self.type.value,
+            'description': self.description,
+            'elements_constitutifs': self.elements_constitutifs,
+            'preuves': self.preuves,
+            'articles_code_penal': self.articles_code_penal,
+            'sanctions_encourues': self.sanctions_encourues,
+            'personnes_impliquees': self.personnes_impliquees,
+            'prescription': self.prescription,
+            'gravite': self.gravite
         }
 
 # ========== JURISPRUDENCE ==========
