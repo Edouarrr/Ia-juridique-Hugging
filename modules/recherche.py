@@ -6330,8 +6330,8 @@ def show_plaidoirie_statistics(content: str):
     sentences = clean_content.split('.')
     
     # Sections
-    sections = re.findall(r'^[IVX]+\.\s+.*, content, re.MULTILINE)
-    subsections = re.findall(r'^[A-Z]\.\s+.*, content, re.MULTILINE)
+    sections = re.findall(r'^[IVX]+\.\s+.*', content, re.MULTILINE)
+    subsections = re.findall(r'^[A-Z]\.\s+.*', content, re.MULTILINE)
     
     # Affichage
     col1, col2, col3 = st.columns(3)
