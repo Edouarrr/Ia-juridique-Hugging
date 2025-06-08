@@ -1742,6 +1742,77 @@ class ArgumentStructure:
         
         return '\n'.join(lines)
 
+# ========== ENTITÉS ==========
+
+@dataclass
+class Entity:
+    """Représente une entité (personne, organisation, lieu, etc.) extraite des documents"""
+    id: str
+    name: str
+    type: str  # person, organization, location, date, amount, etc.
+    normalized_name: Optional[str] = None
+    aliases: List[str] = field(default_factory=list)
+    mentions: List[Dict[str, Any]] = field(default_factory=list)  # document_id, position, context
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    confidence: float = 1.0
+    created_at: datetime = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        if not self.id:
+            self.id = f"entity_{self.type}_{self.name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        if not self.normalized_name:
+            self.normalized_name = self.name.upper()
+    
+    def add_mention(self, document_id: str, position: int, context: str):
+        """Ajoute une mention de l'entité dans un document"""
+        self.mentions.append({
+            'document_id': document_id,
+            'position': position,
+            'context': context,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    def add_alias(self, alias: str):
+        """Ajoute un alias pour l'entité"""
+        if alias not in self.aliases and alias != self.name:
+            self.aliases.append(alias)
+    
+    def merge_with(self, other: 'Entity') -> 'Entity':
+        """Fusionne avec une autre entité"""
+        if self.type != other.type:
+            raise ValueError("Cannot merge entities of different types")
+        
+        # Fusionner les aliases
+        for alias in other.aliases:
+            self.add_alias(alias)
+        self.add_alias(other.name)
+        
+        # Fusionner les mentions
+        self.mentions.extend(other.mentions)
+        
+        # Fusionner les attributs
+        self.attributes.update(other.attributes)
+        
+        # Ajuster la confiance
+        self.confidence = (self.confidence + other.confidence) / 2
+        
+        return self
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'type': self.type,
+            'normalized_name': self.normalized_name,
+            'aliases': self.aliases,
+            'mentions_count': len(self.mentions),
+            'attributes': self.attributes,
+            'confidence': self.confidence,
+            'created_at': self.created_at.isoformat()
+        }
+
 # ========== RECHERCHE UNIVERSELLE ==========
 
 @dataclass
