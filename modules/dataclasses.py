@@ -15,6 +15,18 @@ if TYPE_CHECKING:
 
 # ========== ENUMS ==========
 
+class DocumentType(Enum):
+    CONCLUSIONS = "conclusions"
+    PLAINTE = "plainte"
+    ASSIGNATION = "assignation"
+    COURRIER = "courrier"
+    EXPERTISE = "expertise"
+    JUGEMENT = "jugement"
+    ORDONNANCE = "ordonnance"
+    PV = "proces_verbal"
+    RAPPORT = "rapport"
+    AUTRE = "autre"
+
 class SourceJurisprudence(Enum):
     """Sources de jurisprudence disponibles"""
     LEGIFRANCE = "legifrance"
