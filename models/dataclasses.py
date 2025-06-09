@@ -1,8 +1,3 @@
- Parfait ! Je vais réorganiser les 4 fichiers selon vos choix. Voici la nouvelle structure optimisée :
-
-## 1️⃣ models/dataclasses.py
-
-```python
 # models/dataclasses.py
 """Modèles de données pour l'application juridique - Version réorganisée"""
 
