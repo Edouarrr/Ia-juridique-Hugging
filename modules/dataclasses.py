@@ -1,5 +1,5 @@
-# modules/dataclasses.py
-"""Modèles de données pour l'application juridique - Version réorganisée"""
+# models/dataclasses.py
+"""Modèles de données pour l'application juridique - Version réorganisée et améliorée"""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -268,23 +268,219 @@ class TypePartie(Enum):
 
 @dataclass
 class Document:
-    """Représente un document dans le système"""
+    """Représente un document juridique - VERSION AMÉLIORÉE"""
     id: str
-    titre: str
-    contenu: str
-    type_document: DocumentType
-    date_creation: datetime = field(default_factory=datetime.now)
-    date_modification: Optional[datetime] = None
-    auteur: Optional[str] = None
-    taille: int = 0
-    format: str = "txt"
-    tags: List[str] = field(default_factory=list)
+    title: str
+    content: str
+    source: str
     metadata: Dict[str, Any] = field(default_factory=dict)
-    confidentiel: bool = False
-    version: int = 1
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    tags: List[str] = field(default_factory=list)
+    category: Optional[str] = None
+    author: Optional[str] = None
+    reference: Optional[str] = None
+    file_path: Optional[str] = None
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    
+    # Nouveaux champs pour la recherche améliorée
+    highlights: List[str] = field(default_factory=list)  # Extraits pertinents
+    matched_references: List[str] = field(default_factory=list)  # Références @ matchées
+    relevance_score: float = 0.0  # Score de pertinence (0-1)
+    
+    # Informations de style extraites
+    style_info: Optional[Dict[str, Any]] = None
+    
+    def __post_init__(self):
+        """Validation post-initialisation"""
+        if not self.id:
+            self.id = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        
+        if not self.metadata:
+            self.metadata = {}
+        
+        # Ajouter des métadonnées par défaut
+        self.metadata.update({
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'word_count': len(self.content.split()),
+            'char_count': len(self.content)
+        })
+        
+        # Ajouter le score de pertinence aux métadonnées
+        if self.relevance_score > 0:
+            self.metadata['score'] = self.relevance_score
+    
+    def add_highlight(self, text: str, start_pos: Optional[int] = None, end_pos: Optional[int] = None):
+        """Ajoute un passage surligné avec position optionnelle"""
+        highlight = {
+            'text': text,
+            'start': start_pos,
+            'end': end_pos
+        }
+        
+        # Stocker comme string simple ou dict selon le cas
+        if start_pos is None and end_pos is None:
+            self.highlights.append(text)
+        else:
+            self.highlights.append(highlight)
+    
+    def has_reference(self, ref: str) -> bool:
+        """Vérifie si le document contient une référence"""
+        ref_clean = ref.replace('@', '').strip().lower()
+        
+        # Vérifier dans les références matchées
+        if ref_clean in [r.lower() for r in self.matched_references]:
+            return True
+        
+        # Vérifier dans le contenu
+        return (ref_clean in self.title.lower() or 
+                ref_clean in self.source.lower() or
+                ref_clean in self.content.lower() or
+                ref_clean in self.metadata.get('reference', '').lower())
+    
+    def extract_references(self) -> List[str]:
+        """Extrait toutes les références @ du contenu"""
+        references = re.findall(r'@(\w+)', self.content)
+        # Ajouter aussi celles du titre
+        references.extend(re.findall(r'@(\w+)', self.title))
+        
+        # Mettre à jour matched_references
+        unique_refs = list(set(references))
+        self.matched_references = unique_refs
+        
+        return unique_refs
+    
+    def matches_keywords(self, keywords: List[str], threshold: float = 0.3) -> Tuple[bool, float]:
+        """
+        Vérifie si le document correspond aux mots-clés
+        
+        Returns:
+            Tuple (matches: bool, match_ratio: float)
+        """
+        if not keywords:
+            return False, 0.0
+        
+        content_lower = self.content.lower()
+        title_lower = self.title.lower()
+        
+        matches = 0
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+            # Titre compte double
+            if keyword_lower in title_lower:
+                matches += 2
+            if keyword_lower in content_lower:
+                matches += 1
+        
+        # Calculer le ratio de correspondance
+        max_possible = len(keywords) * 3  # Max si tous les mots sont dans titre et contenu
+        match_ratio = matches / max_possible
+        
+        return match_ratio >= threshold, match_ratio
+    
+    def get_preview(self, max_length: int = 200) -> str:
+        """Retourne un aperçu du contenu"""
+        if len(self.content) <= max_length:
+            return self.content
+        
+        # Si on a des highlights, utiliser le premier
+        if self.highlights:
+            first_highlight = self.highlights[0]
+            if isinstance(first_highlight, dict):
+                return first_highlight['text']
+            return str(first_highlight)
+        
+        # Sinon, prendre le début du contenu
+        return self.content[:max_length].strip() + "..."
+    
+    def extract_style_info(self) -> Dict[str, Any]:
+        """Extrait les informations de style du document"""
+        # Analyser la numérotation des paragraphes
+        numbering_patterns = {
+            'numeric': r'^\d+\.',
+            'roman_upper': r'^[IVX]+\.',
+            'roman_lower': r'^[ivx]+\.',
+            'alphabetic_upper': r'^[A-Z]\.',
+            'alphabetic_lower': r'^[a-z]\.',
+            'hierarchical': r'^\d+\.\d+'
+        }
+        
+        style_info = {
+            'paragraph_numbering': None,
+            'average_sentence_length': 0,
+            'formality_indicators': 0,
+            'technical_terms_count': 0
+        }
+        
+        # Détecter le style de numérotation
+        for style, pattern in numbering_patterns.items():
+            if re.search(pattern, self.content, re.MULTILINE):
+                style_info['paragraph_numbering'] = style
+                break
+        
+        # Analyser la complexité des phrases
+        sentences = self.content.split('.')
+        if sentences:
+            total_words = sum(len(s.split()) for s in sentences)
+            style_info['average_sentence_length'] = total_words / len(sentences)
+        
+        # Indicateurs de formalité
+        formal_markers = [
+            'attendu que', 'considérant', 'il appert', 'nonobstant',
+            'aux termes de', 'en l\'espèce', 'il échet', 'partant'
+        ]
+        style_info['formality_indicators'] = sum(
+            1 for marker in formal_markers if marker in self.content.lower()
+        )
+        
+        self.style_info = style_info
+        return style_info
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit l'objet en dictionnaire"""
+        base_dict = {
+            'id': self.id,
+            'title': self.title,
+            'content': self.content,
+            'source': self.source,
+            'metadata': self.metadata,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'tags': self.tags,
+            'category': self.category,
+            'author': self.author,
+            'reference': self.reference,
+            'file_path': self.file_path,
+            'file_size': self.file_size,
+            'mime_type': self.mime_type,
+            'style_info': self.style_info
+        }
+        
+        # Ajouter les nouveaux champs s'ils sont présents
+        if self.highlights:
+            base_dict['highlights'] = self.highlights
+        if self.matched_references:
+            base_dict['matched_references'] = self.matched_references
+        if self.relevance_score > 0:
+            base_dict['relevance_score'] = self.relevance_score
+        
+        return base_dict
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Document':
+        """Crée un objet depuis un dictionnaire"""
+        # Convertir les dates si nécessaire
+        if 'created_at' in data and isinstance(data['created_at'], str):
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        if 'updated_at' in data and isinstance(data['updated_at'], str):
+            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+        
+        return cls(**data)
     
     def __str__(self):
-        return f"{self.type_document.value}: {self.titre}"
+        return f"{self.type_document.value if hasattr(self, 'type_document') else 'Document'}: {self.title}"
 
 @dataclass  
 class PieceProcedure:
@@ -582,36 +778,102 @@ class Entity:
 
 @dataclass
 class QueryAnalysis:
-    """Analyse d'une requête utilisateur pour comprendre l'intention"""
+    """Analyse d'une requête utilisateur pour comprendre l'intention - VERSION ÉTENDUE"""
     original_query: str
-    intent: str  # "search", "redaction", "analysis", "jurisprudence", etc.
-    entities: Dict[str, Any]  # Entités extraites
+    query_lower: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    # Analyse de l'intention
+    intent: str = "search"  # "search", "redaction", "analysis", "jurisprudence", etc.
+    command_type: Optional[str] = None  # Pour le routing spécifique
+    
+    # Extraction d'entités
+    entities: Dict[str, Any] = field(default_factory=dict)
+    reference: Optional[str] = None  # Référence @ extraite
+    document_type: Optional[str] = None
+    action: Optional[str] = None
+    subject_matter: Optional[str] = None
+    phase_procedurale: Optional[PhaseProcedure] = None
+    
+    # Parties identifiées
+    parties: Dict[str, List[str]] = field(default_factory=lambda: {'demandeurs': [], 'defendeurs': []})
+    
+    # Infractions et éléments juridiques
+    infractions: List[str] = field(default_factory=list)
+    style_request: Optional[str] = None
+    date_filter: Optional[Tuple[datetime, datetime]] = None
+    
+    # Mots-clés et recherche
+    keywords: List[str] = field(default_factory=list)
+    search_type: str = 'general'  # general, dossier, jurisprudence, partie
+    
+    # Métadonnées
     confidence: float = 0.0
     details: Dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        """Post-initialisation pour normaliser les données"""
+        if not self.query_lower:
+            self.query_lower = self.original_query.lower()
+        
+        # Si pas d'entités, initialiser avec la structure attendue
+        if not self.entities:
+            self.entities = {
+                'references': [],
+                'parties': {'demandeurs': [], 'defendeurs': []},
+                'infractions': [],
+                'dates': [],
+                'documents': []
+            }
     
     def has_reference(self) -> bool:
         """Vérifie si la requête contient une référence @"""
-        return bool(self.entities.get('references'))
+        return bool(self.reference or self.entities.get('references'))
     
     def get_document_type(self) -> Optional[str]:
         """Retourne le type de document demandé si applicable"""
-        return self.details.get('document_type')
+        return self.document_type or self.details.get('document_type')
     
     def get_primary_intent(self) -> str:
         """Retourne l'intention principale"""
-        return self.intent
+        return self.command_type or self.intent
     
     def is_high_confidence(self) -> bool:
         """Vérifie si l'analyse est fiable"""
         return self.confidence >= 0.7
     
+    def get_all_keywords(self) -> List[str]:
+        """Retourne tous les mots-clés (keywords + extraits des parties/infractions)"""
+        all_keywords = self.keywords.copy()
+        
+        # Ajouter les noms de parties
+        for parties_list in self.parties.values():
+            all_keywords.extend(parties_list)
+        
+        # Ajouter les infractions
+        all_keywords.extend(self.infractions)
+        
+        # Ajouter la référence si présente
+        if self.reference:
+            all_keywords.append(self.reference)
+        
+        # Dédupliquer et retourner
+        return list(set(all_keywords))
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convertit en dictionnaire"""
         return {
             'query': self.original_query,
+            'query_lower': self.query_lower,
             'intent': self.intent,
+            'command_type': self.command_type,
             'entities': self.entities,
+            'reference': self.reference,
+            'document_type': self.document_type,
+            'parties': self.parties,
+            'infractions': self.infractions,
+            'keywords': self.keywords,
+            'search_type': self.search_type,
             'confidence': self.confidence,
             'details': self.details,
             'timestamp': self.timestamp.isoformat()
@@ -1236,130 +1498,7 @@ class LetterheadTemplate:
             'line_spacing': self.line_spacing
         }
 
-# ========== DOCUMENTS ==========
-
-@dataclass
-class Document:
-    """Représente un document juridique"""
-    id: str
-    title: str
-    content: str
-    source: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
-    tags: List[str] = field(default_factory=list)
-    category: Optional[str] = None
-    author: Optional[str] = None
-    reference: Optional[str] = None
-    file_path: Optional[str] = None
-    file_size: Optional[int] = None
-    mime_type: Optional[str] = None
-    
-    # Informations de style extraites
-    style_info: Optional[Dict[str, Any]] = None
-    
-    def __post_init__(self):
-        """Validation post-initialisation"""
-        if not self.id:
-            self.id = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-        
-        if not self.metadata:
-            self.metadata = {}
-        
-        # Ajouter des métadonnées par défaut
-        self.metadata.update({
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'word_count': len(self.content.split()),
-            'char_count': len(self.content)
-        })
-    
-    def has_reference(self, ref: str) -> bool:
-        """Vérifie si le document contient une référence"""
-        ref_clean = ref.replace('@', '').strip().lower()
-        return (ref_clean in self.title.lower() or 
-                ref_clean in self.source.lower() or
-                ref_clean in self.metadata.get('reference', '').lower())
-    
-    def extract_references(self) -> List[str]:
-        """Extrait toutes les références @ du contenu"""
-        references = re.findall(r'@(\w+)', self.content)
-        return list(set(references))
-    
-    def extract_style_info(self) -> Dict[str, Any]:
-        """Extrait les informations de style du document"""
-        # Analyser la numérotation des paragraphes
-        numbering_patterns = {
-            'numeric': r'^\d+\.',
-            'roman_upper': r'^[IVX]+\.',
-            'roman_lower': r'^[ivx]+\.',
-            'alphabetic_upper': r'^[A-Z]\.',
-            'alphabetic_lower': r'^[a-z]\.',
-            'hierarchical': r'^\d+\.\d+'
-        }
-        
-        style_info = {
-            'paragraph_numbering': None,
-            'average_sentence_length': 0,
-            'formality_indicators': 0,
-            'technical_terms_count': 0
-        }
-        
-        # Détecter le style de numérotation
-        for style, pattern in numbering_patterns.items():
-            if re.search(pattern, self.content, re.MULTILINE):
-                style_info['paragraph_numbering'] = style
-                break
-        
-        # Analyser la complexité des phrases
-        sentences = self.content.split('.')
-        if sentences:
-            total_words = sum(len(s.split()) for s in sentences)
-            style_info['average_sentence_length'] = total_words / len(sentences)
-        
-        # Indicateurs de formalité
-        formal_markers = [
-            'attendu que', 'considérant', 'il appert', 'nonobstant',
-            'aux termes de', 'en l\'espèce', 'il échet', 'partant'
-        ]
-        style_info['formality_indicators'] = sum(
-            1 for marker in formal_markers if marker in self.content.lower()
-        )
-        
-        self.style_info = style_info
-        return style_info
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit l'objet en dictionnaire"""
-        return {
-            'id': self.id,
-            'title': self.title,
-            'content': self.content,
-            'source': self.source,
-            'metadata': self.metadata,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'tags': self.tags,
-            'category': self.category,
-            'author': self.author,
-            'reference': self.reference,
-            'file_path': self.file_path,
-            'file_size': self.file_size,
-            'mime_type': self.mime_type,
-            'style_info': self.style_info
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Document':
-        """Crée un objet depuis un dictionnaire"""
-        # Convertir les dates si nécessaire
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'updated_at' in data and isinstance(data['updated_at'], str):
-            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        
-        return cls(**data)
+# ========== DOCUMENTS JURIDIQUES (Refactoring de DocumentJuridique) ==========
 
 @dataclass
 class DocumentJuridique(Document):
@@ -2558,48 +2697,66 @@ class TimelineEvent:
 
 @dataclass
 class SearchResult:
-    """Résultat de recherche unifié"""
-    id: str
-    title: str
-    content: str
-    score: float
-    source: str
-    highlights: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    document_type: Optional[str] = None
-    relevance_explanation: Optional[str] = None
-    matched_references: List[str] = field(default_factory=list)
+    """Résultat de recherche enrichi avec métadonnées et suggestions"""
+    documents: List[Document]
+    query: str
+    total_count: int
+    timestamp: datetime = field(default_factory=datetime.now)
+    facets: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    suggestions: List[str] = field(default_factory=list)
+    search_duration_ms: Optional[int] = None
+    filters_applied: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
-        """Normalise le score"""
-        if self.score < 0:
-            self.score = 0
-        elif self.score > 1:
-            self.score = 1
+        """Validation post-initialisation"""
+        # S'assurer que total_count est cohérent
+        if self.total_count < len(self.documents):
+            self.total_count = len(self.documents)
     
-    def add_highlight(self, text: str, context: str = ""):
-        """Ajoute un passage surligné"""
-        highlight = text
-        if context:
-            highlight = f"...{context}..."
-        self.highlights.append(highlight)
+    def get_facet(self, facet_name: str) -> Dict[str, int]:
+        """Récupère une facette spécifique"""
+        return self.facets.get(facet_name, {})
     
-    def boost_score(self, factor: float):
-        """Augmente le score de pertinence"""
-        self.score = min(1.0, self.score * factor)
+    def get_top_documents(self, n: int = 10) -> List[Document]:
+        """Retourne les n premiers documents"""
+        return self.documents[:n]
+    
+    def has_results(self) -> bool:
+        """Vérifie s'il y a des résultats"""
+        return len(self.documents) > 0
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Retourne des statistiques sur les résultats"""
+        stats = {
+            'total': self.total_count,
+            'returned': len(self.documents),
+            'has_facets': bool(self.facets),
+            'has_suggestions': bool(self.suggestions),
+            'search_duration_ms': self.search_duration_ms
+        }
+        
+        # Statistiques sur les scores si disponibles
+        if self.documents:
+            scores = [doc.metadata.get('score', 0) for doc in self.documents if hasattr(doc, 'metadata')]
+            if scores:
+                stats['avg_score'] = sum(scores) / len(scores)
+                stats['max_score'] = max(scores)
+                stats['min_score'] = min(scores)
+        
+        return stats
     
     def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
         return {
-            'id': self.id,
-            'title': self.title,
-            'content': self.content,
-            'score': self.score,
-            'source': self.source,
-            'highlights': self.highlights,
-            'metadata': self.metadata,
-            'document_type': self.document_type,
-            'relevance_explanation': self.relevance_explanation,
-            'matched_references': self.matched_references
+            'query': self.query,
+            'total_count': self.total_count,
+            'document_count': len(self.documents),
+            'timestamp': self.timestamp.isoformat(),
+            'facets': self.facets,
+            'suggestions': self.suggestions,
+            'search_duration_ms': self.search_duration_ms,
+            'filters_applied': self.filters_applied,
+            'statistics': self.get_statistics()
         }
 
 # ========== ANALYSE ET RÉDACTION ==========
