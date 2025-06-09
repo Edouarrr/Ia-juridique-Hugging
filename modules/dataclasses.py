@@ -551,6 +551,52 @@ class SessionUtilisateur:
         if self.date_fin:
             return self.date_fin - self.date_debut
         return datetime.now() - self.date_debut
+
+@dataclass
+class CasJuridique:
+    """Représente un cas juridique spécifique"""
+    id: str
+    titre: str
+    description: str
+    type_cas: str  # "penal", "civil", "commercial", "administratif"
+    date_fait: datetime
+    lieu_fait: Optional[str] = None
+    parties_impliquees: List[str] = field(default_factory=list)
+    faits: List[str] = field(default_factory=list)
+    questions_juridiques: List[str] = field(default_factory=list)
+    infractions_potentielles: List[str] = field(default_factory=list)
+    articles_applicables: List[str] = field(default_factory=list)
+    jurisprudences_pertinentes: List[str] = field(default_factory=list)
+    strategie_proposee: Optional[str] = None
+    risque_evaluation: Optional[str] = None
+    statut: str = "en_analyse"  # "en_analyse", "actif", "resolu", "archive"
+    
+    def ajouter_fait(self, fait: str):
+        self.faits.append(fait)
+
+@dataclass
+class DocumentJuridique:
+    """Représente un document juridique formel"""
+    id: str
+    titre: str
+    type_document: str  # "contrat", "assignation", "conclusions", "jugement", etc.
+    numero_reference: str
+    date_document: datetime
+    auteur: str
+    destinataires: List[str] = field(default_factory=list)
+    contenu: str = ""
+    pieces_jointes: List[str] = field(default_factory=list)
+    signataires: List[str] = field(default_factory=list)
+    date_signature: Optional[datetime] = None
+    juridiction: Optional[str] = None
+    procedure_liee: Optional[str] = None
+    statut_legal: str = "projet"  # "projet", "signe", "depose", "notifie"
+    confidentiel: bool = False
+    version: int = 1
+    historique_versions: List[Dict[str, Any]] = field(default_factory=list)
+    
+    def est_signe(self) -> bool:
+        return self.date_signature is not None and len(self.signataires) > 0
         
 # ========== INFORMATIONS ENTREPRISE ==========
 
