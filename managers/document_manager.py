@@ -79,7 +79,7 @@ from PIL import Image
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
-from models.dataclasses import AnalyseJuridique, CasJuridique, DocumentJuridique
+from modules.dataclasses import AnalyseJuridique, CasJuridique, DocumentJuridique
 
 logger = logging.getLogger(__name__)
 
