@@ -739,47 +739,67 @@ def main():
             st.session_state.show_config_modal = True
         
         # Mode développeur (temporaire pour debug)
-        if st.checkbox("🧪 Mode développeur", key="dev_mode"):
-            st.info("🔧 Outils de vérification activés")
-            
-            if st.button("📋 Vérifier l'intégration des modules", key="verify_integration"):
-                try:
-                    import verify_all_functions
+        st.markdown("---")
+        st.subheader("🧪 Outils de diagnostic")
+        
+        # NOUVEAU TOGGLE POUR VERIFY_ALL_FUNCTIONS
+        run_verification = st.toggle(
+            "🔍 Vérification complète de l'intégration",
+            value=False,
+            help="Lance une vérification approfondie de tous les modules et fonctions",
+            key="run_module_verification"
+        )
+        
+        if run_verification:
+            st.info("🔧 Lancement de la vérification complète...")
+            try:
+                import verify_all_functions
+                with st.container():
                     verify_all_functions.verify_function_integration()
-                except ImportError:
-                    st.error("❌ Le fichier verify_all_functions.py n'est pas trouvé à la racine")
-                    st.info("💡 Créez le fichier verify_all_functions.py à la racine du projet")
-                except Exception as e:
-                    st.error(f"❌ Erreur : {str(e)}")
-                    import traceback
-                    with st.expander("Détails de l'erreur"):
-                        st.code(traceback.format_exc())
+            except ImportError:
+                st.error("❌ Le fichier verify_all_functions.py n'est pas trouvé à la racine")
+                st.info("💡 Assurez-vous d'avoir créé le fichier verify_all_functions.py à la racine du projet")
+            except Exception as e:
+                st.error(f"❌ Erreur lors de la vérification : {str(e)}")
+                with st.expander("Détails de l'erreur"):
+                    st.code(traceback.format_exc())
+        
+        # Mode développeur avancé
+        if st.checkbox("🔧 Mode développeur avancé", key="advanced_dev_mode"):
+            st.info("🛠️ Outils avancés activés")
             
-            if st.button("🔍 Audit des fonctionnalités", key="audit_features"):
-                try:
-                    import audit_integration
-                    audit_integration.audit_module_functions()
-                except ImportError:
-                    st.error("❌ Le fichier audit_integration.py n'est pas trouvé à la racine")
-                    st.info("💡 Créez le fichier audit_integration.py à la racine du projet")
-                except Exception as e:
-                    st.error(f"❌ Erreur : {str(e)}")
-                    import traceback
-                    with st.expander("Détails de l'erreur"):
-                        st.code(traceback.format_exc())
+            col1, col2 = st.columns(2)
             
-            if st.button("✅ Vérifier l'intégration finale", key="verify_final"):
-                try:
-                    import verify_integration
-                    verify_integration.verify_complete_integration()
-                except ImportError:
-                    st.error("❌ Le fichier verify_integration.py n'est pas trouvé à la racine")
-                    st.info("💡 Créez le fichier verify_integration.py à la racine du projet")
-                except Exception as e:
-                    st.error(f"❌ Erreur : {str(e)}")
-                    import traceback
-                    with st.expander("Détails de l'erreur"):
-                        st.code(traceback.format_exc())
+            with col1:
+                if st.button("📋 Quick Check", key="quick_check", use_container_width=True):
+                    try:
+                        # Vérification rapide inline
+                        st.write("**Modules critiques:**")
+                        modules_to_check = ['recherche', 'advanced_features', 'analyse_ia', 'bordereau']
+                        for mod in modules_to_check:
+                            try:
+                                exec(f"import modules.{mod}")
+                                st.success(f"✅ {mod}")
+                            except:
+                                st.error(f"❌ {mod}")
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+            
+            with col2:
+                if st.button("🔍 Test Imports", key="test_imports", use_container_width=True):
+                    try:
+                        from modules import recherche
+                        if hasattr(recherche, 'MODULE_FUNCTIONS'):
+                            st.success(f"✅ {len(recherche.MODULE_FUNCTIONS)} fonctions")
+                        else:
+                            st.error("❌ MODULE_FUNCTIONS absent")
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+            
+            # Afficher le contenu de session_state
+            if st.checkbox("📊 Voir session_state", key="show_session_state"):
+                st.json({k: str(v)[:100] + "..." if len(str(v)) > 100 else str(v) 
+                        for k, v in st.session_state.items()})
         
         # Si version classique, afficher les filtres
         if not use_simplified:
