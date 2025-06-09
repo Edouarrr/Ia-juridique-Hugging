@@ -1,5 +1,5 @@
 # managers/universal_search_service.py
-"""Service de recherche universelle avec améliorations UX"""
+"""Service de recherche universelle avec améliorations UX - Version optimisée"""
 
 from typing import List, Dict, Any, Optional, Union, Tuple
 from datetime import datetime
@@ -46,6 +46,7 @@ class QueryAnalysis:
         self.date_filter = None
         self.keywords = []
         self.search_type = 'general'  # general, dossier, jurisprudence, partie
+        self.command_type = None  # Pour le routing
 
 class SearchResult:
     """Résultat de recherche enrichi"""
@@ -59,6 +60,67 @@ class SearchResult:
 
 class UniversalSearchService:
     """Service unifié pour toutes les recherches dans l'application"""
+    
+    # Patterns centralisés pour éviter la duplication
+    DEMANDEURS_PATTERNS = [
+        ('interconstruction', 'INTERCONSTRUCTION'),
+        ('vinci', 'VINCI'),
+        ('sogeprom', 'SOGEPROM RÉALISATIONS'),
+        ('demathieu bard', 'DEMATHIEU BARD'),
+        ('demathieu', 'DEMATHIEU BARD'),
+        ('bouygues', 'BOUYGUES'),
+        ('eiffage', 'EIFFAGE'),
+        ('spie', 'SPIE BATIGNOLLES'),
+        ('leon grosse', 'LEON GROSSE'),
+        ('fayat', 'FAYAT'),
+        ('colas', 'COLAS'),
+        ('eurovia', 'EUROVIA'),
+        ('razel-bec', 'RAZEL-BEC'),
+        ('nge', 'NGE'),
+        ('gtm', 'GTM Bâtiment')
+    ]
+    
+    DEFENDEURS_PATTERNS = [
+        ('perinet', 'M. PERINET'),
+        ('périnet', 'M. PÉRINET'),
+        ('vp invest', 'VP INVEST'),
+        ('perraud', 'M. PERRAUD'),
+        ('martin', 'M. MARTIN'),
+        ('dupont', 'M. DUPONT'),
+        ('durand', 'M. DURAND'),
+        ('laurent', 'M. LAURENT'),
+        ('michel', 'M. MICHEL')
+    ]
+    
+    INFRACTIONS_MAP = {
+        'escroquerie': 'Escroquerie',
+        'abus de confiance': 'Abus de confiance',
+        'abus de biens sociaux': 'Abus de biens sociaux',
+        'abs': 'Abus de biens sociaux',
+        'faux': 'Faux et usage de faux',
+        'corruption': 'Corruption',
+        'trafic d\'influence': 'Trafic d\'influence',
+        'favoritisme': 'Favoritisme',
+        'prise illégale': 'Prise illégale d\'intérêts',
+        'blanchiment': 'Blanchiment',
+        'fraude fiscale': 'Fraude fiscale',
+        'travail dissimulé': 'Travail dissimulé',
+        'marchandage': 'Marchandage',
+        'entrave': 'Entrave',
+        'banqueroute': 'Banqueroute',
+        'recel': 'Recel'
+    }
+    
+    DOCUMENT_TYPES = {
+        r'\b(conclusions?|conclusion)\b': 'CONCLUSIONS',
+        r'\b(plaintes?|dépôt de plainte)\b': 'PLAINTE',
+        r'\b(assignations?|citation)\b': 'ASSIGNATION',
+        r'\b(courriers?|lettre|correspondance)\b': 'COURRIER',
+        r'\b(contrats?|convention)\b': 'CONTRAT',
+        r'\b(factures?|facturation)\b': 'FACTURE',
+        r'\b(expertises?|rapport d\'expert)\b': 'EXPERTISE',
+        r'\b(jugements?|décision|arrêt)\b': 'JUGEMENT'
+    }
     
     def __init__(self):
         """Initialisation du service avec cache et optimisations"""
@@ -96,7 +158,7 @@ class UniversalSearchService:
                 return cached_result
         
         # Analyser la requête
-        query_analysis = self._analyze_query_advanced(query)
+        query_analysis = self.analyze_query_advanced(query)
         
         # Recherches parallèles dans différentes sources
         search_tasks = []
@@ -164,14 +226,17 @@ class UniversalSearchService:
         
         return result
     
-    def _analyze_query_advanced(self, query: str) -> QueryAnalysis:
-        """Analyse avancée de la requête avec extraction d'entités"""
+    def analyze_query_advanced(self, query: str) -> QueryAnalysis:
+        """Analyse avancée de la requête avec extraction d'entités et détection de commande"""
         
         analysis = QueryAnalysis(
             original_query=query,
             query_lower=query.lower(),
             timestamp=datetime.now()
         )
+        
+        # Détection du type de commande pour le routing
+        self._detect_command_type(analysis)
         
         # Extraction de la référence @ avec pattern amélioré
         ref_patterns = [
@@ -187,19 +252,8 @@ class UniversalSearchService:
                 analysis.search_type = 'dossier'
                 break
         
-        # Détection du type de document avec patterns étendus
-        doc_patterns = {
-            r'\b(conclusions?|conclusion)\b': 'CONCLUSIONS',
-            r'\b(plaintes?|dépôt de plainte)\b': 'PLAINTE',
-            r'\b(assignations?|citation)\b': 'ASSIGNATION',
-            r'\b(courriers?|lettre|correspondance)\b': 'COURRIER',
-            r'\b(contrats?|convention)\b': 'CONTRAT',
-            r'\b(factures?|facturation)\b': 'FACTURE',
-            r'\b(expertises?|rapport d\'expert)\b': 'EXPERTISE',
-            r'\b(jugements?|décision|arrêt)\b': 'JUGEMENT'
-        }
-        
-        for pattern, doc_type in doc_patterns.items():
+        # Détection du type de document
+        for pattern, doc_type in self.DOCUMENT_TYPES.items():
             if re.search(pattern, analysis.query_lower):
                 analysis.document_type = doc_type
                 break
@@ -221,13 +275,94 @@ class UniversalSearchService:
         
         return analysis
     
+    def _detect_command_type(self, analysis: QueryAnalysis):
+        """Détecte le type de commande pour le routing"""
+        query_lower = analysis.query_lower
+        
+        # Détection des commandes principales
+        if any(word in query_lower for word in ['rédige', 'rédiger', 'écrire', 'créer', 'plainte', 'conclusions', 'courrier', 'assignation']):
+            analysis.command_type = 'redaction'
+            if 'plainte' in query_lower:
+                analysis.command_type = 'plainte'
+        elif any(word in query_lower for word in ['plaidoirie', 'plaider', 'audience']):
+            analysis.command_type = 'plaidoirie'
+        elif any(word in query_lower for word in ['préparer client', 'préparation', 'coaching']):
+            analysis.command_type = 'preparation_client'
+        elif any(word in query_lower for word in ['import', 'importer', 'charger', 'upload']):
+            analysis.command_type = 'import'
+        elif any(word in query_lower for word in ['export', 'exporter', 'télécharger', 'download']):
+            analysis.command_type = 'export'
+        elif any(word in query_lower for word in ['email', 'envoyer', 'mail', 'courrier électronique']):
+            analysis.command_type = 'email'
+        elif any(word in query_lower for word in ['analyser', 'analyse', 'étudier', 'examiner']):
+            analysis.command_type = 'analysis'
+        elif any(word in query_lower for word in ['sélectionner pièces', 'pièces', 'sélection']):
+            analysis.command_type = 'piece_selection'
+        elif 'bordereau' in query_lower:
+            analysis.command_type = 'bordereau'
+        elif any(word in query_lower for word in ['synthèse', 'synthétiser', 'résumer']):
+            analysis.command_type = 'synthesis'
+        elif any(word in query_lower for word in ['template', 'modèle', 'gabarit']):
+            analysis.command_type = 'template'
+        elif any(word in query_lower for word in ['jurisprudence', 'juris', 'décision', 'arrêt']):
+            analysis.command_type = 'jurisprudence'
+        elif any(word in query_lower for word in ['chronologie', 'timeline', 'frise']):
+            analysis.command_type = 'timeline'
+        elif any(word in query_lower for word in ['cartographie', 'mapping', 'carte', 'réseau']):
+            analysis.command_type = 'mapping'
+        elif any(word in query_lower for word in ['comparer', 'comparaison', 'différences']):
+            analysis.command_type = 'comparison'
+        else:
+            analysis.command_type = 'search'
+    
+    def extract_parties_from_query(self, query: str) -> Dict[str, List[str]]:
+        """Méthode publique pour extraire les parties d'une requête"""
+        return self._extract_parties_advanced(query)
+    
+    def extract_infractions_from_query(self, query: str) -> List[str]:
+        """Méthode publique pour extraire les infractions d'une requête"""
+        return self._extract_infractions_advanced(query)
+    
     def _extract_parties_advanced(self, query: str) -> Dict[str, List[str]]:
         """Extraction avancée des parties avec patterns multiples"""
         
         parties = {'demandeurs': [], 'defendeurs': []}
         query_lower = query.lower()
         
-        # Patterns pour identifier les relations entre parties
+        # Méthode 1 : Recherche avec "pour" et "contre"
+        if ' pour ' in query_lower and ' contre ' in query_lower:
+            # Extraire la partie entre "pour" et "contre" pour les demandeurs
+            partie_pour = query_lower.split(' pour ')[1].split(' contre ')[0]
+            # Extraire la partie après "contre" pour les défendeurs
+            partie_contre = query_lower.split(' contre ')[1]
+            
+            # Chercher les demandeurs dans la partie "pour"
+            for keyword, nom_formate in self.DEMANDEURS_PATTERNS:
+                if keyword in partie_pour:
+                    parties['demandeurs'].append(nom_formate)
+            
+            # Chercher les défendeurs dans la partie "contre"
+            for keyword, nom_formate in self.DEFENDEURS_PATTERNS:
+                if keyword in partie_contre:
+                    parties['defendeurs'].append(nom_formate)
+        
+        # Méthode 2 : Si pas de structure claire, recherche globale
+        else:
+            # Identifier d'abord les défendeurs (souvent après "contre")
+            if ' contre ' in query_lower:
+                partie_contre = query_lower.split(' contre ')[1]
+                for keyword, nom_formate in self.DEFENDEURS_PATTERNS:
+                    if keyword in partie_contre:
+                        parties['defendeurs'].append(nom_formate)
+            
+            # Puis identifier les demandeurs dans le reste
+            for keyword, nom_formate in self.DEMANDEURS_PATTERNS:
+                if keyword in query_lower and nom_formate not in parties['defendeurs']:
+                    # Vérifier que ce n'est pas dans la partie "contre"
+                    if ' contre ' not in query_lower or keyword not in query_lower.split(' contre ')[1]:
+                        parties['demandeurs'].append(nom_formate)
+        
+        # Patterns alternatifs pour identifier les relations entre parties
         patterns = [
             (r'(.+?)\s+c(?:ontre)?\.?\s+(.+)', 'versus'),  # X contre Y, X c. Y
             (r'(.+?)\s+vs?\.?\s+(.+)', 'versus'),  # X vs Y, X v. Y
@@ -285,24 +420,9 @@ class UniversalSearchService:
         query_lower = query.lower()
         infractions = []
         
-        infractions_map = {
-            'abus de biens sociaux': ['abs', 'abus biens sociaux', 'détournement'],
-            'corruption': ['corruption', 'corrompu', 'pot de vin', 'pot-de-vin'],
-            'escroquerie': ['escroquerie', 'arnaque', 'tromperie'],
-            'abus de confiance': ['abus confiance', 'détournement de fonds'],
-            'blanchiment': ['blanchiment', 'blanchir', 'argent sale'],
-            'fraude fiscale': ['fraude fiscale', 'évasion fiscale', 'dissimulation'],
-            'faux et usage de faux': ['faux', 'usage de faux', 'falsification'],
-            'recel': ['recel', 'receler'],
-            'trafic d\'influence': ['trafic influence', 'influence'],
-            'prise illégale d\'intérêts': ['prise illegale interet', 'conflit interet']
-        }
-        
-        for infraction, patterns in infractions_map.items():
-            for pattern in patterns:
-                if pattern in query_lower and infraction not in infractions:
-                    infractions.append(infraction)
-                    break
+        for keyword, infraction in self.INFRACTIONS_MAP.items():
+            if keyword in query_lower and infraction not in infractions:
+                infractions.append(infraction)
         
         return infractions
     
