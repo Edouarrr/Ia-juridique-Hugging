@@ -349,6 +349,104 @@ def extract_entities(text: str) -> Dict[str, List[str]]:
     
     return entities
 
+def extract_dates(text: str) -> List[Dict[str, Any]]:
+    """Extrait les dates d'un texte avec leur contexte"""
+    
+    dates = []
+    
+    # Patterns pour différents formats de dates
+    date_patterns = [
+        # Format JJ/MM/AAAA ou JJ-MM-AAAA
+        (r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b', 'dmy'),
+        # Format AAAA/MM/JJ ou AAAA-MM-JJ
+        (r'\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b', 'ymd'),
+        # Format JJ mois AAAA
+        (r'\b(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})\b', 'dmy_text'),
+        # Format mois AAAA
+        (r'\b(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})\b', 'my_text')
+    ]
+    
+    months_fr = {
+        'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4,
+        'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8,
+        'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
+    }
+    
+    for pattern, format_type in date_patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE)
+        
+        for match in matches:
+            try:
+                if format_type == 'dmy':
+                    day, month, year = match.groups()
+                    date_obj = datetime(int(year), int(month), int(day))
+                
+                elif format_type == 'ymd':
+                    year, month, day = match.groups()
+                    date_obj = datetime(int(year), int(month), int(day))
+                
+                elif format_type == 'dmy_text':
+                    day, month_text, year = match.groups()
+                    month = months_fr.get(month_text.lower(), 1)
+                    date_obj = datetime(int(year), month, int(day))
+                
+                elif format_type == 'my_text':
+                    month_text, year = match.groups()
+                    month = months_fr.get(month_text.lower(), 1)
+                    date_obj = datetime(int(year), month, 1)
+                
+                # Extraire le contexte (50 caractères avant et après)
+                start = max(0, match.start() - 50)
+                end = min(len(text), match.end() + 50)
+                context = text[start:end].strip()
+                
+                dates.append({
+                    'date': date_obj,
+                    'text': match.group(0),
+                    'context': context,
+                    'position': match.start()
+                })
+                
+            except (ValueError, KeyError):
+                # Ignorer les dates invalides
+                continue
+    
+    # Trier par date
+    dates.sort(key=lambda x: x['date'])
+    
+    return dates
+
+def format_legal_date(date: Union[datetime, str], include_day_name: bool = False) -> str:
+    """Formate une date au format juridique français"""
+    
+    if isinstance(date, str):
+        # Essayer de parser la date
+        for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y']:
+            try:
+                date = datetime.strptime(date, fmt)
+                break
+            except:
+                continue
+        else:
+            # Si le parsing échoue, retourner la chaîne originale
+            return date
+    
+    if isinstance(date, datetime):
+        months = [
+            'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+            'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+        ]
+        
+        days = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+        
+        if include_day_name:
+            day_name = days[date.weekday()]
+            return f"{day_name} {date.day} {months[date.month - 1]} {date.year}"
+        else:
+            return f"{date.day} {months[date.month - 1]} {date.year}"
+    
+    return str(date)
+
 def format_date(date: Union[datetime, str], format: str = "%d/%m/%Y") -> str:
     """Formate une date de manière cohérente"""
     
