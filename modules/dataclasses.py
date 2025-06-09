@@ -273,6 +273,33 @@ class PieceProcedure:
     
     def __str__(self):
         return f"Pièce {self.numero_ordre}: {self.nom}"
+
+@dataclass
+class Risque:
+    """Représente un risque juridique identifié"""
+    id: str
+    titre: str
+    description: str
+    niveau_gravite: str  # "faible", "moyen", "élevé", "critique"
+    probabilite: str  # "rare", "possible", "probable", "certain"
+    impact_financier: Optional[float] = None
+    date_identification: datetime = field(default_factory=datetime.now)
+    date_echeance: Optional[datetime] = None
+    mesures_preventives: List[str] = field(default_factory=list)
+    responsable: Optional[str] = None
+    statut: str = "actif"  # "actif", "traité", "accepté", "mitigé"
+    categories: List[str] = field(default_factory=list)
+    dossiers_lies: List[str] = field(default_factory=list)
+    
+    def score_risque(self) -> float:
+        """Calcule un score de risque simple"""
+        gravite_scores = {"faible": 1, "moyen": 2, "élevé": 3, "critique": 4}
+        probabilite_scores = {"rare": 1, "possible": 2, "probable": 3, "certain": 4}
+        
+        g = gravite_scores.get(self.niveau_gravite, 2)
+        p = probabilite_scores.get(self.probabilite, 2)
+        
+        return g * p
         
 # ========== INFORMATIONS ENTREPRISE ==========
 
