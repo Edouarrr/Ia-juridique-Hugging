@@ -2,7 +2,7 @@
 """
 Centralisation des imports des managers de l'application
 """
-
+from managers.llm_manager import LLMManager, get_llm_manager
 from managers.multi_llm_manager import MultiLLMManager
 from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
@@ -15,6 +15,8 @@ from managers.company_info_manager import CompanyInfoManager, get_company_info_m
 from managers.universal_search_service import UniversalSearchService
 
 __all__ = [
+    'LLMManager',
+    'get_llm_manager',
     'MultiLLMManager',
     'AzureBlobManager', 
     'AzureSearchManager',
@@ -30,13 +32,13 @@ __all__ = [
 ]
 
 # Initialisation optionnelle des managers singleton
-_universal_search_service = None
+universal_search_service = None
 
 def get_universal_search_service():
     """
     Retourne une instance singleton du service de recherche universelle
     """
-    global _universal_search_service
-    if _universal_search_service is None:
-        _universal_search_service = UniversalSearchService()
-    return _universal_search_service
+    global universal_search_service
+    if universal_search_service is None:
+        universal_search_service = UniversalSearchService()
+    return universal_search_service
