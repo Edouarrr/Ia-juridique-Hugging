@@ -37,17 +37,12 @@ try:
 except ImportError as e:
     print(f"Import StyleAnalyzer failed: {e}")
 
+# Import des FONCTIONS dynamic_generators (PAS une classe!)
 try:
-    # Essayer d'importer DynamicGenerators - peut-être que la classe a un nom différent
-    from managers.dynamic_generators import DynamicGenerator  # ou DynamicGen ou autre
+    from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
     MANAGERS['dynamic_generators'] = True
-    DynamicGenerators = DynamicGenerator  # Alias si nécessaire
-except ImportError:
-    try:
-        from managers.dynamic_generators import DynamicGenerators
-        MANAGERS['dynamic_generators'] = True
-    except ImportError as e:
-        print(f"Import DynamicGenerators failed: {e}")
+except ImportError as e:
+    print(f"Import dynamic_generators functions failed: {e}")
 
 try:
     from managers.document_manager import DocumentManager
@@ -414,27 +409,21 @@ def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> 
     
     return f"""
 Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
-
 PARTIES MISES EN CAUSE :
 {parties_text}
-
 INFRACTIONS À DÉVELOPPER :
 {infractions_text}
-
 STRUCTURE IMPOSÉE :
-
 1. EN-TÊTE COMPLET
    - Destinataire (Doyen des juges d'instruction)
    - Plaignant (à compléter)
    - Objet détaillé
-
 2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
    - Contexte détaillé de l'affaire
    - Chronologie précise et complète
    - Description minutieuse de chaque fait
    - Liens entre les protagonistes
    - Montants et préjudices détaillés
-
 3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
    Pour chaque infraction :
    - Rappel complet des textes
@@ -442,19 +431,16 @@ STRUCTURE IMPOSÉE :
    - Application aux faits espèce par espèce
    - Jurisprudences pertinentes citées
    - Réfutation des arguments contraires
-
 4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
    - Préjudice financier chiffré
    - Préjudice moral développé
    - Préjudice d'image
    - Autres préjudices
-
 5. DEMANDES ET CONCLUSION (1000+ mots)
    - Constitution de partie civile motivée
    - Demandes d'actes précises
    - Mesures conservatoires
    - Provision sur dommages-intérêts
-
 CONSIGNES :
 - Style juridique soutenu et précis
 - Citations de jurisprudences récentes
@@ -478,14 +464,12 @@ def create_standard_plainte_prompt(parties: List[str], infractions: List[str],
 Rédigez une {plainte_type} concernant :
 - Parties : {parties_text}
 - Infractions : {infractions_text}
-
 Structure :
 1. En-tête et qualités
 2. Exposé des faits
 3. Discussion juridique
 4. Préjudices
 5. Demandes
-
 Consignes :
 - Style juridique professionnel
 - Argumentation structurée{jurisprudence_instruction}
@@ -666,17 +650,12 @@ def generate_plainte_template(parties: List[Any], infractions: List[str]):
     
     template = f"""
 PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
 Monsieur le Doyen des Juges d'Instruction
 Tribunal Judiciaire de [VILLE]
 [ADRESSE]
-
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 OBJET : Plainte avec constitution de partie civile
-
 Monsieur le Doyen,
-
 Je soussigné(e) [NOM PRÉNOM]
 Né(e) le [DATE] à [LIEU]
 De nationalité française
@@ -684,44 +663,27 @@ Profession : [PROFESSION]
 Demeurant : [ADRESSE COMPLÈTE]
 Téléphone : [TÉLÉPHONE]
 Email : [EMAIL]
-
 Ai l'honneur de porter plainte avec constitution de partie civile contre :
-
 {parties_text}
-
 Pour les faits suivants :
-
 I. EXPOSÉ DES FAITS
-
 [DÉVELOPPER ICI L'EXPOSÉ DÉTAILLÉ DES FAITS EN SUIVANT UN ORDRE CHRONOLOGIQUE]
-
 II. DISCUSSION JURIDIQUE
-
 Les faits exposés ci-dessus sont susceptibles de recevoir les qualifications suivantes :
-
 {infractions_text}
-
 [DÉVELOPPER L'ANALYSE JURIDIQUE POUR CHAQUE INFRACTION]
-
 III. PRÉJUDICES
-
 Les agissements décrits m'ont causé un préjudice :
 - Matériel : [MONTANT] euros
 - Moral : [DESCRIPTION]
-
 IV. CONSTITUTION DE PARTIE CIVILE
-
 Je me constitue partie civile et demande :
 - La désignation d'un juge d'instruction
 - La condamnation des mis en cause
 - La réparation intégrale de mon préjudice
-
 Je verse la consignation fixée par Monsieur le Doyen.
-
 Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
-
 [SIGNATURE]
-
 Pièces jointes :
 - [LISTE DES PIÈCES]
 """
@@ -1058,69 +1020,98 @@ async def use_dynamic_generators(content_type: str, context: Dict[str, Any]):
         st.warning("Générateurs dynamiques non disponibles")
         return None
     
-    generators = DynamicGenerators()
-    
     st.markdown("### ✨ Génération dynamique")
     
     # Options selon le type de contenu
     if content_type == "plainte":
-        templates = generators.get_templates('plainte')
-        selected_template = st.selectbox(
-            "Modèle de plainte",
-            templates,
-            format_func=lambda x: x.get('name', 'Sans nom')
-        )
+        # Génération de templates dynamiques
+        if st.button("Générer des templates de plainte"):
+            with st.spinner("Génération des templates..."):
+                try:
+                    templates = await generate_dynamic_templates('plainte', context)
+                    
+                    st.success("✅ Templates générés")
+                    for name, template in templates.items():
+                        with st.expander(name):
+                            st.text_area("Contenu", value=template, height=300)
+                            st.download_button(
+                                "📥 Télécharger",
+                                template,
+                                file_name=f"{name.replace(' ', '_')}.txt"
+                            )
+                except Exception as e:
+                    st.error(f"Erreur : {str(e)}")
         
-        # Personnalisation
-        tone = st.select_slider(
-            "Ton",
-            ["Très formel", "Formel", "Neutre", "Direct", "Agressif"],
-            value="Formel"
-        )
-        
-        length = st.slider(
-            "Longueur cible (mots)",
-            1000, 10000, 3000, 500
-        )
-        
-        # Génération
-        if st.button("Générer avec template"):
-            with st.spinner("Génération en cours..."):
-                result = await generators.generate_from_template(
-                    template=selected_template,
-                    context=context,
-                    parameters={
-                        'tone': tone,
-                        'target_length': length
-                    }
-                )
-                
-                st.session_state.generated_content = result
-                st.success("✅ Contenu généré !")
+        # Génération de prompts de recherche
+        if st.button("Générer des prompts de recherche"):
+            with st.spinner("Génération des prompts..."):
+                try:
+                    prompts = await generate_dynamic_search_prompts(
+                        context.get('query', 'plainte'),
+                        context.get('context', '')
+                    )
+                    
+                    st.success("✅ Prompts générés")
+                    for category, subcategories in prompts.items():
+                        with st.expander(category):
+                            for subcat, prompts_list in subcategories.items():
+                                st.subheader(subcat)
+                                for prompt in prompts_list:
+                                    st.write(f"• {prompt}")
+                except Exception as e:
+                    st.error(f"Erreur : {str(e)}")
     
     elif content_type == "conclusions":
-        # Options spécifiques aux conclusions
-        structure = st.multiselect(
-            "Structure des conclusions",
-            ["Introduction", "Faits", "Procédure", "Discussion", "Dispositif"],
-            default=["Introduction", "Faits", "Discussion", "Dispositif"]
-        )
+        # Templates pour conclusions
+        if st.button("Générer des modèles de conclusions"):
+            with st.spinner("Génération en cours..."):
+                try:
+                    templates = await generate_dynamic_templates('conclusions', context)
+                    
+                    st.success("✅ Modèles générés")
+                    selected_template = st.selectbox(
+                        "Choisir un modèle",
+                        list(templates.keys())
+                    )
+                    
+                    if selected_template:
+                        st.text_area(
+                            "Contenu",
+                            value=templates[selected_template],
+                            height=400
+                        )
+                        
+                        if st.button("💾 Utiliser ce modèle"):
+                            st.session_state.generated_content = templates[selected_template]
+                            st.success("Modèle sélectionné !")
+                except Exception as e:
+                    st.error(f"Erreur : {str(e)}")
+    
+    else:
+        # Génération générique
+        type_acte = st.text_input("Type d'acte juridique", value=content_type)
         
-        style = st.radio(
-            "Style argumentatif",
-            ["Classique", "Percutant", "Académique", "Synthétique"]
-        )
-        
-        if st.button("Générer conclusions"):
-            with st.spinner("Rédaction des conclusions..."):
-                result = await generators.generate_conclusions(
-                    context=context,
-                    structure=structure,
-                    style=style
-                )
-                
-                st.session_state.generated_content = result
-                st.success("✅ Conclusions rédigées !")
+        if st.button("Générer des modèles"):
+            with st.spinner("Génération en cours..."):
+                try:
+                    templates = await generate_dynamic_templates(type_acte, context)
+                    
+                    for name, template in templates.items():
+                        with st.expander(name):
+                            st.text_area("", value=template, height=300)
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.download_button(
+                                    "📥 Télécharger",
+                                    template,
+                                    file_name=f"{name.replace(' ', '_')}.txt"
+                                )
+                            with col2:
+                                if st.button(f"Utiliser", key=f"use_{name}"):
+                                    st.session_state.generated_content = template
+                                    st.success("✅")
+                except Exception as e:
+                    st.error(f"Erreur : {str(e)}")
 
 # ========================= GESTION DES PIÈCES =========================
 
@@ -1203,18 +1194,14 @@ def create_bordereau(pieces: List[Any], analysis: Any) -> Dict:
     
     bordereau = {
         'header': f"""BORDEREAU DE COMMUNICATION DE PIÈCES
-
 AFFAIRE : {analysis.reference.upper() if hasattr(analysis, 'reference') and analysis.reference else 'N/A'}
 DATE : {datetime.now().strftime('%d/%m/%Y')}
 NOMBRE DE PIÈCES : {len(pieces)}
-
 """,
         'pieces': pieces,
         'footer': f"""
 Je certifie que les pièces communiquées sont conformes aux originaux.
-
 Fait le {datetime.now().strftime('%d/%m/%Y')}
-
 [Signature]""",
         'metadata': {
             'created_at': datetime.now(),
@@ -1302,9 +1289,7 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
         
         # Prompt de synthèse
         synthesis_prompt = f"""{context}
-
 Crée une synthèse structurée de ces pièces.
-
 La synthèse doit inclure:
 1. Vue d'ensemble des pièces
 2. Points clés par catégorie
@@ -1333,6 +1318,158 @@ La synthèse doit inclure:
             
     except Exception as e:
         return {'error': f'Erreur synthèse: {str(e)}'}
+
+# ========================= INTERFACES SPÉCIFIQUES =========================
+
+def show_piece_selection_advanced(analysis: Any):
+    """Interface avancée de sélection de pièces"""
+    
+    st.markdown("### 📁 Sélection avancée des pièces")
+    
+    # Collecter les documents disponibles
+    documents = collect_available_documents(analysis)
+    
+    if not documents:
+        st.warning("Aucun document disponible. Importez d'abord des documents.")
+        return
+    
+    # Grouper par catégorie
+    categories = group_documents_by_category(documents)
+    
+    # Options de filtrage
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_categories = st.multiselect(
+            "Catégories",
+            list(categories.keys()),
+            default=list(categories.keys())
+        )
+    
+    with col2:
+        sort_by = st.selectbox(
+            "Trier par",
+            ["Pertinence", "Date", "Titre", "Catégorie"]
+        )
+    
+    # Sélection des pièces
+    selected_pieces = []
+    
+    for category in selected_categories:
+        if category in categories:
+            st.markdown(f"#### {category}")
+            
+            for doc in categories[category]:
+                col1, col2, col3 = st.columns([1, 3, 1])
+                
+                with col1:
+                    selected = st.checkbox(
+                        "",
+                        key=f"select_{doc['id']}",
+                        value=doc['id'] in st.session_state.get('selected_pieces_ids', [])
+                    )
+                
+                with col2:
+                    st.write(f"**{doc['title']}**")
+                    if doc.get('metadata', {}).get('date'):
+                        st.caption(f"Date: {doc['metadata']['date']}")
+                
+                with col3:
+                    relevance = calculate_piece_relevance(doc, analysis)
+                    st.progress(relevance)
+                    st.caption(f"{relevance*100:.0f}% pertinent")
+                
+                if selected:
+                    selected_pieces.append(doc)
+    
+    # Actions sur la sélection
+    if selected_pieces:
+        st.markdown("---")
+        st.info(f"📋 {len(selected_pieces)} pièces sélectionnées")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("📋 Créer bordereau"):
+                show_bordereau_interface_advanced(selected_pieces, analysis)
+        
+        with col2:
+            if st.button("📄 Synthétiser"):
+                asyncio.run(synthesize_selected_pieces(selected_pieces))
+        
+        with col3:
+            if st.button("📥 Exporter liste"):
+                export_piece_list(selected_pieces)
+        
+        with col4:
+            if st.button("🗑️ Réinitialiser"):
+                st.session_state.selected_pieces_ids = []
+                st.rerun()
+        
+        # Stocker la sélection
+        st.session_state.selected_pieces = selected_pieces
+        st.session_state.selected_pieces_ids = [p['id'] for p in selected_pieces]
+
+def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
+    """Interface avancée de création de bordereau"""
+    
+    st.markdown("### 📋 Création du bordereau")
+    
+    # Préparer les pièces pour le bordereau
+    pieces = []
+    for idx, doc in enumerate(documents, 1):
+        piece = type('Piece', (), {
+            'numero': idx,
+            'titre': doc.get('title', 'Sans titre'),
+            'description': doc.get('metadata', {}).get('description', ''),
+            'categorie': determine_document_category(doc),
+            'date': doc.get('metadata', {}).get('date', '')
+        })()
+        pieces.append(piece)
+    
+    # Créer le bordereau
+    bordereau = create_bordereau(pieces, analysis)
+    
+    # Afficher le bordereau
+    st.text_area(
+        "Aperçu du bordereau",
+        value=bordereau['header'] + '\n'.join([
+            f"{p.numero}. {p.titre}" for p in pieces[:5]
+        ]) + f"\n... et {len(pieces) - 5} autres pièces" if len(pieces) > 5 else "",
+        height=200
+    )
+    
+    # Options d'export
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        format_export = st.selectbox(
+            "Format d'export",
+            ["PDF", "Word", "Texte"]
+        )
+    
+    with col2:
+        if st.button("📥 Télécharger le bordereau"):
+            bordereau_doc = create_bordereau_document(bordereau)
+            st.download_button(
+                "💾 Télécharger",
+                bordereau_doc,
+                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                "text/plain"
+            )
+    
+    # Statistiques
+    st.markdown("#### 📊 Statistiques")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total pièces", len(pieces))
+    
+    with col2:
+        categories = set(p.categorie for p in pieces)
+        st.metric("Catégories", len(categories))
+    
+    with col3:
+        st.metric("Pages estimées", sum(3 for p in pieces))  # Estimation
 
 # ========================= STATISTIQUES ET UTILS =========================
 
@@ -1588,6 +1725,214 @@ async def process_plainte_request(query: str, analysis: Any):
         # Générer
         await generate_advanced_plainte(query)
 
+# ========================= GÉNÉRATION DE PLAINTES =========================
+
+def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[str]) -> str:
+    """Génère une plainte simple"""
+    
+    parties_text = '\n'.join([f"- {p}" for p in parties_defenderesses]) if parties_defenderesses else "- [À COMPLÉTER]"
+    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
+    
+    return f"""PLAINTE SIMPLE
+
+À l'attention de Monsieur le Procureur de la République
+Tribunal Judiciaire de [VILLE]
+
+[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
+OBJET : Plainte
+
+Monsieur le Procureur,
+
+Je soussigné(e) [NOM PRÉNOM]
+Demeurant [ADRESSE]
+Ai l'honneur de porter plainte contre :
+
+{parties_text}
+
+Pour les faits suivants :
+[EXPOSÉ DES FAITS]
+
+Ces faits sont susceptibles de recevoir les qualifications suivantes :
+{infractions_text}
+
+Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
+
+[SIGNATURE]
+
+Pièces jointes :
+- [LISTE DES PIÈCES]
+"""
+
+def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str], 
+                        demandeurs: List[str] = None, options: Dict = None) -> str:
+    """Génère une plainte avec constitution de partie civile (8000+ mots)"""
+    
+    # Cette fonction devrait idéalement appeler l'API pour générer 8000+ mots
+    # Ici, on fournit un template étendu
+    
+    parties_text = format_parties_list([{'name': p} for p in parties_defenderesses])
+    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
+    
+    template = f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+
+Monsieur le Doyen des Juges d'Instruction
+Tribunal Judiciaire de [VILLE]
+[ADRESSE]
+
+[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
+OBJET : Plainte avec constitution de partie civile
+RÉFÉRENCES : [À COMPLÉTER]
+
+Monsieur le Doyen,
+
+Je soussigné(e) [NOM PRÉNOM]
+Né(e) le [DATE] à [LIEU]
+De nationalité française
+Profession : [PROFESSION]
+Demeurant : [ADRESSE COMPLÈTE]
+Téléphone : [TÉLÉPHONE]
+Email : [EMAIL]
+
+Ayant pour conseil : [SI APPLICABLE]
+Maître [NOM AVOCAT]
+Avocat au Barreau de [VILLE]
+[ADRESSE CABINET]
+
+Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
+
+{parties_text}
+
+Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
+
+I. EXPOSÉ DÉTAILLÉ DES FAITS
+
+A. CONTEXTE GÉNÉRAL DE L'AFFAIRE
+
+[DÉVELOPPEMENT DÉTAILLÉ DU CONTEXTE - 500+ mots]
+
+B. CHRONOLOGIE PRÉCISE DES ÉVÉNEMENTS
+
+[DÉVELOPPEMENT CHRONOLOGIQUE DÉTAILLÉ - 1000+ mots]
+
+C. DESCRIPTION DES MANŒUVRES FRAUDULEUSES
+
+[DESCRIPTION DÉTAILLÉE DES ACTES FRAUDULEUX - 1000+ mots]
+
+D. ANALYSE DES FLUX FINANCIERS
+
+[ANALYSE DÉTAILLÉE DES MOUVEMENTS FINANCIERS - 500+ mots]
+
+II. DISCUSSION JURIDIQUE APPROFONDIE
+
+A. QUALIFICATION JURIDIQUE DES FAITS
+
+Les faits exposés ci-dessus caractérisent les infractions suivantes :
+
+{infractions_text}
+
+B. ANALYSE DÉTAILLÉE DES ÉLÉMENTS CONSTITUTIFS
+
+1. CONCERNANT L'ABUS DE BIENS SOCIAUX
+
+a) L'élément matériel
+[DÉVELOPPEMENT JURIDIQUE - 500+ mots]
+
+b) L'élément intentionnel
+[DÉVELOPPEMENT JURIDIQUE - 500+ mots]
+
+c) Le préjudice causé à la société
+[DÉVELOPPEMENT - 300+ mots]
+
+2. CONCERNANT L'ESCROQUERIE
+
+a) Les manœuvres frauduleuses
+[DÉVELOPPEMENT - 500+ mots]
+
+b) La remise de fonds
+[DÉVELOPPEMENT - 300+ mots]
+
+c) Le préjudice
+[DÉVELOPPEMENT - 300+ mots]
+
+C. JURISPRUDENCE APPLICABLE
+
+[CITATIONS ET ANALYSE DE JURISPRUDENCES PERTINENTES - 1000+ mots]
+
+III. PRÉJUDICES SUBIS
+
+A. PRÉJUDICE FINANCIER DIRECT
+
+[DÉTAIL ET CHIFFRAGE - 500+ mots]
+
+B. PRÉJUDICE MORAL
+
+[DESCRIPTION DÉTAILLÉE - 300+ mots]
+
+C. PRÉJUDICE D'IMAGE ET DE RÉPUTATION
+
+[DÉVELOPPEMENT - 300+ mots]
+
+D. AUTRES PRÉJUDICES
+
+[SI APPLICABLE - 200+ mots]
+
+IV. CONSTITUTION DE PARTIE CIVILE
+
+Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
+
+Je sollicite :
+- La désignation d'un juge d'instruction
+- L'ouverture d'une information judiciaire
+- Tous actes d'instruction utiles à la manifestation de la vérité
+- La mise en examen des personnes mises en cause
+- Le renvoi devant la juridiction de jugement
+- La condamnation des prévenus
+- L'allocation de dommages-intérêts en réparation du préjudice subi
+
+V. DEMANDES D'ACTES D'INSTRUCTION
+
+Je sollicite expressément :
+- L'audition des mis en cause
+- L'audition des témoins dont la liste sera communiquée
+- La saisie de tous documents comptables
+- Les perquisitions nécessaires
+- L'expertise comptable et financière
+- Le placement sous contrôle judiciaire des mis en cause
+
+VI. PIÈCES JUSTIFICATIVES
+
+Vous trouverez ci-joint :
+[LISTE DÉTAILLÉE DES PIÈCES]
+
+Je verse la consignation fixée par vos soins.
+
+Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
+
+Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
+[SIGNATURE]
+"""
+    
+    return template
+
+# ========================= UTILS =========================
+
+def apply_style_to_text(text: str, style: str) -> str:
+    """Applique un style de rédaction à un texte"""
+    
+    if style not in REDACTION_STYLES:
+        return text
+    
+    style_config = REDACTION_STYLES[style]
+    
+    # Ici on pourrait appliquer des transformations selon le style
+    # Pour l'instant, on retourne le texte tel quel
+    # Dans une version complète, on utiliserait l'IA pour reformuler selon le style
+    
+    return text
+
 # ========================= EXPORT DES NOUVELLES FONCTIONS =========================
 
 __all__ = [
@@ -1597,11 +1942,15 @@ __all__ = [
     'compare_ai_generations',
     'show_plainte_statistics',
     'show_improvement_suggestions',
+    'generate_plainte_simple',
+    'generate_plainte_cpc',
+    
     # Recherche et analyse
     'perform_legal_search',
     'manage_documents_advanced',
     'enhanced_multi_llm_comparison',
     'use_dynamic_generators',
+    
     # Gestion des pièces
     'collect_available_documents',
     'group_documents_by_category',
@@ -1611,12 +1960,18 @@ __all__ = [
     'create_bordereau_document',
     'export_piece_list',
     'synthesize_selected_pieces',
+    'show_piece_selection_advanced',
+    'show_bordereau_interface_advanced',
+    
     # Statistiques et utils
     'show_document_statistics',
     'save_current_work',
     'show_work_statistics',
     'process_plainte_request',
+    'apply_style_to_text',
+    
     # Configuration
     'REDACTION_STYLES',
-    'DOCUMENT_TEMPLATES'
+    'DOCUMENT_TEMPLATES',
+    'MANAGERS'
 ]
