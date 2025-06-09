@@ -1,5 +1,5 @@
 # modules/recherche.py
-"""Module de recherche unifié optimisé - Combine toutes les fonctionnalités"""
+"""Module de recherche unifié optimisé - VERSION SIMPLIFIÉE"""
 
 import streamlit as st
 import asyncio
@@ -8,53 +8,54 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 from collections import defaultdict
 import pandas as pd
-from enum import Enum
-from dataclasses import dataclass, field
 
-# ========================= IMPORTS DEPUIS ADVANCED_FEATURES =========================
+# ========================= IMPORTS CENTRALISÉS =========================
 
-try:
-    from modules.advanced_features import (
-        # Fonctions principales
-        generate_advanced_plainte,
-        verify_jurisprudences_in_plainte,
-        compare_ai_generations,
-        show_plainte_statistics,
-        show_improvement_suggestions,
-        perform_legal_search,
-        manage_documents_advanced,
-        enhanced_multi_llm_comparison,
-        use_dynamic_generators,
-        
-        # Gestion des pièces
-        collect_available_documents,
-        group_documents_by_category,
-        determine_document_category,
-        calculate_piece_relevance,
-        create_bordereau,
-        create_bordereau_document,
-        export_piece_list,
-        synthesize_selected_pieces,
-        show_piece_selection_advanced,
-        show_bordereau_interface_advanced,
-        
-        # Utils
-        show_document_statistics,
-        save_current_work,
-        show_work_statistics,
-        process_plainte_request,
-        
-        # Configuration
-        REDACTION_STYLES,
-        DOCUMENT_TEMPLATES,
-        MANAGERS
-    )
-    HAS_ADVANCED_FEATURES = True
-except ImportError:
-    HAS_ADVANCED_FEATURES = False
-    REDACTION_STYLES = {}
-    DOCUMENT_TEMPLATES = {}
-    MANAGERS = {}
+# Import des dataclasses et configurations
+from models.dataclasses import (
+    Document, DocumentJuridique, Partie, TypePartie, PhaseProcedure,
+    TypeDocument, TypeAnalyse, QueryAnalysis, InfractionAffaires,
+    PieceSelectionnee, BordereauPieces, collect_available_documents,
+    group_documents_by_category, determine_document_category,
+    calculate_piece_relevance, create_bordereau, create_bordereau_document
+)
+
+from models.configurations import (
+    DEFAULT_STYLE_CONFIGS, BUILTIN_DOCUMENT_TEMPLATES,
+    DEFAULT_LETTERHEADS, FORMULES_JURIDIQUES,
+    ARGUMENTATION_PATTERNS, ANALYSIS_CONFIGS
+)
+
+# Import des fonctionnalités avancées
+from modules.advanced_features import (
+    # Fonctions principales
+    generate_advanced_plainte,
+    verify_jurisprudences_in_plainte,
+    compare_ai_generations,
+    show_plainte_statistics,
+    show_improvement_suggestions,
+    perform_legal_search,
+    manage_documents_advanced,
+    enhanced_multi_llm_comparison,
+    use_dynamic_generators,
+    generate_plainte_simple,
+    generate_plainte_cpc,
+    
+    # Gestion des pièces
+    show_piece_selection_advanced,
+    show_bordereau_interface_advanced,
+    export_piece_list,
+    synthesize_selected_pieces,
+    
+    # Utils
+    show_document_statistics,
+    save_current_work,
+    show_work_statistics,
+    process_plainte_request,
+    
+    # Configuration
+    MANAGERS
+)
 
 # ========================= IMPORTS DES MODULES SPÉCIFIQUES =========================
 
@@ -96,88 +97,24 @@ for module_name, functions in modules_to_import:
     except ImportError:
         MODULES_AVAILABLE[module_name] = False
 
-# ========================= IMPORTS DES MANAGERS ET MODELS =========================
+# ========================= IMPORTS DES MANAGERS =========================
 
 try:
     from managers.azure_blob_manager import AzureBlobManager
     from managers.azure_search_manager import AzureSearchManager
     from managers.multi_llm_manager import MultiLLMManager
-    from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
-    from managers.company_info_manager import get_company_info_manager
-    from managers.style_analyzer import StyleAnalyzer
     
     MANAGERS_AVAILABLE = True
 except ImportError:
     MANAGERS_AVAILABLE = False
 
-try:
-    from models.dataclasses import (
-        Document,
-        Partie,
-        TypePartie,
-        PieceSelectionnee,
-        PhaseProcedure,
-        TypeDocument,
-        TypeAnalyse,
-        QueryAnalysis,
-        InfractionAffaires
-    )
-    
-    from config.app_config import (
-        ANALYSIS_PROMPTS_AFFAIRES,
-        ANALYSIS_PROMPTS_INFRACTIONS
-    )
-    
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    
-    # Classes minimales de fallback
-    class TypeAnalyse(Enum):
-        GENERAL = "general"
-        RISQUES_JURIDIQUES = "risques_juridiques"
-        CONFORMITE = "conformite"
-        STRATEGIE = "strategie"
-        INFRACTIONS = "infractions"
-    
-    class PhaseProcedure(Enum):
-        ENQUETE_PRELIMINAIRE = "enquete_preliminaire"
-        INSTRUCTION = "instruction"
-        JUGEMENT = "jugement"
-        APPEL = "appel"
-    
-    class TypeDocument(Enum):
-        DOCUMENT = "document"
-        CONCLUSIONS = "conclusions"
-        PLAINTE = "plainte"
-        COURRIER = "courrier"
-        ASSIGNATION = "assignation"
-        MISE_EN_DEMEURE = "mise_en_demeure"
-    
-    @dataclass
-    class QueryAnalysis:
-        original_query: str
-        query_lower: str
-        timestamp: datetime
-        reference: Optional[str] = None
-        document_type: Optional[Any] = None
-        action: Optional[str] = None
-        subject_matter: Optional[str] = None
-        phase_procedurale: Optional[Any] = None
-        parties: Optional[Dict[str, List[str]]] = None
-        infractions: Optional[List[str]] = None
-        style_request: Optional[str] = None
-        parties_enrichies: Optional[Dict[str, List[Any]]] = None
-
 # ========================= CLASSE PRINCIPALE =========================
 
 class UniversalSearchInterface:
-    """Interface de recherche universelle optimisée - VERSION COMPLÈTE"""
+    """Interface de recherche universelle optimisée"""
     
     def __init__(self):
         """Initialisation de l'interface"""
-        self.company_manager = get_company_info_manager() if MANAGERS_AVAILABLE else None
-        self.style_analyzer = StyleAnalyzer() if MANAGERS_AVAILABLE else None
         self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
         
         # Cache pour optimisation
@@ -195,7 +132,7 @@ class UniversalSearchInterface:
         st.session_state.last_universal_query = query
         
         # Analyser la requête avec la méthode complète
-        query_analysis = self._analyze_query_enhanced(query)
+        query_analysis = QueryAnalysis(original_query=query)
         
         # Router vers le bon processeur
         processor = self._get_query_processor(query_analysis)
@@ -208,201 +145,6 @@ class UniversalSearchInterface:
         else:
             # Recherche simple par défaut
             return await self._process_search_request(query, query_analysis)
-    
-    def _analyze_query_enhanced(self, query: str) -> QueryAnalysis:
-        """Analyse améliorée de la requête retournant un objet QueryAnalysis"""
-        
-        # Créer l'objet QueryAnalysis
-        query_analysis = QueryAnalysis(
-            original_query=query,
-            query_lower=query.lower(),
-            timestamp=datetime.now()
-        )
-        
-        # Extraire la référence @
-        ref_match = re.search(r'@(\w+)', query)
-        if ref_match:
-            query_analysis.reference = ref_match.group(1)
-        
-        # Détecter le type de document
-        doc_types = {
-            'conclusions': TypeDocument.CONCLUSIONS,
-            'plainte': TypeDocument.PLAINTE,
-            'courrier': TypeDocument.COURRIER,
-            'assignation': TypeDocument.ASSIGNATION,
-            'mise en demeure': TypeDocument.MISE_EN_DEMEURE
-        }
-        
-        for keyword, doc_type in doc_types.items():
-            if keyword in query_analysis.query_lower:
-                query_analysis.document_type = doc_type
-                break
-        
-        # Détecter l'action principale
-        actions = {
-            'rédiger': 'redaction',
-            'analyser': 'analysis',
-            'rechercher': 'search',
-            'comparer': 'comparison',
-            'créer': 'creation',
-            'synthétiser': 'synthesis',
-            'importer': 'import',
-            'exporter': 'export'
-        }
-        
-        for keyword, action in actions.items():
-            if keyword in query_analysis.query_lower:
-                query_analysis.action = action
-                break
-        
-        # Détecter le sujet
-        subjects = {
-            'abus de biens sociaux': ['abus', 'biens', 'sociaux'],
-            'corruption': ['corruption'],
-            'fraude': ['fraude'],
-            'escroquerie': ['escroquerie'],
-            'blanchiment': ['blanchiment']
-        }
-        
-        for subject, keywords in subjects.items():
-            if all(kw in query_analysis.query_lower for kw in keywords):
-                query_analysis.subject_matter = subject
-                break
-        
-        # Ajouter les analyses supplémentaires
-        query_analysis.phase_procedurale = self._detect_procedural_phase(query)
-        query_analysis.parties = self._extract_parties(query)
-        query_analysis.infractions = self._extract_infractions(query)
-        query_analysis.style_request = self._detect_style_request(query)
-        
-        return query_analysis
-    
-    def _detect_procedural_phase(self, query: str) -> PhaseProcedure:
-        """Détecte la phase procédurale depuis la requête"""
-        query_lower = query.lower()
-        
-        phase_keywords = {
-            PhaseProcedure.ENQUETE_PRELIMINAIRE: [
-                'enquête', 'plainte', 'signalement', 'dépôt de plainte',
-                'procureur', 'parquet', 'officier de police judiciaire'
-            ],
-            PhaseProcedure.INSTRUCTION: [
-                'instruction', 'juge d\'instruction', 'mis en examen',
-                'témoin assisté', 'commission rogatoire', 'ordonnance'
-            ],
-            PhaseProcedure.JUGEMENT: [
-                'audience', 'tribunal', 'jugement', 'plaidoirie',
-                'prévenu', 'réquisitoire', 'correctionnel'
-            ],
-            PhaseProcedure.APPEL: [
-                'appel', 'cour d\'appel', 'appelant', 'intimé'
-            ]
-        }
-        
-        for phase, keywords in phase_keywords.items():
-            if any(keyword in query_lower for keyword in keywords):
-                return phase
-        
-        return PhaseProcedure.ENQUETE_PRELIMINAIRE
-    
-    def _extract_parties(self, query: str) -> Dict[str, List[str]]:
-        """Extrait les parties de la requête"""
-        
-        query_lower = query.lower()
-        parties = {'demandeurs': [], 'defendeurs': []}
-        
-        # Patterns de parties demanderesses
-        demandeurs_patterns = [
-            ('interconstruction', 'INTERCONSTRUCTION'),
-            ('vinci', 'VINCI'),
-            ('sogeprom', 'SOGEPROM RÉALISATIONS'),
-            ('demathieu bard', 'DEMATHIEU BARD'),
-            ('bouygues', 'BOUYGUES'),
-            ('eiffage', 'EIFFAGE'),
-            ('spie', 'SPIE BATIGNOLLES'),
-            ('leon grosse', 'LEON GROSSE')
-        ]
-        
-        # Patterns de parties défenderesses
-        defendeurs_patterns = [
-            ('perinet', 'M. PERINET'),
-            ('périnet', 'M. PÉRINET'),
-            ('vp invest', 'VP INVEST'),
-            ('perraud', 'M. PERRAUD'),
-            ('martin', 'M. MARTIN'),
-            ('dupont', 'M. DUPONT')
-        ]
-        
-        # Extraction intelligente
-        if ' pour ' in query_lower and ' contre ' in query_lower:
-            partie_pour = query_lower.split(' pour ')[1].split(' contre ')[0]
-            partie_contre = query_lower.split(' contre ')[1]
-            
-            for pattern, nom in demandeurs_patterns:
-                if pattern in partie_pour:
-                    parties['demandeurs'].append(nom)
-            
-            for pattern, nom in defendeurs_patterns:
-                if pattern in partie_contre:
-                    parties['defendeurs'].append(nom)
-        else:
-            # Recherche globale
-            for pattern, nom in demandeurs_patterns:
-                if pattern in query_lower:
-                    parties['demandeurs'].append(nom)
-            
-            for pattern, nom in defendeurs_patterns:
-                if pattern in query_lower:
-                    parties['defendeurs'].append(nom)
-        
-        return parties
-    
-    def _extract_infractions(self, query: str) -> List[str]:
-        """Extrait les infractions mentionnées"""
-        
-        query_lower = query.lower()
-        infractions = []
-        
-        # Utiliser les infractions de l'enum si disponible
-        infractions_patterns = {
-            'escroquerie': 'Escroquerie (art. 313-1 Code pénal)',
-            'abus de confiance': 'Abus de confiance (art. 314-1 Code pénal)',
-            'abus de biens sociaux': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
-            'faux': 'Faux et usage de faux (art. 441-1 Code pénal)',
-            'corruption': 'Corruption (art. 432-11 et 433-1 Code pénal)',
-            'trafic d\'influence': 'Trafic d\'influence (art. 432-11 et 433-2 Code pénal)',
-            'favoritisme': 'Favoritisme (art. 432-14 Code pénal)',
-            'prise illégale': 'Prise illégale d\'intérêts (art. 432-12 Code pénal)',
-            'blanchiment': 'Blanchiment (art. 324-1 Code pénal)',
-            'fraude fiscale': 'Fraude fiscale (art. 1741 Code général des impôts)',
-            'travail dissimulé': 'Travail dissimulé (art. L8221-3 Code du travail)',
-            'marchandage': 'Marchandage (art. L8231-1 Code du travail)',
-            'entrave': 'Entrave (art. L2328-1 Code du travail)',
-            'banqueroute': 'Banqueroute (art. L654-2 Code de commerce)',
-            'recel': 'Recel (art. 321-1 Code pénal)'
-        }
-        
-        for pattern, infraction in infractions_patterns.items():
-            if pattern in query_lower:
-                infractions.append(infraction)
-        
-        return infractions
-    
-    def _detect_style_request(self, query: str) -> Optional[str]:
-        """Détecte une demande de style spécifique"""
-        
-        query_lower = query.lower()
-        
-        # Recherche de style explicite
-        for style_id, style_info in REDACTION_STYLES.items():
-            if style_info['name'].lower() in query_lower:
-                return style_id
-        
-        # Recherche de style implicite
-        if 'comme d\'habitude' in query_lower or 'style habituel' in query_lower:
-            return 'learned'
-        
-        return None
     
     def _get_query_processor(self, query_analysis: QueryAnalysis):
         """Retourne le processeur approprié pour la requête"""
@@ -480,12 +222,8 @@ class UniversalSearchInterface:
         
         # Cas spécifique : plainte
         if 'plainte' in query_analysis.query_lower:
-            if HAS_ADVANCED_FEATURES:
-                # Utiliser le module avancé
-                return await process_plainte_request(query, query_analysis)
-            else:
-                # Fallback simple
-                return await self._generate_simple_plainte(query, query_analysis)
+            # Utiliser le module avancé
+            return await process_plainte_request(query, query_analysis)
         
         # Autres rédactions
         if 'process_redaction_request' in MODULE_FUNCTIONS:
@@ -546,29 +284,25 @@ class UniversalSearchInterface:
         
         if 'selection_piece_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['selection_piece_page']()
-        elif HAS_ADVANCED_FEATURES:
-            show_piece_selection_advanced(query_analysis)
         else:
-            st.warning("Module sélection de pièces non disponible")
+            show_piece_selection_advanced(query_analysis)
     
     async def _process_bordereau_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de bordereau"""
         
         if 'process_bordereau_request' in MODULE_FUNCTIONS:
             return MODULE_FUNCTIONS['process_bordereau_request'](query, query_analysis)
-        elif HAS_ADVANCED_FEATURES:
+        else:
             docs = collect_available_documents(query_analysis)
             if docs:
                 show_bordereau_interface_advanced(docs, query_analysis)
-        else:
-            st.warning("Module bordereau non disponible")
     
     async def _process_synthesis_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de synthèse"""
         
         if 'process_synthesis_request' in MODULE_FUNCTIONS:
             return MODULE_FUNCTIONS['process_synthesis_request'](query, query_analysis)
-        elif HAS_ADVANCED_FEATURES and st.session_state.get('selected_pieces'):
+        elif st.session_state.get('selected_pieces'):
             return await synthesize_selected_pieces(st.session_state.selected_pieces)
         else:
             st.warning("Module synthèse non disponible ou aucune pièce sélectionnée")
@@ -667,40 +401,6 @@ class UniversalSearchInterface:
                 })
         
         return sorted(results, key=lambda x: x.get('score', 0), reverse=True)[:50]
-    
-    async def _generate_simple_plainte(self, query: str, query_analysis: QueryAnalysis):
-        """Génère une plainte simple (fallback)"""
-        
-        parties = query_analysis.parties.get('defendeurs', [])
-        infractions = query_analysis.infractions or ['Abus de biens sociaux']
-        
-        content = f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
-Je soussigné(e) [NOM PRÉNOM]
-Demeurant [ADRESSE]
-
-Ai l'honneur de porter plainte avec constitution de partie civile contre :
-{chr(10).join(['- ' + p for p in parties]) if parties else '- [PARTIES]'}
-
-Pour les faits suivants :
-[EXPOSÉ DES FAITS]
-
-Ces faits sont susceptibles de recevoir la qualification de :
-{chr(10).join(['- ' + i for i in infractions])}
-
-Je me constitue partie civile et sollicite la désignation d'un juge d'instruction.
-
-Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-Signature
-"""
-        
-        st.session_state.generated_plainte = content
-        st.session_state.search_results = {
-            'type': 'plainte',
-            'content': content
-        }
-        
-        return {'type': 'plainte', 'content': content}
 
 # ========================= FONCTION PRINCIPALE =========================
 
@@ -795,21 +495,17 @@ def show_page():
     
     with col1:
         if st.button("💾 Sauvegarder le travail", key="save_work"):
-            if HAS_ADVANCED_FEATURES:
-                save_current_work()
-            else:
-                st.warning("Fonction non disponible")
+            save_current_work()
     
     with col2:
         if st.button("📊 Afficher les statistiques", key="show_stats"):
-            if HAS_ADVANCED_FEATURES:
-                asyncio.run(show_work_statistics())
-            else:
-                st.warning("Fonction non disponible")
+            asyncio.run(show_work_statistics())
     
     with col3:
         if st.button("🔗 Partager", key="share_work"):
             st.info("Fonctionnalité de partage à implémenter")
+
+# Suite de modules/recherche.py
 
 def show_modules_status():
     """Affiche l'état détaillé des modules"""
@@ -821,12 +517,12 @@ def show_modules_status():
             st.metric("Fonctions importées", len(MODULE_FUNCTIONS))
         
         with col2:
-            st.metric("Managers disponibles", sum(1 for v in MANAGERS.values() if v))
-            st.metric("Advanced features", "✅" if HAS_ADVANCED_FEATURES else "❌")
+            st.metric("Managers avancés", sum(1 for v in MANAGERS.values() if v))
+            st.metric("Managers principaux", "✅" if MANAGERS_AVAILABLE else "❌")
         
         with col3:
-            st.metric("Models disponibles", "✅" if MODELS_AVAILABLE else "❌")
-            st.metric("Configuration", "✅" if MANAGERS_AVAILABLE else "❌")
+            st.metric("Templates", len(BUILTIN_DOCUMENT_TEMPLATES))
+            st.metric("Styles", len(DEFAULT_STYLE_CONFIGS))
         
         # Liste détaillée
         st.markdown("### 📋 Modules actifs")
@@ -950,12 +646,11 @@ def show_plainte_results():
     st.markdown("### 📋 Plainte générée")
     
     # Options avancées si disponibles
-    if HAS_ADVANCED_FEATURES:
-        col1, col2 = st.columns([3, 1])
-        with col2:
-            if st.button("✨ Version avancée", key="upgrade_plainte"):
-                query = st.session_state.get('last_universal_query', '')
-                asyncio.run(generate_advanced_plainte(query))
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("✨ Version avancée", key="upgrade_plainte"):
+            query = st.session_state.get('last_universal_query', '')
+            asyncio.run(generate_advanced_plainte(query))
     
     # Contenu éditable
     edited_content = st.text_area(
@@ -978,13 +673,11 @@ def show_plainte_results():
     
     with col2:
         if st.button("📊 Statistiques", key="stats_plainte"):
-            if HAS_ADVANCED_FEATURES:
-                show_plainte_statistics(edited_content)
+            show_plainte_statistics(edited_content)
     
     with col3:
         if st.button("✅ Vérifier", key="verify_plainte"):
-            if HAS_ADVANCED_FEATURES:
-                verify_jurisprudences_in_plainte(edited_content)
+            verify_jurisprudences_in_plainte(edited_content)
     
     with col4:
         if st.button("🔄 Régénérer", key="regen_plainte"):
@@ -1075,4 +768,3 @@ def clear_universal_state():
 
 if __name__ == "__main__":
     show_page()
-    
