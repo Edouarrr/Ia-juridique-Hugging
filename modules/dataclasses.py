@@ -3322,6 +3322,35 @@ def collect_available_documents() -> List[Document]:
     # ou des documents de test si nécessaire
     return documents
 
+# ========== FONCTION MANQUANTE : group_documents_by_category ==========
+
+def group_documents_by_category(documents: List[Document]) -> Dict[str, List[Document]]:
+    """
+    Groupe les documents par catégorie
+    
+    Args:
+        documents: Liste des documents à grouper
+        
+    Returns:
+        Dictionnaire avec les catégories comme clés et les listes de documents comme valeurs
+    """
+    grouped = {}
+    
+    for doc in documents:
+        # Déterminer la catégorie
+        category = doc.category if doc.category else "Autre"
+        
+        # Ajouter au groupe
+        if category not in grouped:
+            grouped[category] = []
+        grouped[category].append(doc)
+    
+    # Trier les documents dans chaque catégorie par date
+    for category in grouped:
+        grouped[category].sort(key=lambda d: d.created_at, reverse=True)
+    
+    return grouped
+
 # ========== EXPORTS ==========
 __all__ = [
     # Documents
@@ -3430,4 +3459,5 @@ __all__ = [
     'fetch_company_info_pappers',
     'fetch_company_info_societe',
     'collect_available_documents',
+    'group_documents_by_category',  # Fonction ajoutée
 ]
