@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from pathlib import Path
 import unicodedata
 
-from models.dataclasses import QueryAnalysis, Document, Entity
+from modules.dataclasses import QueryAnalysis, Document, Entity
 
 def initialize_session_state():
     """Initialise l'état de la session Streamlit"""
