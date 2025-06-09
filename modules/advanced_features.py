@@ -18,57 +18,59 @@ MANAGERS = {
     'multi_llm': False
 }
 
-# Import des managers
+# Import des managers avec gestion d'erreur individuelle
 try:
     from managers.company_info_manager import CompanyInfoManager
     MANAGERS['company_info'] = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"Import CompanyInfoManager failed: {e}")
 
 try:
     from managers.jurisprudence_verifier import JurisprudenceVerifier
     MANAGERS['jurisprudence_verifier'] = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"Import JurisprudenceVerifier failed: {e}")
 
 try:
     from managers.style_analyzer import StyleAnalyzer
     MANAGERS['style_analyzer'] = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"Import StyleAnalyzer failed: {e}")
 
 try:
-    from managers.dynamic_generators import DynamicGenerators
+    # Essayer d'importer DynamicGenerators - peut-être que la classe a un nom différent
+    from managers.dynamic_generators import DynamicGenerator  # ou DynamicGen ou autre
     MANAGERS['dynamic_generators'] = True
+    DynamicGenerators = DynamicGenerator  # Alias si nécessaire
 except ImportError:
-    pass
+    try:
+        from managers.dynamic_generators import DynamicGenerators
+        MANAGERS['dynamic_generators'] = True
+    except ImportError as e:
+        print(f"Import DynamicGenerators failed: {e}")
 
 try:
     from managers.document_manager import DocumentManager
     MANAGERS['document_manager'] = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"Import DocumentManager failed: {e}")
 
 try:
     from managers.legal_search import LegalSearchManager
     MANAGERS['legal_search'] = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"Import LegalSearchManager failed: {e}")
 
 try:
     from managers.multi_llm_manager import MultiLLMManager
     MANAGERS['multi_llm'] = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"Import MultiLLMManager failed: {e}")
 
 # Vérifier si au moins un manager est disponible
 HAS_MANAGERS = any(MANAGERS.values())
 
-if not HAS_MANAGERS:
-    st.warning("⚠️ Aucun manager avancé disponible")
-else:
-    available = [k for k, v in MANAGERS.items() if v]
-    st.success(f"✅ Managers disponibles : {', '.join(available)}")
+# Ne pas afficher de message ici car ça peut interférer avec Streamlit
 
 # APIs - Import conditionnel
 try:
