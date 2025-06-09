@@ -1,74 +1,20 @@
-# managers/document_manager.py (fonction display_import_interface)
-"""Gestionnaire de documents - Import, export et traitement"""
-
+"""
+Gestionnaire de documents juridiques - Import, export, création et analyse
+"""
 import streamlit as st
-from typing import List, Dict, Any, Optional, Tuple
-import pandas as pd
-import json
 from datetime import datetime
+import json
+import re
+from typing import Dict, List, Optional, Any, Tuple
+import uuid
+from dataclasses import dataclass, field
+import asyncio
+import os
+import pandas as pd
 import io
 import base64
 from pathlib import Path
 import logging
-
-# Configuration du logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def display_import_interface():
-    """Affiche l'interface d'import de documents"""
-    st.markdown("### 📤 Import de documents")
-    
-    # Zone de drag & drop
-    uploaded_files = st.file_uploader(
-        "Glissez vos fichiers ici ou cliquez pour parcourir",
-        type=['pdf', 'docx', 'txt', 'xlsx', 'xls', 'json', 'csv'],
-        accept_multiple_files=True,
-        help="Formats supportés : PDF, Word, Excel, TXT, JSON, CSV"
-    )
-    
-    if uploaded_files:
-        st.success(f"✅ {len(uploaded_files)} fichier(s) sélectionné(s)")
-        
-        # Prévisualisation et options
-        for file in uploaded_files:
-            with st.expander(f"📄 {file.name} ({file.size / 1024:.2f} KB)"):
-                file_type = file.type
-                
-                # Aperçu selon le type
-                if file_type == "text/plain":
-                    content = file.read().decode('utf-8')
-                    st.text_area("Aperçu", content[:1000], height=200)
-                    
-                elif file_type == "application/json":
-                    content = json.load(file)
-                    st.json(content)
-                    
-                elif file_type in ["application/vnd.ms-excel", 
-                                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]:
-                    df = pd.read_excel(file)
-                    st.dataframe(df.head(10))
-                    st.caption(f"Dimensions : {df.shape[0]} lignes × {df.shape[1]} colonnes")
-                    
-                elif file_type == "text/csv":
-                    df = pd.read_csv(file)
-                    st.dataframe(df.head(10))
-                    
-                else:
-                    st.info(f"Type : {file_type}")
-                    st.info("Prévisualisation non disponible pour ce type de fichier")
-                
-                # Options d'import
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button(f"Importer", key=f"import_{file.name}"):
-                        # Ici on pourrait traiter le fichier
-                        st.session_state.imported_content = file.read()
-                        st.success(f"✅ {file.name} importé")
-                
-                with col2:
-                    if st.button(f"Ignorer", key=f"ignore_{file.name}"):
-                        st.info(f"❌ {file.name} ignoré")
 
 # Import des bibliothèques de traitement de documents
 from docx import Document
@@ -79,12 +25,22 @@ from PIL import Image
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
+# Import des gestionnaires
+from managers.llm_manager import LLMManager
+from managers.template_manager import TemplateManager
+from managers.export_manager import ExportManager
+from managers.jurisprudence_verifier import JurisprudenceVerifier
+from managers.azure_search_manager import AzureSearchManager
+
+# CORRECTION : Import depuis modules au lieu de models
 from modules.dataclasses import AnalyseJuridique, CasJuridique, DocumentJuridique
 
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DocumentManager:
-    """Gestionnaire centralisé pour tous les documents"""
+    """Gestionnaire centralisé pour tous les documents juridiques"""
     
     SUPPORTED_FORMATS = {
         'import': ['.pdf', '.docx', '.txt', '.json', '.xlsx', '.csv'],
@@ -92,9 +48,30 @@ class DocumentManager:
     }
     
     def __init__(self):
+        # Gestionnaires externes
+        self.llm_manager = LLMManager()
+        self.template_manager = TemplateManager()
+        self.export_manager = ExportManager()
+        self.jurisprudence_verifier = JurisprudenceVerifier()
+        self.azure_search_manager = AzureSearchManager()
+        
+        # Stockage local
         self.imported_documents = []
         self.processed_texts = []
         
+        # Mapping des types de documents
+        self.document_types = {
+            "plainte": "Plainte pénale",
+            "constitution": "Constitution de partie civile",
+            "conclusions": "Conclusions",
+            "assignation": "Assignation",
+            "requete": "Requête",
+            "memoire": "Mémoire",
+            "courrier": "Courrier juridique"
+        }
+    
+    # ========== MÉTHODES D'IMPORT ==========
+    
     def import_document(self, file) -> Tuple[bool, str, str]:
         """
         Importe un document et extrait son contenu
@@ -133,6 +110,226 @@ class DocumentManager:
         except Exception as e:
             logger.error(f"Erreur import document: {e}")
             return False, "", f"Erreur lors de l'import: {str(e)}"
+    
+    def batch_import(self, files: List) -> Dict[str, Any]:
+        """Import en lot de plusieurs documents"""
+        results = {
+            'success': [],
+            'failed': [],
+            'total_content': ""
+        }
+        
+        for file in files:
+            success, content, message = self.import_document(file)
+            
+            if success:
+                results['success'].append({
+                    'filename': file.name,
+                    'message': message,
+                    'content_length': len(content)
+                })
+                results['total_content'] += f"\n\n--- {file.name} ---\n{content}"
+            else:
+                results['failed'].append({
+                    'filename': file.name,
+                    'error': message
+                })
+        
+        return results
+    
+    # ========== MÉTHODES DE CRÉATION DE DOCUMENTS JURIDIQUES ==========
+    
+    def creer_document(self, 
+                      type_doc: str,
+                      contexte: Dict[str, Any],
+                      style: str = "formel",
+                      options: Optional[Dict[str, Any]] = None) -> DocumentJuridique:
+        """
+        Crée un nouveau document juridique
+        
+        Args:
+            type_doc: Type de document à créer
+            contexte: Informations contextuelles (parties, faits, etc.)
+            style: Style rédactionnel
+            options: Options supplémentaires
+            
+        Returns:
+            DocumentJuridique créé
+        """
+        try:
+            # Enrichir le contexte avec des informations supplémentaires
+            contexte_enrichi = self._enrichir_contexte(contexte, type_doc)
+            
+            # Obtenir le template approprié
+            template = self.template_manager.get_template(type_doc)
+            if not template:
+                st.error(f"Template non trouvé pour le type: {type_doc}")
+                return None
+            
+            # Générer le contenu via LLM
+            prompt = self._construire_prompt(type_doc, contexte_enrichi, template, style)
+            contenu = self.llm_manager.generate(prompt, temperature=0.3)
+            
+            # Vérifier et enrichir avec la jurisprudence
+            if options and options.get("verifier_jurisprudence", True):
+                jurisprudences = self.jurisprudence_verifier.verifier_arguments(contenu)
+                if jurisprudences:
+                    contenu = self._integrer_jurisprudence(contenu, jurisprudences)
+            
+            # Créer le document
+            doc = DocumentJuridique(
+                id=str(uuid.uuid4()),
+                titre=f"{self.document_types.get(type_doc, 'Document')} - {contexte.get('affaire', 'Sans titre')}",
+                type_document=type_doc,
+                numero_reference=self._generer_reference(type_doc),
+                date_document=datetime.now(),
+                auteur=contexte.get('avocat', 'Me. X'),
+                destinataires=self._extraire_destinataires(type_doc, contexte),
+                contenu=contenu,
+                juridiction=contexte.get('juridiction', ''),
+                procedure_liee=contexte.get('numero_procedure', ''),
+                statut_legal="projet"
+            )
+            
+            # Sauvegarder dans la session
+            if 'documents_generes' not in st.session_state:
+                st.session_state.documents_generes = {}
+            st.session_state.documents_generes[doc.id] = doc
+            
+            # Indexer dans Azure Search si disponible
+            if self.azure_search_manager.is_connected():
+                self._indexer_document(doc)
+            
+            return doc
+            
+        except Exception as e:
+            st.error(f"Erreur lors de la création du document: {str(e)}")
+            return None
+    
+    def analyser_document(self, document: Any, type_analyse: str = "complete") -> AnalyseJuridique:
+        """
+        Analyse un document juridique existant
+        
+        Args:
+            document: Document à analyser (texte ou DocumentJuridique)
+            type_analyse: Type d'analyse à effectuer
+            
+        Returns:
+            AnalyseJuridique avec les résultats
+        """
+        try:
+            # Extraire le contenu
+            if isinstance(document, str):
+                contenu = document
+                titre = "Document sans titre"
+            elif hasattr(document, 'contenu'):
+                contenu = document.contenu
+                titre = document.titre
+            else:
+                contenu = str(document)
+                titre = "Document converti"
+            
+            # Construire le prompt d'analyse
+            prompt = f"""
+            Analysez ce document juridique de manière approfondie:
+            
+            {contenu[:3000]}...
+            
+            Fournissez:
+            1. Résumé des points clés
+            2. Forces et faiblesses juridiques
+            3. Risques identifiés
+            4. Recommandations
+            5. Références juridiques pertinentes
+            """
+            
+            # Générer l'analyse
+            analyse_brute = self.llm_manager.generate(prompt, temperature=0.2)
+            
+            # Parser l'analyse
+            points_cles = self._extraire_section(analyse_brute, "points clés")
+            risques = self._extraire_section(analyse_brute, "risques")
+            recommandations = self._extraire_section(analyse_brute, "recommandations")
+            
+            # Vérifier la jurisprudence citée
+            jurisprudences = self.jurisprudence_verifier.extraire_citations(analyse_brute)
+            
+            # Créer l'analyse
+            analyse = AnalyseJuridique(
+                id=str(uuid.uuid4()),
+                titre=f"Analyse de {titre}",
+                date_analyse=datetime.now(),
+                type_analyse=type_analyse,
+                objet_analyse=titre,
+                contenu_analyse=analyse_brute,
+                points_cles=points_cles,
+                risques_identifies=risques,
+                recommandations=recommandations,
+                references_juridiques=[j['reference'] for j in jurisprudences],
+                niveau_confiance=0.85,
+                auteur="Assistant IA"
+            )
+            
+            return analyse
+            
+        except Exception as e:
+            st.error(f"Erreur lors de l'analyse: {str(e)}")
+            return None
+    
+    def generer_cas_juridique(self, faits: str, contexte: Optional[Dict] = None) -> CasJuridique:
+        """
+        Génère un cas juridique structuré à partir de faits
+        
+        Args:
+            faits: Description des faits
+            contexte: Contexte additionnel
+            
+        Returns:
+            CasJuridique structuré
+        """
+        try:
+            prompt = f"""
+            Analysez ces faits et créez un cas juridique structuré:
+            
+            {faits}
+            
+            Identifiez:
+            1. Les questions juridiques principales
+            2. Les infractions potentielles
+            3. Les articles de loi applicables
+            4. La stratégie juridique recommandée
+            5. L'évaluation des risques
+            """
+            
+            analyse = self.llm_manager.generate(prompt, temperature=0.2)
+            
+            # Parser les éléments
+            questions = self._extraire_liste(analyse, "questions juridiques")
+            infractions = self._extraire_liste(analyse, "infractions")
+            articles = self._extraire_liste(analyse, "articles")
+            
+            cas = CasJuridique(
+                id=str(uuid.uuid4()),
+                titre=self._generer_titre_cas(faits),
+                description=faits,
+                type_cas="penal" if "pénal" in faits.lower() else "civil",
+                date_fait=datetime.now(),
+                faits=[faits],
+                questions_juridiques=questions,
+                infractions_potentielles=infractions,
+                articles_applicables=articles,
+                strategie_proposee=self._extraire_section(analyse, "stratégie")[0] if self._extraire_section(analyse, "stratégie") else "",
+                risque_evaluation=self._extraire_section(analyse, "risques")[0] if self._extraire_section(analyse, "risques") else "",
+                statut="en_analyse"
+            )
+            
+            return cas
+            
+        except Exception as e:
+            st.error(f"Erreur lors de la génération du cas: {str(e)}")
+            return None
+    
+    # ========== MÉTHODES D'EXTRACTION DE CONTENU ==========
     
     def _extract_pdf_content(self, file) -> str:
         """Extrait le texte d'un PDF"""
@@ -199,6 +396,8 @@ class DocumentManager:
             logger.error(f"Erreur extraction tableau: {e}")
             raise
     
+    # ========== MÉTHODES D'EXPORT ==========
+    
     def export_analysis(
         self,
         analysis: AnalyseJuridique,
@@ -243,53 +442,45 @@ class DocumentManager:
         # Métadonnées
         if include_metadata:
             doc.add_paragraph(f"Date: {analysis.date_analyse.strftime('%d/%m/%Y %H:%M')}")
-            doc.add_paragraph(f"Modèle: {analysis.model_used}")
+            doc.add_paragraph(f"Type d'analyse: {analysis.type_analyse}")
             doc.add_paragraph(f"ID: {analysis.id}")
             doc.add_paragraph()
         
-        # Description du cas
-        doc.add_heading('Description du cas', 1)
-        doc.add_paragraph(analysis.description_cas)
+        # Titre de l'analyse
+        doc.add_heading(analysis.titre, 1)
         
-        # Qualification juridique
-        doc.add_heading('Qualification juridique', 1)
-        doc.add_paragraph(analysis.qualification_juridique)
+        # Contenu de l'analyse
+        doc.add_heading('Analyse détaillée', 2)
+        doc.add_paragraph(analysis.contenu_analyse)
         
-        # Infractions identifiées
-        doc.add_heading('Infractions identifiées', 1)
-        for infraction in analysis.infractions_identifiees:
-            doc.add_heading(infraction.nom, 2)
-            doc.add_paragraph(f"Qualification: {infraction.qualification}")
-            doc.add_paragraph(f"Articles: {', '.join(infraction.articles)}")
-            
-            # Éléments constitutifs
-            doc.add_paragraph("Éléments constitutifs:")
-            for element in infraction.elements_constitutifs:
-                doc.add_paragraph(f"• {element}", style='List Bullet')
+        # Points clés
+        if analysis.points_cles:
+            doc.add_heading('Points clés', 2)
+            for point in analysis.points_cles:
+                doc.add_paragraph(f"• {point}", style='List Bullet')
         
-        # Régime de responsabilité
-        doc.add_heading('Régime de responsabilité', 1)
-        doc.add_paragraph(analysis.regime_responsabilite)
-        
-        # Sanctions encourues
-        doc.add_heading('Sanctions encourues', 1)
-        for type_sanction, details in analysis.sanctions_encourues.items():
-            doc.add_paragraph(f"{type_sanction}: {details}")
-        
-        # Jurisprudences citées
-        if analysis.jurisprudences_citees:
-            doc.add_heading('Jurisprudences citées', 1)
-            for juris in analysis.jurisprudences_citees:
-                doc.add_paragraph(f"• {juris}", style='List Bullet')
+        # Risques identifiés
+        if analysis.risques_identifies:
+            doc.add_heading('Risques identifiés', 2)
+            for risque in analysis.risques_identifies:
+                doc.add_paragraph(f"• {risque}", style='List Bullet')
         
         # Recommandations
-        doc.add_heading('Recommandations', 1)
-        for i, reco in enumerate(analysis.recommandations, 1):
-            doc.add_paragraph(f"{i}. {reco}")
+        if analysis.recommandations:
+            doc.add_heading('Recommandations', 2)
+            for i, reco in enumerate(analysis.recommandations, 1):
+                doc.add_paragraph(f"{i}. {reco}")
         
-        # Niveau de risque
-        doc.add_heading('Évaluation du risque', 1)
-        doc.add_paragraph(f"Niveau de risque global: {analysis.niveau_risque}")
+        # Références juridiques
+        if analysis.references_juridiques:
+            doc.add_heading('Références juridiques', 2)
+            for ref in analysis.references_juridiques:
+                doc.add_paragraph(f"• {ref}", style='List Bullet')
+        
+        # Niveau de confiance
+        doc.add_heading('Évaluation', 2)
+        doc.add_paragraph(f"Niveau de confiance: {analysis.niveau_confiance:.0%}")
+        doc.add_paragraph(f"Statut: {analysis.statut}")
         
         # Sauvegarder en mémoire
         doc_io = io.BytesIO()
@@ -321,33 +512,47 @@ class DocumentManager:
             ws_synthese.cell(row=row, column=2, value=analysis.date_analyse.strftime('%d/%m/%Y %H:%M'))
             row += 1
             
-            ws_synthese.cell(row=row, column=1, value="Modèle utilisé")
-            ws_synthese.cell(row=row, column=2, value=analysis.model_used)
+            ws_synthese.cell(row=row, column=1, value="Type d'analyse")
+            ws_synthese.cell(row=row, column=2, value=analysis.type_analyse)
             row += 1
         
-        ws_synthese.cell(row=row, column=1, value="Niveau de risque")
-        ws_synthese.cell(row=row, column=2, value=analysis.niveau_risque)
+        ws_synthese.cell(row=row, column=1, value="Titre")
+        ws_synthese.cell(row=row, column=2, value=analysis.titre)
         row += 1
         
-        ws_synthese.cell(row=row, column=1, value="Nombre d'infractions")
-        ws_synthese.cell(row=row, column=2, value=len(analysis.infractions_identifiees))
+        ws_synthese.cell(row=row, column=1, value="Niveau de confiance")
+        ws_synthese.cell(row=row, column=2, value=f"{analysis.niveau_confiance:.0%}")
+        row += 1
         
-        # Feuille des infractions
-        ws_infractions = wb.create_sheet("Infractions")
-        inf_headers = ['Infraction', 'Qualification', 'Articles', 'Prescription']
-        for col, header in enumerate(inf_headers, 1):
-            cell = ws_infractions.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        ws_synthese.cell(row=row, column=1, value="Nombre de points clés")
+        ws_synthese.cell(row=row, column=2, value=len(analysis.points_cles))
+        row += 1
         
-        for row, infraction in enumerate(analysis.infractions_identifiees, 2):
-            ws_infractions.cell(row=row, column=1, value=infraction.nom)
-            ws_infractions.cell(row=row, column=2, value=infraction.qualification)
-            ws_infractions.cell(row=row, column=3, value=', '.join(infraction.articles))
-            ws_infractions.cell(row=row, column=4, value=infraction.prescription)
+        ws_synthese.cell(row=row, column=1, value="Nombre de risques")
+        ws_synthese.cell(row=row, column=2, value=len(analysis.risques_identifies))
+        
+        # Feuille détaillée
+        ws_detail = wb.create_sheet("Détails")
+        
+        # Points clés
+        ws_detail.cell(row=1, column=1, value="Points clés").font = Font(bold=True)
+        for idx, point in enumerate(analysis.points_cles, 2):
+            ws_detail.cell(row=idx, column=1, value=point)
+        
+        # Risques
+        start_row = len(analysis.points_cles) + 3
+        ws_detail.cell(row=start_row, column=1, value="Risques identifiés").font = Font(bold=True)
+        for idx, risque in enumerate(analysis.risques_identifies):
+            ws_detail.cell(row=start_row + idx + 1, column=1, value=risque)
+        
+        # Recommandations
+        start_row = start_row + len(analysis.risques_identifies) + 2
+        ws_detail.cell(row=start_row, column=1, value="Recommandations").font = Font(bold=True)
+        for idx, reco in enumerate(analysis.recommandations):
+            ws_detail.cell(row=start_row + idx + 1, column=1, value=reco)
         
         # Ajuster les largeurs de colonnes
-        for ws in [ws_synthese, ws_infractions]:
+        for ws in [ws_synthese, ws_detail]:
             for column_cells in ws.columns:
                 length = max(len(str(cell.value)) for cell in column_cells if cell.value)
                 ws.column_dimensions[column_cells[0].column_letter].width = min(length + 2, 50)
@@ -362,32 +567,30 @@ class DocumentManager:
     def _create_json_content(self, analysis: AnalyseJuridique, include_metadata: bool) -> bytes:
         """Crée un export JSON"""
         data = {
-            "description_cas": analysis.description_cas,
-            "qualification_juridique": analysis.qualification_juridique,
-            "infractions_identifiees": [
-                {
-                    "nom": inf.nom,
-                    "qualification": inf.qualification,
-                    "articles": inf.articles,
-                    "elements_constitutifs": inf.elements_constitutifs,
-                    "sanctions": inf.sanctions,
-                    "prescription": inf.prescription
-                }
-                for inf in analysis.infractions_identifiees
-            ],
-            "regime_responsabilite": analysis.regime_responsabilite,
-            "sanctions_encourues": analysis.sanctions_encourues,
-            "jurisprudences_citees": analysis.jurisprudences_citees,
+            "titre": analysis.titre,
+            "type_analyse": analysis.type_analyse,
+            "objet_analyse": analysis.objet_analyse,
+            "contenu_analyse": analysis.contenu_analyse,
+            "points_cles": analysis.points_cles,
+            "risques_identifies": analysis.risques_identifies,
             "recommandations": analysis.recommandations,
-            "niveau_risque": analysis.niveau_risque
+            "references_juridiques": analysis.references_juridiques,
+            "niveau_confiance": analysis.niveau_confiance,
+            "auteur": analysis.auteur,
+            "statut": analysis.statut
         }
         
         if include_metadata:
             data["metadata"] = {
                 "id": analysis.id,
                 "date_analyse": analysis.date_analyse.isoformat(),
-                "model_used": analysis.model_used
+                "validee_par": analysis.validee_par,
+                "metadata_additionnelle": analysis.metadata
             }
+        
+        # Ajouter les opportunités si présentes
+        if analysis.opportunites:
+            data["opportunites"] = analysis.opportunites
         
         return json.dumps(data, indent=2, ensure_ascii=False).encode('utf-8')
     
@@ -401,58 +604,52 @@ class DocumentManager:
         
         if include_metadata:
             lines.append(f"Date: {analysis.date_analyse.strftime('%d/%m/%Y %H:%M')}")
-            lines.append(f"Modèle: {analysis.model_used}")
+            lines.append(f"Type: {analysis.type_analyse}")
             lines.append(f"ID: {analysis.id}")
             lines.append("")
         
-        lines.append("DESCRIPTION DU CAS")
+        lines.append(f"TITRE: {analysis.titre}")
         lines.append("-" * 30)
-        lines.append(analysis.description_cas)
         lines.append("")
         
-        lines.append("QUALIFICATION JURIDIQUE")
+        lines.append("ANALYSE DÉTAILLÉE")
         lines.append("-" * 30)
-        lines.append(analysis.qualification_juridique)
+        lines.append(analysis.contenu_analyse)
         lines.append("")
         
-        lines.append("INFRACTIONS IDENTIFIÉES")
-        lines.append("-" * 30)
-        for inf in analysis.infractions_identifiees:
-            lines.append(f"\n{inf.nom}")
-            lines.append(f"Qualification: {inf.qualification}")
-            lines.append(f"Articles: {', '.join(inf.articles)}")
-            lines.append("Éléments constitutifs:")
-            for elem in inf.elements_constitutifs:
-                lines.append(f"  • {elem}")
-        lines.append("")
-        
-        lines.append("RÉGIME DE RESPONSABILITÉ")
-        lines.append("-" * 30)
-        lines.append(analysis.regime_responsabilite)
-        lines.append("")
-        
-        lines.append("SANCTIONS ENCOURUES")
-        lines.append("-" * 30)
-        for type_s, details in analysis.sanctions_encourues.items():
-            lines.append(f"{type_s}: {details}")
-        lines.append("")
-        
-        if analysis.jurisprudences_citees:
-            lines.append("JURISPRUDENCES CITÉES")
+        if analysis.points_cles:
+            lines.append("POINTS CLÉS")
             lines.append("-" * 30)
-            for juris in analysis.jurisprudences_citees:
-                lines.append(f"• {juris}")
+            for point in analysis.points_cles:
+                lines.append(f"• {point}")
             lines.append("")
         
-        lines.append("RECOMMANDATIONS")
-        lines.append("-" * 30)
-        for i, reco in enumerate(analysis.recommandations, 1):
-            lines.append(f"{i}. {reco}")
-        lines.append("")
+        if analysis.risques_identifies:
+            lines.append("RISQUES IDENTIFIÉS")
+            lines.append("-" * 30)
+            for risque in analysis.risques_identifies:
+                lines.append(f"• {risque}")
+            lines.append("")
         
-        lines.append("NIVEAU DE RISQUE")
+        if analysis.recommandations:
+            lines.append("RECOMMANDATIONS")
+            lines.append("-" * 30)
+            for i, reco in enumerate(analysis.recommandations, 1):
+                lines.append(f"{i}. {reco}")
+            lines.append("")
+        
+        if analysis.references_juridiques:
+            lines.append("RÉFÉRENCES JURIDIQUES")
+            lines.append("-" * 30)
+            for ref in analysis.references_juridiques:
+                lines.append(f"• {ref}")
+            lines.append("")
+        
+        lines.append("ÉVALUATION")
         lines.append("-" * 30)
-        lines.append(f"Risque global: {analysis.niveau_risque}")
+        lines.append(f"Niveau de confiance: {analysis.niveau_confiance:.0%}")
+        lines.append(f"Statut: {analysis.statut}")
+        lines.append(f"Auteur: {analysis.auteur}")
         
         return '\n'.join(lines).encode('utf-8')
     
@@ -465,31 +662,151 @@ class DocumentManager:
         # Pour l'instant, on retourne le contenu texte
         return self._create_txt_content(analysis, include_metadata)
     
-    def batch_import(self, files: List) -> Dict[str, Any]:
-        """Import en lot de plusieurs documents"""
-        results = {
-            'success': [],
-            'failed': [],
-            'total_content': ""
-        }
+    # ========== MÉTHODES UTILITAIRES ==========
+    
+    def _enrichir_contexte(self, contexte: Dict, type_doc: str) -> Dict:
+        """Enrichit le contexte avec des informations supplémentaires"""
+        contexte_enrichi = contexte.copy()
         
-        for file in files:
-            success, content, message = self.import_document(file)
+        # Ajouter la date du jour
+        contexte_enrichi['date_jour'] = datetime.now().strftime("%d/%m/%Y")
+        
+        # Ajouter des formules de politesse selon le type
+        if type_doc in ["plainte", "requete"]:
+            contexte_enrichi['formule_appel'] = "Monsieur le Procureur de la République"
+        elif type_doc == "assignation":
+            contexte_enrichi['formule_appel'] = "Le Tribunal"
+        
+        return contexte_enrichi
+    
+    def _construire_prompt(self, type_doc: str, contexte: Dict, template: str, style: str) -> str:
+        """Construit le prompt pour la génération LLM"""
+        prompt = f"""
+        Rédigez un(e) {self.document_types.get(type_doc, 'document juridique')} 
+        en respectant le style {style} et les informations suivantes:
+        
+        Contexte:
+        {json.dumps(contexte, indent=2, ensure_ascii=False)}
+        
+        Template de base:
+        {template}
+        
+        Instructions:
+        - Respectez le formalisme juridique français
+        - Utilisez un ton {style}
+        - Structurez clairement le document
+        - Citez les textes de loi pertinents
+        - Assurez la cohérence juridique
+        """
+        
+        return prompt
+    
+    def _generer_reference(self, type_doc: str) -> str:
+        """Génère une référence unique pour le document"""
+        prefix = type_doc[:3].upper()
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        return f"{prefix}-{timestamp}"
+    
+    def _extraire_destinataires(self, type_doc: str, contexte: Dict) -> List[str]:
+        """Extrait les destinataires selon le type de document"""
+        destinataires = []
+        
+        if type_doc == "plainte":
+            destinataires.append("Procureur de la République")
+        elif type_doc == "assignation":
+            destinataires.extend(contexte.get('parties_adverses', []))
+        elif type_doc == "conclusions":
+            destinataires.append("Tribunal")
+            destinataires.extend(contexte.get('autres_parties', []))
+        
+        return destinataires
+    
+    def _integrer_jurisprudence(self, contenu: str, jurisprudences: List[Dict]) -> str:
+        """Intègre les références de jurisprudence dans le contenu"""
+        # Ajouter une section jurisprudence si elle n'existe pas
+        if "JURISPRUDENCE" not in contenu:
+            section_juris = "\n\nIII. JURISPRUDENCE APPLICABLE\n\n"
+            for juris in jurisprudences:
+                section_juris += f"- {juris['reference']} : {juris['principe']}\n"
             
-            if success:
-                results['success'].append({
-                    'filename': file.name,
-                    'message': message,
-                    'content_length': len(content)
-                })
-                results['total_content'] += f"\n\n--- {file.name} ---\n{content}"
+            # Insérer avant la conclusion
+            if "CONCLUSION" in contenu:
+                contenu = contenu.replace("CONCLUSION", section_juris + "\nCONCLUSION")
             else:
-                results['failed'].append({
-                    'filename': file.name,
-                    'error': message
-                })
+                contenu += section_juris
         
-        return results
+        return contenu
+    
+    def _indexer_document(self, doc: DocumentJuridique):
+        """Indexe le document dans Azure Search"""
+        try:
+            doc_index = {
+                "id": doc.id,
+                "titre": doc.titre,
+                "type": doc.type_document,
+                "contenu": doc.contenu,
+                "date": doc.date_document.isoformat(),
+                "auteur": doc.auteur,
+                "juridiction": doc.juridiction,
+                "tags": [doc.type_document, doc.statut_legal]
+            }
+            
+            self.azure_search_manager.index_documents([doc_index])
+            
+        except Exception as e:
+            print(f"Erreur indexation: {e}")
+    
+    def _extraire_section(self, texte: str, section: str) -> List[str]:
+        """Extrait une section spécifique du texte"""
+        lignes = []
+        in_section = False
+        
+        for ligne in texte.split('\n'):
+            if section.lower() in ligne.lower():
+                in_section = True
+                continue
+            elif in_section and ligne.strip() and not ligne.startswith(' '):
+                # Nouvelle section
+                break
+            elif in_section and ligne.strip():
+                lignes.append(ligne.strip('- •').strip())
+        
+        return lignes
+    
+    def _extraire_liste(self, texte: str, marqueur: str) -> List[str]:
+        """Extrait une liste à partir d'un marqueur"""
+        items = []
+        lignes = texte.split('\n')
+        
+        for i, ligne in enumerate(lignes):
+            if marqueur.lower() in ligne.lower():
+                # Chercher les éléments de la liste après le marqueur
+                for j in range(i + 1, len(lignes)):
+                    if lignes[j].strip().startswith(('-', '•', '*', '1', '2', '3')):
+                        items.append(lignes[j].strip('- •*123.').strip())
+                    elif lignes[j].strip() and not lignes[j].startswith(' '):
+                        break
+                break
+        
+        return items
+    
+    def _generer_titre_cas(self, faits: str) -> str:
+        """Génère un titre pour le cas juridique"""
+        # Extraire les mots clés importants
+        mots_cles = []
+        
+        if "abus de biens sociaux" in faits.lower():
+            mots_cles.append("Abus de biens sociaux")
+        if "corruption" in faits.lower():
+            mots_cles.append("Corruption")
+        if "escroquerie" in faits.lower():
+            mots_cles.append("Escroquerie")
+        
+        if mots_cles:
+            return f"Cas de {' et '.join(mots_cles)}"
+        else:
+            # Prendre les 50 premiers caractères
+            return f"Cas juridique: {faits[:50]}..."
     
     def create_download_link(self, content: bytes, filename: str, text: str) -> str:
         """Crée un lien de téléchargement pour Streamlit"""
@@ -509,7 +826,8 @@ class DocumentManager:
         }
 
 
-# Fonctions d'interface Streamlit
+# ========== FONCTIONS D'INTERFACE STREAMLIT ==========
+
 def display_import_interface():
     """Interface d'import de documents"""
     st.markdown("### 📤 Import de documents")
@@ -533,7 +851,10 @@ def display_import_interface():
         )
     
     if uploaded_files:
-        doc_manager = st.session_state.get('doc_manager', DocumentManager())
+        # Créer ou récupérer le gestionnaire
+        if 'doc_manager' not in st.session_state:
+            st.session_state.doc_manager = DocumentManager()
+        doc_manager = st.session_state.doc_manager
         
         if st.button("🚀 Importer", type="primary"):
             with st.spinner("Import en cours..."):
@@ -608,7 +929,9 @@ def display_export_interface(analysis: Optional[AnalyseJuridique] = None):
     
     with col3:
         if st.button("📥 Générer export", type="primary"):
-            doc_manager = st.session_state.get('doc_manager', DocumentManager())
+            if 'doc_manager' not in st.session_state:
+                st.session_state.doc_manager = DocumentManager()
+            doc_manager = st.session_state.doc_manager
             
             with st.spinner("Génération en cours..."):
                 content, filename = doc_manager.export_analysis(
