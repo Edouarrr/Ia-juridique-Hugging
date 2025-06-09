@@ -237,7 +237,7 @@ class TypePartie(Enum):
     PREVENU = "prévenu"
     ACCUSE = "accusé"
 
-# ========== CLASSE JURISPRUDENCE ==========
+# ========== CLASSE JURIDIQUES ==========
 
 @dataclass
 class Jurisprudence:
@@ -256,6 +256,23 @@ class Jurisprudence:
     
     def __str__(self):
         return f"{self.juridiction} - {self.numero} ({self.date_decision.strftime('%d/%m/%Y')})"
+
+@dataclass  
+class PieceProcedure:
+    """Représente une pièce de procédure dans un dossier"""
+    id: str
+    nom: str
+    type_piece: str
+    date_creation: datetime
+    description: Optional[str] = None
+    contenu: Optional[str] = None
+    numero_ordre: Optional[int] = None
+    confidentiel: bool = False
+    tags: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __str__(self):
+        return f"Pièce {self.numero_ordre}: {self.nom}"
         
 # ========== INFORMATIONS ENTREPRISE ==========
 
