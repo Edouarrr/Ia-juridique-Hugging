@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Union, Tuple, Set, TYPE_CHECKING
 from enum import Enum
 import re
+import uuid
 
 # Imports conditionnels pour éviter les imports circulaires
 if TYPE_CHECKING:
@@ -130,6 +131,10 @@ class StatutProcedural(Enum):
     PLAIGNANT = "plaignant"
     CIVILEMENT_RESPONSABLE = "civilement responsable"
     TIERS = "tiers"
+    ACTIF = "actif"
+    INACTIF = "inactif"
+    DESISTE = "désisté"
+    INTERVENANT = "intervenant"
 
 class PhaseProcedure(Enum):
     """Phase de la procédure pénale"""
@@ -140,6 +145,8 @@ class PhaseProcedure(Enum):
     APPEL = "appel"
     CASSATION = "cassation"
     EXECUTION = "exécution"
+    PRE_CONTENTIEUX = "pré-contentieux"
+    PREMIERE_INSTANCE = "première instance"
 
 class InfractionAffaires(Enum):
     """Types d'infractions pénales des affaires"""
@@ -253,6 +260,7 @@ class TypePartie(Enum):
     PARTIE_CIVILE = "partie_civile"
     PREVENU = "prévenu"
     ACCUSE = "accusé"
+    INTERVENANT = "intervenant"
 
 # ========== CLASSES JURIDIQUES ==========
 
@@ -782,39 +790,6 @@ Style requis : {self.name}
 
 # ========== INFORMATIONS ENTREPRISE ==========
 
-class SourceEntreprise(Enum):
-    """Sources de données pour les informations d'entreprise"""
-    PAPPERS = "pappers"
-    SOCIETE_COM = "societe.com"
-    INSEE = "insee"
-    INFOGREFFE = "infogreffe"
-    MANUAL = "manual"
-
-class TypePartie(Enum):
-    """Types de parties dans une procédure"""
-    DEMANDEUR = "demandeur"
-    DEFENDEUR = "défendeur"
-    INTERVENANT = "intervenant"
-    TIERS = "tiers"
-    TEMOIN = "témoin"
-
-class PhaseProcedure(Enum):
-    """Phases d'une procédure juridique"""
-    PRE_CONTENTIEUX = "pré-contentieux"
-    PREMIERE_INSTANCE = "première instance"
-    APPEL = "appel"
-    CASSATION = "cassation"
-    EXECUTION = "exécution"
-
-class StatutProcedural(Enum):
-    """Statut procédural d'une partie"""
-    ACTIF = "actif"
-    INACTIF = "inactif"
-    DESISTE = "désisté"
-    INTERVENANT = "intervenant"
-    CONDAMNE = "condamné"
-    RELAXE = "relaxé"
-
 @dataclass
 class InformationEntreprise:
     """Informations légales d'une entreprise"""
@@ -903,6 +878,27 @@ class InformationEntreprise:
             parts.append(f", dont le siège social est sis {self.siege_social}")
             
         return "".join(parts)
+    
+    def get_denomination_complete(self) -> str:
+        """Retourne la dénomination complète avec forme juridique"""
+        if self.forme_juridique:
+            return f"{self.denomination} ({self.forme_juridique})"
+        return self.denomination
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'siren': self.siren,
+            'siret': self.siret,
+            'denomination': self.denomination,
+            'forme_juridique': self.forme_juridique,
+            'capital_social': self.capital_social,
+            'siege_social': self.siege_social,
+            'rcs': self.get_immatriculation_complete(),
+            'representants': self.representants_legaux,
+            'source': self.source.value,
+            'date_recuperation': self.date_recuperation.isoformat()
+        }
 
 @dataclass
 class Partie:
@@ -911,8 +907,8 @@ class Partie:
     nom: str = ""
     type_partie: TypePartie = TypePartie.DEMANDEUR
     type_personne: str = "morale"  # "morale" ou "physique"
-    phase_procedure: Optional[PhaseProcedure] = None
-    statut_procedural: StatutProcedural = StatutProcedural.ACTIF
+    phase_procedure: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE
+    statut_procedural: StatutProcedural = StatutProcedural.MIS_EN_CAUSE
     
     # Pour les personnes morales
     info_entreprise: Optional[InformationEntreprise] = None
@@ -940,9 +936,51 @@ class Partie:
     notes: List[str] = field(default_factory=list)
     documents_lies: List[str] = field(default_factory=list)
     
+    # Compatibilité avec l'ancienne structure
+    forme_juridique: Optional[str] = None
+    capital_social: Optional[float] = None
+    rcs: Optional[str] = None
+    siret: Optional[str] = None
+    siege_social: Optional[str] = None
+    representant_legal: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        if not self.id:
+            self.id = f"partie_{self.nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Déterminer automatiquement le statut selon la phase et le type
+        self._auto_determine_statut()
+    
+    def _auto_determine_statut(self):
+        """Détermine automatiquement le statut procédural selon la phase"""
+        if self.type_partie == TypePartie.PLAIGNANT:
+            self.statut_procedural = StatutProcedural.PLAIGNANT
+        elif self.type_partie == TypePartie.PARTIE_CIVILE:
+            self.statut_procedural = StatutProcedural.PARTIE_CIVILE
+        elif self.type_partie == TypePartie.TEMOIN:
+            self.statut_procedural = StatutProcedural.TEMOIN
+        elif self.phase_procedure in [PhaseProcedure.ENQUETE_PRELIMINAIRE, PhaseProcedure.ENQUETE_FLAGRANCE]:
+            if self.type_partie in [TypePartie.MIS_EN_CAUSE, TypePartie.DEFENDEUR]:
+                self.statut_procedural = StatutProcedural.MIS_EN_CAUSE
+        elif self.phase_procedure == PhaseProcedure.INSTRUCTION:
+            if self.type_partie in [TypePartie.MIS_EN_CAUSE, TypePartie.DEFENDEUR]:
+                self.statut_procedural = StatutProcedural.MIS_EN_EXAMEN
+        elif self.phase_procedure == PhaseProcedure.JUGEMENT:
+            if self.type_partie == TypePartie.PREVENU:
+                self.statut_procedural = StatutProcedural.PREVENU
+    
     def update_from_entreprise_info(self, info: InformationEntreprise):
         """Met à jour avec les informations d'entreprise"""
         self.info_entreprise = info
+        self.forme_juridique = info.forme_juridique
+        self.capital_social = info.capital_social
+        self.siret = info.siret
+        self.siege_social = info.siege_social
+        if info.representants_legaux:
+            self.representant_legal = info.representants_legaux[0].get('nom', '')
+        if info.rcs_numero and info.rcs_ville:
+            self.rcs = f"{info.rcs_ville} {info.rcs_numero}"
         if info.siege_social:
             self.adresse = info.siege_social
         if info.code_postal:
@@ -950,26 +988,89 @@ class Partie:
         if info.ville:
             self.ville = info.ville
     
+    def get_designation_procedurale(self) -> str:
+        """Retourne la désignation selon le statut procédural"""
+        if self.phase_procedure == PhaseProcedure.ENQUETE_PRELIMINAIRE:
+            if self.statut_procedural == StatutProcedural.MIS_EN_CAUSE:
+                return f"{self.nom} (mis en cause)"
+            elif self.statut_procedural == StatutProcedural.SUSPECT:
+                return f"{self.nom} (suspect)"
+        elif self.phase_procedure == PhaseProcedure.INSTRUCTION:
+            if self.statut_procedural == StatutProcedural.MIS_EN_EXAMEN:
+                return f"{self.nom} (mis en examen)"
+            elif self.statut_procedural == StatutProcedural.TEMOIN_ASSISTE:
+                return f"{self.nom} (témoin assisté)"
+        elif self.phase_procedure == PhaseProcedure.JUGEMENT:
+            if self.statut_procedural == StatutProcedural.PREVENU:
+                return f"{self.nom} (prévenu)"
+        
+        return self.nom
+    
     def get_designation_complete(self) -> str:
         """Retourne la désignation complète de la partie"""
-        if self.type_personne == "morale" and self.info_entreprise:
-            return self.info_entreprise.to_legal_string()
-        elif self.type_personne == "physique":
-            parts = []
-            if self.prenom:
-                parts.append(f"{self.prenom} {self.nom}")
+        if self.type_personne == "morale":
+            # Utiliser les infos entreprise si disponibles
+            if self.info_entreprise:
+                designation = self.info_entreprise.get_denomination_complete()
+                if self.info_entreprise.capital_social:
+                    designation += f" au capital de {self.info_entreprise.format_capital()}"
+                if self.info_entreprise.get_immatriculation_complete():
+                    designation += f", {self.info_entreprise.get_immatriculation_complete()}"
+                if self.info_entreprise.siege_social:
+                    designation += f", dont le siège social est situé {self.info_entreprise.siege_social}"
             else:
-                parts.append(self.nom)
-            if self.profession:
-                parts.append(f", {self.profession}")
-            if self.adresse:
-                parts.append(f", demeurant {self.adresse}")
-            return "".join(parts)
+                # Fallback sur les infos manuelles
+                designation = f"{self.nom}"
+                if self.forme_juridique:
+                    designation += f", {self.forme_juridique}"
+                if self.capital_social:
+                    designation += f" au capital de {self.capital_social:,.0f} euros"
+                if self.rcs:
+                    designation += f", RCS {self.rcs}"
+                if self.siege_social:
+                    designation += f", dont le siège social est situé {self.siege_social}"
+            
+            if self.representant_legal:
+                designation += f", représentée par {self.representant_legal}"
         else:
-            return self.nom
+            designation = f"{self.nom}"
+            if self.prenom:
+                designation = f"{self.prenom} {self.nom}"
+            if self.date_naissance:
+                designation += f", né(e) le {self.date_naissance.strftime('%d/%m/%Y')}"
+            if self.lieu_naissance:
+                designation += f" à {self.lieu_naissance}"
+            if self.nationalite:
+                designation += f", de nationalité {self.nationalite}"
+            if self.adresse:
+                designation += f", demeurant {self.adresse}"
+        
+        return designation
     
-    def __str__(self):
-        return f"{self.type_partie.value}: {self.nom}"
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'id': self.id,
+            'nom': self.nom,
+            'type_partie': self.type_partie.value,
+            'type_personne': self.type_personne,
+            'phase_procedure': self.phase_procedure.value,
+            'statut_procedural': self.statut_procedural.value,
+            'forme_juridique': self.forme_juridique,
+            'capital_social': self.capital_social,
+            'rcs': self.rcs,
+            'siret': self.siret,
+            'siege_social': self.siege_social,
+            'representant_legal': self.representant_legal,
+            'date_naissance': self.date_naissance.isoformat() if self.date_naissance else None,
+            'lieu_naissance': self.lieu_naissance,
+            'nationalite': self.nationalite,
+            'adresse': self.adresse,
+            'avocat': self.avocat,
+            'metadata': self.metadata,
+            'designation_complete': self.get_designation_complete(),
+            'designation_procedurale': self.get_designation_procedurale(),
+            'has_entreprise_info': self.info_entreprise is not None
+        }
 
 # Fonction helper pour créer une partie avec lookup automatique
 def create_partie_from_name_with_lookup(
@@ -1025,7 +1126,7 @@ def create_partie_from_name_with_lookup(
         nom=nom,
         type_partie=type_partie,
         type_personne=type_personne,
-        phase_procedure=phase
+        phase_procedure=phase or PhaseProcedure.ENQUETE_PRELIMINAIRE
     )
     
     # Pour une personne physique, essayer d'extraire le prénom
@@ -1038,291 +1139,8 @@ def create_partie_from_name_with_lookup(
             partie.nom = ' '.join(parts[1:])
     
     return partie
-    
-@dataclass
-class InformationEntreprise:
-    """Informations légales d'une entreprise récupérées via API"""
-    # Identifiants
-    siren: Optional[str] = None
-    siret: Optional[str] = None
-    tva_intracommunautaire: Optional[str] = None
-    
-    # Informations générales
-    denomination: str = ""
-    forme_juridique: Optional[str] = None
-    capital_social: Optional[float] = None
-    devise_capital: str = "EUR"
-    date_creation: Optional[datetime] = None
-    date_cloture_exercice: Optional[str] = None
-    
-    # Localisation
-    siege_social: Optional[str] = None
-    code_postal: Optional[str] = None
-    ville: Optional[str] = None
-    pays: str = "France"
-    
-    # RCS
-    rcs_numero: Optional[str] = None
-    rcs_ville: Optional[str] = None
-    
-    # Dirigeants
-    representants_legaux: List[Dict[str, str]] = field(default_factory=list)
-    
-    # Activité
-    code_ape: Optional[str] = None
-    activite_principale: Optional[str] = None
-    effectif: Optional[str] = None
-    chiffre_affaires: Optional[float] = None
-    
-    # Métadonnées
-    source: SourceEntreprise = SourceEntreprise.MANUAL
-    date_recuperation: datetime = field(default_factory=datetime.now)
-    derniere_mise_a_jour: Optional[datetime] = None
-    fiable: bool = True
-    
-    def get_denomination_complete(self) -> str:
-        """Retourne la dénomination complète avec forme juridique"""
-        if self.forme_juridique:
-            return f"{self.denomination} ({self.forme_juridique})"
-        return self.denomination
-    
-    def get_immatriculation_complete(self) -> str:
-        """Retourne l'immatriculation RCS complète"""
-        if self.rcs_numero and self.rcs_ville:
-            return f"RCS {self.rcs_ville} {self.rcs_numero}"
-        elif self.siren:
-            return f"SIREN {self.siren}"
-        return ""
-    
-    def format_capital(self) -> str:
-        """Formate le capital social"""
-        if self.capital_social:
-            return f"{self.capital_social:,.0f} {self.devise_capital}".replace(',', ' ')
-        return "Non renseigné"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'siren': self.siren,
-            'siret': self.siret,
-            'denomination': self.denomination,
-            'forme_juridique': self.forme_juridique,
-            'capital_social': self.capital_social,
-            'siege_social': self.siege_social,
-            'rcs': self.get_immatriculation_complete(),
-            'representants': self.representants_legaux,
-            'source': self.source.value,
-            'date_recuperation': self.date_recuperation.isoformat()
-        }
 
 # ========== STYLES ET TEMPLATES ==========
-
-@dataclass
-class StyleConfig:
-    """Configuration d'un style de rédaction"""
-    name: str
-    description: str
-    tone: str
-    vocabulary: str
-    sentence_structure: str = "complexe"
-    formality_level: int = 5  # 1-10
-    
-    # Paramètres appris
-    learned_patterns: Dict[str, Any] = field(default_factory=dict)
-    paragraph_numbering: Optional[str] = None  # Ex: "1.", "I.", "A.", etc.
-    citation_style: Optional[str] = None
-    argumentation_structure: List[str] = field(default_factory=list)
-    typical_phrases: List[str] = field(default_factory=list)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'name': self.name,
-            'description': self.description,
-            'tone': self.tone,
-            'vocabulary': self.vocabulary,
-            'sentence_structure': self.sentence_structure,
-            'formality_level': self.formality_level,
-            'learned_patterns': self.learned_patterns,
-            'paragraph_numbering': self.paragraph_numbering,
-            'citation_style': self.citation_style,
-            'argumentation_structure': self.argumentation_structure,
-            'typical_phrases': self.typical_phrases
-        }
-
-@dataclass
-class StyleLearningResult:
-    """Résultat de l'apprentissage du style depuis des documents"""
-    style_name: str
-    documents_analyzed: int
-    
-    # Structure
-    paragraph_numbering_style: str = ""  # "numeric", "roman", "alphabetic", "mixed"
-    paragraph_numbering_pattern: str = ""  # Ex: "1.", "I.", "A.", "1.1."
-    average_paragraph_length: int = 0
-    average_sentence_length: int = 0
-    
-    # Vocabulaire et ton
-    formality_score: float = 0.5  # 0-1
-    technical_terms_frequency: float = 0.0
-    common_phrases: List[str] = field(default_factory=list)
-    transition_words: List[str] = field(default_factory=list)
-    
-    # Argumentation
-    argument_patterns: List[str] = field(default_factory=list)
-    citation_patterns: List[str] = field(default_factory=list)
-    conclusion_patterns: List[str] = field(default_factory=list)
-    
-    # Mise en forme
-    use_bold: bool = False
-    use_italic: bool = False
-    use_underline: bool = False
-    heading_style: Optional[str] = None
-    
-    # Métadonnées
-    learning_date: datetime = field(default_factory=datetime.now)
-    confidence_score: float = 0.8
-    
-    def to_style_config(self) -> StyleConfig:
-        """Convertit en configuration de style utilisable"""
-        return StyleConfig(
-            name=self.style_name,
-            description=f"Style appris de {self.documents_analyzed} documents",
-            tone=self._determine_tone(),
-            vocabulary=self._determine_vocabulary(),
-            sentence_structure=self._determine_structure(),
-            formality_level=int(self.formality_score * 10),
-            learned_patterns={
-                'paragraph_numbering': self.paragraph_numbering_pattern,
-                'argument_patterns': self.argument_patterns,
-                'citation_patterns': self.citation_patterns,
-                'conclusion_patterns': self.conclusion_patterns,
-                'formatting': {
-                    'bold': self.use_bold,
-                    'italic': self.use_italic,
-                    'underline': self.use_underline
-                }
-            },
-            paragraph_numbering=self.paragraph_numbering_pattern,
-            argumentation_structure=self.argument_patterns,
-            typical_phrases=self.common_phrases
-        )
-    
-    def _determine_tone(self) -> str:
-        if self.formality_score > 0.8:
-            return "très formel et solennel"
-        elif self.formality_score > 0.6:
-            return "formel et professionnel"
-        elif self.formality_score > 0.4:
-            return "professionnel mais accessible"
-        else:
-            return "direct et moderne"
-    
-    def _determine_vocabulary(self) -> str:
-        if self.technical_terms_frequency > 0.3:
-            return "très technique et spécialisé"
-        elif self.technical_terms_frequency > 0.15:
-            return "technique avec vulgarisation"
-        else:
-            return "clair et accessible"
-    
-    def _determine_structure(self) -> str:
-        if self.average_sentence_length > 30:
-            return "très complexe"
-        elif self.average_sentence_length > 20:
-            return "complexe"
-        elif self.average_sentence_length > 15:
-            return "équilibrée"
-        else:
-            return "simple"
-
-@dataclass
-class StylePattern:
-    """Pattern de style extrait d'un document"""
-    document_id: str
-    type_acte: str
-    structure: Dict[str, Any] = field(default_factory=dict)
-    formules: List[str] = field(default_factory=list)
-    mise_en_forme: Dict[str, Any] = field(default_factory=dict)
-    vocabulaire: Dict[str, int] = field(default_factory=dict)
-    paragraphes_types: List[str] = field(default_factory=list)
-    
-    # Champs pour l'analyse approfondie
-    numerotation: Dict[str, Any] = field(default_factory=dict)
-    formalite: Dict[str, Any] = field(default_factory=dict)
-    argumentation: Dict[str, List[str]] = field(default_factory=dict)
-    
-    def __post_init__(self):
-        """Initialisation et validation"""
-        if not self.document_id:
-            self.document_id = f"pattern_{datetime.now().timestamp()}"
-        
-        # S'assurer que les dictionnaires sont initialisés
-        if not self.structure:
-            self.structure = {}
-        if not self.mise_en_forme:
-            self.mise_en_forme = {}
-        if not self.numerotation:
-            self.numerotation = {}
-        if not self.formalite:
-            self.formalite = {}
-        if not self.argumentation:
-            self.argumentation = {}
-    
-    def merge_with(self, other: 'StylePattern') -> 'StylePattern':
-        """Fusionne avec un autre pattern"""
-        merged = StylePattern(
-            document_id=f"{self.document_id}_merged",
-            type_acte=self.type_acte
-        )
-        
-        # Fusionner les structures
-        merged.structure = {**self.structure, **other.structure}
-        
-        # Fusionner les formules
-        merged.formules = list(set(self.formules + other.formules))
-        
-        # Fusionner la mise en forme
-        merged.mise_en_forme = {**self.mise_en_forme, **other.mise_en_forme}
-        
-        # Fusionner le vocabulaire
-        merged.vocabulaire = self.vocabulaire.copy()
-        for word, count in other.vocabulaire.items():
-            merged.vocabulaire[word] = merged.vocabulaire.get(word, 0) + count
-        
-        # Fusionner les paragraphes types
-        merged.paragraphes_types = list(set(self.paragraphes_types + other.paragraphes_types))
-        
-        # Fusionner la numérotation
-        merged.numerotation = {**self.numerotation, **other.numerotation}
-        
-        # Fusionner la formalité
-        if self.formalite.get('score', 0) and other.formalite.get('score', 0):
-            merged.formalite['score'] = (
-                self.formalite.get('score', 0) + other.formalite.get('score', 0)
-            ) / 2
-        
-        # Fusionner l'argumentation
-        for key, values in other.argumentation.items():
-            if key not in merged.argumentation:
-                merged.argumentation[key] = []
-            merged.argumentation[key].extend(values)
-        
-        return merged
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'document_id': self.document_id,
-            'type_acte': self.type_acte,
-            'structure': self.structure,
-            'formules': self.formules,
-            'mise_en_forme': self.mise_en_forme,
-            'vocabulaire': self.vocabulaire,
-            'paragraphes_types': self.paragraphes_types,
-            'numerotation': self.numerotation,
-            'formalite': self.formalite,
-            'argumentation': self.argumentation
-        }
 
 @dataclass
 class DocumentTemplate:
@@ -1625,162 +1443,6 @@ class DocumentJuridique(Document):
         doc_dict = doc.to_dict()
         doc_dict.update(kwargs)
         return cls.from_dict(doc_dict)
-
-# ========== PARTIES ET AFFAIRES ==========
-
-@dataclass
-class Partie:
-    """Représente une partie dans une affaire"""
-    id: str
-    nom: str
-    type_partie: TypePartie
-    type_personne: str = "morale"  # physique ou morale
-    
-    # Phase procédurale et statut
-    phase_procedure: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE
-    statut_procedural: StatutProcedural = StatutProcedural.MIS_EN_CAUSE
-    
-    # Informations entreprise (si personne morale)
-    info_entreprise: Optional[InformationEntreprise] = None
-    
-    # Informations manuelles (compatibilité)
-    forme_juridique: Optional[str] = None
-    capital_social: Optional[float] = None
-    rcs: Optional[str] = None
-    siret: Optional[str] = None
-    siege_social: Optional[str] = None
-    representant_legal: Optional[str] = None
-    
-    # Informations personne physique
-    date_naissance: Optional[datetime] = None
-    lieu_naissance: Optional[str] = None
-    nationalite: Optional[str] = None
-    adresse: Optional[str] = None
-    
-    # Représentation
-    avocat: Optional[str] = None
-    
-    # Métadonnées
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
-    def __post_init__(self):
-        if not self.id:
-            self.id = f"partie_{self.nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Déterminer automatiquement le statut selon la phase et le type
-        self._auto_determine_statut()
-    
-    def _auto_determine_statut(self):
-        """Détermine automatiquement le statut procédural selon la phase"""
-        if self.type_partie == TypePartie.PLAIGNANT:
-            self.statut_procedural = StatutProcedural.PLAIGNANT
-        elif self.type_partie == TypePartie.PARTIE_CIVILE:
-            self.statut_procedural = StatutProcedural.PARTIE_CIVILE
-        elif self.type_partie == TypePartie.TEMOIN:
-            self.statut_procedural = StatutProcedural.TEMOIN
-        elif self.phase_procedure in [PhaseProcedure.ENQUETE_PRELIMINAIRE, PhaseProcedure.ENQUETE_FLAGRANCE]:
-            if self.type_partie in [TypePartie.MIS_EN_CAUSE, TypePartie.DEFENDEUR]:
-                self.statut_procedural = StatutProcedural.MIS_EN_CAUSE
-        elif self.phase_procedure == PhaseProcedure.INSTRUCTION:
-            if self.type_partie in [TypePartie.MIS_EN_CAUSE, TypePartie.DEFENDEUR]:
-                self.statut_procedural = StatutProcedural.MIS_EN_EXAMEN
-        elif self.phase_procedure == PhaseProcedure.JUGEMENT:
-            if self.type_partie == TypePartie.PREVENU:
-                self.statut_procedural = StatutProcedural.PREVENU
-    
-    def update_from_entreprise_info(self, info: InformationEntreprise):
-        """Met à jour les informations depuis InformationEntreprise"""
-        self.info_entreprise = info
-        self.forme_juridique = info.forme_juridique
-        self.capital_social = info.capital_social
-        self.siret = info.siret
-        self.siege_social = info.siege_social
-        if info.representants_legaux:
-            self.representant_legal = info.representants_legaux[0].get('nom', '')
-        if info.rcs_numero and info.rcs_ville:
-            self.rcs = f"{info.rcs_ville} {info.rcs_numero}"
-    
-    def get_designation_procedurale(self) -> str:
-        """Retourne la désignation selon le statut procédural"""
-        if self.phase_procedure == PhaseProcedure.ENQUETE_PRELIMINAIRE:
-            if self.statut_procedural == StatutProcedural.MIS_EN_CAUSE:
-                return f"{self.nom} (mis en cause)"
-            elif self.statut_procedural == StatutProcedural.SUSPECT:
-                return f"{self.nom} (suspect)"
-        elif self.phase_procedure == PhaseProcedure.INSTRUCTION:
-            if self.statut_procedural == StatutProcedural.MIS_EN_EXAMEN:
-                return f"{self.nom} (mis en examen)"
-            elif self.statut_procedural == StatutProcedural.TEMOIN_ASSISTE:
-                return f"{self.nom} (témoin assisté)"
-        elif self.phase_procedure == PhaseProcedure.JUGEMENT:
-            if self.statut_procedural == StatutProcedural.PREVENU:
-                return f"{self.nom} (prévenu)"
-        
-        return self.nom
-    
-    def get_designation_complete(self) -> str:
-        """Retourne la désignation complète de la partie"""
-        if self.type_personne == "morale":
-            # Utiliser les infos entreprise si disponibles
-            if self.info_entreprise:
-                designation = self.info_entreprise.get_denomination_complete()
-                if self.info_entreprise.capital_social:
-                    designation += f" au capital de {self.info_entreprise.format_capital()}"
-                if self.info_entreprise.get_immatriculation_complete():
-                    designation += f", {self.info_entreprise.get_immatriculation_complete()}"
-                if self.info_entreprise.siege_social:
-                    designation += f", dont le siège social est situé {self.info_entreprise.siege_social}"
-            else:
-                # Fallback sur les infos manuelles
-                designation = f"{self.nom}"
-                if self.forme_juridique:
-                    designation += f", {self.forme_juridique}"
-                if self.capital_social:
-                    designation += f" au capital de {self.capital_social:,.0f} euros"
-                if self.rcs:
-                    designation += f", RCS {self.rcs}"
-                if self.siege_social:
-                    designation += f", dont le siège social est situé {self.siege_social}"
-            
-            if self.representant_legal:
-                designation += f", représentée par {self.representant_legal}"
-        else:
-            designation = f"{self.nom}"
-            if self.date_naissance:
-                designation += f", né(e) le {self.date_naissance.strftime('%d/%m/%Y')}"
-            if self.lieu_naissance:
-                designation += f" à {self.lieu_naissance}"
-            if self.nationalite:
-                designation += f", de nationalité {self.nationalite}"
-            if self.adresse:
-                designation += f", demeurant {self.adresse}"
-        
-        return designation
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'id': self.id,
-            'nom': self.nom,
-            'type_partie': self.type_partie.value,
-            'type_personne': self.type_personne,
-            'phase_procedure': self.phase_procedure.value,
-            'statut_procedural': self.statut_procedural.value,
-            'forme_juridique': self.forme_juridique,
-            'capital_social': self.capital_social,
-            'rcs': self.rcs,
-            'siret': self.siret,
-            'siege_social': self.siege_social,
-            'representant_legal': self.representant_legal,
-            'date_naissance': self.date_naissance.isoformat() if self.date_naissance else None,
-            'lieu_naissance': self.lieu_naissance,
-            'nationalite': self.nationalite,
-            'adresse': self.adresse,
-            'avocat': self.avocat,
-            'metadata': self.metadata,
-            'designation_complete': self.get_designation_complete(),
-            'designation_procedurale': self.get_designation_procedurale(),
-            'has_entreprise_info': self.info_entreprise is not None
-        }
 
 # ========== INFRACTIONS ==========
 
@@ -2854,77 +2516,6 @@ class SourceTracker:
             )[:5]
         }
 
-# ========== ENTITÉS ==========
-
-@dataclass
-class Entity:
-    """Représente une entité extraite des documents"""
-    id: str
-    name: str
-    type: str  # person, organization, location, date, amount, etc.
-    normalized_name: Optional[str] = None
-    aliases: List[str] = field(default_factory=list)
-    mentions: List[Dict[str, Any]] = field(default_factory=list)  # document_id, position, context
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    confidence: float = 1.0
-    created_at: datetime = field(default_factory=datetime.now)
-    
-    def __post_init__(self):
-        if not self.id:
-            self.id = f"entity_{self.type}_{self.name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        if not self.normalized_name:
-            self.normalized_name = self.name.upper()
-    
-    def add_mention(self, document_id: str, position: int, context: str):
-        """Ajoute une mention de l'entité dans un document"""
-        self.mentions.append({
-            'document_id': document_id,
-            'position': position,
-            'context': context,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    def add_alias(self, alias: str):
-        """Ajoute un alias pour l'entité"""
-        if alias not in self.aliases and alias != self.name:
-            self.aliases.append(alias)
-    
-    def merge_with(self, other: 'Entity') -> 'Entity':
-        """Fusionne avec une autre entité"""
-        if self.type != other.type:
-            raise ValueError("Cannot merge entities of different types")
-        
-        # Fusionner les aliases
-        for alias in other.aliases:
-            self.add_alias(alias)
-        self.add_alias(other.name)
-        
-        # Fusionner les mentions
-        self.mentions.extend(other.mentions)
-        
-        # Fusionner les attributs
-        self.attributes.update(other.attributes)
-        
-        # Ajuster la confiance
-        self.confidence = (self.confidence + other.confidence) / 2
-        
-        return self
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'id': self.id,
-            'name': self.name,
-            'type': self.type,
-            'normalized_name': self.normalized_name,
-            'aliases': self.aliases,
-            'mentions_count': len(self.mentions),
-            'attributes': self.attributes,
-            'confidence': self.confidence,
-            'created_at': self.created_at.isoformat()
-        }
-
 # ========== TIMELINE ==========
 
 @dataclass
@@ -2964,107 +2555,6 @@ class TimelineEvent:
         }
 
 # ========== RECHERCHE ==========
-
-@dataclass
-class QueryAnalysis:
-    """Analyse d'une requête utilisateur"""
-    original_query: str
-    query_lower: str = field(init=False)
-    timestamp: datetime = field(default_factory=datetime.now)
-    reference: Optional[str] = None
-    document_type: Optional[TypeDocument] = None
-    action: Optional[str] = None
-    subject_matter: Optional[str] = None
-    phase_procedurale: Optional[PhaseProcedure] = None
-    parties: Dict[str, List[str]] = field(default_factory=dict)
-    infractions: List[str] = field(default_factory=list)
-    style_request: Optional[str] = None
-    parties_enrichies: Optional[Dict[str, List[Any]]] = None
-    confidence: float = 0.0
-    entities: Dict[str, Any] = field(default_factory=dict)
-    details: Dict[str, Any] = field(default_factory=dict)
-    parties_mentioned: List[str] = field(default_factory=list)
-    infractions_mentioned: List[str] = field(default_factory=list)
-    
-    def __post_init__(self):
-        self.query_lower = self.original_query.lower()
-        self.analyze()
-    
-    def analyze(self):
-        """Analyse automatique de la requête"""
-        # Extraire la référence @
-        ref_match = re.search(r'@(\w+)', self.original_query)
-        if ref_match:
-            self.reference = ref_match.group(1)
-        
-        # Détecter l'action principale
-        action_keywords = {
-            'rédiger': 'redaction',
-            'analyser': 'analysis',
-            'rechercher': 'search',
-            'comparer': 'comparison',
-            'créer': 'creation',
-            'importer': 'import',
-            'exporter': 'export',
-            'synthétiser': 'synthesis',
-            'chronologie': 'timeline',
-            'cartographie': 'mapping',
-            'plainte': 'plainte',
-            'conclusions': 'conclusions',
-            'plaidoirie': 'plaidoirie',
-            'préparer': 'preparation'
-        }
-        
-        for keyword, action in action_keywords.items():
-            if keyword in self.query_lower:
-                self.action = action
-                break
-        
-        # Ajuster la confiance
-        self.confidence = 0.5
-        if self.reference:
-            self.confidence += 0.2
-        if self.action:
-            self.confidence += 0.2
-        if self.parties_mentioned:
-            self.confidence += 0.1
-    
-    def has_reference(self) -> bool:
-        """Vérifie si la requête contient une référence @"""
-        return self.reference is not None
-    
-    def get_reference(self) -> Optional[str]:
-        """Retourne la référence extraite"""
-        return self.reference
-    
-    def is_redaction_request(self) -> bool:
-        """Vérifie si c'est une demande de rédaction"""
-        return self.action in ['redaction', 'plainte', 'conclusions', 'creation']
-    
-    def is_analysis_request(self) -> bool:
-        """Vérifie si c'est une demande d'analyse"""
-        return self.action == 'analysis'
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        return {
-            'original_query': self.original_query,
-            'query_lower': self.query_lower,
-            'timestamp': self.timestamp.isoformat(),
-            'reference': self.reference,
-            'document_type': self.document_type.value if self.document_type else None,
-            'action': self.action,
-            'subject_matter': self.subject_matter,
-            'phase_procedurale': self.phase_procedurale.value if self.phase_procedurale else None,
-            'parties': self.parties,
-            'infractions': self.infractions,
-            'style_request': self.style_request,
-            'confidence': self.confidence,
-            'entities': self.entities,
-            'details': self.details,
-            'parties_mentioned': self.parties_mentioned,
-            'infractions_mentioned': self.infractions_mentioned
-        }
 
 @dataclass
 class SearchResult:
@@ -3469,36 +2959,6 @@ def format_partie_designation_by_phase(partie: Partie) -> str:
             return f"{base}, prévenu"
     
     return base
-
-def create_partie_from_name_with_lookup(nom: str, type_partie: TypePartie, 
-                                       is_personne_morale: bool = True,
-                                       phase: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE,
-                                       fetch_entreprise_info: bool = True) -> Partie:
-    """Crée une partie avec recherche automatique des informations entreprise"""
-    partie = Partie(
-        id=f"partie_{nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        nom=nom,
-        type_partie=type_partie,
-        type_personne="morale" if is_personne_morale else "physique",
-        phase_procedure=phase
-    )
-    
-    # Pour les personnes physiques
-    if nom.startswith(('M.', 'Mme', 'Monsieur', 'Madame')):
-        partie.type_personne = "physique"
-    
-    # Pour les entreprises, possibilité de récupérer les infos
-    # (nécessite l'implémentation du service de récupération)
-    if is_personne_morale and fetch_entreprise_info:
-        # Placeholder pour l'appel API
-        # info_entreprise = fetch_company_info(nom)
-        # if info_entreprise:
-        #     partie.update_from_entreprise_info(info_entreprise)
-        pass
-    
-    return partie
-
-# Suite de models/dataclasses.py
 
 def extract_paragraph_numbering_style(text: str) -> Optional[str]:
     """Extrait le style de numérotation des paragraphes d'un texte"""
