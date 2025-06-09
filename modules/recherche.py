@@ -1,15 +1,22 @@
 # modules/recherche.py
-"""Module de recherche unifié utilisant UniversalSearchService"""
+"""Module de recherche unifié avec toutes les améliorations intégrées"""
 
 import streamlit as st
 import asyncio
+import re
+import html
 from datetime import datetime
 from typing import Dict, Any, Optional, List
+from difflib import SequenceMatcher
 
 # ========================= IMPORTS CENTRALISÉS =========================
 
 # Import du service de recherche depuis les managers
-from managers import UniversalSearchService, get_universal_search_service
+try:
+    from managers import UniversalSearchService, get_universal_search_service
+    SEARCH_SERVICE_AVAILABLE = True
+except ImportError:
+    SEARCH_SERVICE_AVAILABLE = False
 
 # Import des dataclasses et configurations
 from models.dataclasses import (
@@ -96,7 +103,10 @@ class SearchInterface:
     
     def __init__(self):
         """Initialisation avec le service de recherche universelle"""
-        self.search_service = get_universal_search_service()
+        if SEARCH_SERVICE_AVAILABLE:
+            self.search_service = get_universal_search_service()
+        else:
+            self.search_service = None
         self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
     
     async def process_universal_query(self, query: str):
@@ -106,7 +116,11 @@ class SearchInterface:
         st.session_state.last_universal_query = query
         
         # Analyser la requête avec le service
-        query_analysis = self.search_service.analyze_query_advanced(query)
+        if self.search_service:
+            query_analysis = self.search_service.analyze_query_advanced(query)
+        else:
+            # Fallback simple si le service n'est pas disponible
+            query_analysis = self._simple_query_analysis(query)
         
         # Router selon le type de commande détecté
         if query_analysis.command_type == 'redaction':
@@ -144,6 +158,28 @@ class SearchInterface:
         else:
             # Recherche par défaut
             return await self._process_search_request(query, query_analysis)
+    
+    def _simple_query_analysis(self, query: str) -> QueryAnalysis:
+        """Analyse simple de la requête si le service n'est pas disponible"""
+        analysis = QueryAnalysis(
+            original_query=query,
+            query_lower=query.lower(),
+            timestamp=datetime.now()
+        )
+        
+        # Détection basique du type de commande
+        query_lower = analysis.query_lower
+        if any(word in query_lower for word in ['rédige', 'rédiger', 'écrire', 'créer']):
+            analysis.command_type = 'redaction'
+        else:
+            analysis.command_type = 'search'
+        
+        # Extraction basique de la référence
+        ref_match = re.search(r'@(\w+)', query)
+        if ref_match:
+            analysis.reference = ref_match.group(1)
+        
+        return analysis
     
     # ===================== PROCESSEURS DE REQUÊTES =====================
     
@@ -264,39 +300,269 @@ class SearchInterface:
         """Traite une demande de recherche par défaut"""
         st.info("🔍 Recherche en cours...")
         
-        # Utiliser le service de recherche
-        search_result = await self.search_service.search(query)
-        
-        # Stocker les résultats
-        st.session_state.search_results = search_result.documents
-        
-        if not search_result.documents:
-            st.warning("⚠️ Aucun résultat trouvé")
+        if self.search_service:
+            # Utiliser le service de recherche
+            search_result = await self.search_service.search(query)
+            
+            # Stocker les résultats
+            st.session_state.search_results = search_result.documents
+            
+            if not search_result.documents:
+                st.warning("⚠️ Aucun résultat trouvé")
+            else:
+                st.success(f"✅ {len(search_result.documents)} résultats trouvés")
+                
+                # Afficher les facettes si disponibles
+                if search_result.facets:
+                    with st.expander("🔍 Filtres disponibles"):
+                        for facet_name, facet_values in search_result.facets.items():
+                            st.write(f"**{facet_name}**")
+                            for value, count in facet_values.items():
+                                st.write(f"- {value}: {count}")
+                
+                # Afficher les suggestions si disponibles
+                if search_result.suggestions:
+                    st.info("💡 Suggestions de recherche:")
+                    cols = st.columns(min(len(search_result.suggestions), 3))
+                    for i, suggestion in enumerate(search_result.suggestions):
+                        with cols[i]:
+                            if st.button(suggestion, key=f"suggestion_{i}", use_container_width=True):
+                                st.session_state.pending_query = suggestion
+                                st.rerun()
+            
+            return search_result
         else:
-            st.success(f"✅ {len(search_result.documents)} résultats trouvés")
-            
-            # Afficher les facettes si disponibles
-            if search_result.facets:
-                with st.expander("🔍 Filtres disponibles"):
-                    for facet_name, facet_values in search_result.facets.items():
-                        st.write(f"**{facet_name}**")
-                        for value, count in facet_values.items():
-                            st.write(f"- {value}: {count}")
-            
-            # Afficher les suggestions si disponibles
-            if search_result.suggestions:
-                st.info("💡 Suggestions de recherche:")
-                for suggestion in search_result.suggestions:
-                    if st.button(suggestion, key=f"suggestion_{suggestion}"):
-                        st.session_state.pending_query = suggestion
-                        st.rerun()
+            # Fallback simple
+            st.warning("Service de recherche non disponible")
+            return []
+
+# ========================= FONCTIONS UTILITAIRES =========================
+
+def get_reference_suggestions(query: str) -> List[str]:
+    """Obtient des suggestions de références basées sur la requête"""
+    
+    suggestions = []
+    
+    if SEARCH_SERVICE_AVAILABLE:
+        service = get_universal_search_service()
         
-        return search_result
+        # Extraire la partie après le dernier @
+        if '@' in query:
+            parts = query.split('@')
+            partial_ref = parts[-1].strip().split()[0] if parts[-1].strip() else ''
+            
+            if partial_ref:
+                suggestions = service.generate_reference_suggestions(partial_ref)
+    
+    return suggestions[:5]
+
+def collect_all_references() -> List[str]:
+    """Collecte toutes les références de dossiers disponibles"""
+    
+    if SEARCH_SERVICE_AVAILABLE:
+        service = get_universal_search_service()
+        return service.collect_all_references()
+    
+    # Fallback
+    references = set()
+    
+    # Parcourir tous les documents
+    all_docs = {}
+    all_docs.update(st.session_state.get('azure_documents', {}))
+    all_docs.update(st.session_state.get('imported_documents', {}))
+    
+    for doc in all_docs.values():
+        title = doc.get('title', '')
+        
+        # Patterns simples pour extraire les références
+        patterns = [
+            r'affaire[_\s]+(\w+)',
+            r'dossier[_\s]+(\w+)',
+            r'projet[_\s]+(\w+)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, title, re.IGNORECASE)
+            references.update(matches)
+    
+    return sorted(list(references))
+
+def find_matching_documents(reference: str) -> List[Dict]:
+    """Trouve les documents correspondant à une référence partielle"""
+    
+    matches = []
+    ref_lower = reference.lower()
+    
+    # Parcourir tous les documents
+    all_docs = {}
+    all_docs.update(st.session_state.get('azure_documents', {}))
+    all_docs.update(st.session_state.get('imported_documents', {}))
+    
+    for doc_id, doc in all_docs.items():
+        title = doc.get('title', '')
+        content = doc.get('content', '')[:200]  # Aperçu du contenu
+        
+        # Vérifier la correspondance
+        if ref_lower in title.lower() or ref_lower in content.lower():
+            # Extraire une référence propre du titre
+            clean_ref = extract_clean_reference(title)
+            
+            matches.append({
+                'id': doc_id,
+                'title': title,
+                'type': doc.get('type', 'Document'),
+                'date': doc.get('date', doc.get('metadata', {}).get('date', 'Non daté')),
+                'preview': content,
+                'clean_ref': clean_ref or reference,
+                'score': calculate_match_score(title, content, reference)
+            })
+    
+    # Trier par score de pertinence
+    matches.sort(key=lambda x: x['score'], reverse=True)
+    return matches
+
+def extract_clean_reference(title: str) -> str:
+    """Extrait une référence propre du titre"""
+    
+    # Patterns pour extraire les références
+    patterns = [
+        r'affaire[_\s]+(\w+)',
+        r'dossier[_\s]+(\w+)',
+        r'projet[_\s]+(\w+)',
+        r'^(\w+_\d{4})',
+        r'^(\w+)[\s_]',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, title, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    
+    # Si pas de pattern, prendre le premier mot significatif
+    words = title.split()
+    for word in words:
+        if len(word) > 3 and word.isalnum():
+            return word
+    
+    return None
+
+def calculate_match_score(title: str, content: str, reference: str) -> float:
+    """Calcule un score de pertinence pour le tri"""
+    
+    score = 0
+    ref_lower = reference.lower()
+    title_lower = title.lower()
+    content_lower = content.lower()
+    
+    # Correspondance exacte dans le titre
+    if ref_lower == title_lower:
+        score += 100
+    # Commence par la référence
+    elif title_lower.startswith(ref_lower):
+        score += 50
+    # Contient la référence dans le titre
+    elif ref_lower in title_lower:
+        score += 30
+    # Contient dans le contenu
+    elif ref_lower in content_lower:
+        score += 10
+    
+    # Bonus pour les références courtes (plus spécifiques)
+    if len(reference) >= 5:
+        score += 5
+    
+    return score
+
+def highlight_match(text: str, match: str) -> str:
+    """Surligne les correspondances dans le texte"""
+    
+    # Échapper les caractères HTML
+    text = html.escape(text)
+    match = html.escape(match)
+    
+    # Remplacer avec surbrillance (insensible à la casse)
+    pattern = re.compile(re.escape(match), re.IGNORECASE)
+    highlighted = pattern.sub(
+        lambda m: f'<mark style="background-color: #ffeb3b; padding: 2px;">{m.group()}</mark>',
+        text
+    )
+    
+    return highlighted
+
+def show_live_preview(reference: str, full_query: str):
+    """Affiche une prévisualisation des dossiers correspondants"""
+    
+    with st.container():
+        # Rechercher les correspondances
+        matches = find_matching_documents(reference)
+        
+        if matches:
+            st.markdown(f"### 📁 Aperçu des résultats pour **@{reference}**")
+            
+            # Limiter à 5 résultats
+            for i, match in enumerate(matches[:5]):
+                col1, col2, col3 = st.columns([3, 2, 1])
+                
+                with col1:
+                    # Titre avec surbrillance
+                    highlighted_title = highlight_match(match['title'], reference)
+                    st.markdown(f"**{i+1}.** {highlighted_title}", unsafe_allow_html=True)
+                
+                with col2:
+                    # Métadonnées
+                    doc_type = match.get('type', 'Document')
+                    date = match.get('date', 'Non daté')
+                    st.caption(f"{doc_type} • {date}")
+                
+                with col3:
+                    # Action rapide
+                    if st.button("Utiliser", key=f"use_{match['id']}", use_container_width=True):
+                        # Remplacer la référence partielle par la complète
+                        new_query = full_query.replace(f"@{reference}", f"@{match['clean_ref']}")
+                        st.session_state.pending_query = new_query
+                        st.rerun()
+            
+            # Afficher le nombre total si plus de 5
+            if len(matches) > 5:
+                st.info(f"📊 {len(matches) - 5} autres résultats disponibles. Affinez votre recherche ou cliquez sur Rechercher.")
+        else:
+            st.info(f"🔍 Aucun dossier trouvé pour '@{reference}'. Essayez avec d'autres termes.")
+
+def show_available_references():
+    """Affiche toutes les références disponibles de manière organisée"""
+    
+    references = collect_all_references()
+    
+    if references:
+        st.markdown("### 📚 Références disponibles")
+        
+        # Grouper par première lettre
+        grouped = {}
+        for ref in references:
+            first_letter = ref[0].upper()
+            if first_letter not in grouped:
+                grouped[first_letter] = []
+            grouped[first_letter].append(ref)
+        
+        # Afficher en colonnes
+        cols = st.columns(4)
+        col_idx = 0
+        
+        for letter in sorted(grouped.keys()):
+            with cols[col_idx % 4]:
+                st.markdown(f"**{letter}**")
+                for ref in grouped[letter]:
+                    if st.button(f"@{ref}", key=f"ref_{ref}", use_container_width=True):
+                        st.session_state.pending_query = f"@{ref} "
+                        st.rerun()
+            col_idx += 1
+    else:
+        st.info("Aucune référence trouvée. Importez des documents pour commencer.")
 
 # ========================= FONCTION PRINCIPALE =========================
 
 def show_page():
-    """Fonction principale de la page recherche universelle"""
+    """Fonction principale de la page recherche universelle avec toutes les améliorations"""
     
     # Initialiser l'interface
     if 'search_interface' not in st.session_state:
@@ -310,7 +576,7 @@ def show_page():
     if st.checkbox("🔧 Voir l'état des modules"):
         show_modules_status()
     
-    # Barre de recherche principale
+    # Barre de recherche principale avec auto-complétion
     col1, col2 = st.columns([5, 1])
     
     with col1:
@@ -328,9 +594,40 @@ def show_page():
             key="universal_query",
             help="Utilisez @ pour référencer une affaire spécifique"
         )
+        
+        # Auto-complétion des références
+        if query and '@' in query:
+            suggestions = get_reference_suggestions(query)
+            if suggestions:
+                st.markdown("**Suggestions :**")
+                cols = st.columns(min(len(suggestions), 5))
+                for i, suggestion in enumerate(suggestions[:5]):
+                    with cols[i]:
+                        if st.button(suggestion, key=f"sugg_{i}", use_container_width=True):
+                            # Remplacer la partie après @ par la suggestion
+                            parts = query.split('@')
+                            if len(parts) > 1:
+                                # Garder ce qui est avant @ et ajouter la suggestion
+                                new_query = parts[0] + suggestion
+                                st.session_state.pending_query = new_query
+                                st.rerun()
     
     with col2:
         search_button = st.button("🔍 Rechercher", key="search_button", use_container_width=True)
+    
+    # Prévisualisation en temps réel
+    if query and '@' in query:
+        # Extraire la référence
+        parts = query.split('@')
+        if len(parts) > 1:
+            ref_part = parts[-1].split()[0] if parts[-1].strip() else ''
+            
+            if ref_part and len(ref_part) >= 2:  # Au moins 2 caractères
+                show_live_preview(ref_part, query)
+    
+    # Afficher les références disponibles
+    if st.checkbox("📁 Voir toutes les références disponibles"):
+        show_available_references()
     
     # Suggestions de commandes
     with st.expander("💡 Exemples de commandes", expanded=False):
@@ -338,6 +635,8 @@ def show_page():
         **Recherche :**
         - `contrats société XYZ`
         - `@affaire_martin documents comptables`
+        - `@mart` (trouvera martin, martinez, etc.)
+        - `@2024` (tous les dossiers de 2024)
         
         **Analyse :**
         - `analyser les risques @dossier_pénal`
@@ -390,9 +689,23 @@ def show_page():
     
     with col2:
         if st.button("📊 Afficher les statistiques", key="show_stats"):
-            # Afficher les statistiques du service de recherche
-            stats = asyncio.run(interface.search_service.get_search_statistics())
-            st.json(stats)
+            if interface.search_service:
+                # Afficher les statistiques du service de recherche
+                stats = asyncio.run(interface.search_service.get_search_statistics())
+                with st.expander("📊 Statistiques de recherche", expanded=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Recherches totales", stats['total_searches'])
+                        st.metric("Résultats moyens", f"{stats['average_results']:.0f}")
+                    with col2:
+                        st.metric("Taille du cache", stats['cache_size'])
+                    
+                    if stats['popular_keywords']:
+                        st.markdown("**Mots-clés populaires:**")
+                        for keyword, count in list(stats['popular_keywords'].items())[:5]:
+                            st.write(f"- {keyword}: {count} fois")
+            else:
+                asyncio.run(show_work_statistics())
     
     with col3:
         if st.button("🔗 Partager", key="share_work"):
@@ -409,14 +722,7 @@ def show_modules_status():
         
         with col2:
             st.metric("Managers avancés", sum(1 for v in MANAGERS.values() if v))
-            # Vérifier si le service de recherche est disponible
-            search_service_available = False
-            try:
-                from managers import UniversalSearchService
-                search_service_available = True
-            except:
-                pass
-            st.metric("Service de recherche", "✅" if search_service_available else "❌")
+            st.metric("Service de recherche", "✅" if SEARCH_SERVICE_AVAILABLE else "❌")
         
         with col3:
             st.metric("Templates", len(BUILTIN_DOCUMENT_TEMPLATES))
@@ -601,19 +907,29 @@ def show_analysis_results():
         st.info(f"📄 Documents analysés : {results['document_count']}")
 
 def show_search_results():
-    """Affiche les résultats de recherche"""
+    """Affiche les résultats de recherche avec highlights"""
     results = st.session_state.search_results
     
     if isinstance(results, list) and results:
         st.markdown(f"### 🔍 Résultats de recherche ({len(results)} documents)")
         
+        # Options de tri
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            sort_option = st.selectbox(
+                "Trier par",
+                ["Pertinence", "Date", "Type"],
+                key="sort_results"
+            )
+        
+        # Afficher les résultats
         for i, result in enumerate(results[:10], 1):
             # Si c'est un objet Document
             if hasattr(result, 'highlights'):
                 with st.expander(f"{i}. {result.title}"):
                     # Afficher les highlights s'ils existent
                     if result.highlights:
-                        st.markdown("**Extraits pertinents:**")
+                        st.markdown("**📌 Extraits pertinents:**")
                         for highlight in result.highlights:
                             st.info(f"...{highlight}...")
                     else:
@@ -621,12 +937,26 @@ def show_search_results():
                     
                     # Métadonnées
                     if hasattr(result, 'metadata') and result.metadata:
-                        st.caption(f"Score: {result.metadata.get('score', 0):.0f} | Source: {result.source}")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.caption(f"📊 Score: {result.metadata.get('score', 0):.0f}")
+                        with col2:
+                            st.caption(f"📁 Source: {result.source}")
+                        with col3:
+                            match_type = result.metadata.get('match_type', 'standard')
+                            if match_type == 'exact':
+                                st.caption("✅ Correspondance exacte")
+                            elif match_type == 'partial':
+                                st.caption("📍 Correspondance partielle")
             else:
                 # Format dictionnaire
                 with st.expander(f"{i}. {result.get('title', 'Sans titre')}"):
                     st.write(result.get('content', '')[:500] + '...')
                     st.caption(f"Score: {result.get('score', 0):.0%}")
+        
+        # Pagination si plus de 10 résultats
+        if len(results) > 10:
+            st.info(f"📄 Affichage des 10 premiers résultats sur {len(results)}. Utilisez les filtres pour affiner.")
 
 def show_synthesis_results():
     """Affiche les résultats de synthèse"""
@@ -674,7 +1004,7 @@ def clear_universal_state():
             del st.session_state[key]
     
     # Effacer aussi le cache du service
-    if hasattr(st.session_state, 'search_interface'):
+    if hasattr(st.session_state, 'search_interface') and st.session_state.search_interface.search_service:
         st.session_state.search_interface.search_service.clear_cache()
     
     st.success("✅ Interface réinitialisée")
