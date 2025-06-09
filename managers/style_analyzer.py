@@ -26,7 +26,7 @@ except ImportError:
     PDF_AVAILABLE = False
     logger.warning("Module PyPDF2 non disponible")
 
-from models.dataclasses import Document, StylePattern, StyleLearningResult, StyleConfig
+from modules.dataclasses import Document, StylePattern, StyleLearningResult, StyleConfig
 
 class StyleAnalyzer:
     """Analyse et apprend le style de rédaction des documents"""
