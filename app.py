@@ -1,4 +1,4 @@
-"""Application principale avec gestion Azure et interface de recherche améliorée"""
+ """Application principale avec gestion Azure et interface de recherche améliorée"""
 
 import streamlit as st
 from datetime import datetime
@@ -795,6 +795,75 @@ def main():
                             st.error("❌ MODULE_FUNCTIONS absent")
                     except Exception as e:
                         st.error(f"Erreur: {e}")
+            
+            # NOUVELLE SECTION - Vérification complète des imports
+            st.markdown("---")
+            st.markdown("**🔧 Diagnostics avancés**")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("🔍 Vérifier tous les imports", key="full_import_check", use_container_width=True):
+                    with st.spinner("Vérification en cours..."):
+                        try:
+                            from check_imports import check_all_imports
+                            report = check_all_imports()
+                            
+                            # Afficher un résumé
+                            if not report['errors']:
+                                st.balloons()
+                                st.success(f"✅ Tous les imports OK ({report['total_checked']} vérifiés)")
+                            else:
+                                st.error(f"❌ {len(report['errors'])} erreurs détectées")
+                                for error in report['errors'][:3]:  # Afficher les 3 premières erreurs
+                                    st.caption(f"• {error}")
+                                if len(report['errors']) > 3:
+                                    st.caption(f"... et {len(report['errors']) - 3} autres erreurs")
+                                    
+                        except ImportError:
+                            st.error("❌ check_imports.py non trouvé")
+                            st.info("💡 Créez le fichier check_imports.py à la racine du projet")
+                        except Exception as e:
+                            st.error(f"Erreur: {str(e)}")
+            
+            with col2:
+                if st.button("📊 Rapport détaillé des imports", key="detailed_import_report", use_container_width=True):
+                    with st.spinner("Génération du rapport..."):
+                        try:
+                            # Lancer check_imports.py comme une page séparée dans un nouvel onglet
+                            st.info("💡 Pour un rapport détaillé, exécutez :")
+                            st.code("streamlit run check_imports.py")
+                            
+                            # Ou afficher un résumé inline
+                            from check_imports import check_all_imports
+                            report = check_all_imports()
+                            
+                            # Créer un rapport textuel
+                            report_text = f"""
+RAPPORT DE VÉRIFICATION DES IMPORTS
+==================================
+
+✅ Modules OK: {len(report['success'])}
+❌ Erreurs: {len(report['errors'])}
+⚠️ Avertissements: {len(report['warnings'])}
+
+DÉTAILS:
+--------
+"""
+                            if report['errors']:
+                                report_text += "\nERREURS:\n"
+                                for e in report['errors']:
+                                    report_text += f"- {e}\n"
+                            
+                            # Bouton de téléchargement
+                            st.download_button(
+                                label="💾 Télécharger le rapport",
+                                data=report_text,
+                                file_name=f"rapport_imports_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                                mime="text/plain"
+                            )
+                        except Exception as e:
+                            st.error(f"Erreur: {str(e)}")
             
             # Afficher le contenu de session_state
             if st.checkbox("📊 Voir session_state", key="show_session_state"):
