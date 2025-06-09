@@ -738,8 +738,15 @@ def perform_jurisprudence_search_enhanced(
     # Étape 1: Recherche sur les API officielles
     with st.spinner("🔍 Recherche sur les bases officielles (Judilibre, Légifrance)..."):
         # Toujours rechercher sur Judilibre et Légifrance
-        official_results = asyncio.run(search_official_sources(search_criteria))
-        all_results.extend(official_results)
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            official_results = loop.run_until_complete(search_official_sources(search_criteria))
+            all_results.extend(official_results)
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche officielle: {e}")
+            st.error(f"Erreur lors de la recherche: {str(e)}")
+            official_results = []
         
         st.success(f"✅ {len(official_results)} décisions trouvées sur les bases officielles")
     
@@ -859,10 +866,16 @@ def search_jurisprudence(criteria: Dict[str, Any]) -> List[JurisprudenceReferenc
     """Recherche la jurisprudence selon les critères (méthode legacy)"""
     
     # Utiliser la nouvelle méthode de recherche
-    results = asyncio.run(search_official_sources(criteria))
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results = loop.run_until_complete(search_official_sources(criteria))
+    except Exception as e:
+        logger.error(f"Erreur lors de la recherche: {e}")
+        results = []
     
     # Recherche dans les autres sources si demandé
-    for source in criteria['sources']:
+    for source in criteria.get('sources', []):
         if source == SourceJurisprudence.INTERNAL:
             results.extend(search_internal_database(criteria))
         elif source == SourceJurisprudence.DOCTRINE:
@@ -873,7 +886,7 @@ def search_jurisprudence(criteria: Dict[str, Any]) -> List[JurisprudenceReferenc
             pass
     
     # Filtrer par importance
-    results = [r for r in results if r.importance >= criteria['min_importance']]
+    results = [r for r in results if r.importance >= criteria.get('min_importance', 1)]
     
     # Trier par pertinence et date
     results.sort(key=lambda x: (x.importance, x.date), reverse=True)
@@ -894,7 +907,7 @@ def search_internal_database(criteria: Dict[str, Any]) -> List[JurisprudenceRefe
         score = 0
         
         # Mots-clés
-        if criteria['query']:
+        if criteria.get('query'):
             query_words = criteria['query'].lower().split()
             ref_text = f"{ref.titre} {ref.resume}".lower()
             
@@ -903,18 +916,18 @@ def search_internal_database(criteria: Dict[str, Any]) -> List[JurisprudenceRefe
                     score += 1
         
         # Juridiction
-        if criteria['juridictions']:
+        if criteria.get('juridictions'):
             if ref.juridiction in criteria['juridictions']:
                 score += 2
         
         # Articles
-        if criteria['articles']:
+        if criteria.get('articles'):
             for article in criteria['articles']:
                 if article in ref.articles_vises:
                     score += 3
         
         # Date
-        if criteria['date_range']:
+        if criteria.get('date_range'):
             start, end = criteria['date_range']
             if start <= ref.date <= end:
                 score += 1
@@ -1985,7 +1998,9 @@ def test_jurisprudence_sources():
                 'min_importance': 1
             }
             
-            test_results = asyncio.run(api_manager.search_judilibre(test_criteria))
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            test_results = loop.run_until_complete(api_manager.search_judilibre(test_criteria))
             results[SourceJurisprudence.JUDILIBRE] = len(test_results) >= 0
         except Exception as e:
             logger.error(f"Erreur test Judilibre: {e}")
@@ -1994,7 +2009,9 @@ def test_jurisprudence_sources():
         # Test Légifrance
         try:
             test_criteria['sources'] = [SourceJurisprudence.LEGIFRANCE]
-            test_results = asyncio.run(api_manager.search_legifrance(test_criteria))
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            test_results = loop.run_until_complete(api_manager.search_legifrance(test_criteria))
             results[SourceJurisprudence.LEGIFRANCE] = len(test_results) >= 0
         except Exception as e:
             logger.error(f"Erreur test Légifrance: {e}")
@@ -2086,3 +2103,15 @@ def show_jurisprudence_interface(query: str = "", analysis: dict = None):
         # Afficher l'interface par défaut
         initial_criteria = extract_jurisprudence_criteria(query or "", analysis or {})
         show_jurisprudence_search_interface(initial_criteria)
+
+
+# Définir les fonctions exportées par le module
+MODULE_FUNCTIONS = [
+    'process_jurisprudence_request',
+    'show_jurisprudence_search_interface',
+    'show_jurisprudence_interface',
+    'get_jurisprudence_for_document',
+    'format_jurisprudence_citation',
+    'verify_and_update_citations',
+    'search_jurisprudence'
+]
