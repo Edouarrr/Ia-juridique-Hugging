@@ -41,70 +41,93 @@ def verify_function_integration():
         'integration_status': {}
     }
     
+    # Stocker les erreurs pour affichage ultérieur
+    error_details = []
+    
     # Vérifier chaque module
     for module_name, module_path in modules_to_check.items():
-        with st.expander(f"📦 Module: {module_name}", expanded=False):
-            try:
-                # Importer le module
-                module = importlib.import_module(module_path)
-                st.success(f"✅ Module {module_name} importé avec succès")
-                results['modules_ok'].append(module_name)
+        st.markdown(f"### 📦 Module: {module_name}")
+        
+        try:
+            # Importer le module
+            module = importlib.import_module(module_path)
+            st.success(f"✅ Module {module_name} importé avec succès")
+            results['modules_ok'].append(module_name)
+            
+            # Vérifier MODULE_FUNCTIONS
+            if hasattr(module, 'MODULE_FUNCTIONS'):
+                functions = module.MODULE_FUNCTIONS
+                st.info(f"📋 {len(functions)} fonctions déclarées dans MODULE_FUNCTIONS")
+                results['functions_found'][module_name] = len(functions)
                 
-                # Vérifier MODULE_FUNCTIONS
-                if hasattr(module, 'MODULE_FUNCTIONS'):
-                    functions = module.MODULE_FUNCTIONS
-                    st.info(f"📋 {len(functions)} fonctions déclarées dans MODULE_FUNCTIONS")
-                    results['functions_found'][module_name] = len(functions)
-                    
-                    # Vérifier chaque fonction
-                    missing_funcs = []
-                    present_funcs = []
-                    
-                    for func_name in functions:
-                        if hasattr(module, func_name):
-                            present_funcs.append(func_name)
-                        else:
-                            missing_funcs.append(func_name)
-                    
-                    # Afficher le résultat
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Fonctions présentes", len(present_funcs))
-                        if present_funcs and st.checkbox(f"Voir les fonctions OK ({module_name})", key=f"ok_{module_name}"):
-                            for func in present_funcs:
-                                st.caption(f"✅ {func}")
-                    
-                    with col2:
-                        st.metric("Fonctions manquantes", len(missing_funcs))
-                        if missing_funcs:
-                            st.error("Fonctions manquantes:")
-                            for func in missing_funcs:
-                                st.caption(f"❌ {func}")
-                    
-                    # Vérifier l'intégration dans recherche.py
-                    if module_name != 'recherche':
-                        check_integration_in_recherche(module_name, functions, results)
+                # Vérifier chaque fonction
+                missing_funcs = []
+                present_funcs = []
                 
-                else:
-                    st.warning(f"⚠️ MODULE_FUNCTIONS non trouvé dans {module_name}")
-                    results['functions_found'][module_name] = 0
+                for func_name in functions:
+                    if hasattr(module, func_name):
+                        present_funcs.append(func_name)
+                    else:
+                        missing_funcs.append(func_name)
                 
-                # Lister toutes les fonctions du module
-                all_functions = [name for name, obj in inspect.getmembers(module) 
-                               if inspect.isfunction(obj) and not name.startswith('_')]
+                # Afficher le résultat
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Fonctions présentes", len(present_funcs))
+                    if present_funcs and st.checkbox(f"Voir les fonctions OK ({module_name})", key=f"ok_{module_name}"):
+                        for func in present_funcs:
+                            st.caption(f"✅ {func}")
                 
-                with st.expander(f"Toutes les fonctions dans {module_name} ({len(all_functions)})", expanded=False):
-                    for func_name in sorted(all_functions):
-                        st.caption(f"• {func_name}")
+                with col2:
+                    st.metric("Fonctions manquantes", len(missing_funcs))
+                    if missing_funcs:
+                        st.error("Fonctions manquantes:")
+                        for func in missing_funcs:
+                            st.caption(f"❌ {func}")
                 
-            except ImportError as e:
-                st.error(f"❌ Impossible d'importer {module_name}: {str(e)}")
-                results['modules_error'].append(module_name)
-            except Exception as e:
-                st.error(f"❌ Erreur lors de la vérification de {module_name}: {str(e)}")
-                with st.expander("Détails de l'erreur"):
-                    st.code(traceback.format_exc())
-                results['modules_error'].append(module_name)
+                # Vérifier l'intégration dans recherche.py
+                if module_name != 'recherche':
+                    check_integration_in_recherche(module_name, functions, results)
+                
+            else:
+                st.warning(f"⚠️ MODULE_FUNCTIONS non trouvé dans {module_name}")
+                results['functions_found'][module_name] = 0
+            
+            # Lister toutes les fonctions du module
+            all_functions = [name for name, obj in inspect.getmembers(module) 
+                           if inspect.isfunction(obj) and not name.startswith('_')]
+            
+            # Utiliser un simple checkbox au lieu d'un expander
+            if st.checkbox(f"Toutes les fonctions dans {module_name} ({len(all_functions)})", key=f"all_{module_name}"):
+                for func_name in sorted(all_functions):
+                    st.caption(f"• {func_name}")
+                
+        except ImportError as e:
+            st.error(f"❌ Impossible d'importer {module_name}: {str(e)}")
+            results['modules_error'].append(module_name)
+            error_details.append({
+                'module': module_name,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            })
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la vérification de {module_name}: {str(e)}")
+            results['modules_error'].append(module_name)
+            error_details.append({
+                'module': module_name,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            })
+        
+        st.divider()
+    
+    # Afficher les détails des erreurs à la fin
+    if error_details:
+        st.markdown("### ⚠️ Détails des erreurs")
+        for error_info in error_details:
+            with st.expander(f"Erreur dans {error_info['module']}"):
+                st.error(error_info['error'])
+                st.code(error_info['traceback'], language='python')
     
     # Résumé global
     st.markdown("---")
