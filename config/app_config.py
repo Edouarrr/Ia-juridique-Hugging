@@ -79,6 +79,48 @@ class InfractionAffaires(Enum):
     HARCELEMENT = "Harcèlement"
     DISCRIMINATION = "Discrimination"
 
+# Configuration des APIs juridiques externes
+LEGAL_APIS = {
+    'doctrine': {
+        'name': 'Doctrine.fr',
+        'base_url': 'https://api.doctrine.fr/v1/',
+        'api_key': os.getenv('DOCTRINE_API_KEY', ''),
+        'endpoints': {
+            'search': 'search',
+            'decision': 'decisions',
+            'article': 'articles'
+        }
+    },
+    'legifrance': {
+        'name': 'Légifrance',
+        'base_url': 'https://api.piste.gouv.fr/cassation/judilibre/v1.0/',
+        'api_key': os.getenv('LEGIFRANCE_API_KEY', ''),
+        'endpoints': {
+            'search': 'search',
+            'decision': 'decision',
+            'export': 'export'
+        }
+    },
+    'juricaf': {
+        'name': 'Juricaf',
+        'base_url': 'https://api.juricaf.org/',
+        'api_key': os.getenv('JURICAF_API_KEY', ''),
+        'endpoints': {
+            'search': 'recherche',
+            'decision': 'arret'
+        }
+    },
+    'dalloz': {
+        'name': 'Dalloz',
+        'base_url': 'https://api.dalloz.fr/v1/',
+        'api_key': os.getenv('DALLOZ_API_KEY', ''),
+        'endpoints': {
+            'search': 'search',
+            'document': 'documents'
+        }
+    }
+}
+
 # Prompts d'analyse pour les affaires
 ANALYSIS_PROMPTS_AFFAIRES = {
     "identification_parties": """Identifie toutes les parties mentionnées dans ces documents.
@@ -165,7 +207,12 @@ Distingue :
 3. CHAÎNE DE RESPONSABILITÉ
    - Liens hiérarchiques
    - Délégations de pouvoir
-   - Cumul de responsabilités"""
+   - Cumul de responsabilités""",
+   
+   # Ajout des prompts simplifiés demandés
+   'general': "Analyse générale du dossier",
+   'risques': "Identification des risques juridiques", 
+   'strategie': "Stratégie de défense"
 }
 
 # Prompts d'analyse spécialisés pour les infractions
@@ -212,7 +259,12 @@ Examine:
 4. Conversion de biens
 Articles: 324-1 et suivants Code pénal""",
         'elements': ['origine frauduleuse', 'dissimulation', 'conversion', 'justification mensongère']
-    }
+    },
+    
+    # Ajout des prompts simplifiés demandés
+    'identification': "Identifier les infractions",
+    'elements_constitutifs': "Analyser les éléments constitutifs",
+    'sanctions': "Évaluer les sanctions encourues"
 }
 
 # Configuration des endpoints
@@ -628,3 +680,30 @@ RISK_LEVELS = {
 # Instance globale de configuration
 app_config = AppConfig()
 api_config = APIConfig()
+
+# Export pour compatibilité avec les imports existants
+__all__ = [
+    'SearchMode',
+    'LLMProvider',
+    'DocumentType',
+    'IntentType',
+    'InfractionAffaires',
+    'APIConfig',
+    'AppConfig',
+    'app_config',
+    'api_config',
+    'LEGAL_APIS',
+    'ANALYSIS_PROMPTS_AFFAIRES',
+    'ANALYSIS_PROMPTS_INFRACTIONS',
+    'REDACTION_STYLES',
+    'DOCUMENT_TEMPLATES',
+    'LEGAL_PHRASES',
+    'ANALYSIS_CONFIG',
+    'ERROR_MESSAGES',
+    'SUCCESS_MESSAGES',
+    'PRESCRIPTIONS',
+    'SANCTIONS_TYPES',
+    'DOCUMENT_CATEGORIES',
+    'JURIDICTIONS',
+    'RISK_LEVELS'
+]
