@@ -1,18 +1,24 @@
 # models/dataclasses.py
-"""Modèles de données pour l'application juridique - Version améliorée avec intégration Pappers/Societe.com"""
+"""Modèles de données pour l'application juridique - Version corrigée"""
 
-from __future__ import annotations  # Ajout pour résoudre le problème de forward reference
+from __future__ import annotations  # IMPORTANT: Pour résoudre les forward references
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Union, Tuple, Set
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Union, Tuple, Set, TYPE_CHECKING
 from enum import Enum
 import re
+
+# Imports conditionnels pour éviter les imports circulaires
+if TYPE_CHECKING:
+    from managers.jurisprudence_verifier import JurisprudenceVerifier
+    from managers.legal_search import LegalSearchManager
 
 # ========== ENUMS ==========
 
 class SourceJurisprudence(Enum):
     """Sources de jurisprudence disponibles"""
     LEGIFRANCE = "legifrance"
+    JUDILIBRE = "judilibre"
     DOCTRINE = "doctrine"
     DALLOZ = "dalloz"
     LEXIS = "lexis"
@@ -69,6 +75,7 @@ class TypeJuridiction(Enum):
     JURIDICTION_PROXIMITE = "Juridiction de proximité"
     JUGE_INSTRUCTION = "Juge d'instruction"
     PROCUREUR = "Procureur de la République"
+    TRIBUNAL = "Tribunal"  # Ajout pour compatibilité
     AUTRE = "Autre"
 
 class StatutProcedural(Enum):
@@ -195,7 +202,7 @@ class StyleRedaction(Enum):
     TECHNIQUE = "technique"
     SYNTHETIQUE = "synthétique"
     PEDAGOGIQUE = "pédagogique"
-    PERSONNALISE = "personnalisé"  # Nouveau : style appris des documents
+    PERSONNALISE = "personnalisé"
 
 class TypeAnalyse(Enum):
     """Types d'analyse juridique"""
@@ -337,14 +344,14 @@ class StyleLearningResult:
     documents_analyzed: int
     
     # Structure
-    paragraph_numbering_style: str  # "numeric", "roman", "alphabetic", "mixed"
-    paragraph_numbering_pattern: str  # Ex: "1.", "I.", "A.", "1.1."
-    average_paragraph_length: int
-    average_sentence_length: int
+    paragraph_numbering_style: str = ""  # "numeric", "roman", "alphabetic", "mixed"
+    paragraph_numbering_pattern: str = ""  # Ex: "1.", "I.", "A.", "1.1."
+    average_paragraph_length: int = 0
+    average_sentence_length: int = 0
     
     # Vocabulaire et ton
-    formality_score: float  # 0-1
-    technical_terms_frequency: float
+    formality_score: float = 0.5  # 0-1
+    technical_terms_frequency: float = 0.0
     common_phrases: List[str] = field(default_factory=list)
     transition_words: List[str] = field(default_factory=list)
     
@@ -544,7 +551,17 @@ class DocumentTemplate:
                 missing.append(field)
         return len(missing) == 0, missing
 
-# ========== DATACLASSES DE BASE ==========
+# Ajout pour compatibilité avec les modules
+@dataclass
+class LetterheadTemplate:
+    """Template pour papier en-tête"""
+    name: str
+    header_content: str
+    footer_content: str
+    logo_path: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.now)
+
+ # ========== DATACLASSES DE BASE ==========
 
 @dataclass
 class Document:
@@ -1086,7 +1103,7 @@ class CasJuridique:
             parties.extend([p for p in parties_list if p.statut_procedural == statut])
         return parties
     
-    def add_infraction(self, infraction: 'InfractionIdentifiee'):
+    def add_infraction(self, infraction: InfractionIdentifiee):
         """Ajoute une infraction identifiée"""
         self.infractions.append(infraction)
         self.updated_at = datetime.now()
@@ -1529,7 +1546,7 @@ class ElementProcedure:
     date_signification: Optional[datetime] = None
     huissier: Optional[str] = None
     source_legale: List[str] = field(default_factory=list)  # Articles CPC/CPP
-    pieces_jointes: List[PieceVersee] = field(default_factory=list)
+    pieces_jointes: List['PieceVersee'] = field(default_factory=list)
     source_references: List['SourceReference'] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     
@@ -1966,6 +1983,44 @@ class Entity:
             'created_at': self.created_at.isoformat()
         }
 
+# ========== TIMELINE EVENTS ==========
+
+@dataclass
+class TimelineEvent:
+    """Représente un événement dans une chronologie"""
+    date: datetime
+    description: str
+    actors: List[str] = field(default_factory=list)
+    location: Optional[str] = None
+    category: Optional[str] = None
+    importance: int = 5  # 1-10
+    source: Optional[str] = None
+    evidence: List[str] = field(default_factory=list)  # IDs des documents
+    related_events: List[str] = field(default_factory=list)  # IDs d'autres événements
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        # Valider l'importance
+        if self.importance < 1:
+            self.importance = 1
+        elif self.importance > 10:
+            self.importance = 10
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'date': self.date.isoformat(),
+            'description': self.description,
+            'actors': self.actors,
+            'location': self.location,
+            'category': self.category,
+            'importance': self.importance,
+            'source': self.source,
+            'evidence': self.evidence,
+            'related_events': self.related_events,
+            'metadata': self.metadata
+        }
+
 # ========== RECHERCHE UNIVERSELLE ==========
 
 @dataclass
@@ -2242,7 +2297,7 @@ class RedactionResult:
     word_count: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     jurisprudence_used: bool = False
-    jurisprudence_references: List[JurisprudenceReference] = field(default_factory=list)
+    jurisprudence_references: List['JurisprudenceReference'] = field(default_factory=list)
     responses: List[Dict[str, Any]] = field(default_factory=list)  # Réponses des différentes IA
     facts_used: List[FactWithSource] = field(default_factory=list)
     arguments: List[ArgumentStructure] = field(default_factory=list)
@@ -2359,22 +2414,97 @@ class RedactionResult:
             'style_learning_applied': self.style_learning_applied.style_name if self.style_learning_applied else None
         }
 
-# ========== JURISPRUDENCE (pour compatibilité) ==========
+# ========== JURISPRUDENCE ==========
 
 @dataclass
 class JurisprudenceReference:
     """Référence de jurisprudence"""
-    id: str
-    juridiction: str
-    date: datetime
     numero: str
-    sommaire: Optional[str] = None
+    date: datetime
+    juridiction: str
+    type_juridiction: Optional[TypeJuridiction] = None
+    formation: Optional[str] = None
+    titre: Optional[str] = None
+    resume: Optional[str] = None
+    url: Optional[str] = None
+    source: SourceJurisprudence = SourceJurisprudence.MANUAL
+    mots_cles: List[str] = field(default_factory=list)
+    articles_vises: List[str] = field(default_factory=list)
+    decisions_citees: List[str] = field(default_factory=list)
+    importance: int = 5  # 1-10
+    solution: Optional[str] = None  # cassation, rejet, etc.
+    portee: Optional[str] = None  # principe, espèce
+    commentaires: List[str] = field(default_factory=list)
+    texte_integral: Optional[str] = None
+    
+    # Ajout pour compatibilité avec jurisprudence.py
+    summary: Optional[str] = None
+    keywords: List[str] = field(default_factory=list)
+    
+    def __post_init__(self):
+        # Synchroniser summary et resume
+        if self.resume and not self.summary:
+            self.summary = self.resume
+        elif self.summary and not self.resume:
+            self.resume = self.summary
+        
+        # Synchroniser keywords et mots_cles
+        if self.mots_cles and not self.keywords:
+            self.keywords = self.mots_cles
+        elif self.keywords and not self.mots_cles:
+            self.mots_cles = self.keywords
     
     def get_citation(self) -> str:
         """Retourne la citation formatée"""
-        return f"{self.juridiction}, {self.date.strftime('%d %B %Y')}, n°{self.numero}"
+        parts = [self.juridiction]
+        if self.formation:
+            parts.append(self.formation)
+        parts.append(self.date.strftime('%d %B %Y'))
+        parts.append(f"n°{self.numero}")
+        return ", ".join(parts)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'numero': self.numero,
+            'date': self.date.isoformat(),
+            'juridiction': self.juridiction,
+            'type_juridiction': self.type_juridiction.value if self.type_juridiction else None,
+            'formation': self.formation,
+            'titre': self.titre,
+            'resume': self.resume,
+            'summary': self.summary,
+            'url': self.url,
+            'source': self.source.value,
+            'mots_cles': self.mots_cles,
+            'keywords': self.keywords,
+            'articles_vises': self.articles_vises,
+            'decisions_citees': self.decisions_citees,
+            'importance': self.importance,
+            'solution': self.solution,
+            'portee': self.portee,
+            'commentaires': self.commentaires,
+            'citation': self.get_citation()
+        }
 
-# ========== FONCTIONS HELPER AMÉLIORÉES ==========
+# Alias pour compatibilité
+JurisprudenceCase = JurisprudenceReference
+
+@dataclass
+class VerificationResult:
+    """Résultat de vérification de jurisprudence"""
+    is_valid: bool
+    confidence: float = 0.0
+    message: Optional[str] = None
+    reference: Optional[JurisprudenceReference] = None
+    source_verified: Optional[SourceJurisprudence] = None
+    suggestions: List[JurisprudenceReference] = field(default_factory=list)
+
+# ========== FONCTIONS HELPER ==========
+
+def get_all_juridictions() -> List[str]:
+    """Retourne toutes les juridictions disponibles"""
+    return [j.value for j in TypeJuridiction]
 
 def get_statut_by_phase_and_role(phase: PhaseProcedure, role: str) -> StatutProcedural:
     """Détermine le statut procédural approprié selon la phase et le rôle"""
@@ -2621,7 +2751,7 @@ def format_piece_with_source_and_footnote(piece: PieceSelectionnee,
     return ref
 
 def generate_bordereau_with_full_links(bordereau: BordereauPieces, 
-                                     source_tracker: 'SourceTracker') -> str:
+                                     source_tracker: SourceTracker) -> str:
     """Génère un bordereau avec tous les liens et footnotes"""
     # Utiliser la méthode export_to_markdown_with_links
     content = bordereau.export_to_markdown_with_links()
@@ -2943,7 +3073,7 @@ DEFAULT_STYLE_CONFIGS = {
     )
 }
 
-# ========== EXPORTS EXPLICITES ==========
+# ========== EXPORTS ==========
 __all__ = [
     # Documents
     'Document',
@@ -2995,9 +3125,13 @@ __all__ = [
     'StyleLearningResult',
     'StylePattern',
     'DocumentTemplate',
+    'LetterheadTemplate',
     
     # Entités
     'Entity',
+    
+    # Timeline
+    'TimelineEvent',
     
     # Recherche universelle
     'QueryAnalysis',
@@ -3008,8 +3142,11 @@ __all__ = [
     'AnalyseJuridique',  # Alias
     'RedactionResult',
     'JurisprudenceReference',
+    'JurisprudenceCase',  # Alias
+    'VerificationResult',
     
     # Fonctions helper
+    'get_all_juridictions',
     'get_statut_by_phase_and_role',
     'format_partie_designation_by_phase',
     'create_partie_from_name_with_lookup',
@@ -3028,4 +3165,4 @@ __all__ = [
     'DEFAULT_STYLE_CONFIGS',
 ]
 
-# ========== FIN DU MODULE ==========
+# ========== FIN DU MODULE ==========   
