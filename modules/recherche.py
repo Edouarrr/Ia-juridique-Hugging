@@ -19,7 +19,7 @@ except ImportError:
     SEARCH_SERVICE_AVAILABLE = False
 
 # Import des dataclasses et configurations
-from models.dataclasses import (
+from modules.dataclasses import (
     Document, DocumentJuridique, Partie, TypePartie, PhaseProcedure,
     TypeDocument, TypeAnalyse, QueryAnalysis, InfractionAffaires,
     PieceSelectionnee, BordereauPieces, collect_available_documents,
