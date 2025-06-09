@@ -1,4 +1,4 @@
-# models/dataclasses.py
+# modules/dataclasses.py
 """Modèles de données pour l'application juridique - Version réorganisée et améliorée"""
 
 from __future__ import annotations
