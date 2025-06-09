@@ -675,17 +675,17 @@ class DossierPenal:
     titre: str
     description: str
     date_ouverture: datetime
+    juridiction: str
     date_cloture: Optional[datetime] = None
-    statut: str = "ouvert"  # "ouvert", "en_cours", "suspendu", "clos"
-    juridiction: str = ""
     juge_instruction: Optional[str] = None
     procureur: Optional[str] = None
+    montant_prejudice: Optional[float] = None
+    statut: str = "ouvert"  # "ouvert", "en_cours", "suspendu", "clos"
     parties: Dict[str, List[str]] = field(default_factory=dict)  # {"demandeurs": [...], "defendeurs": [...]}
     infractions: List[str] = field(default_factory=list)
     pieces: List[str] = field(default_factory=list)  # IDs des pièces
     evenements: List[str] = field(default_factory=list)  # IDs des événements
     risques: List[str] = field(default_factory=list)  # IDs des risques
-    montant_prejudice: Optional[float] = None
     notes_internes: List[Dict[str, Any]] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -1500,88 +1500,7 @@ class LetterheadTemplate:
 
 # ========== DOCUMENTS JURIDIQUES (Refactoring de DocumentJuridique) ==========
 
-@dataclass
-class DocumentJuridique(Document):
-    """Document juridique spécialisé avec métadonnées supplémentaires"""
-    type_document: Optional[TypeDocument] = None
-    juridiction: Optional[str] = None
-    numero_affaire: Optional[str] = None
-    date_document: Optional[datetime] = None
-    parties: Dict[str, List[str]] = field(default_factory=dict)
-    mots_cles_juridiques: List[str] = field(default_factory=list)
-    articles_vises: List[str] = field(default_factory=list)
-    jurisprudences_citees: List[str] = field(default_factory=list)
-    resume_juridique: Optional[str] = None
-    decision: Optional[str] = None  # Pour les arrêts/jugements
-    montant: Optional[float] = None  # Si montant en jeu
-    avocat_redacteur: Optional[str] = None
-    confidentialite: str = "normal"  # normal, confidentiel, secret
-    
-    def __post_init__(self):
-        """Validation post-initialisation spécifique"""
-        super().__post_init__()
-        
-        # Ajouter le type de document aux métadonnées
-        if self.type_document:
-            self.metadata['type_document'] = self.type_document.value
-        
-        # Ajouter les infos juridiques aux métadonnées
-        self.metadata.update({
-            'juridiction': self.juridiction,
-            'numero_affaire': self.numero_affaire,
-            'date_document': self.date_document.isoformat() if self.date_document else None,
-            'confidentialite': self.confidentialite,
-            'has_decision': self.decision is not None,
-            'has_montant': self.montant is not None
-        })
-    
-    def extract_references_juridiques(self) -> Dict[str, List[str]]:
-        """Extrait toutes les références juridiques du document"""
-        references = {
-            'articles_codes': [],
-            'jurisprudences': [],
-            'textes_lois': []
-        }
-        
-        # Patterns pour extraire les références
-        patterns = {
-            'articles_codes': r'(?:article|art\.?)\s+(?:L\.?|R\.?|D\.?)?\s*\d+(?:-\d+)?(?:\s+(?:du|de la|des)\s+[^,\.\n]+)?',
-            'jurisprudences': r'(?:Cass\.?|C\.?\s*cass\.?|CA|CE|CC)\s+[^,\.\n]+\d{4}',
-            'textes_lois': r'(?:loi|décret|ordonnance|arrêté)\s+(?:n°\s*)?[\d-]+\s+du\s+\d+\s+\w+\s+\d{4}'
-        }
-        
-        for ref_type, pattern in patterns.items():
-            matches = re.findall(pattern, self.content, re.IGNORECASE)
-            references[ref_type] = list(set(matches))
-        
-        return references
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire avec champs spécifiques"""
-        base_dict = super().to_dict()
-        base_dict.update({
-            'type_document': self.type_document.value if self.type_document else None,
-            'juridiction': self.juridiction,
-            'numero_affaire': self.numero_affaire,
-            'date_document': self.date_document.isoformat() if self.date_document else None,
-            'parties': self.parties,
-            'mots_cles_juridiques': self.mots_cles_juridiques,
-            'articles_vises': self.articles_vises,
-            'jurisprudences_citees': self.jurisprudences_citees,
-            'resume_juridique': self.resume_juridique,
-            'decision': self.decision,
-            'montant': self.montant,
-            'avocat_redacteur': self.avocat_redacteur,
-            'confidentialite': self.confidentialite
-        })
-        return base_dict
-    
-    @classmethod
-    def from_document(cls, doc: Document, **kwargs) -> 'DocumentJuridique':
-        """Crée un DocumentJuridique à partir d'un Document simple"""
-        doc_dict = doc.to_dict()
-        doc_dict.update(kwargs)
-        return cls.from_dict(doc_dict)
+# Note: DocumentJuridique existe déjà plus haut, on ne le redéfinit pas
 
 # ========== INFRACTIONS ==========
 
@@ -1670,163 +1589,7 @@ class InfractionIdentifiee:
             'lieu_faits': self.lieu_faits
         }
 
-@dataclass
-class CasJuridique:
-    """Représente un cas juridique complet avec traçabilité"""
-    id: str
-    titre: str
-    description: str
-    type_affaire: str  # pénal, civil, commercial, etc.
-    phase_actuelle: PhaseProcedure = PhaseProcedure.ENQUETE_PRELIMINAIRE
-    parties: Dict[str, List[Partie]] = field(default_factory=dict)
-    juridiction: Optional[str] = None
-    date_debut: Optional[datetime] = None
-    date_fin: Optional[datetime] = None
-    statut: str = "en_cours"  # en_cours, clos, en_appel
-    documents: List[str] = field(default_factory=list)  # IDs des documents
-    infractions: List[InfractionIdentifiee] = field(default_factory=list)
-    montants_enjeu: Dict[str, float] = field(default_factory=dict)
-    avocats: Dict[str, str] = field(default_factory=dict)  # partie: avocat
-    decisions: List[Dict[str, Any]] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
-    
-    # Champs pour la traçabilité
-    chaine_procedure: Optional['ChaineProcedure'] = None
-    facts_etablis: List['FactWithSource'] = field(default_factory=list)
-    pieces_principales: List['PieceVersee'] = field(default_factory=list)
-    
-    # Références croisées
-    reference_principale: Optional[str] = None
-    references_associees: List[str] = field(default_factory=list)
-    
-    def __post_init__(self):
-        """Validation post-initialisation"""
-        if not self.id:
-            self.id = f"cas_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-        
-        # Initialiser les parties par défaut
-        if not self.parties:
-            self.parties = {
-                'demandeurs': [],
-                'defendeurs': [],
-                'temoins': [],
-                'experts': []
-            }
-        
-        # Initialiser la chaîne de procédure
-        if not self.chaine_procedure:
-            self.chaine_procedure = ChaineProcedure(
-                id=f"chaine_{self.id}",
-                affaire_id=self.id
-            )
-    
-    def update_phase(self, nouvelle_phase: PhaseProcedure):
-        """Met à jour la phase procédurale et ajuste les statuts des parties"""
-        self.phase_actuelle = nouvelle_phase
-        
-        # Mettre à jour le statut de toutes les parties
-        for parties_list in self.parties.values():
-            for partie in parties_list:
-                partie.phase_procedure = nouvelle_phase
-                partie._auto_determine_statut()
-        
-        self.updated_at = datetime.now()
-    
-    def add_partie(self, partie: Partie):
-        """Ajoute une partie au cas"""
-        # S'assurer que la partie a la bonne phase
-        partie.phase_procedure = self.phase_actuelle
-        partie._auto_determine_statut()
-        
-        type_key = partie.type_partie.value + 's'
-        if type_key not in self.parties:
-            self.parties[type_key] = []
-        
-        # Éviter les doublons
-        if not any(p.id == partie.id for p in self.parties[type_key]):
-            self.parties[type_key].append(partie)
-            self.updated_at = datetime.now()
-    
-    def get_parties_by_type(self, type_partie: TypePartie) -> List[Partie]:
-        """Retourne toutes les parties d'un type donné"""
-        type_key = type_partie.value + 's'
-        return self.parties.get(type_key, [])
-    
-    def get_parties_by_statut(self, statut: StatutProcedural) -> List[Partie]:
-        """Retourne toutes les parties ayant un statut procédural donné"""
-        parties = []
-        for parties_list in self.parties.values():
-            parties.extend([p for p in parties_list if p.statut_procedural == statut])
-        return parties
-    
-    def add_infraction(self, infraction: InfractionIdentifiee):
-        """Ajoute une infraction identifiée"""
-        self.infractions.append(infraction)
-        self.updated_at = datetime.now()
-    
-    def add_reference(self, reference: str):
-        """Ajoute une référence associée"""
-        ref_clean = reference.replace('@', '').strip()
-        if ref_clean and ref_clean not in self.references_associees:
-            self.references_associees.append(ref_clean)
-            self.updated_at = datetime.now()
-    
-    def matches_reference(self, reference: str) -> bool:
-        """Vérifie si l'affaire correspond à une référence"""
-        ref_clean = reference.replace('@', '').strip().lower()
-        
-        # Vérifier la référence principale
-        if self.reference_principale and ref_clean in self.reference_principale.lower():
-            return True
-        
-        # Vérifier les références associées
-        return any(ref_clean in ref.lower() for ref in self.references_associees)
-    
-    def get_all_parties_names(self) -> List[str]:
-        """Retourne tous les noms de parties"""
-        names = []
-        for parties_list in self.parties.values():
-            names.extend([p.nom for p in parties_list])
-        return names
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convertit en dictionnaire"""
-        base_dict = {
-            'id': self.id,
-            'titre': self.titre,
-            'description': self.description,
-            'type_affaire': self.type_affaire,
-            'phase_actuelle': self.phase_actuelle.value,
-            'parties': {k: [p.to_dict() for p in v] for k, v in self.parties.items()},
-            'juridiction': self.juridiction,
-            'date_debut': self.date_debut.isoformat() if self.date_debut else None,
-            'date_fin': self.date_fin.isoformat() if self.date_fin else None,
-            'statut': self.statut,
-            'documents': self.documents,
-            'infractions': [inf.to_dict() for inf in self.infractions],
-            'montants_enjeu': self.montants_enjeu,
-            'avocats': self.avocats,
-            'decisions': self.decisions,
-            'metadata': self.metadata,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'reference_principale': self.reference_principale,
-            'references_associees': self.references_associees
-        }
-        
-        # Ajouter les informations de traçabilité si disponibles
-        if self.chaine_procedure:
-            base_dict['regularite_procedure'] = self.chaine_procedure.verifier_regularite()
-        
-        if self.facts_etablis:
-            base_dict['nombre_facts_etablis'] = len(self.facts_etablis)
-        
-        if self.pieces_principales:
-            base_dict['nombre_pieces'] = len(self.pieces_principales)
-        
-        return base_dict
+# Suppression de la redéfinition de CasJuridique qui existe déjà
 
 # ========== PIÈCES ET PROCÉDURE (VERSION FUSIONNÉE) ==========
 
@@ -2848,8 +2611,7 @@ class AnalysisResult:
             'executive_summary': self.get_executive_summary()
         }
 
-# Alias pour compatibilité
-AnalyseJuridique = AnalysisResult
+# Note: AnalyseJuridique existe déjà plus haut
 
 @dataclass
 class RedactionResult:
@@ -3469,38 +3231,20 @@ def ensure_document_object(doc_data: Any) -> Document:
     """
     if isinstance(doc_data, Document):
         return doc_data
-    elif isinstance(doc_data, DocumentJuridique):
-        # Retourner tel quel si c'est déjà un DocumentJuridique
-        return doc_data
     elif isinstance(doc_data, dict):
-        # Vérifier si c'est un document juridique
-        if 'type_document' in doc_data or 'juridiction' in doc_data:
-            return DocumentJuridique(
-                id=doc_data.get('id', f"doc_{datetime.now().timestamp()}"),
-                title=doc_data.get('title', 'Sans titre'),
-                content=doc_data.get('content', ''),
-                source=doc_data.get('source', ''),
-                metadata=doc_data.get('metadata', {}),
-                type_document=doc_data.get('type_document'),
-                juridiction=doc_data.get('juridiction'),
-                numero_affaire=doc_data.get('numero_affaire'),
-                parties=doc_data.get('parties', {}),
-                mots_cles_juridiques=doc_data.get('mots_cles_juridiques', [])
-            )
-        else:
-            # Document simple
-            return Document(
-                id=doc_data.get('id', f"doc_{datetime.now().timestamp()}"),
-                title=doc_data.get('title', 'Sans titre'),
-                content=doc_data.get('content', ''),
-                source=doc_data.get('source', ''),
-                metadata=doc_data.get('metadata', {}),
-                created_at=doc_data.get('created_at', datetime.now()) if not isinstance(doc_data.get('created_at'), str) else datetime.fromisoformat(doc_data.get('created_at')),
-                tags=doc_data.get('tags', []),
-                category=doc_data.get('category'),
-                author=doc_data.get('author'),
-                reference=doc_data.get('reference')
-            )
+        # Document simple
+        return Document(
+            id=doc_data.get('id', f"doc_{datetime.now().timestamp()}"),
+            title=doc_data.get('title', 'Sans titre'),
+            content=doc_data.get('content', ''),
+            source=doc_data.get('source', ''),
+            metadata=doc_data.get('metadata', {}),
+            created_at=doc_data.get('created_at', datetime.now()) if not isinstance(doc_data.get('created_at'), str) else datetime.fromisoformat(doc_data.get('created_at')),
+            tags=doc_data.get('tags', []),
+            category=doc_data.get('category'),
+            author=doc_data.get('author'),
+            reference=doc_data.get('reference')
+        )
     else:
         raise ValueError(f"Type de document non supporté: {type(doc_data)}")
 
@@ -3557,6 +3301,27 @@ async def fetch_company_info_societe(company_name: str) -> Optional[InformationE
     
     return None
 
+# ========== FONCTION MANQUANTE : collect_available_documents ==========
+
+def collect_available_documents() -> List[Document]:
+    """
+    Collecte tous les documents disponibles dans le système
+    
+    Returns:
+        Liste des documents disponibles
+    """
+    # Cette fonction est un placeholder
+    # Dans une implémentation réelle, elle devrait :
+    # 1. Scanner le répertoire des documents
+    # 2. Charger depuis une base de données
+    # 3. Récupérer depuis un système de stockage
+    
+    documents = []
+    
+    # Pour l'instant, retourner une liste vide
+    # ou des documents de test si nécessaire
+    return documents
+
 # ========== EXPORTS ==========
 __all__ = [
     # Documents
@@ -3575,6 +3340,7 @@ __all__ = [
     'BordereauPieces',
     'ElementProcedure',
     'PieceVersee',
+    'PieceProcedure',
     'ChaineProcedure',
     
     # Traçabilité
@@ -3587,7 +3353,13 @@ __all__ = [
     'InfractionIdentifiee',
     'InfractionAffaires',
     
+    # Dossiers
+    'DossierPenal',
+    'EvenementTimeline',
+    
     # Enums
+    'DocumentType',
+    'RiskLevel',
     'SourceJurisprudence',
     'SourceEntreprise',
     'TypeDocument',
@@ -3610,6 +3382,7 @@ __all__ = [
     'StylePattern',
     'DocumentTemplate',
     'LetterheadTemplate',
+    'TemplateDocument',
     
     # Entités
     'Entity',
@@ -3629,6 +3402,18 @@ __all__ = [
     'JurisprudenceCase',  # Alias
     'VerificationResult',
     
+    # Gestion des risques
+    'Risque',
+    
+    # Notifications et sessions
+    'Notification',
+    'SessionUtilisateur',
+    
+    # Recherche
+    'Jurisprudence',
+    'ResultatRecherche',
+    'ConfigurationRecherche',
+    
     # Fonctions helper
     'get_all_juridictions',
     'get_statut_by_phase_and_role',
@@ -3644,4 +3429,5 @@ __all__ = [
     'ensure_document_object',
     'fetch_company_info_pappers',
     'fetch_company_info_societe',
+    'collect_available_documents',
 ]
