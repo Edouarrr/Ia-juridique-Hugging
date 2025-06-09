@@ -553,6 +553,61 @@ class SessionUtilisateur:
         return datetime.now() - self.date_debut
 
 @dataclass
+class Entity:
+    """Représente une entité extraite d'un texte (personne, organisation, lieu)"""
+    id: str
+    name: str
+    type: str  # "person", "organization", "location", "date", "amount"
+    text: str  # Texte original
+    start_pos: int  # Position de début dans le texte
+    end_pos: int  # Position de fin dans le texte
+    confidence: float = 1.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __str__(self):
+        return f"{self.type}: {self.name}"
+    
+    def __hash__(self):
+        return hash((self.name, self.type))
+
+@dataclass
+class QueryAnalysis:
+    """Analyse d'une requête utilisateur pour comprendre l'intention"""
+    original_query: str
+    intent: str  # "search", "redaction", "analysis", "jurisprudence", etc.
+    entities: Dict[str, Any]  # Entités extraites
+    confidence: float = 0.0
+    details: Dict[str, Any] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    def has_reference(self) -> bool:
+        """Vérifie si la requête contient une référence @"""
+        return bool(self.entities.get('references'))
+    
+    def get_document_type(self) -> Optional[str]:
+        """Retourne le type de document demandé si applicable"""
+        return self.details.get('document_type')
+    
+    def get_primary_intent(self) -> str:
+        """Retourne l'intention principale"""
+        return self.intent
+    
+    def is_high_confidence(self) -> bool:
+        """Vérifie si l'analyse est fiable"""
+        return self.confidence >= 0.7
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'query': self.original_query,
+            'intent': self.intent,
+            'entities': self.entities,
+            'confidence': self.confidence,
+            'details': self.details,
+            'timestamp': self.timestamp.isoformat()
+        }
+
+@dataclass
 class CasJuridique:
     """Représente un cas juridique spécifique"""
     id: str
