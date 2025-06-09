@@ -1,11 +1,28 @@
 # modules/advanced_features.py
-"""Fonctionnalités avancées de l'assistant juridique - À préserver"""
+"""Fonctionnalités avancées de l'assistant juridique - Version réorganisée"""
 
 import streamlit as st
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import re
 import asyncio
+
+# Import des dataclasses et configurations
+from models.dataclasses import (
+    Document, DocumentJuridique, Partie, TypePartie, PhaseProcedure,
+    InfractionIdentifiee, InfractionAffaires, PieceSelectionnee,
+    BordereauPieces, FactWithSource, SourceReference, ArgumentStructure,
+    StyleLearningResult, StyleConfig, QueryAnalysis,
+    collect_available_documents, group_documents_by_category,
+    determine_document_category, calculate_piece_relevance,
+    create_bordereau, create_bordereau_document, learn_document_style
+)
+
+from models.configurations import (
+    DEFAULT_STYLE_CONFIGS, BUILTIN_DOCUMENT_TEMPLATES,
+    DEFAULT_LETTERHEADS, FORMULES_JURIDIQUES,
+    ARGUMENTATION_PATTERNS, ANALYSIS_CONFIGS
+)
 
 # Managers avancés - Import conditionnel
 MANAGERS = {
@@ -37,7 +54,6 @@ try:
 except ImportError as e:
     print(f"Import StyleAnalyzer failed: {e}")
 
-# Import des FONCTIONS dynamic_generators (PAS une classe!)
 try:
     from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
     MANAGERS['dynamic_generators'] = True
@@ -62,120 +78,12 @@ try:
 except ImportError as e:
     print(f"Import MultiLLMManager failed: {e}")
 
-# Vérifier si au moins un manager est disponible
-HAS_MANAGERS = any(MANAGERS.values())
-
-# Ne pas afficher de message ici car ça peut interférer avec Streamlit
-
 # APIs - Import conditionnel
 try:
     from utils.api_utils import get_available_models, call_llm_api
     HAS_API_UTILS = True
 except ImportError:
     HAS_API_UTILS = False
-
-# ========================= CONFIGURATION =========================
-
-# Styles de rédaction
-REDACTION_STYLES = {
-    'formel': {
-        'name': 'Formel',
-        'description': 'Style juridique classique et solennel',
-        'tone': 'respectueux et distant',
-        'vocabulary': 'technique et précis'
-    },
-    'persuasif': {
-        'name': 'Persuasif',
-        'description': 'Style argumentatif et convaincant',
-        'tone': 'assertif et engagé',
-        'vocabulary': 'percutant et imagé'
-    },
-    'technique': {
-        'name': 'Technique',
-        'description': 'Style factuel et détaillé',
-        'tone': 'neutre et objectif',
-        'vocabulary': 'spécialisé et exhaustif'
-    },
-    'synthétique': {
-        'name': 'Synthétique',
-        'description': 'Style concis et efficace',
-        'tone': 'direct et clair',
-        'vocabulary': 'simple et précis'
-    },
-    'pédagogique': {
-        'name': 'Pédagogique',
-        'description': 'Style explicatif et accessible',
-        'tone': 'bienveillant et didactique',
-        'vocabulary': 'vulgarisé et illustré'
-    }
-}
-
-# Templates de documents prédéfinis
-DOCUMENT_TEMPLATES = {
-    'conclusions_defense': {
-        'name': 'Conclusions en défense',
-        'structure': [
-            'I. FAITS ET PROCÉDURE',
-            'II. DISCUSSION',
-            ' A. Sur la recevabilité',
-            ' B. Sur le fond',
-            ' 1. Sur l\'élément matériel',
-            ' 2. Sur l\'élément intentionnel',
-            ' 3. Sur le préjudice',
-            'III. PAR CES MOTIFS'
-        ],
-        'style': 'formel'
-    },
-    'plainte_simple': {
-        'name': 'Plainte simple',
-        'structure': [
-            'Objet : Plainte',
-            'EXPOSÉ DES FAITS',
-            'QUALIFICATION JURIDIQUE',
-            'PRÉJUDICES SUBIS',
-            'DEMANDES',
-            'PIÈCES JOINTES'
-        ],
-        'style': 'formel'
-    },
-    'plainte_avec_cpc': {
-        'name': 'Plainte avec constitution de partie civile',
-        'structure': [
-            'Objet : Plainte avec constitution de partie civile',
-            'EXPOSÉ DES FAITS',
-            'QUALIFICATION JURIDIQUE',
-            'PRÉJUDICES SUBIS',
-            'CONSTITUTION DE PARTIE CIVILE',
-            'ÉVALUATION DU PRÉJUDICE',
-            'DEMANDES',
-            'PIÈCES JOINTES'
-        ],
-        'style': 'formel'
-    },
-    'mise_en_demeure': {
-        'name': 'Mise en demeure',
-        'structure': [
-            'MISE EN DEMEURE',
-            'Rappel des faits',
-            'Obligations non respectées',
-            'Délai accordé',
-            'Conséquences du défaut',
-            'Réserves'
-        ],
-        'style': 'persuasif'
-    },
-    'note_synthese': {
-        'name': 'Note de synthèse',
-        'structure': [
-            'SYNTHÈSE EXÉCUTIVE',
-            'I. CONTEXTE',
-            'II. ANALYSE',
-            'III. RECOMMANDATIONS',
-            'IV. PLAN D\'ACTION'
-        ],
-        'style': 'synthétique'
-    }
-}
 
 # ========================= GÉNÉRATION AVANCÉE DE PLAINTES =========================
 
@@ -272,7 +180,7 @@ async def generate_exhaustive_cpc_plainte(analysis: Dict[str, Any]):
         
         # Enrichissement des parties si demandé
         enriched_parties = analysis['parties']
-        if enrich_parties and HAS_MANAGERS:
+        if enrich_parties and MANAGERS['company_info']:
             enriched_parties = await enrich_parties_info(analysis['parties'])
         
         # Générer le prompt détaillé
@@ -308,7 +216,7 @@ async def generate_exhaustive_cpc_plainte(analysis: Dict[str, Any]):
                 show_plainte_statistics(response)
                 
                 # Vérifier les jurisprudences si disponible
-                if HAS_MANAGERS:
+                if MANAGERS['jurisprudence_verifier']:
                     verify_jurisprudences_in_plainte(response)
                 
                 # Suggestions d'amélioration
@@ -375,7 +283,7 @@ async def generate_standard_plainte(analysis: Dict[str, Any]):
 async def enrich_parties_info(parties: List[str]) -> List[Dict[str, Any]]:
     """Enrichit les informations sur les parties"""
     
-    if not HAS_MANAGERS:
+    if not MANAGERS['company_info']:
         return [{'name': p} for p in parties]
     
     enriched = []
@@ -409,21 +317,26 @@ def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> 
     
     return f"""
 Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
+
 PARTIES MISES EN CAUSE :
 {parties_text}
+
 INFRACTIONS À DÉVELOPPER :
 {infractions_text}
+
 STRUCTURE IMPOSÉE :
 1. EN-TÊTE COMPLET
    - Destinataire (Doyen des juges d'instruction)
    - Plaignant (à compléter)
    - Objet détaillé
+
 2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
    - Contexte détaillé de l'affaire
    - Chronologie précise et complète
    - Description minutieuse de chaque fait
    - Liens entre les protagonistes
    - Montants et préjudices détaillés
+
 3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
    Pour chaque infraction :
    - Rappel complet des textes
@@ -431,16 +344,19 @@ STRUCTURE IMPOSÉE :
    - Application aux faits espèce par espèce
    - Jurisprudences pertinentes citées
    - Réfutation des arguments contraires
+
 4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
    - Préjudice financier chiffré
    - Préjudice moral développé
    - Préjudice d'image
    - Autres préjudices
+
 5. DEMANDES ET CONCLUSION (1000+ mots)
    - Constitution de partie civile motivée
    - Demandes d'actes précises
    - Mesures conservatoires
    - Provision sur dommages-intérêts
+
 CONSIGNES :
 - Style juridique soutenu et précis
 - Citations de jurisprudences récentes
@@ -464,12 +380,14 @@ def create_standard_plainte_prompt(parties: List[str], infractions: List[str],
 Rédigez une {plainte_type} concernant :
 - Parties : {parties_text}
 - Infractions : {infractions_text}
+
 Structure :
 1. En-tête et qualités
 2. Exposé des faits
 3. Discussion juridique
 4. Préjudices
 5. Demandes
+
 Consignes :
 - Style juridique professionnel
 - Argumentation structurée{jurisprudence_instruction}
@@ -503,7 +421,7 @@ def format_parties_for_prompt(parties: List[Any]) -> str:
 def verify_jurisprudences_in_plainte(content: str):
     """Vérifie les jurisprudences citées dans la plainte"""
     
-    if not HAS_MANAGERS:
+    if not MANAGERS['jurisprudence_verifier']:
         return
     
     with st.expander("🔍 Vérification des jurisprudences"):
@@ -548,7 +466,7 @@ def show_plainte_statistics(content: str):
             st.metric("Pages estimées", f"~{len(words) // 250}")
         
         # Analyse du style si disponible
-        if HAS_MANAGERS:
+        if MANAGERS['style_analyzer']:
             analyzer = StyleAnalyzer()
             style_score = analyzer.analyze_style(content)
             
@@ -586,6 +504,167 @@ def show_improvement_suggestions(content: str):
                 st.write(suggestion)
         else:
             st.success("✅ La plainte semble complète !")
+
+# ========================= GÉNÉRATION DE PLAINTES =========================
+
+def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[str]) -> str:
+    """Génère une plainte simple"""
+    
+    parties_text = '\n'.join([f"- {p}" for p in parties_defenderesses]) if parties_defenderesses else "- [À COMPLÉTER]"
+    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
+    
+    return f"""PLAINTE SIMPLE
+
+À l'attention de Monsieur le Procureur de la République
+Tribunal Judiciaire de [VILLE]
+
+[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
+OBJET : Plainte
+
+Monsieur le Procureur,
+
+Je soussigné(e) [NOM PRÉNOM]
+Demeurant [ADRESSE]
+
+Ai l'honneur de porter plainte contre :
+{parties_text}
+
+Pour les faits suivants :
+[EXPOSÉ DES FAITS]
+
+Ces faits sont susceptibles de recevoir les qualifications suivantes :
+{infractions_text}
+
+Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
+
+[SIGNATURE]
+
+Pièces jointes :
+- [LISTE DES PIÈCES]
+"""
+
+def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str], 
+                        demandeurs: List[str] = None, options: Dict = None) -> str:
+    """Génère une plainte avec constitution de partie civile"""
+    
+    parties_text = format_parties_list([{'name': p} for p in parties_defenderesses])
+    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
+    
+    return f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+
+Monsieur le Doyen des Juges d'Instruction
+Tribunal Judiciaire de [VILLE]
+[ADRESSE]
+
+[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
+OBJET : Plainte avec constitution de partie civile
+
+RÉFÉRENCES : [À COMPLÉTER]
+
+Monsieur le Doyen,
+
+Je soussigné(e) [NOM PRÉNOM]
+Né(e) le [DATE] à [LIEU]
+De nationalité française
+Profession : [PROFESSION]
+Demeurant : [ADRESSE COMPLÈTE]
+Téléphone : [TÉLÉPHONE]
+Email : [EMAIL]
+
+Ayant pour conseil : [SI APPLICABLE]
+Maître [NOM AVOCAT]
+Avocat au Barreau de [VILLE]
+[ADRESSE CABINET]
+
+Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
+
+{parties_text}
+
+Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
+
+I. EXPOSÉ DÉTAILLÉ DES FAITS
+
+[DÉVELOPPEMENT DÉTAILLÉ - À COMPLÉTER]
+
+II. DISCUSSION JURIDIQUE
+
+Les faits exposés ci-dessus caractérisent les infractions suivantes :
+{infractions_text}
+
+[ANALYSE JURIDIQUE DÉTAILLÉE - À COMPLÉTER]
+
+III. PRÉJUDICES SUBIS
+
+[DÉTAIL DES PRÉJUDICES - À COMPLÉTER]
+
+IV. CONSTITUTION DE PARTIE CIVILE
+
+Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
+
+Je sollicite :
+- La désignation d'un juge d'instruction
+- L'ouverture d'une information judiciaire
+- Tous actes d'instruction utiles à la manifestation de la vérité
+- La mise en examen des personnes mises en cause
+- Le renvoi devant la juridiction de jugement
+- La condamnation des prévenus
+- L'allocation de dommages-intérêts en réparation du préjudice subi
+
+V. PIÈCES JUSTIFICATIVES
+
+Vous trouverez ci-joint :
+[LISTE DÉTAILLÉE DES PIÈCES]
+
+Je verse la consignation fixée par vos soins.
+
+Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
+
+Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
+[SIGNATURE]
+"""
+
+# ========================= TEMPLATES DE FALLBACK =========================
+
+def generate_plainte_template(parties: List[Any], infractions: List[str]):
+    """Génère un template de plainte sans API"""
+    
+    template = generate_plainte_cpc(
+        parties_defenderesses=[p['name'] if isinstance(p, dict) else p for p in parties],
+        infractions=infractions
+    )
+    
+    st.session_state.generated_plainte = template
+    st.session_state.search_results = {
+        'type': 'plainte_template',
+        'content': template
+    }
+
+def format_parties_list(parties: List[Any]) -> str:
+    """Formate la liste des parties pour le template"""
+    
+    if not parties:
+        return "- [NOM DE LA PARTIE]\n  [FORME JURIDIQUE]\n  [SIÈGE SOCIAL]\n  [SIREN]"
+    
+    formatted = []
+    for party in parties:
+        if isinstance(party, dict):
+            formatted.append(f"- {party.get('name', '[NOM]')}")
+            if party.get('legal_form'):
+                formatted.append(f"  {party['legal_form']}")
+            if party.get('address'):
+                formatted.append(f"  {party['address']}")
+            if party.get('siren'):
+                formatted.append(f"  SIREN : {party['siren']}")
+        else:
+            formatted.append(f"- {party}")
+            formatted.append("  [FORME JURIDIQUE]")
+            formatted.append("  [SIÈGE SOCIAL]")
+            formatted.append("  [SIREN]")
+    
+    return '\n'.join(formatted)
 
 # ========================= COMPARAISON MULTI-IA =========================
 
@@ -639,84 +718,6 @@ async def compare_ai_generations(prompt: str, models: List[str] = None):
         if st.button("✅ Utiliser ce résultat"):
             st.session_state.generated_plainte = results[selected_model]
             st.success("Résultat sélectionné !")
-
-# ========================= TEMPLATES DE FALLBACK =========================
-
-def generate_plainte_template(parties: List[Any], infractions: List[str]):
-    """Génère un template de plainte sans API"""
-    
-    parties_text = format_parties_list(parties)
-    infractions_text = '\n'.join([f"- {inf}" for inf in infractions])
-    
-    template = f"""
-PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-Monsieur le Doyen des Juges d'Instruction
-Tribunal Judiciaire de [VILLE]
-[ADRESSE]
-[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-OBJET : Plainte avec constitution de partie civile
-Monsieur le Doyen,
-Je soussigné(e) [NOM PRÉNOM]
-Né(e) le [DATE] à [LIEU]
-De nationalité française
-Profession : [PROFESSION]
-Demeurant : [ADRESSE COMPLÈTE]
-Téléphone : [TÉLÉPHONE]
-Email : [EMAIL]
-Ai l'honneur de porter plainte avec constitution de partie civile contre :
-{parties_text}
-Pour les faits suivants :
-I. EXPOSÉ DES FAITS
-[DÉVELOPPER ICI L'EXPOSÉ DÉTAILLÉ DES FAITS EN SUIVANT UN ORDRE CHRONOLOGIQUE]
-II. DISCUSSION JURIDIQUE
-Les faits exposés ci-dessus sont susceptibles de recevoir les qualifications suivantes :
-{infractions_text}
-[DÉVELOPPER L'ANALYSE JURIDIQUE POUR CHAQUE INFRACTION]
-III. PRÉJUDICES
-Les agissements décrits m'ont causé un préjudice :
-- Matériel : [MONTANT] euros
-- Moral : [DESCRIPTION]
-IV. CONSTITUTION DE PARTIE CIVILE
-Je me constitue partie civile et demande :
-- La désignation d'un juge d'instruction
-- La condamnation des mis en cause
-- La réparation intégrale de mon préjudice
-Je verse la consignation fixée par Monsieur le Doyen.
-Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
-[SIGNATURE]
-Pièces jointes :
-- [LISTE DES PIÈCES]
-"""
-    
-    st.session_state.generated_plainte = template
-    st.session_state.search_results = {
-        'type': 'plainte_template',
-        'content': template
-    }
-
-def format_parties_list(parties: List[Any]) -> str:
-    """Formate la liste des parties pour le template"""
-    
-    if not parties:
-        return "- [NOM DE LA PARTIE]\n  [FORME JURIDIQUE]\n  [SIÈGE SOCIAL]\n  [SIREN]"
-    
-    formatted = []
-    for party in parties:
-        if isinstance(party, dict):
-            formatted.append(f"- {party.get('name', '[NOM]')}")
-            if party.get('legal_form'):
-                formatted.append(f"  {party['legal_form']}")
-            if party.get('address'):
-                formatted.append(f"  {party['address']}")
-            if party.get('siren'):
-                formatted.append(f"  SIREN : {party['siren']}")
-        else:
-            formatted.append(f"- {party}")
-            formatted.append("  [FORME JURIDIQUE]")
-            formatted.append("  [SIÈGE SOCIAL]")
-            formatted.append("  [SIREN]")
-    
-    return '\n'.join(formatted)
 
 # ========================= RECHERCHE JURIDIQUE AVANCÉE =========================
 
@@ -850,25 +851,6 @@ async def manage_documents_advanced(action: str, documents: List[Any] = None):
                     for analysis_type, data in analysis.items():
                         st.write(f"**{analysis_type}:**")
                         st.json(data)
-    
-    elif action == "classify":
-        st.markdown("### 🏷️ Classification automatique")
-        
-        if documents:
-            with st.spinner("Classification en cours..."):
-                classifications = await doc_manager.classify_documents(documents)
-                
-                # Afficher les classifications
-                df_data = []
-                for doc, classification in classifications.items():
-                    df_data.append({
-                        'Document': doc,
-                        'Type': classification.get('type', 'Inconnu'),
-                        'Confiance': f"{classification.get('confidence', 0)*100:.1f}%",
-                        'Tags': ', '.join(classification.get('tags', []))
-                    })
-                
-                st.dataframe(df_data)
 
 # ========================= COMPARAISON MULTI-LLM AMÉLIORÉE =========================
 
@@ -1060,266 +1042,8 @@ async def use_dynamic_generators(content_type: str, context: Dict[str, Any]):
                                     st.write(f"• {prompt}")
                 except Exception as e:
                     st.error(f"Erreur : {str(e)}")
-    
-    elif content_type == "conclusions":
-        # Templates pour conclusions
-        if st.button("Générer des modèles de conclusions"):
-            with st.spinner("Génération en cours..."):
-                try:
-                    templates = await generate_dynamic_templates('conclusions', context)
-                    
-                    st.success("✅ Modèles générés")
-                    selected_template = st.selectbox(
-                        "Choisir un modèle",
-                        list(templates.keys())
-                    )
-                    
-                    if selected_template:
-                        st.text_area(
-                            "Contenu",
-                            value=templates[selected_template],
-                            height=400
-                        )
-                        
-                        if st.button("💾 Utiliser ce modèle"):
-                            st.session_state.generated_content = templates[selected_template]
-                            st.success("Modèle sélectionné !")
-                except Exception as e:
-                    st.error(f"Erreur : {str(e)}")
-    
-    else:
-        # Génération générique
-        type_acte = st.text_input("Type d'acte juridique", value=content_type)
-        
-        if st.button("Générer des modèles"):
-            with st.spinner("Génération en cours..."):
-                try:
-                    templates = await generate_dynamic_templates(type_acte, context)
-                    
-                    for name, template in templates.items():
-                        with st.expander(name):
-                            st.text_area("", value=template, height=300)
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.download_button(
-                                    "📥 Télécharger",
-                                    template,
-                                    file_name=f"{name.replace(' ', '_')}.txt"
-                                )
-                            with col2:
-                                if st.button(f"Utiliser", key=f"use_{name}"):
-                                    st.session_state.generated_content = template
-                                    st.success("✅")
-                except Exception as e:
-                    st.error(f"Erreur : {str(e)}")
 
 # ========================= GESTION DES PIÈCES =========================
-
-def collect_available_documents(analysis: Any) -> List[Dict[str, Any]]:
-    """Collecte tous les documents disponibles"""
-    documents = []
-    
-    # Documents locaux
-    for doc_id, doc in st.session_state.get('azure_documents', {}).items():
-        if hasattr(doc, 'title'):
-            documents.append({
-                'id': doc_id,
-                'title': doc.title,
-                'content': doc.content,
-                'source': doc.source,
-                'metadata': getattr(doc, 'metadata', {})
-            })
-        else:
-            documents.append({
-                'id': doc_id,
-                'title': doc.get('title', 'Sans titre'),
-                'content': doc.get('content', ''),
-                'source': doc.get('source', 'Local'),
-                'metadata': doc.get('metadata', {})
-            })
-    
-    # Documents importés
-    for doc_id, doc in st.session_state.get('imported_documents', {}).items():
-        documents.append(doc)
-    
-    return documents
-
-def group_documents_by_category(documents: List[Dict]) -> Dict[str, List]:
-    """Groupe les documents par catégorie"""
-    from collections import defaultdict
-    categories = defaultdict(list)
-    
-    for doc in documents:
-        category = determine_document_category(doc)
-        categories[category].append(doc)
-    
-    return dict(categories)
-
-def determine_document_category(doc: Dict) -> str:
-    """Détermine la catégorie d'un document"""
-    title_lower = doc.get('title', '').lower()
-    content_lower = doc.get('content', '')[:500].lower()
-    
-    category_patterns = {
-        'Procédure': ['plainte', 'procès-verbal', 'audition', 'assignation'],
-        'Expertise': ['expertise', 'expert', 'rapport technique'],
-        'Comptabilité': ['bilan', 'compte', 'facture', 'comptable'],
-        'Contrats': ['contrat', 'convention', 'accord', 'avenant'],
-        'Correspondance': ['courrier', 'email', 'lettre', 'mail']
-    }
-    
-    for category, keywords in category_patterns.items():
-        if any(kw in title_lower or kw in content_lower for kw in keywords):
-            return category
-    
-    return 'Autres'
-
-def calculate_piece_relevance(doc: Dict, analysis: Any) -> float:
-    """Calcule la pertinence d'une pièce"""
-    score = 0.5
-    
-    # Augmenter le score si le document contient des mots-clés pertinents
-    if hasattr(analysis, 'subject_matter') and analysis.subject_matter:
-        if analysis.subject_matter.lower() in doc.get('content', '').lower():
-            score += 0.3
-    
-    if hasattr(analysis, 'reference') and analysis.reference:
-        if analysis.reference.lower() in doc.get('title', '').lower():
-            score += 0.2
-    
-    return min(score, 1.0)
-
-def create_bordereau(pieces: List[Any], analysis: Any) -> Dict:
-    """Crée un bordereau structuré"""
-    
-    bordereau = {
-        'header': f"""BORDEREAU DE COMMUNICATION DE PIÈCES
-AFFAIRE : {analysis.reference.upper() if hasattr(analysis, 'reference') and analysis.reference else 'N/A'}
-DATE : {datetime.now().strftime('%d/%m/%Y')}
-NOMBRE DE PIÈCES : {len(pieces)}
-""",
-        'pieces': pieces,
-        'footer': f"""
-Je certifie que les pièces communiquées sont conformes aux originaux.
-Fait le {datetime.now().strftime('%d/%m/%Y')}
-[Signature]""",
-        'metadata': {
-            'created_at': datetime.now(),
-            'piece_count': len(pieces),
-            'reference': analysis.reference if hasattr(analysis, 'reference') else None
-        }
-    }
-    
-    return bordereau
-
-def create_bordereau_document(bordereau: Dict) -> bytes:
-    """Crée le document du bordereau"""
-    content = bordereau['header'] + '\n'
-    content += "LISTE DES PIÈCES COMMUNIQUÉES :\n\n"
-    
-    for piece in bordereau['pieces']:
-        content += f"{piece.numero}. {piece.titre}\n"
-        if hasattr(piece, 'description') and piece.description:
-            content += f"   {piece.description}\n"
-        if hasattr(piece, 'categorie'):
-            content += f"   Catégorie: {piece.categorie}\n"
-        if hasattr(piece, 'date') and piece.date:
-            content += f"   Date: {piece.date.strftime('%d/%m/%Y') if hasattr(piece.date, 'strftime') else piece.date}\n"
-        content += "\n"
-    
-    content += bordereau['footer']
-    
-    return content.encode('utf-8')
-
-def export_piece_list(pieces: List[Any]):
-    """Exporte la liste des pièces"""
-    from collections import defaultdict
-    
-    content = "LISTE DES PIÈCES SÉLECTIONNÉES\n"
-    content += f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
-    content += f"Nombre de pièces : {len(pieces)}\n\n"
-    
-    # Grouper par catégorie
-    by_category = defaultdict(list)
-    for piece in pieces:
-        category = piece.categorie if hasattr(piece, 'categorie') else 'Non catégorisé'
-        by_category[category].append(piece)
-    
-    for category, cat_pieces in by_category.items():
-        content += f"\n{category.upper()} ({len(cat_pieces)} pièces)\n"
-        content += "-" * 50 + "\n"
-        
-        for piece in cat_pieces:
-            content += f"{piece.numero}. {piece.titre}\n"
-            if hasattr(piece, 'description') and piece.description:
-                content += f"   {piece.description}\n"
-            content += "\n"
-    
-    # Proposer le téléchargement
-    st.download_button(
-        "💾 Télécharger la liste",
-        content.encode('utf-8'),
-        f"liste_pieces_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-        "text/plain"
-    )
-
-async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
-    """Synthétise les pièces sélectionnées"""
-    
-    if not MANAGERS['multi_llm']:
-        return {'error': 'Module Multi-LLM non disponible'}
-    
-    try:
-        from managers.multi_llm_manager import MultiLLMManager
-        llm_manager = MultiLLMManager()
-        
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        # Construire le contexte
-        context = "PIÈCES À SYNTHÉTISER:\n\n"
-        
-        for piece in pieces[:20]:  # Limiter à 20 pièces
-            context += f"Pièce {piece.numero}: {piece.titre}\n"
-            if hasattr(piece, 'categorie'):
-                context += f"Catégorie: {piece.categorie}\n"
-            if hasattr(piece, 'description') and piece.description:
-                context += f"Description: {piece.description}\n"
-            context += "\n"
-        
-        # Prompt de synthèse
-        synthesis_prompt = f"""{context}
-Crée une synthèse structurée de ces pièces.
-La synthèse doit inclure:
-1. Vue d'ensemble des pièces
-2. Points clés par catégorie
-3. Chronologie si applicable
-4. Points d'attention juridiques
-5. Recommandations"""
-        
-        provider = list(llm_manager.clients.keys())[0]
-        response = llm_manager.query_single_llm(
-            provider,
-            synthesis_prompt,
-            "Tu es un expert en analyse de documents juridiques."
-        )
-        
-        if response['success']:
-            synthesis_result = {
-                'content': response['response'],
-                'piece_count': len(pieces),
-                'categories': list(set(p.categorie for p in pieces if hasattr(p, 'categorie'))),
-                'timestamp': datetime.now()
-            }
-            st.session_state.synthesis_result = synthesis_result
-            return synthesis_result
-        else:
-            return {'error': 'Échec de la synthèse'}
-            
-    except Exception as e:
-        return {'error': f'Erreur synthèse: {str(e)}'}
-
-# ========================= INTERFACES SPÉCIFIQUES =========================
 
 def show_piece_selection_advanced(analysis: Any):
     """Interface avancée de sélection de pièces"""
@@ -1417,13 +1141,14 @@ def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
     # Préparer les pièces pour le bordereau
     pieces = []
     for idx, doc in enumerate(documents, 1):
-        piece = type('Piece', (), {
-            'numero': idx,
-            'titre': doc.get('title', 'Sans titre'),
-            'description': doc.get('metadata', {}).get('description', ''),
-            'categorie': determine_document_category(doc),
-            'date': doc.get('metadata', {}).get('date', '')
-        })()
+        piece = PieceSelectionnee(
+            numero=idx,
+            titre=doc.get('title', 'Sans titre'),
+            description=doc.get('metadata', {}).get('description', ''),
+            categorie=determine_document_category(doc),
+            date=doc.get('metadata', {}).get('date'),
+            pertinence=calculate_piece_relevance(doc, analysis)
+        )
         pieces.append(piece)
     
     # Créer le bordereau
@@ -1432,10 +1157,8 @@ def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
     # Afficher le bordereau
     st.text_area(
         "Aperçu du bordereau",
-        value=bordereau['header'] + '\n'.join([
-            f"{p.numero}. {p.titre}" for p in pieces[:5]
-        ]) + f"\n... et {len(pieces) - 5} autres pièces" if len(pieces) > 5 else "",
-        height=200
+        value=bordereau.export_to_text()[:1000] + "...",
+        height=300
     )
     
     # Options d'export
@@ -1444,32 +1167,126 @@ def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
     with col1:
         format_export = st.selectbox(
             "Format d'export",
-            ["PDF", "Word", "Texte"]
+            ["Texte", "Markdown", "PDF", "Word"]
         )
     
     with col2:
         if st.button("📥 Télécharger le bordereau"):
-            bordereau_doc = create_bordereau_document(bordereau)
+            if format_export == "Texte":
+                content = bordereau.export_to_text()
+            elif format_export == "Markdown":
+                content = bordereau.export_to_markdown_with_links()
+            else:
+                content = bordereau.export_to_text()  # Fallback
+            
             st.download_button(
                 "💾 Télécharger",
-                bordereau_doc,
-                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                "text/plain"
+                content.encode('utf-8'),
+                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'txt' if format_export == 'Texte' else 'md'}",
+                "text/plain" if format_export == "Texte" else "text/markdown"
             )
     
     # Statistiques
     st.markdown("#### 📊 Statistiques")
+    summary = bordereau.generate_summary()
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Total pièces", len(pieces))
+        st.metric("Total pièces", summary['total_pieces'])
     
     with col2:
-        categories = set(p.categorie for p in pieces)
-        st.metric("Catégories", len(categories))
+        st.metric("Catégories", len(summary['pieces_by_category']))
     
     with col3:
-        st.metric("Pages estimées", sum(3 for p in pieces))  # Estimation
+        st.metric("Sources", summary['sources_count'])
+
+def export_piece_list(pieces: List[Any]):
+    """Exporte la liste des pièces"""
+    content = "LISTE DES PIÈCES SÉLECTIONNÉES\n"
+    content += f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    content += f"Nombre de pièces : {len(pieces)}\n\n"
+    
+    # Grouper par catégorie
+    from collections import defaultdict
+    by_category = defaultdict(list)
+    for piece in pieces:
+        category = piece.get('category', 'Non catégorisé')
+        by_category[category].append(piece)
+    
+    for category, cat_pieces in by_category.items():
+        content += f"\n{category.upper()} ({len(cat_pieces)} pièces)\n"
+        content += "-" * 50 + "\n"
+        
+        for i, piece in enumerate(cat_pieces, 1):
+            content += f"{i}. {piece.get('title', 'Sans titre')}\n"
+            if piece.get('metadata', {}).get('date'):
+                content += f"   Date: {piece['metadata']['date']}\n"
+            content += "\n"
+    
+    # Proposer le téléchargement
+    st.download_button(
+        "💾 Télécharger la liste",
+        content.encode('utf-8'),
+        f"liste_pieces_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain"
+    )
+
+async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
+    """Synthétise les pièces sélectionnées"""
+    
+    if not MANAGERS['multi_llm']:
+        return {'error': 'Module Multi-LLM non disponible'}
+    
+    try:
+        from managers.multi_llm_manager import MultiLLMManager
+        llm_manager = MultiLLMManager()
+        
+        if not llm_manager.clients:
+            return {'error': 'Aucune IA disponible'}
+        
+        # Construire le contexte
+        context = "PIÈCES À SYNTHÉTISER:\n\n"
+        
+        for i, piece in enumerate(pieces[:20], 1):  # Limiter à 20 pièces
+            context += f"Pièce {i}: {piece.get('title', 'Sans titre')}\n"
+            if piece.get('category'):
+                context += f"Catégorie: {piece['category']}\n"
+            if piece.get('content'):
+                context += f"Extrait: {piece['content'][:200]}...\n"
+            context += "\n"
+        
+        # Prompt de synthèse
+        synthesis_prompt = f"""{context}
+Crée une synthèse structurée de ces pièces.
+La synthèse doit inclure:
+1. Vue d'ensemble des pièces
+2. Points clés par catégorie
+3. Chronologie si applicable
+4. Points d'attention juridiques
+5. Recommandations"""
+        
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            synthesis_prompt,
+            "Tu es un expert en analyse de documents juridiques."
+        )
+        
+        if response['success']:
+            synthesis_result = {
+                'content': response['response'],
+                'piece_count': len(pieces),
+                'categories': list(set(p.get('category', 'Autre') for p in pieces)),
+                'timestamp': datetime.now()
+            }
+            st.session_state.synthesis_result = synthesis_result
+            return synthesis_result
+        else:
+            return {'error': 'Échec de la synthèse'}
+            
+    except Exception as e:
+        return {'error': f'Erreur synthèse: {str(e)}'}
 
 # ========================= STATISTIQUES ET UTILS =========================
 
@@ -1541,7 +1358,8 @@ def save_current_work() -> Dict:
         'universal_query', 'last_universal_query', 
         'redaction_result', 'ai_analysis_results',
         'search_results', 'selected_pieces',
-        'synthesis_result', 'timeline_result'
+        'synthesis_result', 'timeline_result',
+        'generated_plainte'
     ]
     
     for key in session_keys:
@@ -1608,7 +1426,15 @@ async def show_work_statistics():
     with st.expander("📈 Statistiques détaillées"):
         # Documents par catégorie
         if st.session_state.get('azure_documents'):
-            all_docs = collect_available_documents(None)
+            all_docs = []
+            for doc_id, doc in st.session_state.azure_documents.items():
+                all_docs.append({
+                    'id': doc_id,
+                    'title': doc.title if hasattr(doc, 'title') else doc.get('title', ''),
+                    'content': doc.content if hasattr(doc, 'content') else doc.get('content', ''),
+                    'source': doc.source if hasattr(doc, 'source') else doc.get('source', '')
+                })
+            
             categories = group_documents_by_category(all_docs)
             
             st.write("**Documents par catégorie:**")
@@ -1623,7 +1449,7 @@ async def show_work_statistics():
 
 # ========================= TRAITEMENT DES PLAINTES COMPLET =========================
 
-async def process_plainte_request(query: str, analysis: Any):
+async def process_plainte_request(query: str, analysis: QueryAnalysis):
     """Traite une demande de plainte avec toutes les options"""
     
     st.markdown("### 📋 Configuration de la plainte")
@@ -1725,214 +1551,6 @@ async def process_plainte_request(query: str, analysis: Any):
         # Générer
         await generate_advanced_plainte(query)
 
-# ========================= GÉNÉRATION DE PLAINTES =========================
-
-def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[str]) -> str:
-    """Génère une plainte simple"""
-    
-    parties_text = '\n'.join([f"- {p}" for p in parties_defenderesses]) if parties_defenderesses else "- [À COMPLÉTER]"
-    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
-    
-    return f"""PLAINTE SIMPLE
-
-À l'attention de Monsieur le Procureur de la République
-Tribunal Judiciaire de [VILLE]
-
-[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
-OBJET : Plainte
-
-Monsieur le Procureur,
-
-Je soussigné(e) [NOM PRÉNOM]
-Demeurant [ADRESSE]
-Ai l'honneur de porter plainte contre :
-
-{parties_text}
-
-Pour les faits suivants :
-[EXPOSÉ DES FAITS]
-
-Ces faits sont susceptibles de recevoir les qualifications suivantes :
-{infractions_text}
-
-Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
-
-[SIGNATURE]
-
-Pièces jointes :
-- [LISTE DES PIÈCES]
-"""
-
-def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str], 
-                        demandeurs: List[str] = None, options: Dict = None) -> str:
-    """Génère une plainte avec constitution de partie civile (8000+ mots)"""
-    
-    # Cette fonction devrait idéalement appeler l'API pour générer 8000+ mots
-    # Ici, on fournit un template étendu
-    
-    parties_text = format_parties_list([{'name': p} for p in parties_defenderesses])
-    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
-    
-    template = f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
-Monsieur le Doyen des Juges d'Instruction
-Tribunal Judiciaire de [VILLE]
-[ADRESSE]
-
-[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
-OBJET : Plainte avec constitution de partie civile
-RÉFÉRENCES : [À COMPLÉTER]
-
-Monsieur le Doyen,
-
-Je soussigné(e) [NOM PRÉNOM]
-Né(e) le [DATE] à [LIEU]
-De nationalité française
-Profession : [PROFESSION]
-Demeurant : [ADRESSE COMPLÈTE]
-Téléphone : [TÉLÉPHONE]
-Email : [EMAIL]
-
-Ayant pour conseil : [SI APPLICABLE]
-Maître [NOM AVOCAT]
-Avocat au Barreau de [VILLE]
-[ADRESSE CABINET]
-
-Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
-
-{parties_text}
-
-Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
-
-I. EXPOSÉ DÉTAILLÉ DES FAITS
-
-A. CONTEXTE GÉNÉRAL DE L'AFFAIRE
-
-[DÉVELOPPEMENT DÉTAILLÉ DU CONTEXTE - 500+ mots]
-
-B. CHRONOLOGIE PRÉCISE DES ÉVÉNEMENTS
-
-[DÉVELOPPEMENT CHRONOLOGIQUE DÉTAILLÉ - 1000+ mots]
-
-C. DESCRIPTION DES MANŒUVRES FRAUDULEUSES
-
-[DESCRIPTION DÉTAILLÉE DES ACTES FRAUDULEUX - 1000+ mots]
-
-D. ANALYSE DES FLUX FINANCIERS
-
-[ANALYSE DÉTAILLÉE DES MOUVEMENTS FINANCIERS - 500+ mots]
-
-II. DISCUSSION JURIDIQUE APPROFONDIE
-
-A. QUALIFICATION JURIDIQUE DES FAITS
-
-Les faits exposés ci-dessus caractérisent les infractions suivantes :
-
-{infractions_text}
-
-B. ANALYSE DÉTAILLÉE DES ÉLÉMENTS CONSTITUTIFS
-
-1. CONCERNANT L'ABUS DE BIENS SOCIAUX
-
-a) L'élément matériel
-[DÉVELOPPEMENT JURIDIQUE - 500+ mots]
-
-b) L'élément intentionnel
-[DÉVELOPPEMENT JURIDIQUE - 500+ mots]
-
-c) Le préjudice causé à la société
-[DÉVELOPPEMENT - 300+ mots]
-
-2. CONCERNANT L'ESCROQUERIE
-
-a) Les manœuvres frauduleuses
-[DÉVELOPPEMENT - 500+ mots]
-
-b) La remise de fonds
-[DÉVELOPPEMENT - 300+ mots]
-
-c) Le préjudice
-[DÉVELOPPEMENT - 300+ mots]
-
-C. JURISPRUDENCE APPLICABLE
-
-[CITATIONS ET ANALYSE DE JURISPRUDENCES PERTINENTES - 1000+ mots]
-
-III. PRÉJUDICES SUBIS
-
-A. PRÉJUDICE FINANCIER DIRECT
-
-[DÉTAIL ET CHIFFRAGE - 500+ mots]
-
-B. PRÉJUDICE MORAL
-
-[DESCRIPTION DÉTAILLÉE - 300+ mots]
-
-C. PRÉJUDICE D'IMAGE ET DE RÉPUTATION
-
-[DÉVELOPPEMENT - 300+ mots]
-
-D. AUTRES PRÉJUDICES
-
-[SI APPLICABLE - 200+ mots]
-
-IV. CONSTITUTION DE PARTIE CIVILE
-
-Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
-
-Je sollicite :
-- La désignation d'un juge d'instruction
-- L'ouverture d'une information judiciaire
-- Tous actes d'instruction utiles à la manifestation de la vérité
-- La mise en examen des personnes mises en cause
-- Le renvoi devant la juridiction de jugement
-- La condamnation des prévenus
-- L'allocation de dommages-intérêts en réparation du préjudice subi
-
-V. DEMANDES D'ACTES D'INSTRUCTION
-
-Je sollicite expressément :
-- L'audition des mis en cause
-- L'audition des témoins dont la liste sera communiquée
-- La saisie de tous documents comptables
-- Les perquisitions nécessaires
-- L'expertise comptable et financière
-- Le placement sous contrôle judiciaire des mis en cause
-
-VI. PIÈCES JUSTIFICATIVES
-
-Vous trouverez ci-joint :
-[LISTE DÉTAILLÉE DES PIÈCES]
-
-Je verse la consignation fixée par vos soins.
-
-Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
-
-Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
-[SIGNATURE]
-"""
-    
-    return template
-
-# ========================= UTILS =========================
-
-def apply_style_to_text(text: str, style: str) -> str:
-    """Applique un style de rédaction à un texte"""
-    
-    if style not in REDACTION_STYLES:
-        return text
-    
-    style_config = REDACTION_STYLES[style]
-    
-    # Ici on pourrait appliquer des transformations selon le style
-    # Pour l'instant, on retourne le texte tel quel
-    # Dans une version complète, on utiliserait l'IA pour reformuler selon le style
-    
-    return text
-
 # ========================= EXPORT DES NOUVELLES FONCTIONS =========================
 
 __all__ = [
@@ -1944,6 +1562,7 @@ __all__ = [
     'show_improvement_suggestions',
     'generate_plainte_simple',
     'generate_plainte_cpc',
+    'enrich_parties_info',
     
     # Recherche et analyse
     'perform_legal_search',
@@ -1952,26 +1571,17 @@ __all__ = [
     'use_dynamic_generators',
     
     # Gestion des pièces
-    'collect_available_documents',
-    'group_documents_by_category',
-    'determine_document_category',
-    'calculate_piece_relevance',
-    'create_bordereau',
-    'create_bordereau_document',
-    'export_piece_list',
-    'synthesize_selected_pieces',
     'show_piece_selection_advanced',
     'show_bordereau_interface_advanced',
+    'export_piece_list',
+    'synthesize_selected_pieces',
     
     # Statistiques et utils
     'show_document_statistics',
     'save_current_work',
     'show_work_statistics',
     'process_plainte_request',
-    'apply_style_to_text',
     
     # Configuration
-    'REDACTION_STYLES',
-    'DOCUMENT_TEMPLATES',
     'MANAGERS'
 ]
