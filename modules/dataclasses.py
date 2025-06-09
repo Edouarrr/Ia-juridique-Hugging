@@ -237,6 +237,26 @@ class TypePartie(Enum):
     PREVENU = "prévenu"
     ACCUSE = "accusé"
 
+# ========== CLASSE JURISPRUDENCE ==========
+
+@dataclass
+class Jurisprudence:
+    """Représente une décision de jurisprudence"""
+    id: str
+    titre: str
+    juridiction: str
+    date_decision: datetime
+    numero: str
+    resume: str
+    texte_integral: Optional[str] = None
+    mots_cles: List[str] = field(default_factory=list)
+    articles_cites: List[str] = field(default_factory=list)
+    url_source: Optional[str] = None
+    pertinence: float = 0.0
+    
+    def __str__(self):
+        return f"{self.juridiction} - {self.numero} ({self.date_decision.strftime('%d/%m/%Y')})"
+        
 # ========== INFORMATIONS ENTREPRISE ==========
 
 @dataclass
