@@ -27,6 +27,23 @@ class DocumentType(Enum):
     RAPPORT = "rapport"
     AUTRE = "autre"
 
+class RiskLevel(Enum):
+    """Niveaux de risque"""
+    FAIBLE = "faible"
+    MOYEN = "moyen"
+    ELEVE = "élevé"
+    CRITIQUE = "critique"
+    
+    def to_int(self) -> int:
+        """Convertit le niveau en valeur numérique"""
+        mapping = {
+            self.FAIBLE: 1,
+            self.MOYEN: 2,
+            self.ELEVE: 3,
+            self.CRITIQUE: 4
+        }
+        return mapping.get(self, 2)
+
 class SourceJurisprudence(Enum):
     """Sources de jurisprudence disponibles"""
     LEGIFRANCE = "legifrance"
@@ -237,7 +254,74 @@ class TypePartie(Enum):
     PREVENU = "prévenu"
     ACCUSE = "accusé"
 
-# ========== CLASSE JURIDIQUES ==========
+# ========== CLASSES JURIDIQUES ==========
+
+# --- Documents et Pièces ---
+
+@dataclass
+class Document:
+    """Représente un document dans le système"""
+    id: str
+    titre: str
+    contenu: str
+    type_document: DocumentType
+    date_creation: datetime = field(default_factory=datetime.now)
+    date_modification: Optional[datetime] = None
+    auteur: Optional[str] = None
+    taille: int = 0
+    format: str = "txt"
+    tags: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    confidentiel: bool = False
+    version: int = 1
+    
+    def __str__(self):
+        return f"{self.type_document.value}: {self.titre}"
+
+@dataclass  
+class PieceProcedure:
+    """Représente une pièce de procédure dans un dossier"""
+    id: str
+    nom: str
+    type_piece: str
+    date_creation: datetime
+    description: Optional[str] = None
+    contenu: Optional[str] = None
+    numero_ordre: Optional[int] = None
+    confidentiel: bool = False
+    tags: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def __str__(self):
+        return f"Pièce {self.numero_ordre}: {self.nom}"
+
+@dataclass
+class TemplateDocument:
+    """Template de document juridique réutilisable"""
+    id: str
+    nom: str
+    type_document: DocumentType
+    description: str
+    contenu_template: str  # Contenu avec variables {{variable}}
+    variables_requises: List[str] = field(default_factory=list)
+    variables_optionnelles: List[str] = field(default_factory=list)
+    categorie: str = "général"
+    tags: List[str] = field(default_factory=list)
+    date_creation: datetime = field(default_factory=datetime.now)
+    date_modification: Optional[datetime] = None
+    auteur: str = "système"
+    version: int = 1
+    actif: bool = True
+    exemples_utilisation: List[Dict[str, str]] = field(default_factory=list)
+    
+    def generer_document(self, variables: Dict[str, str]) -> str:
+        """Génère un document à partir du template"""
+        contenu = self.contenu_template
+        for var, valeur in variables.items():
+            contenu = contenu.replace(f"{{{{{var}}}}}", str(valeur))
+        return contenu
+
+# --- Jurisprudence et Recherche ---
 
 @dataclass
 class Jurisprudence:
@@ -257,22 +341,57 @@ class Jurisprudence:
     def __str__(self):
         return f"{self.juridiction} - {self.numero} ({self.date_decision.strftime('%d/%m/%Y')})"
 
-@dataclass  
-class PieceProcedure:
-    """Représente une pièce de procédure dans un dossier"""
+@dataclass
+class ResultatRecherche:
+    """Résultat d'une recherche juridique"""
     id: str
-    nom: str
-    type_piece: str
-    date_creation: datetime
-    description: Optional[str] = None
-    contenu: Optional[str] = None
-    numero_ordre: Optional[int] = None
-    confidentiel: bool = False
-    tags: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    requete: str
+    date_recherche: datetime
+    nombre_resultats: int
+    resultats: List[Dict[str, Any]] = field(default_factory=list)
+    filtres_appliques: Dict[str, Any] = field(default_factory=dict)
+    temps_recherche_ms: int = 0
+    sources: List[str] = field(default_factory=list)
+    pertinence_globale: float = 0.0
+    suggestions: List[str] = field(default_factory=list)
     
-    def __str__(self):
-        return f"Pièce {self.numero_ordre}: {self.nom}"
+    def obtenir_top_resultats(self, n: int = 10) -> List[Dict[str, Any]]:
+        """Retourne les n meilleurs résultats"""
+        return sorted(self.resultats, 
+                     key=lambda x: x.get('score', 0), 
+                     reverse=True)[:n]
+
+@dataclass
+class ConfigurationRecherche:
+    """Configuration pour les recherches juridiques"""
+    id: str
+    nom_configuration: str
+    description: str
+    sources_activees: List[str] = field(default_factory=list)
+    filtres_par_defaut: Dict[str, Any] = field(default_factory=dict)
+    taille_resultats: int = 20
+    inclure_archives: bool = False
+    recherche_floue: bool = True
+    seuil_pertinence: float = 0.5
+    langues: List[str] = field(default_factory=lambda: ["fr"])
+    tri_par: str = "pertinence"  # "pertinence", "date", "source"
+    ordre_tri: str = "desc"  # "asc", "desc"
+    highlight: bool = True
+    agreger_resultats: bool = False
+    exclure_sources: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit la configuration en dictionnaire"""
+        return {
+            'sources': self.sources_activees,
+            'filtres': self.filtres_par_defaut,
+            'size': self.taille_resultats,
+            'fuzzy': self.recherche_floue,
+            'threshold': self.seuil_pertinence,
+            'sort': f"{self.tri_par}:{self.ordre_tri}"
+        }
+
+# --- Gestion des Risques et Analyses ---
 
 @dataclass
 class Risque:
@@ -300,6 +419,138 @@ class Risque:
         p = probabilite_scores.get(self.probabilite, 2)
         
         return g * p
+
+@dataclass
+class AnalyseJuridique:
+    """Analyse juridique d'un document ou d'une situation"""
+    id: str
+    titre: str
+    date_analyse: datetime
+    type_analyse: str  # "risques", "conformite", "strategie", "jurisprudence"
+    objet_analyse: str  # ID du document/dossier analysé
+    contenu_analyse: str
+    points_cles: List[str] = field(default_factory=list)
+    recommandations: List[str] = field(default_factory=list)
+    risques_identifies: List[str] = field(default_factory=list)
+    opportunites: List[str] = field(default_factory=list)
+    references_juridiques: List[str] = field(default_factory=list)
+    niveau_confiance: float = 0.0  # 0 à 1
+    auteur: str = "IA"
+    validee_par: Optional[str] = None
+    statut: str = "brouillon"  # "brouillon", "finalisee", "validee"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+# --- Dossiers et Timeline ---
+
+@dataclass
+class EvenementTimeline:
+    """Représente un événement dans la timeline d'un dossier"""
+    id: str
+    titre: str
+    description: str
+    date_evenement: datetime
+    type_evenement: str  # "audience", "depot", "decision", "acte", "autre"
+    dossier_id: str
+    importance: str = "normale"  # "faible", "normale", "haute", "critique"
+    documents_lies: List[str] = field(default_factory=list)
+    personnes_impliquees: List[str] = field(default_factory=list)
+    lieu: Optional[str] = None
+    duree_minutes: Optional[int] = None
+    statut: str = "realise"  # "prevu", "realise", "annule", "reporte"
+    rappels: List[datetime] = field(default_factory=list)
+    notes: Optional[str] = None
+    
+    def est_futur(self) -> bool:
+        return self.date_evenement > datetime.now()
+
+@dataclass
+class DossierPenal:
+    """Représente un dossier pénal complet"""
+    id: str
+    numero_dossier: str
+    titre: str
+    description: str
+    date_ouverture: datetime
+    date_cloture: Optional[datetime] = None
+    statut: str = "ouvert"  # "ouvert", "en_cours", "suspendu", "clos"
+    juridiction: str = ""
+    juge_instruction: Optional[str] = None
+    procureur: Optional[str] = None
+    parties: Dict[str, List[str]] = field(default_factory=dict)  # {"demandeurs": [...], "defendeurs": [...]}
+    infractions: List[str] = field(default_factory=list)
+    pieces: List[str] = field(default_factory=list)  # IDs des pièces
+    evenements: List[str] = field(default_factory=list)  # IDs des événements
+    risques: List[str] = field(default_factory=list)  # IDs des risques
+    montant_prejudice: Optional[float] = None
+    notes_internes: List[Dict[str, Any]] = field(default_factory=list)
+    tags: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def ajouter_partie(self, role: str, nom: str):
+        if role not in self.parties:
+            self.parties[role] = []
+        self.parties[role].append(nom)
+
+# --- Système et Notifications ---
+
+@dataclass
+class Notification:
+    """Notification système pour l'utilisateur"""
+    id: str
+    titre: str
+    message: str
+    type_notification: str  # "info", "warning", "error", "success"
+    date_creation: datetime = field(default_factory=datetime.now)
+    date_lecture: Optional[datetime] = None
+    destinataire: str = ""
+    source: str = "système"
+    action_requise: bool = False
+    lien_action: Optional[str] = None
+    priorite: str = "normale"  # "basse", "normale", "haute", "urgente"
+    expire_le: Optional[datetime] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    @property
+    def est_lue(self) -> bool:
+        return self.date_lecture is not None
+    
+    @property
+    def est_expiree(self) -> bool:
+        return self.expire_le and datetime.now() > self.expire_le
+    
+    def marquer_comme_lue(self):
+        self.date_lecture = datetime.now()
+
+@dataclass
+class SessionUtilisateur:
+    """Session d'un utilisateur de l'application"""
+    id: str
+    utilisateur_id: str
+    date_debut: datetime = field(default_factory=datetime.now)
+    date_fin: Optional[datetime] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    actions_effectuees: List[Dict[str, Any]] = field(default_factory=list)
+    recherches: List[str] = field(default_factory=list)
+    documents_consultes: List[str] = field(default_factory=list)
+    preferences: Dict[str, Any] = field(default_factory=dict)
+    contexte_actuel: Dict[str, Any] = field(default_factory=dict)
+    
+    def ajouter_action(self, action: str, details: Dict[str, Any] = None):
+        self.actions_effectuees.append({
+            'action': action,
+            'timestamp': datetime.now(),
+            'details': details or {}
+        })
+    
+    def terminer_session(self):
+        self.date_fin = datetime.now()
+    
+    @property
+    def duree_session(self) -> Optional[timedelta]:
+        if self.date_fin:
+            return self.date_fin - self.date_debut
+        return datetime.now() - self.date_debut
         
 # ========== INFORMATIONS ENTREPRISE ==========
 
