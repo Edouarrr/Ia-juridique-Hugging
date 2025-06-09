@@ -552,6 +552,8 @@ class SessionUtilisateur:
             return self.date_fin - self.date_debut
         return datetime.now() - self.date_debut
 
+# ========== CLASSES D'ANALYSE ET EXTRACTION ==========
+
 @dataclass
 class Entity:
     """Représente une entité extraite d'un texte (personne, organisation, lieu)"""
@@ -652,7 +654,132 @@ class DocumentJuridique:
     
     def est_signe(self) -> bool:
         return self.date_signature is not None and len(self.signataires) > 0
+
+# ========== CLASSES DE STYLE ET APPRENTISSAGE ==========
+
+@dataclass
+class StylePattern:
+    """Pattern de style extrait d'un document"""
+    document_id: str
+    type_acte: str
+    structure: Dict[str, Any]
+    formules: List[str]
+    mise_en_forme: Dict[str, Any]
+    vocabulaire: Dict[str, Any]
+    paragraphes_types: List[str]
+    numerotation: Dict[str, Any] = field(default_factory=dict)
+    formalite: Dict[str, Any] = field(default_factory=dict)
+    argumentation: Dict[str, List[str]] = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'document_id': self.document_id,
+            'type_acte': self.type_acte,
+            'structure': self.structure,
+            'formules': self.formules,
+            'mise_en_forme': self.mise_en_forme,
+            'vocabulaire': self.vocabulaire,
+            'numerotation': self.numerotation,
+            'formalite': self.formalite
+        }
+
+@dataclass
+class StyleLearningResult:
+    """Résultat de l'apprentissage de style"""
+    style_name: str
+    documents_analyzed: int
+    confidence_score: float = 0.0
+    average_sentence_length: int = 0
+    average_paragraph_length: int = 0
+    common_phrases: List[str] = field(default_factory=list)
+    transition_words: List[str] = field(default_factory=list)
+    argument_patterns: List[str] = field(default_factory=list)
+    citation_patterns: List[str] = field(default_factory=list)
+    paragraph_numbering_style: Optional[str] = None
+    paragraph_numbering_pattern: Optional[str] = None
+    formality_score: float = 0.5
+    style_config: Optional['StyleConfig'] = None
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    def to_style_config(self) -> 'StyleConfig':
+        """Convertit en configuration de style"""
+        return StyleConfig(
+            name=self.style_name,
+            formality_level='formel' if self.formality_score > 0.6 else 'moderne',
+            sentence_length_target=self.average_sentence_length,
+            paragraph_length_target=self.average_paragraph_length,
+            use_numbering=bool(self.paragraph_numbering_style),
+            numbering_style=self.paragraph_numbering_style or 'numeric',
+            common_phrases=self.common_phrases[:10],
+            transition_words=self.transition_words[:10],
+            preferred_conjunctions=self._extract_conjunctions(),
+            technical_terms_density='high' if self.formality_score > 0.7 else 'medium'
+        )
+    
+    def _extract_conjunctions(self) -> List[str]:
+        """Extrait les conjonctions préférées"""
+        conjunctions = []
+        for word in self.transition_words:
+            if word.lower() in ['mais', 'donc', 'or', 'car', 'toutefois', 'néanmoins', 'cependant']:
+                conjunctions.append(word)
+        return conjunctions[:5]
+
+@dataclass
+class StyleConfig:
+    """Configuration de style pour la génération de documents"""
+    name: str
+    formality_level: str = 'formel'  # 'moderne', 'formel', 'tres_formel'
+    sentence_length_target: int = 20
+    paragraph_length_target: int = 100
+    use_numbering: bool = True
+    numbering_style: str = 'numeric'  # 'numeric', 'roman', 'alpha', 'dash', 'bullet'
+    common_phrases: List[str] = field(default_factory=list)
+    transition_words: List[str] = field(default_factory=list)
+    preferred_conjunctions: List[str] = field(default_factory=list)
+    technical_terms_density: str = 'medium'  # 'low', 'medium', 'high'
+    active_voice_preference: float = 0.7  # 0-1, où 1 = toujours voix active
+    citation_style: str = 'standard'  # 'standard', 'detailed', 'minimal'
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convertit en dictionnaire"""
+        return {
+            'name': self.name,
+            'formality_level': self.formality_level,
+            'sentence_length_target': self.sentence_length_target,
+            'paragraph_length_target': self.paragraph_length_target,
+            'use_numbering': self.use_numbering,
+            'numbering_style': self.numbering_style,
+            'common_phrases': self.common_phrases,
+            'transition_words': self.transition_words,
+            'technical_terms_density': self.technical_terms_density
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StyleConfig':
+        """Crée depuis un dictionnaire"""
+        return cls(**data)
+    
+    def apply_to_prompt(self, base_prompt: str) -> str:
+        """Enrichit un prompt avec les directives de style"""
+        style_instructions = f"""
+Style requis : {self.name}
+- Niveau de formalité : {self.formality_level}
+- Longueur cible des phrases : environ {self.sentence_length_target} mots
+- Longueur cible des paragraphes : environ {self.paragraph_length_target} mots
+- Numérotation : {'Utiliser ' + self.numbering_style if self.use_numbering else 'Pas de numérotation'}
+- Densité technique : {self.technical_terms_density}
+"""
         
+        if self.common_phrases:
+            style_instructions += f"\n- Phrases types à utiliser : {', '.join(self.common_phrases[:3])}"
+        
+        if self.transition_words:
+            style_instructions += f"\n- Mots de transition privilégiés : {', '.join(self.transition_words[:5])}"
+        
+        return f"{base_prompt}\n\n{style_instructions}"
+
 # ========== INFORMATIONS ENTREPRISE ==========
 
 @dataclass
