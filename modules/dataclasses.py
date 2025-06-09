@@ -782,6 +782,263 @@ Style requis : {self.name}
 
 # ========== INFORMATIONS ENTREPRISE ==========
 
+class SourceEntreprise(Enum):
+    """Sources de données pour les informations d'entreprise"""
+    PAPPERS = "pappers"
+    SOCIETE_COM = "societe.com"
+    INSEE = "insee"
+    INFOGREFFE = "infogreffe"
+    MANUAL = "manual"
+
+class TypePartie(Enum):
+    """Types de parties dans une procédure"""
+    DEMANDEUR = "demandeur"
+    DEFENDEUR = "défendeur"
+    INTERVENANT = "intervenant"
+    TIERS = "tiers"
+    TEMOIN = "témoin"
+
+class PhaseProcedure(Enum):
+    """Phases d'une procédure juridique"""
+    PRE_CONTENTIEUX = "pré-contentieux"
+    PREMIERE_INSTANCE = "première instance"
+    APPEL = "appel"
+    CASSATION = "cassation"
+    EXECUTION = "exécution"
+
+class StatutProcedural(Enum):
+    """Statut procédural d'une partie"""
+    ACTIF = "actif"
+    INACTIF = "inactif"
+    DESISTE = "désisté"
+    INTERVENANT = "intervenant"
+    CONDAMNE = "condamné"
+    RELAXE = "relaxé"
+
+@dataclass
+class InformationEntreprise:
+    """Informations légales d'une entreprise"""
+    # Identifiants
+    siren: Optional[str] = None
+    siret: Optional[str] = None
+    tva_intracommunautaire: Optional[str] = None
+    
+    # Dénomination
+    denomination: Optional[str] = None
+    denomination_usuelle: Optional[str] = None
+    sigle: Optional[str] = None
+    
+    # Forme et capital
+    forme_juridique: Optional[str] = None
+    capital_social: Optional[float] = None
+    devise_capital: str = "EUR"
+    
+    # Dates
+    date_creation: Optional[datetime] = None
+    date_cloture_exercice: Optional[str] = None
+    date_cessation: Optional[datetime] = None
+    
+    # Adresse
+    siege_social: Optional[str] = None
+    code_postal: Optional[str] = None
+    ville: Optional[str] = None
+    pays: str = "France"
+    
+    # RCS
+    rcs_numero: Optional[str] = None
+    rcs_ville: Optional[str] = None
+    
+    # Activité
+    code_ape: Optional[str] = None
+    code_naf: Optional[str] = None
+    activite_principale: Optional[str] = None
+    
+    # Effectifs et finances
+    effectif: Optional[str] = None
+    effectif_min: Optional[int] = None
+    effectif_max: Optional[int] = None
+    chiffre_affaires: Optional[float] = None
+    resultat: Optional[float] = None
+    
+    # Représentants
+    representants_legaux: List[Dict[str, str]] = field(default_factory=list)
+    
+    # Métadonnées
+    source: SourceEntreprise = SourceEntreprise.MANUAL
+    date_recuperation: datetime = field(default_factory=datetime.now)
+    derniere_mise_a_jour: Optional[datetime] = None
+    fiable: bool = True
+    
+    def format_capital(self) -> str:
+        """Formate le capital social"""
+        if not self.capital_social:
+            return ""
+        return f"{self.capital_social:,.2f} {self.devise_capital}".replace(",", " ")
+    
+    def get_immatriculation_complete(self) -> str:
+        """Retourne l'immatriculation RCS complète"""
+        if self.rcs_numero and self.rcs_ville:
+            return f"RCS {self.rcs_ville} {self.rcs_numero}"
+        return ""
+    
+    def get_representant_principal(self) -> Optional[Dict[str, str]]:
+        """Retourne le représentant légal principal"""
+        if self.representants_legaux:
+            return self.representants_legaux[0]
+        return None
+    
+    def to_legal_string(self, style: str = "complet") -> str:
+        """Convertit en chaîne pour document juridique"""
+        if style == "simple":
+            return self.denomination or ""
+        
+        parts = [self.denomination]
+        if self.forme_juridique:
+            parts.append(f", {self.forme_juridique}")
+        if self.capital_social:
+            parts.append(f" au capital de {self.format_capital()}")
+        if self.get_immatriculation_complete():
+            parts.append(f", {self.get_immatriculation_complete()}")
+        if self.siege_social:
+            parts.append(f", dont le siège social est sis {self.siege_social}")
+            
+        return "".join(parts)
+
+@dataclass
+class Partie:
+    """Représente une partie dans un dossier juridique"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    nom: str = ""
+    type_partie: TypePartie = TypePartie.DEMANDEUR
+    type_personne: str = "morale"  # "morale" ou "physique"
+    phase_procedure: Optional[PhaseProcedure] = None
+    statut_procedural: StatutProcedural = StatutProcedural.ACTIF
+    
+    # Pour les personnes morales
+    info_entreprise: Optional[InformationEntreprise] = None
+    
+    # Pour les personnes physiques
+    prenom: Optional[str] = None
+    date_naissance: Optional[datetime] = None
+    lieu_naissance: Optional[str] = None
+    nationalite: Optional[str] = None
+    profession: Optional[str] = None
+    
+    # Coordonnées
+    adresse: Optional[str] = None
+    code_postal: Optional[str] = None
+    ville: Optional[str] = None
+    telephone: Optional[str] = None
+    email: Optional[str] = None
+    
+    # Représentation
+    avocat: Optional[str] = None
+    avocat_barreau: Optional[str] = None
+    
+    # Métadonnées
+    date_ajout: datetime = field(default_factory=datetime.now)
+    notes: List[str] = field(default_factory=list)
+    documents_lies: List[str] = field(default_factory=list)
+    
+    def update_from_entreprise_info(self, info: InformationEntreprise):
+        """Met à jour avec les informations d'entreprise"""
+        self.info_entreprise = info
+        if info.siege_social:
+            self.adresse = info.siege_social
+        if info.code_postal:
+            self.code_postal = info.code_postal
+        if info.ville:
+            self.ville = info.ville
+    
+    def get_designation_complete(self) -> str:
+        """Retourne la désignation complète de la partie"""
+        if self.type_personne == "morale" and self.info_entreprise:
+            return self.info_entreprise.to_legal_string()
+        elif self.type_personne == "physique":
+            parts = []
+            if self.prenom:
+                parts.append(f"{self.prenom} {self.nom}")
+            else:
+                parts.append(self.nom)
+            if self.profession:
+                parts.append(f", {self.profession}")
+            if self.adresse:
+                parts.append(f", demeurant {self.adresse}")
+            return "".join(parts)
+        else:
+            return self.nom
+    
+    def __str__(self):
+        return f"{self.type_partie.value}: {self.nom}"
+
+# Fonction helper pour créer une partie avec lookup automatique
+def create_partie_from_name_with_lookup(
+    nom: str,
+    type_partie: TypePartie = TypePartie.DEMANDEUR,
+    phase: Optional[PhaseProcedure] = None
+) -> Partie:
+    """
+    Crée une partie et détermine automatiquement si c'est une personne morale ou physique
+    
+    Args:
+        nom: Nom de la partie
+        type_partie: Type de partie (demandeur, défendeur, etc.)
+        phase: Phase de la procédure
+        
+    Returns:
+        Partie créée
+    """
+    # Patterns pour identifier une personne morale
+    patterns_morales = [
+        r'\b(SAS|SARL|SA|SCI|EURL|SNC|GIE|ASSOCIATION|FONDATION)\b',
+        r'\b(SOCIETE|COMPAGNIE|ENTREPRISE|GROUPE|HOLDING)\b',
+        r'\b(STE|CIE|ETS|ETABLISSEMENTS)\b',
+    ]
+    
+    # Patterns pour identifier une personne physique
+    patterns_physiques = [
+        r'^(M\.|Mme|Mlle|Me|Dr|Pr)\s+',
+        r'\b(Monsieur|Madame|Mademoiselle|Maître|Docteur|Professeur)\b',
+    ]
+    
+    # Déterminer le type
+    type_personne = "physique"
+    
+    # Vérifier les patterns de personne morale
+    for pattern in patterns_morales:
+        if re.search(pattern, nom, re.IGNORECASE):
+            type_personne = "morale"
+            break
+    
+    # Si pas trouvé comme morale, vérifier si c'est explicitement physique
+    if type_personne == "physique":
+        for pattern in patterns_physiques:
+            if re.search(pattern, nom, re.IGNORECASE):
+                break
+        else:
+            # Si le nom est en majuscules et contient certains mots, c'est probablement une société
+            if nom.isupper() and len(nom.split()) > 1:
+                type_personne = "morale"
+    
+    # Créer la partie
+    partie = Partie(
+        nom=nom,
+        type_partie=type_partie,
+        type_personne=type_personne,
+        phase_procedure=phase
+    )
+    
+    # Pour une personne physique, essayer d'extraire le prénom
+    if type_personne == "physique":
+        # Retirer les civilités
+        nom_clean = re.sub(r'^(M\.|Mme|Mlle|Me|Dr|Pr|Monsieur|Madame|Mademoiselle|Maître|Docteur|Professeur)\s+', '', nom, flags=re.IGNORECASE)
+        parts = nom_clean.split()
+        if len(parts) >= 2:
+            partie.prenom = parts[0]
+            partie.nom = ' '.join(parts[1:])
+    
+    return partie
+    
 @dataclass
 class InformationEntreprise:
     """Informations légales d'une entreprise récupérées via API"""
