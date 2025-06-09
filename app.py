@@ -1,4 +1,4 @@
- """Application principale avec gestion Azure et interface de recherche améliorée"""
+"""Application principale avec gestion Azure et interface de recherche améliorée"""
 
 import streamlit as st
 from datetime import datetime
