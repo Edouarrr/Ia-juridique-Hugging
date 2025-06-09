@@ -1,478 +1,568 @@
-# modules/advanced_features.py
-"""Fonctionnalités avancées de l'assistant juridique - À préserver"""
+# modules/recherche_simplified.py
+"""Module de recherche universelle simplifié - Sans redondances"""
 
 import streamlit as st
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
-import re
+from typing import Dict, Any, Optional
 
-# Managers avancés
+# ========================= CONFIGURATION =========================
+
+# Import des modules existants au lieu de dupliquer le code
 try:
-    from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
-    from managers.company_info_manager import CompanyInfoManager
-    from managers.style_analyzer import StyleAnalyzer
-    from managers.dynamic_generators import DynamicGenerators
-    ADVANCED_MANAGERS = True
-except ImportError:
-    ADVANCED_MANAGERS = False
+    # VOS MODULES RÉELS
+    from modules.analyse_ia import show_page as analyse_ia_page
+    from modules.bordereau import process_bordereau_request, create_bordereau
+    from modules.comparison import process_comparison_request
+    from modules.configuration import show_page as config_page
+    from modules.email import process_email_request
+    from modules.explorer import show_explorer_interface
+    from modules.import_export import process_import_request, process_export_request
+    from modules.jurisprudence import process_jurisprudence_request, show_jurisprudence_interface
+    from modules.mapping import process_mapping_request
+    from modules.plaidoirie import process_plaidoirie_request
+    from modules.preparation_client import process_preparation_client_request
+    from modules.redaction_unified import process_redaction_request
+    from modules.selection_piece import show_page as selection_piece_page
+    from modules.synthesis import process_synthesis_request
+    from modules.templates import process_template_request
+    from modules.timeline import process_timeline_request
+    
+    # Managers
+    from managers.universal_search_service import UniversalSearchService
+    from managers.multi_llm_manager import MultiLLMManager
+    
+    MODULES_AVAILABLE = True
+except ImportError as e:
+    st.error(f"⚠️ Modules manquants : {e}")
+    MODULES_AVAILABLE = False
 
-# ========================= GÉNÉRATION AVANCÉE DE PLAINTES =========================
+# ========================= PAGE PRINCIPALE =========================
 
-def generate_advanced_plainte(
-    query: str,
-    parties_demanderesses: List[str],
-    parties_defenderesses: List[str],
-    infractions: List[str],
-    is_partie_civile: bool,
-    reference: Optional[str] = None,
-    modele: Optional[str] = None,
-    llm_manager = None
-) -> Dict[str, Any]:
-    """
-    Génère une plainte avancée avec toutes les fonctionnalités
+def show_page():
+    """Page principale de recherche universelle"""
     
-    Fonctionnalités :
-    - Plainte CPC exhaustive (8000+ mots)
-    - Enrichissement des parties
-    - Vérification des jurisprudences
-    - Suggestions d'amélioration
-    """
+    st.markdown("## 🔍 Recherche Universelle")
     
-    # 1. ENRICHIR LES INFORMATIONS DES PARTIES
-    if ADVANCED_MANAGERS and CompanyInfoManager:
-        enriched_parties = enrich_parties_information(
-            parties_demanderesses + parties_defenderesses
-        )
-    else:
-        enriched_parties = {}
+    # Barre de recherche principale
+    col1, col2 = st.columns([5, 1])
     
-    # 2. GÉNÉRER LE PROMPT AVANCÉ
-    if is_partie_civile:
-        prompt = generate_cpc_exhaustive_prompt(
-            parties_demanderesses,
-            parties_defenderesses,
-            infractions,
-            reference,
-            enriched_parties
-        )
-    else:
-        prompt = generate_simple_plainte_prompt(
-            parties_demanderesses,
-            parties_defenderesses,
-            infractions,
-            reference
+    with col1:
+        query = st.text_input(
+            "Entrez votre commande ou recherche",
+            placeholder="Ex: rédiger plainte contre X, analyser @dossier, créer bordereau...",
+            key="universal_query",
+            help="Utilisez @ pour référencer une affaire spécifique"
         )
     
-    # 3. AMÉLIORER LE PROMPT AVEC DYNAMIC GENERATORS
-    if ADVANCED_MANAGERS and DynamicGenerators:
-        try:
-            dynamic_gen = DynamicGenerators()
-            prompt = dynamic_gen.enhance_prompt(
-                prompt,
-                doc_type='plainte_avec_cpc' if is_partie_civile else 'plainte_simple',
-                context={'parties': enriched_parties}
-            )
-        except:
-            pass
+    with col2:
+        search_button = st.button("🔍 Rechercher", type="primary", use_container_width=True)
     
-    # 4. GÉNÉRER AVEC OPTIONS AVANCÉES
-    generation_result = generate_with_advanced_options(
-        prompt,
-        llm_manager,
-        is_partie_civile
-    )
+    # Suggestions
+    show_command_suggestions()
     
-    # 5. POST-TRAITEMENT ET AMÉLIORATIONS
-    if generation_result['success']:
-        # Améliorer le style si disponible
-        if ADVANCED_MANAGERS and StyleAnalyzer:
-            generation_result['document'] = improve_document_style(
-                generation_result['document'],
-                'formel' if is_partie_civile else 'persuasif'
-            )
+    # Actions rapides
+    show_quick_actions()
+    
+    # Traiter la requête
+    if query and search_button:
+        process_query(query)
+    
+    # Afficher les résultats s'il y en a
+    show_results()
+
+# ========================= TRAITEMENT SIMPLIFIÉ =========================
+
+def process_query(query: str):
+    """Traite la requête et route vers le bon module"""
+    
+    with st.spinner("🔄 Analyse de votre demande..."):
+        # Analyser la requête
+        query_lower = query.lower()
         
-        # Vérifier les jurisprudences citées
-        if ADVANCED_MANAGERS:
-            generation_result['jurisprudence_verification'] = verify_document_jurisprudences(
-                generation_result['document']
-            )
+        # Router vers le bon module selon les mots-clés
+        if any(word in query_lower for word in ['plainte', 'porter plainte']):
+            handle_plainte_request(query)
+            
+        elif any(word in query_lower for word in ['rédiger', 'créer', 'écrire']):
+            if MODULES_AVAILABLE:
+                process_redaction_request(query, {})
+            else:
+                st.error("Module de rédaction non disponible")
+                
+        elif any(word in query_lower for word in ['analyser', 'analyse', 'risques']):
+            handle_analysis_request(query)
+            
+        elif 'bordereau' in query_lower:
+            if MODULES_AVAILABLE:
+                process_bordereau_request(query, {})
+            else:
+                st.error("Module bordereau non disponible")
+                
+        elif any(word in query_lower for word in ['importer', 'import', 'charger']):
+            if MODULES_AVAILABLE:
+                process_import_request(query, {})
+            else:
+                handle_import_fallback()
+                
+        elif any(word in query_lower for word in ['exporter', 'export', 'télécharger']):
+            if MODULES_AVAILABLE:
+                process_export_request(query, {})
+            else:
+                st.error("Module export non disponible")
+                
+        elif 'jurisprudence' in query_lower:
+            if MODULES_AVAILABLE:
+                process_jurisprudence_request(query, {})
+            else:
+                st.error("Module jurisprudence non disponible")
+                
+        elif any(word in query_lower for word in ['plaidoirie', 'plaider', 'audience']):
+            if MODULES_AVAILABLE:
+                process_plaidoirie_request(query, {})
+            else:
+                st.error("Module plaidoirie non disponible")
+                
+        elif any(word in query_lower for word in ['préparer client', 'préparation client', 'interrogatoire']):
+            if MODULES_AVAILABLE:
+                process_preparation_client_request(query, {})
+            else:
+                st.error("Module préparation client non disponible")
+                
+        elif any(word in query_lower for word in ['chronologie', 'timeline']):
+            if MODULES_AVAILABLE:
+                process_timeline_request(query, {})
+            else:
+                st.error("Module timeline non disponible")
+                
+        elif any(word in query_lower for word in ['cartographie', 'mapping', 'carte']):
+            if MODULES_AVAILABLE:
+                process_mapping_request(query, {})
+            else:
+                st.error("Module mapping non disponible")
+                
+        elif 'comparer' in query_lower:
+            if MODULES_AVAILABLE:
+                process_comparison_request(query, {})
+            else:
+                st.error("Module comparaison non disponible")
+                
+        elif any(word in query_lower for word in ['sélectionner', 'sélection', 'pièces']):
+            if MODULES_AVAILABLE:
+                selection_piece_page()
+            else:
+                st.error("Module sélection non disponible")
         
-        # Ajouter les suggestions d'amélioration
-        generation_result['improvement_suggestions'] = generate_improvement_suggestions(
-            generation_result['document'],
-            is_partie_civile,
-            enriched_parties
-        )
-    
-    return generation_result
-
-def enrich_parties_information(parties: List[str]) -> Dict[str, Any]:
-    """Enrichit les informations des parties avec CompanyInfoManager"""
-    
-    enriched = {}
-    
-    if not ADVANCED_MANAGERS or not CompanyInfoManager:
-        return enriched
-    
-    try:
-        company_manager = CompanyInfoManager()
-        
-        for partie in parties:
-            info = company_manager.get_company_info(partie)
-            if info:
-                enriched[partie] = info
-                st.info(f"✅ Informations enrichies pour {partie}")
-    except Exception as e:
-        st.warning(f"⚠️ Impossible d'enrichir les informations : {e}")
-    
-    return enriched
-
-def generate_cpc_exhaustive_prompt(
-    demandeurs: List[str],
-    defendeurs: List[str],
-    infractions: List[str],
-    reference: Optional[str],
-    enriched_parties: Dict[str, Any]
-) -> str:
-    """Génère le prompt pour une plainte CPC exhaustive"""
-    
-    # Enrichir les informations des parties
-    demandeurs_detail = []
-    for d in demandeurs:
-        if d in enriched_parties:
-            info = enriched_parties[d]
-            demandeurs_detail.append(
-                f"{d}, société {info.get('forme_juridique', '[À PRÉCISER]')}, "
-                f"capital {info.get('capital', '[À PRÉCISER]')} €, "
-                f"RCS {info.get('ville_rcs', '[VILLE]')} {info.get('numero_rcs', '[NUMÉRO]')}, "
-                f"siège {info.get('adresse', '[ADRESSE]')}"
-            )
+        elif any(word in query_lower for word in ['explorer', 'parcourir', 'fichiers']):
+            if MODULES_AVAILABLE:
+                show_explorer_interface()
+            else:
+                st.error("Module explorer non disponible")
+                
+        elif any(word in query_lower for word in ['synthèse', 'synthétiser', 'résumer']):
+            if MODULES_AVAILABLE:
+                process_synthesis_request(query, {})
+            else:
+                st.error("Module synthèse non disponible")
+                
+        elif any(word in query_lower for word in ['template', 'modèle']):
+            if MODULES_AVAILABLE:
+                process_template_request(query, {})
+            else:
+                st.error("Module templates non disponible")
+                
+        elif any(word in query_lower for word in ['configuration', 'paramètres', 'configurer']):
+            if MODULES_AVAILABLE:
+                config_page()
+            else:
+                st.error("Module configuration non disponible")
+                
+        elif 'email' in query_lower or 'envoyer' in query_lower:
+            if MODULES_AVAILABLE:
+                process_email_request(query, {})
+            else:
+                st.error("Module email non disponible")
+                
         else:
-            demandeurs_detail.append(f"{d} [INFORMATIONS À COMPLÉTER]")
+            # Recherche simple par défaut
+            handle_search_request(query)
+
+# ========================= HANDLERS SPÉCIFIQUES =========================
+
+def handle_plainte_request(query: str):
+    """Gère les demandes de plainte de manière simplifiée"""
     
-    prompt = f"""Tu es Maître Jean-Michel DURAND, avocat pénaliste réputé avec 25 ans d'expérience.
+    st.info("📝 Création de plainte détectée")
     
-MISSION : Rédiger une plainte avec constitution de partie civile EXHAUSTIVE et PERCUTANTE.
-
-CONTEXTE :
-- Référence : {reference or 'Dossier de criminalité économique complexe'}
-- Demandeurs : {', '.join(demandeurs)}
-- Défendeurs : {', '.join(defendeurs)}
-- Infractions : {', '.join(infractions)}
-
-INFORMATIONS ENRICHIES DES PARTIES :
-{chr(10).join(demandeurs_detail)}
-
-EXIGENCES SPÉCIFIQUES :
-1. Document EXHAUSTIF (minimum 8000 mots)
-2. Argumentation IMPLACABLE avec jurisprudences
-3. Évaluation PRÉCISE des préjudices
-4. Demandes d'actes d'instruction DÉTAILLÉES
-5. Style PERCUTANT mais juridiquement irréprochable
-
-[STRUCTURE DÉTAILLÉE DE LA PLAINTE CPC - 10 SECTIONS]
-[Reprendre la structure complète du prompt original]
-
-IMPORTANT : Cette plainte doit être un modèle du genre, exhaustive et percutante."""
+    # Extraire les informations basiques
+    query_lower = query.lower()
+    is_cpc = 'partie civile' in query_lower or 'cpc' in query_lower
     
-    return prompt
-
-def generate_simple_plainte_prompt(
-    demandeurs: List[str],
-    defendeurs: List[str],
-    infractions: List[str],
-    reference: Optional[str]
-) -> str:
-    """Génère le prompt pour une plainte simple"""
-    
-    return f"""Rédige une plainte simple mais complète et professionnelle.
-
-PARTIES :
-- Plaignants : {', '.join(demandeurs)}
-- Mis en cause : {', '.join(defendeurs)}
-- Infractions : {', '.join(infractions)}
-
-Document professionnel de 3000 mots minimum avec structure complète."""
-
-def generate_with_advanced_options(
-    prompt: str,
-    llm_manager,
-    is_partie_civile: bool
-) -> Dict[str, Any]:
-    """Génère avec options avancées (température, longueur, etc.)"""
-    
-    # Options par défaut optimisées
-    options = {
-        'temperature': 0.3 if is_partie_civile else 0.5,
-        'max_tokens': 8000 if is_partie_civile else 4000,
-        'system_prompt': (
-            "Tu es un avocat pénaliste expert avec 25 ans d'expérience, "
-            "spécialisé en criminalité économique et financière. "
-            "Tu rédiges des documents juridiques parfaits."
-        )
-    }
-    
-    # Interface pour modifier les options
-    with st.expander("⚙️ Options avancées de génération", expanded=False):
+    # Interface simple
+    with st.form("plainte_form"):
+        st.markdown("### 📋 Informations pour la plainte")
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            options['temperature'] = st.slider(
-                "Créativité",
-                0.0, 1.0, options['temperature'], 0.1,
-                help="Plus bas = plus factuel"
+            plaignants = st.text_area(
+                "Plaignants (un par ligne)",
+                placeholder="Société X\nM. Dupont",
+                height=100
+            )
+            
+            type_plainte = st.radio(
+                "Type de plainte",
+                ["Plainte simple", "Plainte avec constitution de partie civile"],
+                index=1 if is_cpc else 0
             )
         
         with col2:
-            options['max_tokens'] = st.number_input(
-                "Longueur max",
-                2000, 10000, options['max_tokens'], 1000
-            )
-    
-    # Générer
-    if llm_manager and llm_manager.clients:
-        provider = select_best_provider(llm_manager, is_partie_civile)
-        
-        with st.spinner(f"⚖️ Génération via {provider}..."):
-            response = llm_manager.query_single_llm(
-                provider,
-                prompt,
-                options['system_prompt'],
-                temperature=options['temperature'],
-                max_tokens=options['max_tokens']
+            mis_en_cause = st.text_area(
+                "Mis en cause (un par ligne)",
+                placeholder="M. Martin\nSociété Y",
+                height=100
             )
             
-            return {
-                'success': response['success'],
-                'document': response.get('response', ''),
-                'provider': provider,
-                'generation_time': response.get('elapsed_time', 0),
-                'options': options
-            }
-    
-    return {'success': False, 'error': 'Aucun LLM disponible'}
-
-def select_best_provider(llm_manager, is_partie_civile: bool) -> str:
-    """Sélectionne le meilleur provider selon le type de document"""
-    
-    available = [p for p in llm_manager.clients.keys()]
-    
-    # Préférences selon le type
-    if is_partie_civile:
-        # Pour CPC : préférer les modèles puissants
-        preferences = ['anthropic', 'openai', 'google', 'mistral', 'groq']
-    else:
-        # Pour plainte simple : plus flexible
-        preferences = ['openai', 'anthropic', 'google', 'groq', 'mistral']
-    
-    # Sélectionner selon les préférences
-    for pref in preferences:
-        if pref in available:
-            return pref
-    
-    # Sinon prendre le premier disponible
-    return available[0] if available else None
-
-# ========================= VÉRIFICATION DES JURISPRUDENCES =========================
-
-def verify_document_jurisprudences(content: str) -> Dict[str, Any]:
-    """Vérifie toutes les jurisprudences citées dans un document"""
-    
-    if not ADVANCED_MANAGERS:
-        return {'available': False}
-    
-    try:
-        verifier = JurisprudenceVerifier()
-        
-        # Extraire les références
-        references = verifier.extract_references(content)
-        
-        # Vérifier chaque référence
-        results = []
-        for ref in references:
-            result = verifier.verify_reference(ref)
-            results.append({
-                'reference': ref,
-                'valid': result.is_valid,
-                'confidence': result.confidence,
-                'source': result.source_verified
-            })
-        
-        # Calculer les statistiques
-        valid_count = sum(1 for r in results if r['valid'])
-        total_count = len(results)
-        
-        return {
-            'available': True,
-            'results': results,
-            'statistics': {
-                'total': total_count,
-                'verified': valid_count,
-                'confidence': (valid_count / total_count * 100) if total_count > 0 else 0
-            }
-        }
-        
-    except Exception as e:
-        return {'available': False, 'error': str(e)}
-
-def verify_jurisprudences_in_analysis(content: str):
-    """Interface Streamlit pour vérifier les jurisprudences"""
-    
-    st.markdown("### 🔍 Vérification des jurisprudences citées")
-    
-    if not ADVANCED_MANAGERS:
-        st.warning("⚠️ Module de vérification non disponible")
-        return
-    
-    try:
-        verifier = JurisprudenceVerifier()
-        verification_results = display_jurisprudence_verification(content, verifier)
-        
-        if verification_results:
-            # Statistiques
-            verified_count = sum(1 for r in verification_results if r.status == 'verified')
-            total_count = len(verification_results)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Jurisprudences vérifiées", f"{verified_count}/{total_count}")
-            
-            with col2:
-                confidence = (verified_count / total_count * 100) if total_count > 0 else 0
-                st.metric("Fiabilité des sources", f"{confidence:.0f}%")
-            
-            return verification_results
-            
-    except Exception as e:
-        st.error(f"Erreur vérification : {e}")
-        return []
-
-# ========================= AMÉLIORATION DE STYLE =========================
-
-def improve_document_style(content: str, target_style: str) -> str:
-    """Améliore le style d'un document avec StyleAnalyzer"""
-    
-    if not ADVANCED_MANAGERS or not StyleAnalyzer:
-        return content
-    
-    try:
-        analyzer = StyleAnalyzer()
-        
-        if hasattr(analyzer, 'analyze_and_improve'):
-            improved = analyzer.analyze_and_improve(
-                content,
-                target_style=target_style,
-                document_type='legal'
+            infractions = st.multiselect(
+                "Infractions",
+                ["Escroquerie", "Abus de confiance", "Abus de biens sociaux", 
+                 "Faux et usage de faux", "Corruption", "Blanchiment"],
+                default=["Escroquerie", "Abus de confiance"]
             )
-            
-            if improved and improved != content:
-                st.success("✨ Document amélioré avec l'analyseur de style")
-                return improved
+        
+        contexte = st.text_area(
+            "Contexte des faits",
+            placeholder="Décrivez brièvement les faits...",
+            height=150
+        )
+        
+        if st.form_submit_button("🚀 Générer la plainte", type="primary"):
+            generate_simple_plainte(
+                plaignants.split('\n') if plaignants else [],
+                mis_en_cause.split('\n') if mis_en_cause else [],
+                infractions,
+                type_plainte,
+                contexte
+            )
+
+def generate_simple_plainte(plaignants, mis_en_cause, infractions, type_plainte, contexte):
+    """Génère une plainte en utilisant les fonctionnalités avancées si disponibles"""
+    
+    # Utiliser le MultiLLMManager si disponible
+    try:
+        llm_manager = MultiLLMManager()
+        
+        if not llm_manager.clients:
+            st.error("❌ Aucune IA configurée. Veuillez ajouter une clé API.")
+            return
+        
+        # Déterminer si c'est une CPC
+        is_cpc = "partie civile" in type_plainte.lower()
+        
+        # Si les fonctionnalités avancées sont disponibles, les utiliser
+        if ADVANCED_FEATURES:
+            with st.spinner("⚖️ Génération avancée en cours..."):
+                result = generate_advanced_plainte(
+                    query=contexte,
+                    parties_demanderesses=plaignants,
+                    parties_defenderesses=mis_en_cause,
+                    infractions=infractions,
+                    is_partie_civile=is_cpc,
+                    reference=None,
+                    modele=None,
+                    llm_manager=llm_manager
+                )
+                
+                if result['success']:
+                    st.session_state.generated_plainte = result['document']
+                    st.success("✅ Plainte générée avec succès (mode avancé) !")
+                    
+                    # Afficher les suggestions d'amélioration
+                    if 'improvement_suggestions' in result:
+                        with st.expander("💡 Suggestions d'amélioration"):
+                            for suggestion in result['improvement_suggestions']:
+                                st.write(suggestion)
+                    
+                    # Afficher la vérification des jurisprudences
+                    if 'jurisprudence_verification' in result and result['jurisprudence_verification'].get('available'):
+                        with st.expander("🔍 Vérification des jurisprudences"):
+                            stats = result['jurisprudence_verification']['statistics']
+                            st.metric("Jurisprudences vérifiées", f"{stats['verified']}/{stats['total']}")
+                            st.metric("Fiabilité", f"{stats['confidence']:.0f}%")
+                else:
+                    st.error(f"❌ Erreur : {result.get('error', 'Erreur inconnue')}")
+        else:
+            # Fallback au mode simple
+            prompt = f"""Rédige une {type_plainte} complète et professionnelle.
+
+PLAIGNANTS : {', '.join(plaignants)}
+MIS EN CAUSE : {', '.join(mis_en_cause)}
+INFRACTIONS : {', '.join(infractions)}
+CONTEXTE : {contexte}
+
+Structure attendue :
+1. En-tête (Procureur ou Doyen selon le type)
+2. Identité des plaignants
+3. Exposé détaillé des faits
+4. Qualification juridique
+5. Préjudices subis
+6. {"Constitution de partie civile et demandes" if is_cpc else "Demandes"}
+7. Liste des pièces
+
+Rédige de manière complète et professionnelle (minimum 3000 mots)."""
+
+            # Générer
+            with st.spinner("⚖️ Génération en cours..."):
+                provider = list(llm_manager.clients.keys())[0]
+                response = llm_manager.query_single_llm(
+                    provider,
+                    prompt,
+                    "Tu es un avocat expert en droit pénal."
+                )
+                
+                if response['success']:
+                    st.session_state.generated_plainte = response['response']
+                    st.success("✅ Plainte générée avec succès !")
+                else:
+                    st.error(f"❌ Erreur : {response.get('error')}")
                 
     except Exception as e:
-        st.warning(f"⚠️ Amélioration de style non disponible : {e}")
-    
-    return content
+        st.error(f"❌ Erreur : {str(e)}")
 
-# ========================= SUGGESTIONS D'AMÉLIORATION =========================
-
-def generate_improvement_suggestions(
-    document: str,
-    is_partie_civile: bool,
-    enriched_parties: Dict[str, Any]
-) -> List[str]:
-    """Génère des suggestions pour améliorer le document"""
+def handle_analysis_request(query: str):
+    """Gère les demandes d'analyse"""
     
-    suggestions = []
-    
-    # Analyser le document
-    word_count = len(document.split())
-    has_juridictions = bool(re.search(r'Cass\.|CA |CE ', document))
-    has_amounts = bool(re.search(r'\d+\s*€|euros?', document))
-    has_dates = bool(re.search(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}', document))
-    
-    # Suggestions selon l'analyse
-    if word_count < (5000 if is_partie_civile else 2000):
-        suggestions.append("📝 Développer davantage les faits et circonstances")
-    
-    if not has_juridictions:
-        suggestions.append("⚖️ Ajouter des jurisprudences pour renforcer l'argumentation")
-    
-    if not has_amounts and is_partie_civile:
-        suggestions.append("💰 Préciser les montants des préjudices")
-    
-    if not has_dates:
-        suggestions.append("📅 Ajouter une chronologie précise des faits")
-    
-    # Suggestions selon les parties enrichies
-    for partie, info in enriched_parties.items():
-        if info and 'missing_info' in info:
-            suggestions.append(f"🏢 Compléter les informations manquantes pour {partie}")
-    
-    # Suggestions spécifiques CPC
-    if is_partie_civile:
-        required_sections = [
-            "DEMANDES D'ACTES D'INSTRUCTION",
-            "ÉVALUATION DÉTAILLÉE DES PRÉJUDICES",
-            "CONSTITUTION DE PARTIE CIVILE"
-        ]
+    if MODULES_AVAILABLE:
+        # Utiliser le module analyse_ia existant
+        analyse_ia_page()
+    else:
+        st.info("🤖 Analyse simple")
         
-        for section in required_sections:
-            if section not in document.upper():
-                suggestions.append(f"➕ Ajouter la section : {section}")
-    
-    return suggestions
+        # Interface basique
+        analysis_type = st.selectbox(
+            "Type d'analyse",
+            ["Risques juridiques", "Conformité", "Stratégie", "Générale"]
+        )
+        
+        if st.button("Lancer l'analyse"):
+            st.info("Analyse en cours...")
+            # TODO: Implémenter une analyse simple
 
-# ========================= COMPARAISON MULTI-IA =========================
-
-def compare_all_providers(prompt: str, llm_manager) -> Dict[str, Any]:
-    """Compare les résultats de tous les providers disponibles"""
+def handle_search_request(query: str):
+    """Gère les recherches simples"""
     
-    if not llm_manager or not llm_manager.clients:
-        return {'error': 'Aucun provider disponible'}
+    st.info(f"🔍 Recherche : {query}")
     
-    results = {}
+    # Recherche dans les documents locaux
+    results = search_local_documents(query)
     
-    st.markdown("### 🤖 Comparaison multi-IA")
-    
-    # Générer avec chaque provider
-    for provider in llm_manager.clients.keys():
-        with st.spinner(f"Génération avec {provider}..."):
-            response = llm_manager.query_single_llm(
-                provider,
-                prompt,
-                "Tu es un expert juridique.",
-                temperature=0.3,
-                max_tokens=2000  # Limiter pour la comparaison
-            )
-            
-            if response['success']:
-                results[provider] = {
-                    'content': response['response'],
-                    'time': response.get('elapsed_time', 0),
-                    'word_count': len(response['response'].split())
-                }
-                st.success(f"✅ {provider} - {results[provider]['word_count']} mots en {results[provider]['time']:.1f}s")
-            else:
-                st.error(f"❌ {provider} - Erreur")
-    
-    # Afficher les résultats
     if results:
-        for provider, result in results.items():
-            with st.expander(f"{provider} ({result['word_count']} mots)"):
-                st.text_area("", result['content'][:1000] + "...", height=200)
+        st.success(f"✅ {len(results)} résultat(s) trouvé(s)")
+        
+        for i, result in enumerate(results[:10], 1):
+            with st.expander(f"{i}. {result['title']}"):
+                st.write(result.get('content', '')[:500] + "...")
+    else:
+        st.warning("❌ Aucun résultat trouvé")
+
+def handle_import_fallback():
+    """Import simple sans module dédié"""
+    
+    st.info("📥 Import de documents")
+    
+    uploaded_files = st.file_uploader(
+        "Sélectionnez vos fichiers",
+        type=['pdf', 'docx', 'txt'],
+        accept_multiple_files=True
+    )
+    
+    if uploaded_files and st.button("Importer"):
+        for file in uploaded_files:
+            # Stocker simplement le fichier
+            if 'imported_files' not in st.session_state:
+                st.session_state.imported_files = {}
+            
+            st.session_state.imported_files[file.name] = {
+                'name': file.name,
+                'size': file.size,
+                'type': file.type
+            }
+            
+            st.success(f"✅ {file.name} importé")
+
+# ========================= AFFICHAGE DES RÉSULTATS =========================
+
+def show_results():
+    """Affiche les résultats selon leur type"""
+    
+    # Plainte générée
+    if st.session_state.get('generated_plainte'):
+        st.markdown("### 📋 Plainte générée")
+        
+        content = st.text_area(
+            "Contenu",
+            value=st.session_state.generated_plainte,
+            height=600,
+            key="plainte_content"
+        )
+        
+        # Barre d'outils
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.download_button(
+                "📥 Télécharger (.txt)",
+                content,
+                f"plainte_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                "text/plain"
+            )
+        
+        with col2:
+            if st.button("🗑️ Effacer"):
+                del st.session_state.generated_plainte
+                st.rerun()
+        
+        with col3:
+            # Vérifier les jurisprudences si disponible
+            if ADVANCED_FEATURES and st.button("🔍 Vérifier jurisprudences"):
+                verify_jurisprudences_in_analysis(content)
+        
+        with col4:
+            # Comparer avec d'autres IA si disponible
+            if ADVANCED_FEATURES and st.button("🤖 Comparer IA"):
+                try:
+                    llm_manager = MultiLLMManager()
+                    if llm_manager.clients:
+                        with st.spinner("Comparaison en cours..."):
+                            # Créer un prompt court pour la comparaison
+                            short_prompt = "Rédige une plainte simple pour escroquerie."
+                            results = compare_all_providers(short_prompt, llm_manager)
+                            
+                            if results and not results.get('error'):
+                                st.success(f"✅ Comparé {len(results)} providers")
+                except Exception as e:
+                    st.error(f"Erreur comparaison : {e}")
+    
+    # Autres résultats...
+    # Ajouter ici l'affichage d'autres types de résultats
+
+# ========================= INTERFACE UTILISATEUR =========================
+
+def show_command_suggestions():
+    """Affiche les suggestions de commandes"""
+    
+    with st.expander("💡 Exemples de commandes"):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            **📝 Rédaction :**
+            - `rédiger plainte contre X pour escroquerie`
+            - `créer conclusions de défense`
+            - `rédiger mise en demeure`
+            
+            **🤖 Analyse :**
+            - `analyser les risques du dossier`
+            - `identifier les infractions`
+            - `analyser la conformité`
+            """)
+        
+        with col2:
+            st.markdown("""
+            **📋 Gestion :**
+            - `créer bordereau`
+            - `importer documents`
+            - `sélectionner pièces`
+            - `explorer fichiers`
+            
+            **🔍 Recherche :**
+            - `jurisprudence abus de biens sociaux`
+            - `rechercher contrats 2024`
+            """)
+            
+        with col3:
+            st.markdown("""
+            **🎯 Spécialisé :**
+            - `préparer plaidoirie`
+            - `préparer client pour interrogatoire`
+            - `créer chronologie`
+            - `cartographie des relations`
+            - `comparer documents`
+            - `synthétiser pièces`
+            """)
+
+def show_quick_actions():
+    """Affiche les boutons d'actions rapides"""
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📝 Nouvelle plainte", use_container_width=True):
+            st.session_state.universal_query = "rédiger plainte"
+            st.rerun()
+    
+    with col2:
+        if st.button("🤖 Analyser", use_container_width=True):
+            st.session_state.universal_query = "analyser dossier"
+            st.rerun()
+    
+    with col3:
+        if st.button("📥 Importer", use_container_width=True):
+            st.session_state.universal_query = "importer documents"
+            st.rerun()
+    
+    with col4:
+        if st.button("🔄 Réinitialiser", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key.startswith('generated_') or key == 'universal_query':
+                    del st.session_state[key]
+            st.rerun()
+    
+    # Deuxième ligne d'actions
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("⚖️ Jurisprudence", use_container_width=True):
+            if MODULES_AVAILABLE:
+                show_jurisprudence_interface()
+    
+    with col2:
+        if st.button("📁 Explorer", use_container_width=True):
+            if MODULES_AVAILABLE:
+                show_explorer_interface()
+    
+    with col3:
+        if st.button("📋 Bordereau", use_container_width=True):
+            st.session_state.universal_query = "créer bordereau"
+            st.rerun()
+    
+    with col4:
+        if st.button("⚙️ Configuration", use_container_width=True):
+            if MODULES_AVAILABLE:
+                config_page()
+
+# ========================= FONCTIONS UTILITAIRES =========================
+
+def search_local_documents(query: str) -> list:
+    """Recherche simple dans les documents locaux"""
+    
+    results = []
+    query_lower = query.lower()
+    
+    # Rechercher dans azure_documents
+    for doc_id, doc in st.session_state.get('azure_documents', {}).items():
+        if hasattr(doc, 'title') and hasattr(doc, 'content'):
+            if query_lower in doc.title.lower() or query_lower in doc.content.lower():
+                results.append({
+                    'id': doc_id,
+                    'title': doc.title,
+                    'content': doc.content,
+                    'source': getattr(doc, 'source', 'Local')
+                })
     
     return results
 
-# ========================= EXPORT DES FONCTIONNALITÉS =========================
+# ========================= POINT D'ENTRÉE =========================
 
-# Exporter toutes les fonctionnalités avancées
-__all__ = [
-    'generate_advanced_plainte',
-    'enrich_parties_information',
-    'verify_document_jurisprudences',
-    'verify_jurisprudences_in_analysis',
-    'improve_document_style',
-    'generate_improvement_suggestions',
-    'compare_all_providers'
-]
+if __name__ == "__main__":
+    show_page()
