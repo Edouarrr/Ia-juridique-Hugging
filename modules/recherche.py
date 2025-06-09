@@ -1,44 +1,36 @@
 # modules/recherche.py
-"""Module de recherche unifié optimisé - Interface principale avec toutes les fonctionnalités"""
+"""Module de recherche unifié - Interface principale avec toutes les fonctionnalités"""
 
 import streamlit as st
 import asyncio
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List
 from collections import defaultdict
-from enum import Enum
+import pandas as pd
+
+# Import des managers depuis le package managers
+try:
+    # Import du service de recherche principal
+    from managers.universal_search_service import UniversalSearchService, Document, QueryAnalysis, SearchResult
+    
+    # Import des autres managers disponibles
+    from managers.azure_blob_manager import AzureBlobManager
+    from managers.azure_search_manager import AzureSearchManager
+    from managers.multi_llm_manager import MultiLLMManager
+    from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
+    from managers.document_manager import DocumentManager
+    from managers.company_info_manager import CompanyInfoManager
+    from managers.legal_search import LegalSearchManager
+    from managers.style_analyzer import StyleAnalyzer
+    from managers.dynamic_generators import DynamicGenerators
+    
+    MANAGERS_AVAILABLE = True
+except ImportError as e:
+    st.error(f"⚠️ Erreur d'import des managers : {e}")
+    MANAGERS_AVAILABLE = False
 
 # ========================= CONFIGURATION =========================
-
-# Définition locale de PhaseProcedure pour éviter les erreurs d'import
-class PhaseProcedure(Enum):
-    """Phases de la procédure pénale"""
-    ENQUETE_PRELIMINAIRE = "enquete_preliminaire"
-    ENQUETE_FLAGRANCE = "enquete_flagrance"
-    INSTRUCTION = "instruction"
-    JUGEMENT = "jugement"
-    APPEL = "appel"
-    CASSATION = "cassation"
-
-# Définition locale de TypeDocument
-class TypeDocument(Enum):
-    """Types de documents juridiques"""
-    CONCLUSIONS = "conclusions"
-    PLAINTE = "plainte"
-    COURRIER = "courrier"
-    ASSIGNATION = "assignation"
-    MISE_EN_DEMEURE = "mise_en_demeure"
-    DOCUMENT = "document"
-
-# Définition locale de TypeAnalyse
-class TypeAnalyse(Enum):
-    """Types d'analyse disponibles"""
-    GENERAL = "general"
-    RISQUES_JURIDIQUES = "risques_juridiques"
-    CONFORMITE = "conformite"
-    STRATEGIE = "strategie"
-    INFRACTIONS = "infractions"
 
 # Styles de rédaction
 REDACTION_STYLES = {
@@ -141,1657 +133,47 @@ DOCUMENT_TEMPLATES = {
     }
 }
 
-# ========================= IMPORTS =========================
-
-# Import standard Python
-import json
-import pandas as pd
-
-# Classes de base minimales si les imports échouent
-class Document:
-    """Classe Document minimale si l'import échoue"""
-    def __init__(self, id: str, title: str, content: str, source: str, metadata: Dict = None):
-        self.id = id
-        self.title = title
-        self.content = content
-        self.source = source
-        self.metadata = metadata or {}
-
-class QueryAnalysis:
-    """Classe d'analyse de requête minimale"""
-    def __init__(self, original_query: str, query_lower: str, timestamp: datetime):
-        self.original_query = original_query
-        self.query_lower = query_lower
-        self.timestamp = timestamp
-        self.reference = None
-        self.document_type = None
-        self.action = None
-        self.subject_matter = None
-        self.phase_procedurale = None
-        self.parties = {'demandeurs': [], 'defendeurs': []}
-        self.infractions = []
-        self.style_request = None
-        self.parties_enrichies = None
-
-class Partie:
-    """Classe Partie minimale"""
-    def __init__(self, id: str, nom: str, type_partie: str, type_personne: str, phase_procedure: Any):
-        self.id = id
-        self.nom = nom
-        self.type_partie = type_partie
-        self.type_personne = type_personne
-        self.phase_procedure = phase_procedure
-        self.info_entreprise = None
-    
-    def get_designation_complete(self):
-        return self.nom
-
-class PieceSelectionnee:
-    """Classe PieceSelectionnee minimale"""
-    def __init__(self, numero: int, titre: str, description: str, categorie: str, 
-                 date: datetime = None, source: str = '', pertinence: float = 0.5):
-        self.numero = numero
-        self.titre = titre
-        self.description = description
-        self.categorie = categorie
-        self.date = date
-        self.source = source
-        self.pertinence = pertinence
-
-# Variables pour stocker les prompts
-ANALYSIS_PROMPTS_AFFAIRES = {}
-ANALYSIS_PROMPTS_INFRACTIONS = {}
+# ========================= IMPORTS DES MODÈLES =========================
 
 try:
-    # Import des managers
-    from managers.azure_blob_manager import AzureBlobManager
-    from managers.azure_search_manager import AzureSearchManager
-    from managers.multi_llm_manager import MultiLLMManager
-    from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
-    from managers.company_info_manager import get_company_info_manager
-    from managers.style_analyzer import StyleAnalyzer
-    
     # Import des modèles
     from models.dataclasses import (
-        Document,
-        DocumentJuridique,
-        Partie,
-        TypePartie,
-        CasJuridique,
-        InformationEntreprise,
-        SourceEntreprise,
-        PieceSelectionnee,
-        BordereauPieces,
-        ElementProcedure,
-        PieceVersee,
-        ChaineProcedure,
-        FactWithSource,
-        SourceReference,
-        ArgumentStructure,
-        InfractionIdentifiee,
-        InfractionAffaires,
-        PhaseProcedure,
-        StatutProcedural,
-        TypeDocument,
-        TypeJuridiction,
-        LLMProvider,
-        SearchMode,
-        StyleRedaction,
-        StylePattern,
-        StyleLearningResult,
-        StyleConfig,
-        DocumentTemplate,
-        AnalysisResult,
-        RedactionResult,
-        TypeAnalyse,
-        QueryAnalysis,
-        SearchResult,
-        create_partie_from_name_with_lookup,
-        format_partie_designation_by_phase,
-        format_piece_with_source_and_footnote,
-        generate_bordereau_with_full_links,
-        learn_document_style,
-        DEFAULT_STYLE_CONFIGS
+        PieceSelectionnee, 
+        AnalyseJuridique,
+        InfractionIdentifiee
     )
     
     # Import de la configuration
     from config.app_config import (
+        InfractionAffaires,
         ANALYSIS_PROMPTS_AFFAIRES,
         ANALYSIS_PROMPTS_INFRACTIONS,
+        LLMProvider,
+        SearchMode,
         app_config,
         api_config
     )
     
-    # Import des services
-    from services.universal_search_service import UniversalSearchService
-    
+    MODELS_AVAILABLE = True
 except ImportError as e:
     st.error(f"⚠️ Import manquant : {e}")
-    
-    # Utiliser les classes minimales définies plus haut
-    class UniversalSearchService:
-        """Service minimal si l'import échoue"""
-        pass
-    
-    class MultiLLMManager:
-        """Manager LLM minimal"""
-        def __init__(self):
-            self.clients = {}
-        
-        def get_available_providers(self):
-            return []
-        
-        def query_single_llm(self, provider, prompt, system, temperature=0.7, max_tokens=4000):
-            return {'success': False, 'error': 'Service non disponible'}
-    
-    class StyleAnalyzer:
-        """Analyseur de style minimal"""
-        def __init__(self):
-            self.learned_styles = {}
-        
-        def apply_learned_style(self, document, style):
-            return document
-    
-    def get_company_info_manager():
-        """Retourne None si le manager n'est pas disponible"""
-        return None
-    
-    DEFAULT_STYLE_CONFIGS = {}
+    MODELS_AVAILABLE = False
 
-# ========================= CLASSE PRINCIPALE =========================
+# ========================= INITIALISATION =========================
 
-class UniversalSearchInterface:
-    """Interface de recherche universelle optimisée"""
-    
-    def __init__(self):
-        """Initialisation de l'interface"""
-        try:
-            self.service = UniversalSearchService()
-        except:
-            self.service = None
-            
-        self.company_manager = get_company_info_manager()
-        self.style_analyzer = StyleAnalyzer()
-        self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
-        
-        # Cache pour optimisation
-        self._query_cache = {}
-        self._document_cache = {}
-    
-    def _ensure_document_object(self, doc_data: Any) -> Document:
-        """S'assure qu'on a bien un objet Document"""
-        if isinstance(doc_data, Document):
-            return doc_data
-        elif isinstance(doc_data, dict):
-            return Document(
-                id=doc_data.get('id', f"doc_{datetime.now().timestamp()}"),
-                title=doc_data.get('title', 'Sans titre'),
-                content=doc_data.get('content', ''),
-                source=doc_data.get('source', ''),
-                metadata=doc_data.get('metadata', {})
-            )
-        else:
-            raise ValueError(f"Type de document non supporté: {type(doc_data)}")
-    
-    async def process_universal_query(self, query: str):
-        """Traite une requête universelle de manière asynchrone"""
-        
-        # Vérifier le cache
-        if query in self._query_cache:
-            return self._query_cache[query]
-        
-        # Sauvegarder la requête
-        st.session_state.last_universal_query = query
-        
-        # Analyser la requête
-        query_analysis = self._analyze_query_enhanced(query)
-        
-        # Router vers le bon processeur
-        processor = self._get_query_processor(query_analysis)
-        
-        if processor:
-            result = await processor(query, query_analysis)
-            # Mettre en cache
-            self._query_cache[query] = result
-            return result
-        else:
-            # Recherche simple par défaut
-            return await self._process_search_request(query, query_analysis)
-    
-    def _analyze_query_enhanced(self, query: str) -> QueryAnalysis:
-        """Analyse améliorée de la requête retournant un objet QueryAnalysis"""
-        
-        # Créer l'objet QueryAnalysis
-        query_analysis = QueryAnalysis(
-            original_query=query,
-            query_lower=query.lower(),
-            timestamp=datetime.now()
-        )
-        
-        # Extraire la référence @
-        ref_match = re.search(r'@(\w+)', query)
-        if ref_match:
-            query_analysis.reference = ref_match.group(1)
-        
-        # Détecter le type de document
-        doc_types = {
-            'conclusions': TypeDocument.CONCLUSIONS,
-            'plainte': TypeDocument.PLAINTE,
-            'courrier': TypeDocument.COURRIER,
-            'assignation': TypeDocument.ASSIGNATION,
-            'mise en demeure': TypeDocument.MISE_EN_DEMEURE
-        }
-        
-        for keyword, doc_type in doc_types.items():
-            if keyword in query_analysis.query_lower:
-                query_analysis.document_type = doc_type
-                break
-        
-        # Détecter l'action principale
-        actions = {
-            'rédiger': 'redaction',
-            'analyser': 'analysis',
-            'rechercher': 'search',
-            'comparer': 'comparison',
-            'créer': 'creation',
-            'synthétiser': 'synthesis',
-            'importer': 'import',
-            'exporter': 'export'
-        }
-        
-        for keyword, action in actions.items():
-            if keyword in query_analysis.query_lower:
-                query_analysis.action = action
-                break
-        
-        # Détecter le sujet
-        subjects = {
-            'abus de biens sociaux': ['abus', 'biens', 'sociaux'],
-            'corruption': ['corruption'],
-            'fraude': ['fraude'],
-            'escroquerie': ['escroquerie'],
-            'blanchiment': ['blanchiment']
-        }
-        
-        for subject, keywords in subjects.items():
-            if all(kw in query_analysis.query_lower for kw in keywords):
-                query_analysis.subject_matter = subject
-                break
-        
-        # Ajouter les analyses supplémentaires
-        query_analysis.phase_procedurale = self._detect_procedural_phase(query)
-        query_analysis.parties = self._extract_parties(query)
-        query_analysis.infractions = self._extract_infractions(query)
-        query_analysis.style_request = self._detect_style_request(query)
-        
-        return query_analysis
-    
-    def _detect_procedural_phase(self, query: str) -> PhaseProcedure:
-        """Détecte la phase procédurale depuis la requête"""
-        query_lower = query.lower()
-        
-        phase_keywords = {
-            PhaseProcedure.ENQUETE_PRELIMINAIRE: [
-                'enquête', 'plainte', 'signalement', 'dépôt de plainte',
-                'procureur', 'parquet', 'officier de police judiciaire'
-            ],
-            PhaseProcedure.INSTRUCTION: [
-                'instruction', 'juge d\'instruction', 'mis en examen',
-                'témoin assisté', 'commission rogatoire', 'ordonnance'
-            ],
-            PhaseProcedure.JUGEMENT: [
-                'audience', 'tribunal', 'jugement', 'plaidoirie',
-                'prévenu', 'réquisitoire', 'correctionnel'
-            ],
-            PhaseProcedure.APPEL: [
-                'appel', 'cour d\'appel', 'appelant', 'intimé'
-            ]
-        }
-        
-        for phase, keywords in phase_keywords.items():
-            if any(keyword in query_lower for keyword in keywords):
-                return phase
-        
-        return PhaseProcedure.ENQUETE_PRELIMINAIRE
-    
-    def _extract_parties(self, query: str) -> Dict[str, List[str]]:
-        """Extrait les parties de la requête"""
-        
-        query_lower = query.lower()
-        parties = {'demandeurs': [], 'defendeurs': []}
-        
-        # Patterns de parties demanderesses
-        demandeurs_patterns = [
-            ('interconstruction', 'INTERCONSTRUCTION'),
-            ('vinci', 'VINCI'),
-            ('sogeprom', 'SOGEPROM RÉALISATIONS'),
-            ('demathieu bard', 'DEMATHIEU BARD'),
-            ('bouygues', 'BOUYGUES'),
-            ('eiffage', 'EIFFAGE'),
-            ('spie', 'SPIE BATIGNOLLES'),
-            ('leon grosse', 'LEON GROSSE')
-        ]
-        
-        # Patterns de parties défenderesses
-        defendeurs_patterns = [
-            ('perinet', 'M. PERINET'),
-            ('périnet', 'M. PÉRINET'),
-            ('vp invest', 'VP INVEST'),
-            ('perraud', 'M. PERRAUD'),
-            ('martin', 'M. MARTIN'),
-            ('dupont', 'M. DUPONT')
-        ]
-        
-        # Extraction intelligente
-        if ' pour ' in query_lower and ' contre ' in query_lower:
-            partie_pour = query_lower.split(' pour ')[1].split(' contre ')[0]
-            partie_contre = query_lower.split(' contre ')[1]
-            
-            for pattern, nom in demandeurs_patterns:
-                if pattern in partie_pour:
-                    parties['demandeurs'].append(nom)
-            
-            for pattern, nom in defendeurs_patterns:
-                if pattern in partie_contre:
-                    parties['defendeurs'].append(nom)
-        else:
-            # Recherche globale
-            for pattern, nom in demandeurs_patterns:
-                if pattern in query_lower:
-                    parties['demandeurs'].append(nom)
-            
-            for pattern, nom in defendeurs_patterns:
-                if pattern in query_lower:
-                    parties['defendeurs'].append(nom)
-        
-        return parties
-    
-    def _extract_infractions(self, query: str) -> List[str]:
-        """Extrait les infractions mentionnées"""
-        
-        query_lower = query.lower()
-        infractions = []
-        
-        # Dictionnaire des infractions
-        infractions_patterns = {
-            'escroquerie': 'Escroquerie (art. 313-1 Code pénal)',
-            'abus de confiance': 'Abus de confiance (art. 314-1 Code pénal)',
-            'abus de biens sociaux': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
-            'faux': 'Faux et usage de faux (art. 441-1 Code pénal)',
-            'corruption': 'Corruption (art. 432-11 et 433-1 Code pénal)',
-            'trafic d\'influence': 'Trafic d\'influence (art. 432-11 et 433-2 Code pénal)',
-            'favoritisme': 'Favoritisme (art. 432-14 Code pénal)',
-            'prise illégale': 'Prise illégale d\'intérêts (art. 432-12 Code pénal)',
-            'blanchiment': 'Blanchiment (art. 324-1 Code pénal)',
-            'fraude fiscale': 'Fraude fiscale (art. 1741 Code général des impôts)',
-            'travail dissimulé': 'Travail dissimulé (art. L8221-3 Code du travail)',
-            'marchandage': 'Marchandage (art. L8231-1 Code du travail)',
-            'entrave': 'Entrave (art. L2328-1 Code du travail)',
-            'banqueroute': 'Banqueroute (art. L654-2 Code de commerce)',
-            'recel': 'Recel (art. 321-1 Code pénal)'
-        }
-        
-        for pattern, infraction in infractions_patterns.items():
-            if pattern in query_lower:
-                infractions.append(infraction)
-        
-        return infractions
-    
-    def _detect_style_request(self, query: str) -> Optional[str]:
-        """Détecte une demande de style spécifique"""
-        
-        query_lower = query.lower()
-        
-        # Recherche de style explicite
-        for style_id, style_info in REDACTION_STYLES.items():
-            if style_info['name'].lower() in query_lower:
-                return style_id
-        
-        # Recherche de style implicite
-        if 'comme d\'habitude' in query_lower or 'style habituel' in query_lower:
-            return 'learned'
-        
-        return None
-    
-    def _get_query_processor(self, query_analysis: QueryAnalysis):
-        """Retourne le processeur approprié pour la requête"""
-        
-        # Détection par mots-clés spécifiques
-        query_lower = query_analysis.query_lower
-        
-        # RÉDACTION (incluant plaintes)
-        if any(word in query_lower for word in ['rédige', 'rédiger', 'écrire', 'créer', 'plainte', 'conclusions', 'courrier', 'assignation']):
-            return self._process_redaction_request
-        
-        # PLAIDOIRIE
-        elif any(word in query_lower for word in ['plaidoirie', 'plaider', 'audience']):
-            return self._process_plaidoirie_request
-        
-        # PRÉPARATION CLIENT
-        elif any(word in query_lower for word in ['préparer client', 'préparation', 'coaching']):
-            return self._process_preparation_client_request
-        
-        # IMPORT
-        elif any(word in query_lower for word in ['import', 'importer', 'charger', 'upload']):
-            return self._process_import_request
-        
-        # EXPORT
-        elif any(word in query_lower for word in ['export', 'exporter', 'télécharger', 'download']):
-            return self._process_export_request
-        
-        # EMAIL
-        elif any(word in query_lower for word in ['email', 'envoyer', 'mail', 'courrier électronique']):
-            return self._process_email_request
-        
-        # ANALYSE
-        elif any(word in query_lower for word in ['analyser', 'analyse', 'étudier', 'examiner']):
-            return self._process_analysis_request
-        
-        # PIÈCES
-        elif any(word in query_lower for word in ['sélectionner pièces', 'pièces', 'sélection']):
-            return self._process_piece_selection_request
-        
-        # BORDEREAU
-        elif 'bordereau' in query_lower:
-            return self._process_bordereau_request
-        
-        # SYNTHÈSE
-        elif any(word in query_lower for word in ['synthèse', 'synthétiser', 'résumer']):
-            return self._process_synthesis_request
-        
-        # TEMPLATES
-        elif any(word in query_lower for word in ['template', 'modèle', 'gabarit']):
-            return self._process_template_request
-        
-        # JURISPRUDENCE
-        elif any(word in query_lower for word in ['jurisprudence', 'juris', 'décision', 'arrêt']):
-            return self._process_jurisprudence_request
-        
-        # CHRONOLOGIE
-        elif any(word in query_lower for word in ['chronologie', 'timeline', 'frise']):
-            return self._process_timeline_request
-        
-        # CARTOGRAPHIE
-        elif any(word in query_lower for word in ['cartographie', 'mapping', 'carte', 'réseau']):
-            return self._process_mapping_request
-        
-        # COMPARAISON
-        elif any(word in query_lower for word in ['comparer', 'comparaison', 'différences']):
-            return self._process_comparison_request
-        
-        return None
-    
-    async def _process_redaction_request(self, query: str, query_analysis: QueryAnalysis):
-        """Traite une demande de rédaction avec enrichissement"""
-        
-        st.info("📝 Détection d'une demande de rédaction...")
-        
-        # Cas spécifique : plainte
-        if 'plainte' in query_analysis.query_lower:
-            return await self._generate_plainte_enriched(query, query_analysis)
-        
-        # Autres types de rédaction
-        doc_type = query_analysis.document_type or TypeDocument.DOCUMENT
-        
-        # Enrichir les parties si nécessaire
-        if query_analysis.parties.get('demandeurs') or query_analysis.parties.get('defendeurs'):
-            enriched_parties = await self._enrich_parties(query_analysis.parties, query_analysis.phase_procedurale)
-            query_analysis.parties_enrichies = enriched_parties
-        
-        # Générer le document
-        result = await self._generate_document(doc_type, query, query_analysis)
-        
-        # Appliquer le style si demandé
-        if query_analysis.style_request and 'document' in result:
-            result['document'] = await self._apply_style(result['document'], query_analysis.style_request)
-        
-        # Adapter la terminologie selon la phase
-        if 'document' in result:
-            result['document'] = self._adapt_terminology_by_phase(result['document'], query_analysis.phase_procedurale)
-        
-        # Stocker le résultat
-        st.session_state.redaction_result = result
-        return result
-    
-    async def _generate_document(self, doc_type: TypeDocument, query: str, query_analysis: QueryAnalysis) -> Dict[str, Any]:
-        """Génère un document selon le type demandé"""
-        llm_manager = MultiLLMManager()
-        
-        if not llm_manager.clients:
-            st.error("❌ Aucune IA n'est configurée")
-            return {'error': 'Aucune IA disponible'}
-        
-        # Utiliser le template approprié
-        template_key = doc_type.value if hasattr(doc_type, 'value') else str(doc_type).lower()
-        template = DOCUMENT_TEMPLATES.get(template_key, DOCUMENT_TEMPLATES['conclusions_defense'])
-        
-        # Construire le prompt
-        prompt = f"""Génère un document juridique de type {template['name']}.
+def init_search_service():
+    """Initialise le service de recherche universel"""
+    if 'search_service' not in st.session_state:
+        st.session_state.search_service = UniversalSearchService()
+    return st.session_state.search_service
 
-CONTEXTE : {query}
-
-PARTIES IDENTIFIÉES :
-- Demandeurs : {', '.join(query_analysis.parties.get('demandeurs', ['Non spécifiés']))}
-- Défendeurs : {', '.join(query_analysis.parties.get('defendeurs', ['Non spécifiés']))}
-
-INFRACTIONS IDENTIFIÉES :
-{chr(10).join('- ' + inf for inf in query_analysis.infractions) if query_analysis.infractions else '- À déterminer'}
-
-STRUCTURE ATTENDUE :
-{chr(10).join(template['structure'])}
-
-STYLE : {template['style']}
-
-Rédige un document complet et professionnel d'au moins 2000 mots."""
-        
-        provider = self._select_best_provider(llm_manager.get_available_providers())
-        
-        with st.spinner(f"⚖️ Génération du document via {provider}..."):
-            response = llm_manager.query_single_llm(
-                provider,
-                prompt,
-                "Tu es un avocat expert en rédaction juridique.",
-                temperature=0.3,
-                max_tokens=8000
-            )
-        
-        if response['success']:
-            return {
-                'type': template_key,
-                'document': response['response'],
-                'provider': provider,
-                'timestamp': datetime.now(),
-                'metadata': {
-                    'query_analysis': query_analysis,
-                    'template': template
-                }
-            }
-        else:
-            return {'error': response.get('error', 'Erreur de génération')}
-    
-    async def _enrich_parties(self, parties_dict: Dict[str, List[str]], phase: PhaseProcedure) -> Dict[str, List[Partie]]:
-        """Enrichit les parties avec les informations d'entreprise"""
-        
-        enriched = {'demandeurs': [], 'defendeurs': []}
-        
-        with st.spinner("🔍 Recherche des informations légales des entreprises..."):
-            # Enrichir les demandeurs
-            for nom in parties_dict.get('demandeurs', []):
-                partie = Partie(
-                    id=f"partie_{nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    nom=nom,
-                    type_partie='DEMANDEUR',
-                    type_personne="morale",
-                    phase_procedure=phase
-                )
-                
-                # Enrichir avec les infos entreprise
-                if self.company_manager:
-                    info = await self.company_manager.get_company_info(nom)
-                    if info:
-                        partie.info_entreprise = info
-                
-                enriched['demandeurs'].append(partie)
-            
-            # Enrichir les défendeurs
-            for nom in parties_dict.get('defendeurs', []):
-                is_physique = nom.startswith(('M.', 'Mme', 'Monsieur', 'Madame'))
-                
-                if phase in [PhaseProcedure.ENQUETE_PRELIMINAIRE, PhaseProcedure.ENQUETE_FLAGRANCE]:
-                    type_partie = 'MIS_EN_CAUSE'
-                else:
-                    type_partie = 'DEFENDEUR'
-                
-                partie = Partie(
-                    id=f"partie_{nom.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    nom=nom,
-                    type_partie=type_partie,
-                    type_personne="physique" if is_physique else "morale",
-                    phase_procedure=phase
-                )
-                
-                # Enrichir si c'est une entreprise
-                if not is_physique and self.company_manager:
-                    info = await self.company_manager.get_company_info(nom)
-                    if info:
-                        partie.info_entreprise = info
-                
-                enriched['defendeurs'].append(partie)
-        
-        return enriched
-    
-    def _adapt_terminology_by_phase(self, text: str, phase: PhaseProcedure) -> str:
-        """Adapte la terminologie selon la phase procédurale"""
-        
-        replacements = {
-            PhaseProcedure.ENQUETE_PRELIMINAIRE: {
-                'mis en examen': 'mis en cause',
-                'prévenu': 'suspect',
-                'témoin assisté': 'témoin',
-                'le prévenu': 'le mis en cause',
-                'les prévenus': 'les mis en cause',
-                'l\'accusé': 'le suspect',
-                'les accusés': 'les suspects'
-            },
-            PhaseProcedure.INSTRUCTION: {
-                'prévenu': 'mis en examen',
-                'suspect': 'mis en examen',
-                'mis en cause': 'mis en examen',
-                'le prévenu': 'le mis en examen',
-                'les prévenus': 'les mis en examen',
-                'l\'accusé': 'le mis en examen',
-                'les accusés': 'les mis en examen'
-            },
-            PhaseProcedure.JUGEMENT: {
-                'mis en examen': 'prévenu',
-                'mis en cause': 'prévenu',
-                'suspect': 'prévenu',
-                'le mis en examen': 'le prévenu',
-                'les mis en examen': 'les prévenus',
-                'l\'accusé': 'le prévenu',
-                'les accusés': 'les prévenus'
-            }
-        }
-        
-        if phase in replacements:
-            for old_term, new_term in replacements[phase].items():
-                # Remplacer avec sensibilité à la casse
-                text = re.sub(rf'\b{old_term}\b', new_term, text, flags=re.IGNORECASE)
-                # Gérer les majuscules en début de phrase
-                text = re.sub(rf'\b{old_term.capitalize()}\b', new_term.capitalize(), text)
-                text = re.sub(rf'\b{old_term.upper()}\b', new_term.upper(), text)
-        
-        return text
-    
-    async def _apply_style(self, document: str, style_request: str) -> str:
-        """Applique un style au document"""
-        
-        if style_request == 'learned' and self.style_analyzer.learned_styles:
-            # Prendre le style le plus récent
-            style_name = list(self.style_analyzer.learned_styles.keys())[-1]
-            return self.style_analyzer.apply_learned_style(document, self.style_analyzer.learned_styles[style_name])
-        elif style_request in DEFAULT_STYLE_CONFIGS:
-            # Utiliser la configuration de style par défaut importée
-            style_config = DEFAULT_STYLE_CONFIGS[style_request]
-            return self._apply_style_config(document, style_config)
-        elif style_request in REDACTION_STYLES:
-            # Appliquer un style prédéfini local
-            return self._apply_predefined_style(document, style_request)
-        
-        return document
-    
-    def _apply_style_config(self, document: str, style_config: Any) -> str:
-        """Applique une configuration de style au document"""
-        
-        # Appliquer les transformations selon la configuration
-        if hasattr(style_config, 'replacements'):
-            for old, new in style_config.replacements.items():
-                document = document.replace(old, new)
-        
-        if hasattr(style_config, 'tone') and style_config.tone == 'formel':
-            # Rendre plus formel
-            document = document.replace('vous', 'Vous')
-            document = document.replace('je', 'Je')
-        
-        return document
-    
-    def _apply_predefined_style(self, document: str, style_id: str) -> str:
-        """Applique un style prédéfini au document"""
-        
-        style = REDACTION_STYLES.get(style_id, {})
-        
-        # Application basique du style
-        if style_id == 'formel':
-            # Rendre plus formel
-            document = document.replace('vous', 'Vous')
-            document = document.replace('je', 'Je')
-        elif style_id == 'synthétique':
-            # Rendre plus concis (exemple basique)
-            document = re.sub(r'\s+', ' ', document)
-        
-        return document
-    
-    async def _generate_plainte_enriched(self, query: str, query_analysis: QueryAnalysis):
-        """Génère une plainte avec enrichissement complet"""
-        
-        # Déterminer le type de plainte
-        is_partie_civile = any(term in query_analysis.query_lower for term in [
-            'partie civile', 'constitution de partie civile', 'cpc', 
-            'doyen', 'juge d\'instruction', 'instruction'
-        ])
-        
-        type_plainte = 'plainte_avec_cpc' if is_partie_civile else 'plainte_simple'
-        
-        # Enrichir les parties
-        enriched_parties = await self._enrich_parties(query_analysis.parties, query_analysis.phase_procedurale)
-        
-        # Afficher le résumé
-        self._display_plainte_summary(enriched_parties, query_analysis.infractions, type_plainte)
-        
-        # Options supplémentaires
-        options = self._get_plainte_options()
-        
-        # Générer la plainte
-        if st.button("🚀 Générer la plainte", type="primary", key="generate_plainte_btn"):
-            return await self._generate_plainte_document(
-                query, 
-                enriched_parties, 
-                query_analysis.infractions,
-                type_plainte,
-                options
-            )
-        
-        return None
-    
-    def _display_plainte_summary(self, parties: Dict[str, List[Partie]], infractions: List[str], type_plainte: str):
-        """Affiche le résumé de la plainte à générer"""
-        
-        st.markdown("### 📋 Résumé de l'analyse")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("**🏢 Demandeurs (victimes) :**")
-            if parties['demandeurs']:
-                for p in parties['demandeurs']:
-                    designation = p.get_designation_complete()
-                    st.write(f"• {designation}")
-                    if p.info_entreprise:
-                        st.caption(f"  SIREN: {p.info_entreprise.siren}")
-            else:
-                st.warning("❌ Aucun demandeur identifié")
-        
-        with col2:
-            st.markdown("**⚖️ Défendeurs (mis en cause) :**")
-            if parties['defendeurs']:
-                for p in parties['defendeurs']:
-                    st.write(f"• {p.nom}")
-                    if p.info_entreprise:
-                        st.caption(f"  SIREN: {p.info_entreprise.siren}")
-            else:
-                st.warning("❌ Aucun défendeur identifié")
-        
-        with col3:
-            st.markdown("**🎯 Infractions :**")
-            if infractions:
-                for inf in infractions[:3]:
-                    st.write(f"• {inf}")
-                if len(infractions) > 3:
-                    st.write(f"• + {len(infractions) - 3} autres")
-            else:
-                st.info("📌 Infractions standards")
-    
-    def _get_plainte_options(self) -> Dict[str, Any]:
-        """Récupère les options de génération de la plainte"""
-        
-        with st.expander("⚙️ Options de la plainte", expanded=True):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                include_chronologie = st.checkbox("Inclure chronologie détaillée", value=True)
-                include_prejudices = st.checkbox("Détailler les préjudices", value=True)
-                include_jurisprudence = st.checkbox("Citer jurisprudences", value=True)
-            
-            with col2:
-                style = st.selectbox(
-                    "Style de rédaction",
-                    options=list(REDACTION_STYLES.keys()),
-                    format_func=lambda x: REDACTION_STYLES[x]['name']
-                )
-                
-                use_learned_style = st.checkbox("Utiliser mon style habituel", value=False)
-        
-        return {
-            'chronologie': include_chronologie,
-            'prejudices': include_prejudices,
-            'jurisprudence': include_jurisprudence,
-            'style': 'learned' if use_learned_style else style
-        }
-    
-    async def _generate_plainte_document(self, query: str, parties: Dict[str, List[Partie]], 
-                                       infractions: List[str], type_plainte: str, 
-                                       options: Dict[str, Any]) -> Dict[str, Any]:
-        """Génère le document de plainte complet"""
-        
-        llm_manager = MultiLLMManager()
-        
-        if not llm_manager.clients:
-            st.error("❌ Aucune IA n'est configurée")
-            return None
-        
-        # Construire les désignations juridiques complètes
-        designations = {
-            'demandeurs': [],
-            'defendeurs': []
-        }
-        
-        for role, parties_list in parties.items():
-            for partie in parties_list:
-                if partie.info_entreprise and self.company_manager:
-                    designation = self.company_manager.format_for_legal_document(
-                        partie.info_entreprise,
-                        style='complet'
-                    )
-                else:
-                    designation = partie.get_designation_complete()
-                
-                designations[role].append(designation)
-        
-        # Construire le prompt enrichi
-        prompt = self._build_plainte_prompt(
-            query, designations, infractions, type_plainte, options
-        )
-        
-        # Sélectionner le meilleur provider
-        provider = self._select_best_provider(llm_manager.get_available_providers())
-        
-        # Générer la plainte
-        with st.spinner(f"⚖️ Génération de la plainte via {provider}..."):
-            response = llm_manager.query_single_llm(
-                provider,
-                prompt,
-                "Tu es un avocat pénaliste expert avec 25 ans d'expérience.",
-                temperature=0.3,
-                max_tokens=8000
-            )
-        
-        if response['success']:
-            document = response['response']
-            
-            # Appliquer le style si demandé
-            if options.get('style'):
-                document = await self._apply_style(document, options['style'])
-            
-            # Adapter la terminologie
-            phase = parties['demandeurs'][0].phase_procedure if parties['demandeurs'] else PhaseProcedure.ENQUETE_PRELIMINAIRE
-            document = self._adapt_terminology_by_phase(document, phase)
-            
-            # Créer le résultat
-            result = {
-                'type': type_plainte,
-                'document': document,
-                'provider': provider,
-                'timestamp': datetime.now(),
-                'metadata': {
-                    'parties': parties,
-                    'designations': designations,
-                    'infractions': infractions,
-                    'options': options,
-                    'phase_procedurale': phase.value,
-                    'requete_originale': query,
-                    'generation_time': response.get('elapsed_time', 0),
-                    'word_count': len(document.split()),
-                    'enriched_companies': sum(1 for p_list in parties.values() for p in p_list if p.info_entreprise)
-                }
-            }
-            
-            st.session_state.redaction_result = result
-            st.success("✅ Plainte générée avec succès !")
-            
-            return result
-        else:
-            st.error(f"❌ Erreur : {response.get('error', 'Erreur inconnue')}")
-            return None
-    
-    def _build_plainte_prompt(self, query: str, designations: Dict[str, List[str]], 
-                            infractions: List[str], type_plainte: str, 
-                            options: Dict[str, Any]) -> str:
-        """Construit le prompt pour générer la plainte"""
-        
-        # Prompt de base selon le type
-        if type_plainte == 'plainte_avec_cpc':
-            base_prompt = self._get_cpc_prompt_template()
-        else:
-            base_prompt = self._get_simple_plainte_prompt_template()
-        
-        # Remplacer les variables
-        prompt = base_prompt.format(
-            query=query,
-            demandeurs='\n'.join(f"   - {d}" for d in designations['demandeurs']),
-            defendeurs='\n'.join(f"   - {d}" for d in designations['defendeurs']),
-            infractions='\n'.join(f"- {i}" for i in infractions),
-            include_chronologie="OUI" if options.get('chronologie') else "NON",
-            include_prejudices="DÉTAILLÉ" if options.get('prejudices') else "SIMPLE",
-            include_jurisprudence="OUI" if options.get('jurisprudence') else "NON"
-        )
-        
-        return prompt
-    
-    def _get_cpc_prompt_template(self) -> str:
-        """Template pour plainte avec constitution de partie civile"""
-        return """Tu es un avocat pénaliste expert. Rédige une plainte avec constitution de partie civile EXHAUSTIVE.
-
-CONTEXTE : {query}
-
-PARTIES :
-DEMANDEURS (avec désignations juridiques complètes) :
-{demandeurs}
-
-DÉFENDEURS :
-{defendeurs}
-
-INFRACTIONS À EXAMINER :
-{infractions}
-
-INSTRUCTIONS :
-- Inclure chronologie : {include_chronologie}
-- Détailler préjudices : {include_prejudices}
-- Citer jurisprudences : {include_jurisprudence}
-
-Rédige une plainte complète (minimum 5000 mots) avec :
-1. EN-TÊTE FORMEL au Doyen des Juges d'Instruction
-2. IDENTIFICATION COMPLÈTE DES PARTIES (utiliser les désignations fournies)
-3. EXPOSÉ EXHAUSTIF DES FAITS (chronologique et détaillé)
-4. QUALIFICATION JURIDIQUE APPROFONDIE
-5. ÉVALUATION DÉTAILLÉE DES PRÉJUDICES
-6. CONSTITUTION DE PARTIE CIVILE
-7. DEMANDES D'ACTES D'INSTRUCTION
-8. PAR CES MOTIFS
-9. BORDEREAU DE PIÈCES"""
-    
-    def _get_simple_plainte_prompt_template(self) -> str:
-        """Template pour plainte simple"""
-        return """Tu es un avocat pénaliste expert. Rédige une plainte simple mais complète.
-
-CONTEXTE : {query}
-
-PARTIES :
-PLAIGNANTS :
-{demandeurs}
-
-MIS EN CAUSE :
-{defendeurs}
-
-INFRACTIONS :
-{infractions}
-
-OPTIONS :
-- Chronologie : {include_chronologie}
-- Préjudices : {include_prejudices}
-- Jurisprudences : {include_jurisprudence}
-
-Rédige une plainte complète (minimum 3000 mots) avec :
-1. EN-TÊTE au Procureur de la République
-2. IDENTITÉ DU/DES PLAIGNANT(S) (utiliser les désignations fournies)
-3. EXPOSÉ DES FAITS
-4. QUALIFICATION JURIDIQUE
-5. PRÉJUDICE
-6. DEMANDES
-7. PIÈCES JOINTES
-
-Style : juridique, factuel et professionnel."""
-    
-    def _select_best_provider(self, available_providers: List[str]) -> str:
-        """Sélectionne le meilleur provider disponible"""
-        
-        preferred_order = ['anthropic', 'openai', 'google', 'mistral', 'groq']
-        
-        for provider in preferred_order:
-            if provider in available_providers:
-                return provider
-        
-        return available_providers[0] if available_providers else None
-    
-    async def _process_analysis_request(self, query: str, analysis: QueryAnalysis):
-        """Traite une demande d'analyse"""
-        
-        st.info("🤖 Détection d'une demande d'analyse...")
-        
-        # Collecter les documents pertinents
-        documents = await self._collect_relevant_documents(analysis)
-        
-        if not documents:
-            st.warning("⚠️ Aucun document trouvé pour l'analyse")
-            return None
-        
-        # Configuration de l'analyse
-        config = self._get_analysis_config()
-        
-        # Lancer l'analyse
-        if st.button("🚀 Lancer l'analyse", type="primary", key="launch_analysis"):
-            with st.spinner("🤖 Analyse en cours..."):
-                # Déterminer quelle méthode d'analyse utiliser
-                analysis_type = config['type']
-                
-                # Si c'est un enum TypeAnalyse
-                if hasattr(analysis_type, 'value'):
-                    if analysis_type == TypeAnalyse.RISQUES_JURIDIQUES:
-                        result = await self.analyze_legal_risks(documents, query)
-                    elif analysis_type == TypeAnalyse.CONFORMITE:
-                        result = await self.analyze_compliance(documents, query)
-                    elif analysis_type == TypeAnalyse.STRATEGIE:
-                        result = await self.analyze_strategy(documents, query)
-                    elif analysis_type == TypeAnalyse.INFRACTIONS:
-                        result = await self.analyze_infractions(documents, query, config)
-                    else:
-                        result = await self._perform_analysis(documents, query, config)
-                else:
-                    # Fallback sur les chaînes
-                    if analysis_type in ['risques_juridiques', 'Risques juridiques']:
-                        result = await self.analyze_legal_risks(documents, query)
-                    elif analysis_type in ['conformite', 'Conformité']:
-                        result = await self.analyze_compliance(documents, query)
-                    elif analysis_type in ['strategie', 'Stratégie']:
-                        result = await self.analyze_strategy(documents, query)
-                    elif analysis_type in ['infractions', 'Infractions']:
-                        result = await self.analyze_infractions(documents, query, config)
-                    else:
-                        result = await self._perform_analysis(documents, query, config)
-                
-                # Stocker les résultats
-                st.session_state.ai_analysis_results = result
-                return result
-        
-        return None
-    
-    async def analyze_infractions(self, documents: List[Document], query: str, config: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Analyse spécifique des infractions économiques en utilisant les prompts importés"""
-        
-        llm_manager = MultiLLMManager()
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        # Récupérer l'infraction depuis la config ou session state
-        infraction = None
-        if config:
-            infraction = config.get('infraction')
-        if not infraction:
-            infraction = st.session_state.get('infraction_input', 'À déterminer')
-        
-        # Utiliser le prompt approprié depuis ANALYSIS_PROMPTS_INFRACTIONS
-        if infraction in ANALYSIS_PROMPTS_INFRACTIONS:
-            base_prompt = ANALYSIS_PROMPTS_INFRACTIONS[infraction]
-        else:
-            # Prompt générique si l'infraction spécifique n'est pas trouvée
-            base_prompt = f"""Analyse ces documents pour identifier des infractions économiques.
-Client: {st.session_state.get('client_nom', 'Non spécifié')}
-Infraction suspectée: {infraction}
-
-DOCUMENTS:
-{{documents}}
-
-Identifie:
-1. INFRACTIONS CARACTÉRISÉES
-   - Qualification juridique précise
-   - Articles du Code pénal applicables
-   - Éléments constitutifs présents/absents
-   
-2. RESPONSABILITÉS
-   - Personnes physiques impliquées
-   - Responsabilité des personnes morales
-   
-3. SANCTIONS ENCOURUES
-   - Peines principales
-   - Peines complémentaires
-   - Prescription
-
-4. ÉLÉMENTS DE PREUVE
-   - Preuves matérielles identifiées
-   - Témoignages pertinents
-   - Documents clés
-
-5. STRATÉGIE DE DÉFENSE
-   - Points faibles de l'accusation
-   - Arguments de défense possibles
-   - Jurisprudences favorables"""
-        
-        # Insérer les documents dans le prompt
-        documents_text = '\n'.join([f"- {doc.title}: {doc.content[:500]}..." for doc in documents[:10]])
-        infraction_prompt = base_prompt.replace('{documents}', documents_text)
-        
-        try:
-            provider = list(llm_manager.clients.keys())[0]
-            response = llm_manager.query_single_llm(
-                provider,
-                infraction_prompt,
-                "Tu es un avocat expert en droit pénal des affaires.",
-                temperature=0.2,
-                max_tokens=6000
-            )
-            
-            if response['success']:
-                return {
-                    'type': 'infractions',
-                    'content': response['response'],
-                    'document_count': len(documents),
-                    'timestamp': datetime.now(),
-                    'query': query,
-                    'infraction': infraction,
-                    'client': st.session_state.get('client_nom', 'Non spécifié')
-                }
-        except Exception as e:
-            return {'error': f'Erreur analyse infractions: {str(e)}'}
-    
-    async def analyze_legal_risks(self, documents: List[Document], query: str) -> Dict[str, Any]:
-        """Analyse les risques juridiques"""
-        
-        llm_manager = MultiLLMManager()
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        # Construire le prompt
-        risk_prompt = f"""Analyse les risques juridiques dans ces documents.
-DOCUMENTS:
-{chr(10).join([f"- {doc.title}: {doc.content[:500]}..." for doc in documents[:10]])}
-QUESTION: {query}
-
-Identifie et évalue:
-1. RISQUES PÉNAUX
-   - Infractions potentielles
-   - Niveau de risque (faible/moyen/élevé)
-   - Prescriptions applicables
-
-2. RISQUES CIVILS
-   - Responsabilités contractuelles
-   - Responsabilités délictuelles
-   - Montants en jeu
-
-3. RISQUES RÉPUTATIONNELS
-   - Impact médiatique potentiel
-   - Conséquences business
-
-4. RECOMMANDATIONS
-   - Actions préventives
-   - Stratégies de mitigation
-
-Format structuré avec évaluation précise."""
-        
-        try:
-            provider = list(llm_manager.clients.keys())[0]
-            response = llm_manager.query_single_llm(
-                provider,
-                risk_prompt,
-                "Tu es un expert en analyse de risques juridiques.",
-                temperature=0.2,
-                max_tokens=4000
-            )
-            
-            if response['success']:
-                return {
-                    'type': 'risk_analysis',
-                    'content': response['response'],
-                    'document_count': len(documents),
-                    'timestamp': datetime.now(),
-                    'query': query
-                }
-        except Exception as e:
-            return {'error': f'Erreur analyse: {str(e)}'}
-    
-    async def analyze_compliance(self, documents: List[Document], query: str) -> Dict[str, Any]:
-        """Analyse de conformité"""
-        
-        llm_manager = MultiLLMManager()
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        compliance_prompt = f"""Analyse la conformité légale et réglementaire.
-DOCUMENTS:
-{chr(10).join([f"- {doc.title}: {doc.content[:500]}..." for doc in documents[:10]])}
-QUESTION: {query}
-
-Vérifie:
-1. CONFORMITÉ LÉGALE
-   - Respect des lois applicables
-   - Points de non-conformité
-
-2. CONFORMITÉ RÉGLEMENTAIRE
-   - Respect des règlements sectoriels
-   - Obligations déclaratives
-
-3. MANQUEMENTS IDENTIFIÉS
-   - Gravité des manquements
-   - Sanctions possibles
-
-4. ACTIONS CORRECTIVES
-   - Mesures immédiates
-   - Plan de remédiation
-
-5. RECOMMANDATIONS
-   - Amélioration des process
-   - Formation nécessaire"""
-        
-        try:
-            provider = list(llm_manager.clients.keys())[0]
-            response = llm_manager.query_single_llm(
-                provider,
-                compliance_prompt,
-                "Tu es un expert en conformité juridique.",
-                temperature=0.2,
-                max_tokens=4000
-            )
-            
-            if response['success']:
-                return {
-                    'type': 'compliance',
-                    'content': response['response'],
-                    'document_count': len(documents),
-                    'timestamp': datetime.now(),
-                    'query': query
-                }
-        except Exception as e:
-            return {'error': f'Erreur analyse conformité: {str(e)}'}
-    
-    async def analyze_strategy(self, documents: List[Document], query: str) -> Dict[str, Any]:
-        """Analyse stratégique"""
-        
-        llm_manager = MultiLLMManager()
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        strategy_prompt = f"""Développe une stratégie juridique basée sur ces documents.
-DOCUMENTS:
-{chr(10).join([f"- {doc.title}: {doc.content[:500]}..." for doc in documents[:10]])}
-QUESTION: {query}
-
-Élabore:
-1. ANALYSE DE LA SITUATION
-   - Forces et faiblesses
-   - Opportunités et menaces
-
-2. OPTIONS STRATÉGIQUES
-   - Option A : Défensive
-   - Option B : Offensive
-   - Option C : Négociée
-
-3. AVANTAGES/INCONVÉNIENTS
-   - Analyse de chaque option
-   - Coûts et bénéfices
-
-4. STRATÉGIE RECOMMANDÉE
-   - Approche privilégiée
-   - Justification
-
-5. PLAN D'ACTION
-   - Étapes clés
-   - Timeline"""
-        
-        try:
-            provider = list(llm_manager.clients.keys())[0]
-            response = llm_manager.query_single_llm(
-                provider,
-                strategy_prompt,
-                "Tu es un stratège juridique expérimenté.",
-                temperature=0.3,
-                max_tokens=4000
-            )
-            
-            if response['success']:
-                return {
-                    'type': 'strategy',
-                    'content': response['response'],
-                    'document_count': len(documents),
-                    'timestamp': datetime.now(),
-                    'query': query
-                }
-        except Exception as e:
-            return {'error': f'Erreur analyse stratégique: {str(e)}'}
-    
-    def _get_analysis_config(self) -> Dict[str, Any]:
-        """Récupère la configuration d'analyse"""
-        
-        st.markdown("### ⚙️ Configuration de l'analyse")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Utiliser l'enum TypeAnalyse
-            analysis_types = [
-                (TypeAnalyse.GENERAL, "Analyse générale"),
-                (TypeAnalyse.RISQUES_JURIDIQUES, "Risques juridiques"),
-                (TypeAnalyse.CONFORMITE, "Conformité"),
-                (TypeAnalyse.STRATEGIE, "Stratégie"),
-                (TypeAnalyse.INFRACTIONS, "Infractions")
-            ]
-            
-            analysis_type = st.selectbox(
-                "Type d'analyse",
-                options=[at[0] for at in analysis_types],
-                format_func=lambda x: next(at[1] for at in analysis_types if at[0] == x),
-                key="analysis_type_select"
-            )
-            
-            client_nom = st.text_input(
-                "Nom du client",
-                placeholder="Personne physique ou morale",
-                key="client_nom_analyse"
-            )
-            # Stocker dans session state pour l'utiliser dans analyze_infractions
-            st.session_state['client_nom'] = client_nom
-        
-        with col2:
-            infraction = None
-            if analysis_type == TypeAnalyse.INFRACTIONS:
-                # Utiliser les infractions définies dans ANALYSIS_PROMPTS_INFRACTIONS si disponibles
-                infractions_disponibles = list(ANALYSIS_PROMPTS_INFRACTIONS.keys()) if ANALYSIS_PROMPTS_INFRACTIONS else [
-                    "Abus de biens sociaux",
-                    "Corruption",
-                    "Fraude fiscale",
-                    "Escroquerie",
-                    "Abus de confiance",
-                    "Blanchiment"
-                ]
-                
-                infraction = st.selectbox(
-                    "Type d'infraction",
-                    options=infractions_disponibles,
-                    key="infraction_input"
-                )
-        
-        return {
-            'type': analysis_type,
-            'client': client_nom,
-            'infraction': infraction
-        }
-    
-    async def _perform_analysis(self, documents: List[Document], query: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Effectue l'analyse selon la configuration en utilisant les prompts importés"""
-        
-        llm_manager = MultiLLMManager()
-        
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        # Construire le prompt selon le type
-        prompt = self._build_analysis_prompt(documents, query, config)
-        
-        # Sélectionner le provider
-        provider = self._select_best_provider(llm_manager.get_available_providers())
-        
-        # Effectuer l'analyse
-        response = llm_manager.query_single_llm(
-            provider,
-            prompt,
-            "Tu es un expert en analyse juridique.",
-            temperature=0.2,
-            max_tokens=4000
-        )
-        
-        if response['success']:
-            # Déterminer le type pour le résultat
-            if hasattr(config['type'], 'value'):
-                # C'est un enum TypeAnalyse
-                result_type = config['type'].value
-            else:
-                # C'est une chaîne, normaliser
-                result_type = config['type'].lower().replace(' ', '_')
-            
-            return {
-                'type': result_type,
-                'content': response['response'],
-                'document_count': len(documents),
-                'timestamp': datetime.now(),
-                'query': query,
-                'config': config
-            }
-        else:
-            return {'error': response.get('error', 'Erreur inconnue')}
-    
-    def _build_analysis_prompt(self, documents: List[Document], query: str, config: Dict[str, Any]) -> str:
-        """Construit le prompt d'analyse en utilisant les prompts importés si disponibles"""
-        
-        # Contexte des documents
-        doc_context = "\n".join([
-            f"- {doc.title}: {doc.content[:500]}..."
-            for doc in documents[:10]
-        ])
-        
-        # Déterminer le type d'analyse
-        analysis_type = config['type']
-        
-        # Si c'est un enum, utiliser sa valeur
-        if hasattr(analysis_type, 'value'):
-            type_str = analysis_type.value
-        else:
-            type_str = analysis_type
-        
-        # Chercher dans les prompts d'affaires si disponibles
-        if type_str in ANALYSIS_PROMPTS_AFFAIRES:
-            base_prompt = ANALYSIS_PROMPTS_AFFAIRES[type_str]
-            # Remplacer les placeholders
-            base_prompt = base_prompt.replace('{documents}', doc_context)
-            base_prompt = base_prompt.replace('{query}', query)
-            base_prompt = base_prompt.replace('{client}', config.get('client', 'Non spécifié'))
-            return base_prompt
-        
-        # Sinon, construire un prompt par défaut
-        base_prompt = f"""Analyse ces documents pour répondre à la question.
-Client: {config.get('client', 'Non spécifié')}
-DOCUMENTS:
-{doc_context}
-QUESTION: {query}
-"""
-        
-        # Adapter selon le type
-        if type_str in ['risques_juridiques', 'risk_analysis']:
-            base_prompt += """
-Identifie et évalue:
-1. RISQUES PÉNAUX
-2. RISQUES CIVILS
-3. RISQUES RÉPUTATIONNELS
-4. RECOMMANDATIONS"""
-        elif type_str in ['infractions']:
-            base_prompt += f"""
-Infraction suspectée: {config.get('infraction', 'À déterminer')}
-Identifie:
-1. INFRACTIONS CARACTÉRISÉES
-2. RESPONSABILITÉS
-3. SANCTIONS ENCOURUES
-4. ÉLÉMENTS DE PREUVE
-5. STRATÉGIE DE DÉFENSE"""
-        elif type_str in ['conformite', 'compliance']:
-            base_prompt += """
-Vérifie:
-1. CONFORMITÉ LÉGALE
-2. CONFORMITÉ RÉGLEMENTAIRE
-3. MANQUEMENTS IDENTIFIÉS
-4. ACTIONS CORRECTIVES
-5. RECOMMANDATIONS"""
-        elif type_str in ['strategie', 'strategy']:
-            base_prompt += """
-Élabore:
-1. ANALYSE DE LA SITUATION
-2. OPTIONS STRATÉGIQUES
-3. AVANTAGES/INCONVÉNIENTS
-4. STRATÉGIE RECOMMANDÉE
-5. PLAN D'ACTION"""
-        
-        return base_prompt
-    
-    async def _collect_relevant_documents(self, query_analysis: QueryAnalysis) -> List[Document]:
-        """Collecte les documents pertinents selon l'analyse"""
-        
-        documents = []
-        
-        # Documents locaux
-        for doc_id, doc in st.session_state.get('azure_documents', {}).items():
-            # S'assurer que c'est un objet Document
-            documents.append(self._ensure_document_object(doc))
-        
-        # Documents importés
-        for doc_id, doc in st.session_state.get('imported_documents', {}).items():
-            documents.append(self._ensure_document_object(doc))
-        
-        # Filtrer par référence si présente
-        if query_analysis.reference:
-            ref_lower = query_analysis.reference.lower()
-            documents = [
-                d for d in documents 
-                if ref_lower in d.title.lower() or ref_lower in d.source.lower()
-            ]
-        
-        return documents
-    
-    async def _process_search_request(self, query: str, analysis: QueryAnalysis):
-        """Traite une demande de recherche simple"""
-        
-        st.info("🔍 Recherche en cours...")
-        
-        # Effectuer la recherche
-        results = await self._perform_search(query, analysis)
-        
-        # Stocker les résultats
-        st.session_state.search_results = results
-        
-        if not results:
-            st.warning("⚠️ Aucun résultat trouvé")
-        else:
-            st.success(f"✅ {len(results)} résultats trouvés")
-        
-        return results
-    
-    async def _perform_search(self, query: str, analysis: QueryAnalysis) -> List[Dict[str, Any]]:
-        """Effectue la recherche"""
-        
-        results = []
-        
-        # Recherche locale
-        query_words = query.lower().split()
-        
-        for doc_id, doc in st.session_state.get('azure_documents', {}).items():
-            # S'assurer que c'est un objet Document
-            doc = self._ensure_document_object(doc)
-            
-            score = 0
-            content_lower = doc.content.lower()
-            title_lower = doc.title.lower()
-            
-            for word in query_words:
-                if word in title_lower:
-                    score += 2
-                if word in content_lower:
-                    score += 1
-            
-            if score > 0:
-                results.append({
-                    'id': doc_id,
-                    'title': doc.title,
-                    'content': doc.content,
-                    'source': doc.source,
-                    'score': score / len(query_words)
-                })
-        
-        # Recherche Azure si disponible
-        try:
-            search_manager = st.session_state.get('azure_search_manager')
-            if search_manager and hasattr(search_manager, 'search'):
-                azure_results = await search_manager.search(query)
-                results.extend(azure_results)
-        except:
-            pass
-        
-        return sorted(results, key=lambda x: x.get('score', 0), reverse=True)[:50]
-    
-    # ... [Le reste des méthodes _process_* et méthodes auxiliaires restent identiques]
-    # Je ne les répète pas pour économiser de l'espace, mais elles doivent toutes être incluses
-    
-    async def _process_synthesis_request(self, query: str, analysis: QueryAnalysis):
-        """Traite une demande de synthèse"""
-        
-        st.info("📝 Préparation de la synthèse...")
-        
-        # Déterminer la source
-        pieces = st.session_state.get('selected_pieces', [])
-        
-        if not pieces:
-            # Essayer de collecter depuis la référence
-            if analysis.reference:
-                docs = await self._perform_search(f"@{analysis.reference}", analysis)
-                pieces = [
-                    PieceSelectionnee(
-                        numero=i + 1,
-                        titre=doc.get('title', 'Sans titre'),
-                        description=doc.get('content', '')[:200] + '...' if doc.get('content') else '',
-                        categorie=self._determine_document_category(doc),
-                        source=doc.get('source', '')
-                    )
-                    for i, doc in enumerate(docs[:20])
-                ]
-        
-        if pieces:
-            return await self._synthesize_pieces(pieces)
-        else:
-            st.warning("⚠️ Aucun contenu à synthétiser")
-            return None
-    
-    async def _synthesize_pieces(self, pieces: List[PieceSelectionnee]) -> Dict[str, Any]:
-        """Synthétise les pièces sélectionnées"""
-        
-        llm_manager = MultiLLMManager()
-        
-        if not llm_manager.clients:
-            return {'error': 'Aucune IA disponible'}
-        
-        # Construire le contexte
-        context = "PIÈCES À SYNTHÉTISER:\n\n"
-        for piece in pieces[:20]:
-            context += f"Pièce {piece.numero}: {piece.titre}\n"
-            context += f"Catégorie: {piece.categorie}\n"
-            if piece.description:
-                context += f"Description: {piece.description}\n"
-            context += "\n"
-        
-        # Prompt
-        synthesis_prompt = f"""{context}
-Crée une synthèse structurée de ces pièces.
-La synthèse doit inclure:
-1. Vue d'ensemble des pièces
-2. Points clés par catégorie
-3. Chronologie si applicable
-4. Points d'attention juridiques
-5. Recommandations"""
-        
-        provider = self._select_best_provider(llm_manager.get_available_providers())
-        response = llm_manager.query_single_llm(
-            provider,
-            synthesis_prompt,
-            "Tu es un expert en analyse de documents juridiques."
-        )
-        
-        if response['success']:
-            result = {
-                'content': response['response'],
-                'piece_count': len(pieces),
-                'categories': list(set(p.categorie for p in pieces)),
-                'timestamp': datetime.now()
-            }
-            st.session_state.synthesis_result = result
-            return result
-        else:
-            return {'error': 'Échec de la synthèse'}
-    
-    def _determine_document_category(self, doc: Dict[str, Any]) -> str:
-        """Détermine la catégorie d'un document"""
-        
-        title_lower = doc.get('title', '').lower()
-        content_lower = doc.get('content', '')[:500].lower()
-        
-        category_patterns = {
-            'Procédure': ['plainte', 'procès-verbal', 'audition'],
-            'Expertise': ['expertise', 'expert', 'rapport technique'],
-            'Comptabilité': ['bilan', 'compte', 'facture'],
-            'Contrats': ['contrat', 'convention', 'accord'],
-            'Correspondance': ['courrier', 'email', 'lettre']
-        }
-        
-        for category, keywords in category_patterns.items():
-            if any(kw in title_lower or kw in content_lower for kw in keywords):
-                return category
-        
-        return 'Autres'
-    
-    # [Inclure toutes les autres méthodes _process_* et auxiliaires ici]
-    # Je peux les ajouter si nécessaire, mais elles sont identiques à celles du fichier original
-
-# ========================= FONCTIONS PRINCIPALES =========================
+# ========================= PAGE PRINCIPALE =========================
 
 def show_page():
     """Fonction principale de la page recherche universelle"""
     
-    # Initialiser l'interface
-    if 'search_interface' not in st.session_state:
-        st.session_state.search_interface = UniversalSearchInterface()
-    
-    interface = st.session_state.search_interface
+    # Initialiser le service de recherche
+    search_service = init_search_service()
     
     st.markdown("## 🔍 Recherche Universelle")
     
@@ -1805,14 +187,13 @@ def show_page():
             del st.session_state.pending_query
         elif 'universal_query' in st.session_state:
             default_value = st.session_state.universal_query
-        
+
         query = st.text_input(
             "Entrez votre commande ou recherche",
             value=default_value,
             placeholder="Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...",
             key="universal_query",
-            help="Utilisez @ pour référencer une affaire spécifique"
-        )
+            help="Utilisez @ pour référencer une affaire spécifique")
     
     with col2:
         search_button = st.button("🔍 Rechercher", key="search_button", use_container_width=True)
@@ -1833,15 +214,21 @@ def show_page():
         - `créer plainte avec constitution partie civile escroquerie`
         - `rédiger plainte contre Vinci, SOGEPROM @projet_26_05_2025`
         
-        **Synthèse :**
-        - `synthétiser les pièces @dossier_fraude`
-        - `résumer les auditions @affaire_martin`
+        **Plaidoirie & Préparation :**
+        - `préparer plaidoirie @affaire_martin audience correctionnelle`
+        - `préparer client interrogatoire @dossier_fraude`
+        
+        **Visualisations :**
+        - `chronologie des faits @affaire_martin`
+        - `cartographie des sociétés @groupe_abc`
+        - `comparer les auditions @témoins`
         
         **Gestion :**
         - `sélectionner pièces @dossier catégorie procédure`
         - `créer bordereau @pièces_sélectionnées`
         - `importer documents PDF`
         - `exporter analyse format word`
+        - `envoyer par email @destinataire`
         """)
     
     # Menu d'actions rapides
@@ -1852,13 +239,13 @@ def show_page():
             st.session_state.pending_query = "rédiger "
             st.session_state.process_query = True
             st.rerun()
-    
+
     with col2:
         if st.button("🤖 Analyser dossier", key="quick_analysis"):
             st.session_state.pending_query = "analyser "
             st.session_state.process_query = True
             st.rerun()
-    
+
     with col3:
         if st.button("📥 Importer", key="quick_import"):
             st.session_state.pending_query = "importer documents"
@@ -1872,16 +259,10 @@ def show_page():
     # Traiter la requête
     if query and (search_button or st.session_state.get('process_query', False)):
         with st.spinner("🔄 Traitement en cours..."):
-            # Utiliser asyncio pour exécuter la requête asynchrone
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(interface.process_universal_query(query))
-            except Exception as e:
-                st.error(f"❌ Erreur lors du traitement : {str(e)}")
+            process_universal_query(query)
     
     # Afficher les résultats
-    show_unified_results()
+    show_unified_results_tab()
     
     # Réinitialiser le flag de traitement
     if 'process_query' in st.session_state:
@@ -1897,47 +278,336 @@ def show_page():
     
     with col2:
         if st.button("📊 Afficher les statistiques", key="show_stats"):
-            show_work_statistics()
+            asyncio.run(show_work_statistics())
     
     with col3:
         if st.button("🔗 Partager", key="share_work"):
             share_current_work()
 
-# [Inclure toutes les fonctions show_* et fonctions auxiliaires]
-# Elles sont identiques à celles du fichier original
+# ========================= ROUTING ET TRAITEMENT =========================
 
-def show_unified_results():
-    """Affiche tous les types de résultats"""
+def process_universal_query(query: str):
+    """Traite une requête universelle et route vers la bonne fonction"""
+    
+    # Sauvegarder la requête
+    st.session_state.last_universal_query = query
+    
+    # Utiliser le service de recherche pour analyser la requête
+    search_service = init_search_service()
+    query_analysis = search_service.analyze_query_advanced(query)
+    
+    # Router selon le type de commande détecté
+    if query_analysis.command_type == 'plainte':
+        st.info("📝 Détection d'une demande de plainte...")
+        process_plainte_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'redaction':
+        st.info("📝 Détection d'une demande de rédaction...")
+        process_redaction_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'plaidoirie':
+        st.info("🎤 Détection d'une demande de plaidoirie...")
+        process_plaidoirie_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'preparation_client':
+        st.info("👥 Détection d'une demande de préparation client...")
+        process_preparation_client_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'import':
+        st.info("📥 Détection d'une demande d'import...")
+        process_import_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'export':
+        st.info("💾 Détection d'une demande d'export...")
+        process_export_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'email':
+        st.info("📧 Détection d'une demande d'email...")
+        process_email_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'analysis':
+        st.info("🤖 Détection d'une demande d'analyse...")
+        process_analysis_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'piece_selection':
+        st.info("📋 Détection d'une demande de sélection de pièces...")
+        process_piece_selection_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'bordereau':
+        st.info("📊 Détection d'une demande de bordereau...")
+        process_bordereau_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'synthesis':
+        st.info("📝 Détection d'une demande de synthèse...")
+        process_synthesis_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'template':
+        st.info("📄 Détection d'une demande de template...")
+        process_template_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'jurisprudence':
+        st.info("⚖️ Détection d'une demande de jurisprudence...")
+        process_jurisprudence_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'timeline':
+        st.info("⏱️ Détection d'une demande de chronologie...")
+        process_timeline_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'mapping':
+        st.info("🗺️ Détection d'une demande de cartographie...")
+        process_mapping_request(query, query_analysis)
+    
+    elif query_analysis.command_type == 'comparison':
+        st.info("🔄 Détection d'une demande de comparaison...")
+        process_comparison_request(query, query_analysis)
+    
+    else:
+        # Recherche simple par défaut
+        st.info("🔍 Recherche simple...")
+        process_search_request(query, query_analysis)
+
+# ========================= TRAITEMENT DE LA PLAINTE =========================
+
+def process_plainte_request(query: str, query_analysis: QueryAnalysis):
+    """Traite spécifiquement une demande de plainte"""
+    
+    query_lower = query.lower()
+    
+    # Déterminer le type de plainte
+    is_partie_civile = any(term in query_lower for term in [
+        'partie civile', 'constitution de partie civile', 'cpc', 
+        'doyen', 'juge d\'instruction', 'instruction'
+    ])
+    
+    # Débogage
+    st.write("🔍 Analyse de la demande de plainte...")
+    if is_partie_civile:
+        st.info("📋 Type : Plainte avec constitution de partie civile (au Doyen des Juges d'Instruction)")
+    else:
+        st.info("📋 Type : Plainte simple (au Procureur de la République)")
+    
+    # Utiliser les données extraites par le service
+    parties_demanderesses = query_analysis.parties['demandeurs']
+    parties_defenderesses = query_analysis.parties['defendeurs']
+    infractions_detectees = query_analysis.infractions
+    reference = query_analysis.reference
+    
+    # Enrichir les informations des parties avec CompanyInfoManager
+    company_manager = None
+    if MANAGERS_AVAILABLE:
+        try:
+            company_manager = CompanyInfoManager()
+        except:
+            pass
+    
+    # Afficher les parties extraites
+    st.write("✅ Demandeurs identifiés :", parties_demanderesses)
+    st.write("⚖️ Défendeurs identifiés :", parties_defenderesses)
+    st.write("🎯 Infractions détectées :", infractions_detectees)
+    if reference:
+        st.write(f"📁 Référence : @{reference}")
+    
+    # Enrichir les informations des parties avec CompanyInfoManager
+    if company_manager and (parties_demanderesses or parties_defenderesses):
+        with st.expander("🏢 Informations détaillées des parties", expanded=False):
+            for partie in parties_demanderesses:
+                info = company_manager.get_company_info(partie)
+                if info:
+                    st.markdown(f"**{partie}**")
+                    st.json(info)
+    
+    # Recherche de modèle de date
+    modele = None
+    date_patterns = [
+        r'(\d{1,2}[\s\-/]\d{1,2}[\s\-/]\d{2,4})',
+        r'(\d{1,2}\s+\w+\s+\d{2,4})'
+    ]
+    
+    for pattern in date_patterns:
+        date_match = re.search(pattern, query)
+        if date_match:
+            modele = f"Modèle du {date_match.group(1)}"
+            st.write(f"📅 {modele}")
+            break
+    
+    # Validation et suggestions
+    st.markdown("### 📋 Résumé de l'analyse")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**🏢 Demandeurs (victimes) :**")
+        if parties_demanderesses:
+            for p in parties_demanderesses:
+                st.write(f"• {p}")
+        else:
+            st.warning("❌ Aucun demandeur identifié")
+            st.info("💡 Précisez : 'pour [société X]'")
+    
+    with col2:
+        st.markdown("**⚖️ Défendeurs (mis en cause) :**")
+        if parties_defenderesses:
+            for p in parties_defenderesses:
+                st.write(f"• {p}")
+        else:
+            st.warning("❌ Aucun défendeur identifié")
+            st.info("💡 Précisez : 'contre [M. X]'")
+    
+    with col3:
+        st.markdown("**🎯 Infractions :**")
+        if infractions_detectees:
+            for inf in infractions_detectees[:3]:  # Limiter l'affichage
+                st.write(f"• {inf}")
+            if len(infractions_detectees) > 3:
+                st.write(f"• + {len(infractions_detectees) - 3} autres")
+        else:
+            st.info("📌 Infractions standards")
+    
+    # Options supplémentaires
+    with st.expander("⚙️ Options de la plainte", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Forcer le type de plainte
+            type_force = st.radio(
+                "Type de plainte",
+                ["Auto-détection", "Plainte simple", "Plainte avec CPC"],
+                index=0 if not is_partie_civile else 2,
+                key="type_plainte_force"
+            )
+            
+            if type_force == "Plainte simple":
+                is_partie_civile = False
+            elif type_force == "Plainte avec CPC":
+                is_partie_civile = True
+        
+        with col2:
+            # Options de contenu
+            st.markdown("**Options de contenu :**")
+            include_chronologie = st.checkbox("Inclure chronologie détaillée", value=True)
+            include_prejudices = st.checkbox("Détailler les préjudices", value=True)
+            include_jurisprudence = st.checkbox("Citer jurisprudences", value=is_partie_civile)
+            
+            # Utiliser StyleAnalyzer si disponible
+            if MANAGERS_AVAILABLE and StyleAnalyzer:
+                use_style_analysis = st.checkbox("Analyser le style optimal", value=False)
+            else:
+                use_style_analysis = False
+    
+    # Créer la demande de rédaction enrichie
+    st.session_state.redaction_request = {
+        'type': 'plainte_avec_cpc' if is_partie_civile else 'plainte_simple',
+        'demandeurs': parties_demanderesses,
+        'defendeurs': parties_defenderesses,
+        'infractions': infractions_detectees,
+        'reference': reference,
+        'modele': modele,
+        'query': query,
+        'options': {
+            'chronologie': include_chronologie if 'include_chronologie' in locals() else True,
+            'prejudices': include_prejudices if 'include_prejudices' in locals() else True,
+            'jurisprudence': include_jurisprudence if 'include_jurisprudence' in locals() else is_partie_civile,
+            'style_analysis': use_style_analysis if 'use_style_analysis' in locals() else False
+        }
+    }
+    
+    # Bouton de génération manuel
+    if st.button("🚀 Générer la plainte", type="primary", key="generate_plainte_btn"):
+        # Générer la plainte avec toutes les parties
+        toutes_parties = parties_demanderesses + parties_defenderesses
+        generate_plainte(query, toutes_parties, query_analysis)
+    
+    # Ou génération automatique si parties identifiées
+    elif parties_demanderesses or parties_defenderesses:
+        toutes_parties = parties_demanderesses + parties_defenderesses
+        generate_plainte(query, toutes_parties, query_analysis)
+    else:
+        st.error("❌ Impossible d'identifier les parties dans la requête")
+        
+        # Formulaire pour saisir manuellement
+        with st.form("saisie_parties"):
+            st.markdown("### 📝 Saisie manuelle des parties")
+            
+            demandeurs_manuel = st.text_area(
+                "Demandeurs (un par ligne)",
+                placeholder="INTERCONSTRUCTION\nVINCI\nSOGEPROM RÉALISATIONS",
+                height=100
+            )
+            
+            defendeurs_manuel = st.text_area(
+                "Défendeurs (un par ligne)",
+                placeholder="M. PERINET\nVP INVEST",
+                height=100
+            )
+            
+            if st.form_submit_button("Générer avec ces parties"):
+                if demandeurs_manuel or defendeurs_manuel:
+                    parties_demanderesses = [p.strip() for p in demandeurs_manuel.split('\n') if p.strip()]
+                    parties_defenderesses = [p.strip() for p in defendeurs_manuel.split('\n') if p.strip()]
+                    toutes_parties = parties_demanderesses + parties_defenderesses
+                    # Mettre à jour l'analyse
+                    query_analysis.parties['demandeurs'] = parties_demanderesses
+                    query_analysis.parties['defendeurs'] = parties_defenderesses
+                    generate_plainte(query, toutes_parties, query_analysis)
+                else:
+                    st.error("Veuillez saisir au moins une partie")
+
+# ========================= AFFICHAGE DES RÉSULTATS =========================
+
+def show_unified_results_tab():
+    """Affiche tous les types de résultats dans un onglet unifié"""
     
     has_results = False
     
-    # RÉSULTATS DE RÉDACTION
+    # RÉSULTATS DE RÉDACTION (Priorité 1)
     if st.session_state.get('redaction_result'):
         show_redaction_results()
         has_results = True
     
-    # RÉSULTATS D'ANALYSE IA
+    # RÉSULTATS D'ANALYSE IA (Priorité 2)
     elif st.session_state.get('ai_analysis_results'):
         show_ai_analysis_results()
         has_results = True
     
-    # RÉSULTATS DE RECHERCHE
+    # RÉSULTATS DE RECHERCHE (Priorité 3)
     elif st.session_state.get('search_results'):
         show_search_results()
         has_results = True
     
-    # RÉSULTATS DE SYNTHÈSE
+    # RÉSULTATS DE SYNTHÈSE (Priorité 4)
     elif st.session_state.get('synthesis_result'):
         show_synthesis_results()
         has_results = True
     
-    # [Inclure tous les autres types de résultats]
+    # RÉSULTATS DE TIMELINE (Priorité 5)
+    elif st.session_state.get('timeline_result'):
+        show_timeline_results()
+        has_results = True
     
     # Message si aucun résultat
     if not has_results:
         st.info("💡 Utilisez la barre de recherche universelle pour commencer")
-
-# [Inclure toutes les fonctions show_*_results et fonctions auxiliaires]
+        
+        # Suggestions d'utilisation
+        st.markdown("""
+        ### 🚀 Exemples de commandes
+        
+        **Recherche :**
+        - `contrats société XYZ`
+        - `@affaire_martin documents comptables`
+        
+        **Analyse :**
+        - `analyser les risques @dossier_pénal`
+        - `identifier les infractions @affaire_corruption`
+        
+        **Rédaction :**
+        - `rédiger conclusions défense @affaire_martin`
+        - `créer plainte contre Vinci, SOGEPROM`
+        
+        **Gestion :**
+        - `importer documents PDF`
+        - `exporter analyse format word`
+        """)
 
 def show_redaction_results():
     """Affiche les résultats de rédaction"""
@@ -1945,14 +615,15 @@ def show_redaction_results():
     
     st.markdown("### 📝 Document juridique généré")
     
-    # Métadonnées enrichies
+    # Métadonnées
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         doc_icons = {
             'conclusions': '⚖️ Conclusions',
+            'plainte': '📋 Plainte',
             'plainte_simple': '📋 Plainte simple',
-            'plainte_avec_cpc': '⚖️ Plainte avec CPC',
+            'plainte_avec_cpc': '📋 Plainte avec CPC',
             'courrier': '✉️ Courrier',
             'assignation': '📜 Assignation'
         }
@@ -1960,25 +631,14 @@ def show_redaction_results():
     
     with col2:
         st.metric("Généré par", result.get('provider', 'IA'))
-        
+    
     with col3:
-        metadata = result.get('metadata', {})
-        enriched = metadata.get('enriched_companies', 0)
-        if enriched > 0:
-            st.metric("Entreprises enrichies", enriched)
-        else:
-            word_count = len(result['document'].split())
-            st.metric("Mots", f"{word_count:,}")
+        word_count = len(result['document'].split())
+        st.metric("Mots", f"{word_count:,}")
     
     with col4:
-        phase = metadata.get('phase_procedurale', 'enquete_preliminaire')
-        phase_display = {
-            'enquete_preliminaire': 'Enquête',
-            'instruction': 'Instruction',
-            'jugement': 'Jugement',
-            'appel': 'Appel'
-        }
-        st.metric("Phase", phase_display.get(phase, phase))
+        char_count = len(result['document'])
+        st.metric("Caractères", f"{char_count:,}")
     
     # Zone d'édition principale
     st.markdown("#### 📄 Contenu du document")
@@ -1990,25 +650,45 @@ def show_redaction_results():
         key="edit_redaction_main"
     )
     
-    # Afficher les parties enrichies si disponibles
-    if 'metadata' in result and 'designations' in result['metadata']:
-        with st.expander("📋 Parties avec informations juridiques complètes", expanded=False):
-            designations = result['metadata']['designations']
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**Demandeurs :**")
-                for d in designations.get('demandeurs', []):
-                    st.text(d)
-            
-            with col2:
-                st.markdown("**Défendeurs :**")
-                for d in designations.get('defendeurs', []):
-                    st.text(d)
+    # Barre d'outils
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        if st.button("🔄 Régénérer", key="regenerate_main"):
+            st.session_state.process_query = True
+            st.rerun()
+    
+    with col2:
+        if st.button("📊 Statistiques", key="document_stats"):
+            show_document_statistics(edited_content)
+    
+    with col3:
+        # Export Word
+        st.download_button(
+            "📄 Word",
+            edited_content.encode('utf-8'),
+            f"{result['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    
+    with col4:
+        # Export texte
+        st.download_button(
+            "📝 Texte",
+            edited_content.encode('utf-8'),
+            f"{result['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            "text/plain"
+        )
+    
+    with col5:
+        if st.button("📧 Envoyer", key="prepare_email_main"):
+            st.session_state.pending_email = {
+                'content': edited_content,
+                'type': result['type']
+            }
 
 def show_ai_analysis_results():
-    """Affiche les résultats d'analyse IA"""
+    """Affiche les résultats d'analyse IA avec vérification des jurisprudences"""
     results = st.session_state.ai_analysis_results
     
     if 'error' in results:
@@ -2019,7 +699,7 @@ def show_ai_analysis_results():
         'risk_analysis': '⚠️ Analyse des risques',
         'compliance': '✅ Analyse de conformité',
         'strategy': '🎯 Analyse stratégique',
-        'general': '🤖 Analyse générale',
+        'general_analysis': '🤖 Analyse générale',
         'infractions': '🎯 Analyse infractions économiques'
     }
     
@@ -2043,85 +723,97 @@ def show_ai_analysis_results():
         height=600,
         key="ai_analysis_content"
     )
-
-def clear_universal_state():
-    """Efface l'état de l'interface universelle"""
-    keys_to_clear = [
-        'universal_query', 'last_universal_query', 'current_analysis',
-        'redaction_result', 'ai_analysis_results', 'search_results',
-        'synthesis_result', 'selected_pieces', 'import_files'
-    ]
     
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]
+    # Vérification des jurisprudences
+    if st.checkbox("🔍 Vérifier les jurisprudences citées", key="verify_juris_check"):
+        verify_jurisprudences_in_analysis(analysis_content)
     
-    st.success("✅ Interface réinitialisée")
-    st.rerun()
-
-def save_current_work():
-    """Sauvegarde le travail actuel"""
-    work_data = {
-        'timestamp': datetime.now().isoformat(),
-        'query': st.session_state.get('universal_query', ''),
-        'results': {}
-    }
+    # Actions
+    col1, col2 = st.columns(2)
     
-    result_keys = [
-        'redaction_result', 'ai_analysis_results',
-        'search_results', 'synthesis_result'
-    ]
+    with col1:
+        st.download_button(
+            "💾 Télécharger",
+            analysis_content.encode('utf-8'),
+            f"analyse_{results.get('type', 'general')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            "text/plain"
+        )
     
-    for key in result_keys:
-        if key in st.session_state:
-            work_data['results'][key] = st.session_state[key]
-    
-    json_str = json.dumps(work_data, indent=2, ensure_ascii=False, default=str)
-    
-    st.download_button(
-        "💾 Télécharger la sauvegarde",
-        json_str,
-        f"sauvegarde_travail_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-        "application/json",
-        key="download_work_save"
-    )
-
-def show_work_statistics():
-    """Affiche les statistiques du travail en cours"""
-    st.info("📊 Statistiques du travail en cours")
-    
-    stats = {
-        'Documents': len(st.session_state.get('azure_documents', {})),
-        'Pièces sélectionnées': len(st.session_state.get('selected_pieces', [])),
-        'Analyses': 1 if st.session_state.get('ai_analysis_results') else 0,
-        'Rédactions': 1 if st.session_state.get('redaction_result') else 0
-    }
-    
-    cols = st.columns(len(stats))
-    for i, (label, value) in enumerate(stats.items()):
-        with cols[i]:
-            st.metric(label, value)
-
-def share_current_work():
-    """Partage le travail actuel"""
-    st.info("🔗 Fonctionnalité de partage")
-    save_current_work()
+    with col2:
+        if st.button("🔄 Approfondir", key="deepen_analysis"):
+            st.session_state.pending_deepen_analysis = True
 
 def show_search_results():
     """Affiche les résultats de recherche"""
     results = st.session_state.search_results
     
-    st.markdown(f"### 🔍 Résultats de recherche ({len(results)} documents)")
+    # Si results est un objet SearchResult
+    if hasattr(results, 'documents'):
+        documents = results.documents
+        total_count = results.total_count
+    else:
+        # Si c'est une liste simple
+        documents = results
+        total_count = len(results)
     
-    if not results:
+    st.markdown(f"### 🔍 Résultats de recherche ({total_count} documents)")
+    
+    if not documents:
         st.info("Aucun résultat trouvé")
         return
     
+    # Options d'affichage
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        sort_by = st.selectbox(
+            "Trier par",
+            ["Pertinence", "Titre", "Date", "Source"],
+            key="sort_search_results"
+        )
+    
+    with col2:
+        view_mode = st.radio(
+            "Affichage",
+            ["Compact", "Détaillé"],
+            key="view_mode_search",
+            horizontal=True
+        )
+    
     # Afficher les résultats
-    for i, result in enumerate(results[:20], 1):
+    for i, doc in enumerate(documents[:20], 1):  # Limiter à 20
         with st.container():
-            st.markdown(f"**{i}. {result.get('title', 'Sans titre')}**")
-            st.caption(f"Source: {result.get('source', 'N/A')} | Score: {result.get('score', 0):.0%}")
+            # Gestion selon le type de doc (Document object ou dict)
+            if hasattr(doc, 'title'):
+                # C'est un objet Document
+                title = doc.title
+                source = doc.source
+                content = doc.content
+                score = doc.metadata.get('score', 0) if hasattr(doc, 'metadata') else 0
+            else:
+                # C'est un dictionnaire
+                title = doc.get('title', 'Sans titre')
+                source = doc.get('source', 'N/A')
+                content = doc.get('content', '')
+                score = doc.get('score', 0)
+            
+            if view_mode == "Compact":
+                st.markdown(f"**{i}. {title}**")
+                st.caption(f"Source: {source} | Score: {score:.0%}")
+            else:
+                st.markdown(f"**{i}. {title}**")
+                st.caption(f"Source: {source} | Score: {score:.0%}")
+                
+                # Extrait
+                if content:
+                    st.text_area(
+                        "Extrait",
+                        value=content[:500] + '...' if len(content) > 500 else content,
+                        height=150,
+                        key=f"extract_{i}",
+                        disabled=True
+                    )
+            
             st.divider()
 
 def show_synthesis_results():
@@ -2150,5 +842,1774 @@ def show_synthesis_results():
         height=600,
         key="synthesis_content_display"
     )
+    
+    # Actions
+    if st.download_button(
+        "💾 Télécharger",
+        synthesis_content.encode('utf-8'),
+        f"synthese_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain"
+    ):
+        st.success("✅ Synthèse téléchargée")
+
+def show_timeline_results():
+    """Affiche les résultats de chronologie"""
+    result = st.session_state.timeline_result
+    
+    st.markdown(f"### ⏱️ Chronologie")
+    
+    # Affichage simple
+    for event in result.get('events', []):
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            st.write(f"**{event.get('date', 'N/A')}**")
+        with col2:
+            st.write(event.get('description', ''))
+            if event.get('actors'):
+                st.caption(f"👥 {', '.join(event['actors'])}")
+
+# ========================= GÉNÉRATION DE PLAINTE =========================
+
+def generate_plainte(query: str, parties: list, query_analysis: QueryAnalysis):
+    """Génère une plainte simple ou avec constitution de partie civile"""
+    
+    try:
+        # Débogage
+        st.write("🔍 Génération de la plainte en cours...")
+        st.write(f"Requête originale : {query}")
+        
+        # Initialiser le manager
+        llm_manager = MultiLLMManager()
+        
+        # Debug pour voir les clients disponibles
+        llm_manager.debug_status()
+        
+        if not llm_manager.clients:
+            st.error("❌ Aucune IA n'est configurée")
+            st.info("💡 Veuillez configurer au moins une clé API dans les variables d'environnement")
+            
+            # Afficher les instructions détaillées
+            with st.expander("📋 Instructions de configuration"):
+                st.markdown("""
+                **Sur Hugging Face Spaces :**
+                1. Allez dans Settings → Variables and secrets
+                2. Ajoutez une ou plusieurs de ces clés :
+                   - `OPENAI_API_KEY` - Pour GPT-4
+                   - `ANTHROPIC_API_KEY` - Pour Claude 3
+                   - `GOOGLE_API_KEY` - Pour Gemini
+                   - `MISTRAL_API_KEY` - Pour Mistral
+                   - `GROQ_API_KEY` - Pour Groq (Mixtral)
+                
+                **Recommandé :** Au moins une clé parmi OpenAI, Anthropic ou Google
+                """)
+            return
+        
+        # Afficher les providers disponibles
+        providers = llm_manager.get_available_providers()
+        st.success(f"✅ {len(providers)} IA(s) disponible(s) : {', '.join(providers)}")
+        
+        # DÉTERMINER LE TYPE DE PLAINTE
+        query_lower = query.lower()
+        is_partie_civile = any(term in query_lower for term in [
+            'partie civile', 'constitution de partie civile', 'cpc', 
+            'doyen', 'juge d\'instruction', 'instruction'
+        ])
+        
+        type_plainte = 'plainte_avec_cpc' if is_partie_civile else 'plainte_simple'
+        destinataire = "Monsieur le Doyen des Juges d'Instruction" if is_partie_civile else "Monsieur le Procureur de la République"
+        
+        st.info(f"📋 Type détecté : {'Plainte avec constitution de partie civile' if is_partie_civile else 'Plainte simple au Procureur'}")
+        
+        # Utiliser les données de l'analyse
+        parties_demanderesses = query_analysis.parties['demandeurs']
+        parties_defenderesses = query_analysis.parties['defendeurs']
+        infractions_mentionnees = query_analysis.infractions
+        reference = query_analysis.reference
+        
+        # Si pas d'infractions détectées, ajouter les infractions complètes avec articles
+        if not infractions_mentionnees:
+            infractions_mentionnees = [
+                'Escroquerie (art. 313-1 Code pénal)',
+                'Abus de confiance (art. 314-1 Code pénal)',
+                'Faux et usage de faux (art. 441-1 Code pénal)'
+            ]
+        else:
+            # Enrichir avec les articles de loi
+            infractions_articles = {
+                'Escroquerie': 'Escroquerie (art. 313-1 Code pénal)',
+                'Abus de confiance': 'Abus de confiance (art. 314-1 Code pénal)',
+                'Abus de biens sociaux': 'Abus de biens sociaux (art. L241-3 et L242-6 Code de commerce)',
+                'Faux et usage de faux': 'Faux et usage de faux (art. 441-1 Code pénal)',
+                'Corruption': 'Corruption (art. 432-11 et 433-1 Code pénal)',
+                'Trafic d\'influence': 'Trafic d\'influence (art. 432-11 et 433-2 Code pénal)',
+                'Favoritisme': 'Favoritisme (art. 432-14 Code pénal)',
+                'Prise illégale d\'intérêts': 'Prise illégale d\'intérêts (art. 432-12 Code pénal)',
+                'Blanchiment': 'Blanchiment (art. 324-1 Code pénal)',
+                'Fraude fiscale': 'Fraude fiscale (art. 1741 Code général des impôts)',
+                'Travail dissimulé': 'Travail dissimulé (art. L8221-3 Code du travail)',
+                'Marchandage': 'Marchandage (art. L8231-1 Code du travail)',
+                'Entrave': 'Entrave (art. L2328-1 Code du travail)',
+                'Banqueroute': 'Banqueroute (art. L654-2 Code de commerce)',
+                'Recel': 'Recel (art. 321-1 Code pénal)'
+            }
+            infractions_mentionnees = [infractions_articles.get(inf, inf) for inf in infractions_mentionnees]
+        
+        # Référence au modèle
+        if '26 05 2025' in query or '26/05/2025' in query or '26-05-2025' in query:
+            reference = "projet de complément de plainte du 26/05/2025"
+        
+        # Afficher les informations extraites
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**🏢 Demandeurs (victimes) :**")
+            for partie in parties_demanderesses:
+                st.write(f"• {partie}")
+            
+            st.markdown("**📋 Infractions visées :**")
+            for infraction in infractions_mentionnees[:5]:  # Limiter l'affichage
+                st.write(f"• {infraction}")
+        
+        with col2:
+            st.markdown("**⚖️ Défendeurs (mis en cause) :**")
+            for partie in parties_defenderesses:
+                st.write(f"• {partie}")
+            
+            if reference:
+                st.info(f"📄 Modèle : {reference}")
+        
+        # CONSTRUIRE LE PROMPT SELON LE TYPE DE PLAINTE
+        if is_partie_civile:
+            # Prompt pour plainte avec constitution de partie civile
+            plainte_prompt = f"""Tu es un avocat pénaliste expert en droit pénal des affaires avec 25 ans d'expérience. Tu maîtrises particulièrement les affaires complexes de criminalité économique et financière.
+
+MISSION : Rédiger une plainte avec constitution de partie civile EXHAUSTIVE et PERCUTANTE pour un dossier complexe.
+
+CONTEXTE DE LA REQUÊTE :
+{query}
+
+PARTIES IDENTIFIÉES :
+- Demandeurs (victimes) : {', '.join(parties_demanderesses) if parties_demanderesses else '[À COMPLÉTER]'}
+- Défendeurs (mis en cause) : {', '.join(parties_defenderesses) if parties_defenderesses else '[À IDENTIFIER dans les faits]'}
+- Référence : {reference if reference else 'Dossier complexe de criminalité économique'}
+
+INFRACTIONS À EXAMINER :
+{chr(10).join(f'- {inf}' for inf in infractions_mentionnees)}
+
+INSTRUCTIONS POUR UNE PLAINTE EXHAUSTIVE :
+
+1. **EN-TÊTE FORMEL**
+   {destinataire}
+   Tribunal judiciaire de [DÉTERMINER selon le siège social]
+   [Adresse complète]
+   
+   Date : [Date du jour]
+   
+   OBJET : PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+   
+   Références : {reference if reference else 'Votre réf. : / Notre réf. : '}
+
+2. **IDENTIFICATION COMPLÈTE DES PARTIES**
+   
+   POUR :
+   {chr(10).join(f'   - {p}, société [FORME JURIDIQUE À PRÉCISER - SA/SARL/SAS], au capital de [MONTANT] euros, immatriculée au RCS de [VILLE] sous le numéro [NUMÉRO], dont le siège social est situé [ADRESSE COMPLÈTE], représentée par [PRÉSIDENT/GÉRANT], dûment habilité' for p in parties_demanderesses)}
+   
+   Ayant pour conseil :
+   Maître [NOM], Avocat au Barreau de [VILLE]
+   [Adresse complète du cabinet]
+   Tél : [NUMÉRO] - Email : [EMAIL]
+   
+   CONTRE :
+   {chr(10).join(f'   - {p}, [COMPLÉTER : né le XX/XX/XXXX à VILLE si personne physique OU forme juridique si société], demeurant/siège social [ADRESSE]' for p in parties_defenderesses)}
+   
+   ET CONTRE :
+   - Toute autre personne que l'instruction révélerait comme auteur, coauteur ou complice des faits dénoncés
+
+3. **EXPOSÉ EXHAUSTIF DES FAITS** (PARTIE CRUCIALE - MINIMUM 3000 MOTS)
+   
+   A. CONTEXTE GÉNÉRAL ET HISTORIQUE DES RELATIONS
+      - Genèse du projet/de la relation d'affaires
+      - Chronologie détaillée des événements
+      - Acteurs impliqués et leurs rôles respectifs
+      - Documents contractuels de référence
+   
+   B. MÉCANISME FRAUDULEUX DÉTAILLÉ
+      - Description précise du montage frauduleux
+      - Modus operandi des mis en cause
+      - Flux financiers suspects (avec montants)
+      - Documents falsifiés ou manipulés
+      - Témoignages et preuves matérielles
+   
+   C. DÉCOUVERTE DE LA FRAUDE
+      - Circonstances de la découverte
+      - Premiers indices et soupçons
+      - Investigations menées
+      - Confrontations éventuelles
+   
+   D. AGGRAVATION DU PRÉJUDICE
+      - Manœuvres dilatoires
+      - Dissimulation d'actifs
+      - Tentatives d'intimidation
+      - Destruction de preuves
+
+4. **QUALIFICATION JURIDIQUE APPROFONDIE**
+   
+   Pour CHAQUE infraction, développer :
+   
+   A. L'ÉLÉMENT MATÉRIEL
+      - Actes précis constituant l'infraction
+      - Preuves matérielles (documents, emails, enregistrements)
+      - Témoignages corroborants
+      - Expertises éventuelles
+   
+   B. L'ÉLÉMENT INTENTIONNEL
+      - Conscience de l'illégalité
+      - Volonté de nuire
+      - Préméditation
+      - Mobile (enrichissement, vengeance, etc.)
+   
+   C. LE LIEN DE CAUSALITÉ
+      - Lien direct entre les actes et le préjudice
+      - Absence de cause étrangère
+   
+   D. CIRCONSTANCES AGGRAVANTES
+      - Bande organisée
+      - Abus de fonction
+      - Vulnérabilité de la victime
+      - Montant du préjudice
+
+5. **ÉVALUATION DÉTAILLÉE DES PRÉJUDICES**
+   
+   Pour CHAQUE société demanderesse :
+   
+   A. PRÉJUDICE FINANCIER DIRECT
+      - Détournements : [MONTANT] €
+      - Surfacturations : [MONTANT] €
+      - Manque à gagner : [MONTANT] €
+      - Frais supplémentaires : [MONTANT] €
+      SOUS-TOTAL : [MONTANT] € HT
+   
+   B. PRÉJUDICE FINANCIER INDIRECT
+      - Perte de marchés : [MONTANT] €
+      - Coûts de restructuration : [MONTANT] €
+      - Frais d'expertise : [MONTANT] €
+      - Frais de justice : [MONTANT] €
+      SOUS-TOTAL : [MONTANT] € HT
+   
+   C. PRÉJUDICE MORAL ET COMMERCIAL
+      - Atteinte à la réputation
+      - Perte de confiance des partenaires
+      - Désorganisation de l'entreprise
+      - Souffrance morale des dirigeants
+      ÉVALUATION : [MONTANT] € (provisoire)
+   
+   TOTAL GÉNÉRAL : [MONTANT] € (sous réserve d'augmentation)
+
+6. **CONSTITUTION DE PARTIE CIVILE**
+   
+   Les sociétés demanderesses déclarent expressément se constituer partie civile dans la présente procédure et :
+   
+   - Consignent la somme de [3000 à 15000] euros à titre de consignation
+   - Se réservent le droit de solliciter tous dommages-intérêts complémentaires
+   - Demandent la condamnation solidaire des mis en cause
+   - Sollicitent l'exécution provisoire de la décision à intervenir
+
+7. **DEMANDES D'ACTES D'INSTRUCTION**
+   
+   Les parties civiles sollicitent :
+   - Auditions des mis en cause et témoins
+   - Perquisitions aux sièges sociaux et domiciles
+   - Saisies conservatoires sur les biens
+   - Expertises comptables et financières
+   - Exploitation des données informatiques
+   - Commissions rogatoires internationales si nécessaire
+   - Interceptions téléphoniques si justifiées
+
+8. **PAR CES MOTIFS**
+   
+   Les sociétés demanderesses demandent qu'il plaise à Monsieur le Doyen des Juges d'Instruction de :
+   
+   - RECEVOIR leur plainte avec constitution de partie civile
+   - ORDONNER l'ouverture d'une information judiciaire
+   - PROCÉDER à tous actes utiles à la manifestation de la vérité
+   - TRANSMETTRE le dossier au Parquet pour réquisitions
+   - DÉLIVRER récépissé de la présente plainte
+
+9. **BORDEREAU DE PIÈCES DÉTAILLÉ**
+   
+   [Liste numérotée de 1 à XX avec description précise de chaque pièce]
+
+10. **SOUS TOUTES RÉSERVES**
+    
+    Notamment de :
+    - Compléter et préciser les présentes
+    - Produire toutes pièces nouvelles
+    - Se constituer partie civile contre toute autre personne
+    - Modifier la qualification des faits
+    - Majorer l'évaluation des préjudices
+
+SIGNATURE
+[Nom et qualité du signataire]
+
+IMPORTANT : Cette plainte doit être EXHAUSTIVE (minimum 8000 mots), PRÉCISE (dates, montants, références), PERCUTANTE (démonstration implacable) et IRRÉFUTABLE (preuves solides)."""
+        
+        else:
+            # Prompt pour plainte simple au Procureur
+            plainte_prompt = f"""Tu es un avocat pénaliste expert en droit pénal des affaires. Tu dois rédiger une plainte simple mais complète et professionnelle.
+
+CONTEXTE : {query}
+
+PARTIES :
+- Plaignants : {', '.join(parties_demanderesses) if parties_demanderesses else '[À IDENTIFIER]'}
+- Mis en cause : {', '.join(parties_defenderesses) if parties_defenderesses else '[À IDENTIFIER]'}
+
+STRUCTURE DE LA PLAINTE SIMPLE :
+
+1. **EN-TÊTE**
+   Monsieur le Procureur de la République
+   Tribunal judiciaire de [VILLE]
+   [Adresse]
+   
+   [Lieu], le [Date]
+   
+   OBJET : Plainte
+   
+   Lettre recommandée avec AR
+
+2. **IDENTITÉ DU PLAIGNANT**
+   Je soussigné(e) / Nous soussignons :
+   [Identité complète avec adresse]
+
+3. **EXPOSÉ DES FAITS**
+   Développer de manière claire et chronologique :
+   - Contexte
+   - Faits reprochés
+   - Préjudice subi
+   - Preuves disponibles
+
+4. **QUALIFICATION JURIDIQUE**
+   Les faits exposés sont susceptibles de recevoir les qualifications suivantes :
+   {chr(10).join(f'- {inf}' for inf in infractions_mentionnees)}
+
+5. **PRÉJUDICE**
+   Description et évaluation du préjudice subi
+
+6. **DEMANDES**
+   Je demande/Nous demandons :
+   - L'ouverture d'une enquête
+   - L'audition des personnes mises en cause
+   - Toutes investigations utiles
+   - L'engagement de poursuites
+
+7. **PIÈCES JOINTES**
+   Liste des pièces
+
+8. **FORMULE FINALE**
+   Je me tiens/Nous nous tenons à votre disposition...
+   
+   Signature
+
+Rédige une plainte COMPLÈTE (minimum 3000 mots) et PROFESSIONNELLE."""
+        
+        # Sélectionner le meilleur provider disponible
+        preferred_providers = ['anthropic', 'openai', 'google', 'mistral', 'groq']
+        selected_provider = None
+        
+        for pref in preferred_providers:
+            if pref in providers:
+                selected_provider = pref
+                break
+        
+        if not selected_provider:
+            selected_provider = providers[0]
+        
+        st.info(f"🤖 Utilisation de : {selected_provider}")
+        
+        # Options de génération avancées
+        with st.expander("⚙️ Options avancées", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                temperature = st.slider(
+                    "Créativité",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=0.3,
+                    step=0.1,
+                    help="Plus bas = plus factuel, plus haut = plus créatif"
+                )
+            with col2:
+                max_tokens = st.number_input(
+                    "Longueur maximale",
+                    min_value=2000,
+                    max_value=10000,
+                    value=8000,
+                    step=1000,
+                    help="Nombre de tokens maximum pour la réponse"
+                )
+        
+        # Générer la plainte
+        with st.spinner(f"⚖️ Génération de la {'plainte avec constitution de partie civile' if is_partie_civile else 'plainte simple'} via {selected_provider}..."):
+            response = llm_manager.query_single_llm(
+                selected_provider,
+                plainte_prompt,
+                "Tu es Maître Jean-Michel Durand, avocat au Barreau de Paris depuis 25 ans, spécialisé en droit pénal des affaires et criminalité en col blanc. Tu as plaidé dans les plus grandes affaires de corruption et d'escroquerie. Tu rédiges des plaintes qui ont mené à de nombreuses condamnations.",
+                temperature=temperature if 'temperature' in locals() else 0.3,
+                max_tokens=max_tokens if 'max_tokens' in locals() else 8000
+            )
+        
+        if response['success']:
+            # Enrichir la réponse si nécessaire
+            document_final = response['response']
+            
+            # Vérifier que le document contient les éléments essentiels
+            if is_partie_civile:
+                elements_requis = [
+                    "POUR :", "CONTRE :", "EXPOSÉ", "FAITS", 
+                    "QUALIFICATION JURIDIQUE", "PRÉJUDICES", 
+                    "CONSTITUTION DE PARTIE CIVILE", "DEMANDES"
+                ]
+            else:
+                elements_requis = [
+                    "Monsieur le Procureur", "EXPOSÉ DES FAITS", 
+                    "QUALIFICATION", "DEMANDES"
+                ]
+            
+            missing_elements = [elem for elem in elements_requis if elem.upper() not in document_final.upper()]
+            
+            if missing_elements:
+                st.warning(f"⚠️ Éléments manquants détectés : {', '.join(missing_elements)}")
+                st.info("💡 Vous pouvez éditer le document pour ajouter les sections manquantes")
+            
+            # Analyse de la qualité
+            word_count = len(document_final.split())
+            char_count = len(document_final)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Mots", f"{word_count:,}")
+                if word_count < 3000:
+                    st.warning("⚠️ Document un peu court pour un dossier complexe")
+            with col2:
+                st.metric("Caractères", f"{char_count:,}")
+            with col3:
+                st.metric("Pages estimées", f"~{word_count // 250}")
+            
+            # Sauvegarder le résultat
+            st.session_state.redaction_result = {
+                'type': type_plainte,
+                'document': document_final,
+                'provider': selected_provider,
+                'timestamp': datetime.now(),
+                'metadata': {
+                    'demandeurs': parties_demanderesses,
+                    'defendeurs': parties_defenderesses,
+                    'reference': reference,
+                    'infractions': infractions_mentionnees,
+                    'requete_originale': query,
+                    'generation_time': response.get('elapsed_time', 0),
+                    'word_count': word_count,
+                    'destinataire': destinataire
+                }
+            }
+            
+            st.success(f"✅ {'Plainte avec constitution de partie civile' if is_partie_civile else 'Plainte simple'} générée avec succès !")
+            
+            # Proposer des actions supplémentaires
+            st.markdown("### 🎯 Actions disponibles")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                if st.button("🔄 Régénérer", key="regen_same"):
+                    st.session_state.force_regenerate = True
+                    st.rerun()
+            
+            with col2:
+                if st.button("📈 Version plus détaillée", key="more_detailed"):
+                    st.session_state.request_detailed = True
+                    st.rerun()
+            
+            with col3:
+                if st.button("🔀 Autre IA", key="try_other_ai"):
+                    other_providers = [p for p in providers if p != selected_provider]
+                    if other_providers:
+                        st.session_state.next_provider = other_providers[0]
+                        st.rerun()
+            
+            with col4:
+                if st.button("📊 Comparer les IA", key="compare_all"):
+                    st.session_state.compare_all_providers = True
+                    st.rerun()
+            
+            # Suggestions d'amélioration
+            with st.expander("💡 Suggestions d'amélioration", expanded=False):
+                st.markdown("""
+                **Pour enrichir votre plainte :**
+                
+                1. **Ajoutez des détails factuels** :
+                   - Dates précises des faits
+                   - Montants exacts des préjudices
+                   - Noms complets et fonctions des personnes
+                   - Références des contrats ou factures
+                
+                2. **Renforcez les preuves** :
+                   - Emails et correspondances
+                   - Rapports d'expertise
+                   - Témoignages écrits
+                   - Documents comptables
+                
+                3. **Précisez les infractions** :
+                   - Articles de loi exacts
+                   - Jurisprudences applicables
+                   - Circonstances aggravantes
+                
+                4. **Complétez les demandes** :
+                   - Mesures conservatoires
+                   - Expertises judiciaires
+                   - Auditions spécifiques
+                """)
+            
+        else:
+            st.error(f"❌ Erreur lors de la génération : {response.get('error', 'Erreur inconnue')}")
+            
+            # Proposer des alternatives
+            if len(providers) > 1:
+                st.info("💡 Essayez avec un autre provider disponible")
+                for provider in providers:
+                    if st.button(f"Essayer avec {provider}", key=f"try_{provider}"):
+                        st.session_state.next_provider = provider
+                        st.rerun()
+            
+    except Exception as e:
+        st.error(f"❌ Erreur inattendue : {str(e)}")
+        with st.expander("🔍 Détails techniques"):
+            import traceback
+            st.code(traceback.format_exc())
+
+# ========================= GESTION DES PIÈCES =========================
+
+def process_piece_selection_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de sélection de pièces"""
+    
+    st.markdown("### 📋 Sélection de pièces")
+    
+    # Collecter les documents disponibles
+    available_docs = collect_available_documents(analysis)
+    
+    if not available_docs:
+        st.warning("⚠️ Aucun document disponible")
+        return
+    
+    # Grouper par catégorie
+    categories = group_documents_by_category(available_docs)
+    
+    # Interface de sélection
+    selected_pieces = []
+    
+    for category, docs in categories.items():
+        with st.expander(f"📁 {category} ({len(docs)} documents)", expanded=True):
+            select_all = st.checkbox(f"Tout sélectionner - {category}", key=f"select_all_{category}")
+            
+            for doc in docs:
+                is_selected = st.checkbox(
+                    f"📄 {doc['title']}",
+                    value=select_all,
+                    key=f"select_doc_{doc['id']}",
+                    help=f"Source: {doc.get('source', 'N/A')}"
+                )
+                
+                if is_selected:
+                    selected_pieces.append(PieceSelectionnee(
+                        numero=len(selected_pieces) + 1,
+                        titre=doc['title'],
+                        description=doc.get('description', ''),
+                        categorie=category,
+                        date=doc.get('date'),
+                        source=doc.get('source', ''),
+                        pertinence=calculate_piece_relevance(doc, analysis)
+                    ))
+    
+    # Sauvegarder la sélection
+    st.session_state.selected_pieces = selected_pieces
+    
+    # Actions
+    if selected_pieces:
+        st.success(f"✅ {len(selected_pieces)} pièces sélectionnées")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("📊 Créer bordereau", key="create_bordereau_from_selection"):
+                process_bordereau_request(query, analysis)
+        
+        with col2:
+            if st.button("📄 Synthétiser", key="synthesize_selection"):
+                synthesize_selected_pieces(selected_pieces)
+        
+        with col3:
+            if st.button("📤 Exporter liste", key="export_piece_list"):
+                export_piece_list(selected_pieces)
+
+def process_bordereau_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de création de bordereau"""
+    
+    pieces = st.session_state.get('selected_pieces', [])
+    
+    if not pieces:
+        st.warning("⚠️ Aucune pièce sélectionnée pour le bordereau")
+        return
+    
+    # Créer le bordereau
+    bordereau = create_bordereau(pieces, analysis)
+    
+    # Afficher
+    st.markdown("### 📊 Bordereau de communication de pièces")
+    
+    # En-tête
+    st.text_area(
+        "En-tête du bordereau",
+        value=bordereau['header'],
+        height=150,
+        key="bordereau_header"
+    )
+    
+    # Table des pièces
+    try:
+        df = pd.DataFrame([
+            {
+                'N°': p.numero,
+                'Titre': p.titre,
+                'Description': p.description,
+                'Catégorie': p.categorie,
+                'Date': p.date.strftime('%d/%m/%Y') if p.date else 'N/A'
+            }
+            for p in pieces
+        ])
+        
+        st.dataframe(df, use_container_width=True)
+    except:
+        # Affichage sans pandas
+        for piece in pieces:
+            st.write(f"**{piece.numero}.** {piece.titre}")
+            if piece.description:
+                st.caption(piece.description)
+    
+    # Actions
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.download_button(
+            "💾 Télécharger bordereau",
+            create_bordereau_document(bordereau),
+            f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    
+    with col2:
+        if st.button("📧 Envoyer bordereau", key="send_bordereau"):
+            st.session_state.pending_email = {
+                'content': create_bordereau_document(bordereau),
+                'type': 'bordereau'
+            }
+
+def synthesize_selected_pieces(pieces: list):
+    """Synthétise les pièces sélectionnées"""
+    
+    try:
+        llm_manager = MultiLLMManager()
+        
+        if not llm_manager.clients:
+            return {'error': 'Aucune IA disponible'}
+        
+        # Construire le contexte
+        context = "PIÈCES À SYNTHÉTISER:\n\n"
+        
+        for piece in pieces[:20]:  # Limiter
+            context += f"Pièce {piece.numero}: {piece.titre}\n"
+            context += f"Catégorie: {piece.categorie}\n"
+            if piece.description:
+                context += f"Description: {piece.description}\n"
+            context += "\n"
+        
+        # Prompt
+        synthesis_prompt = f"""{context}
+
+Crée une synthèse structurée de ces pièces.
+La synthèse doit inclure:
+1. Vue d'ensemble des pièces
+2. Points clés par catégorie
+3. Chronologie si applicable
+4. Points d'attention juridiques
+5. Recommandations"""
+        
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            synthesis_prompt,
+            "Tu es un expert en analyse de documents juridiques."
+        )
+        
+        if response['success']:
+            synthesis_result = {
+                'content': response['response'],
+                'piece_count': len(pieces),
+                'categories': list(set(p.categorie for p in pieces)),
+                'timestamp': datetime.now()
+            }
+            st.session_state.synthesis_result = synthesis_result
+            return synthesis_result
+        else:
+            return {'error': 'Échec de la synthèse'}
+            
+    except Exception as e:
+        return {'error': f'Erreur synthèse: {str(e)}'}
+
+# ========================= ANALYSE IA =========================
+
+def process_analysis_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande d'analyse IA avec support des infractions"""
+    
+    # Collecter les documents pertinents
+    documents = collect_relevant_documents(analysis)
+    
+    if not documents:
+        st.warning("⚠️ Aucun document trouvé pour l'analyse")
+        return
+    
+    # Configuration de l'analyse
+    st.markdown("### ⚙️ Configuration de l'analyse")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Type d'infraction si pertinent
+        if any(word in query.lower() for word in ['infraction', 'délit', 'crime']):
+            infractions_list = [inf.value for inf in InfractionAffaires]
+            
+            st.session_state.infraction = st.text_input(
+                "Type d'infraction",
+                placeholder="Ex: Abus de biens sociaux, corruption, fraude fiscale...",
+                key="infraction_input",
+                help="Saisissez librement l'infraction"
+            )
+            
+            if not st.session_state.infraction:
+                st.info("💡 Suggestions : " + ", ".join(infractions_list[:5]) + "...")
+        
+        # Client
+        st.session_state.client_nom = st.text_input(
+            "Nom du client",
+            placeholder="Personne physique ou morale",
+            key="client_nom_analyse"
+        )
+    
+    with col2:
+        # Type d'analyse
+        analysis_type = st.selectbox(
+            "Type d'analyse",
+            ["Analyse générale", "Risques juridiques", "Conformité", "Stratégie", "Infractions"],
+            key="analysis_type_select"
+        )
+    
+    # Lancer l'analyse
+    if st.button("🚀 Lancer l'analyse", type="primary", key="launch_analysis"):
+        with st.spinner("🤖 Analyse en cours..."):
+            if analysis_type == "Risques juridiques":
+                results = analyze_legal_risks(documents, query)
+            elif analysis_type == "Conformité":
+                results = analyze_compliance(documents, query)
+            elif analysis_type == "Stratégie":
+                results = analyze_strategy(documents, query)
+            elif analysis_type == "Infractions":
+                results = analyze_infractions(documents, query)
+            else:
+                results = perform_general_analysis(documents, query)
+        
+        # Stocker les résultats
+        st.session_state.ai_analysis_results = results
+        st.rerun()
+
+def analyze_infractions(documents: List[Dict[str, Any]], query: str) -> dict:
+    """Analyse spécifique des infractions économiques"""
+    
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    # Construire le prompt spécialisé
+    infraction_prompt = f"""Analyse ces documents pour identifier des infractions économiques.
+
+Client: {st.session_state.get('client_nom', 'Non spécifié')}
+Infraction suspectée: {st.session_state.get('infraction', 'À déterminer')}
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+Identifie:
+1. INFRACTIONS CARACTÉRISÉES
+   - Qualification juridique précise
+   - Articles du Code pénal applicables
+   - Éléments constitutifs présents/absents
+   
+2. RESPONSABILITÉS
+   - Personnes physiques impliquées
+   - Responsabilité des personnes morales
+   
+3. SANCTIONS ENCOURUES
+   - Peines principales
+   - Peines complémentaires
+   - Prescription
+
+4. ÉLÉMENTS DE PREUVE
+   - Preuves matérielles identifiées
+   - Témoignages pertinents
+   - Documents clés
+
+5. STRATÉGIE DE DÉFENSE
+   - Points faibles de l'accusation
+   - Arguments de défense possibles
+   - Jurisprudences favorables"""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            infraction_prompt,
+            "Tu es un avocat expert en droit pénal des affaires."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'infractions',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query,
+                'infraction': st.session_state.get('infraction', 'Non spécifiée')
+            }
+    except Exception as e:
+        return {'error': f'Erreur analyse infractions: {str(e)}'}
+
+def analyze_legal_risks(documents: List[Dict[str, Any]], query: str) -> dict:
+    """Analyse les risques juridiques"""
+    
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    # Construire le prompt
+    risk_prompt = f"""Analyse les risques juridiques dans ces documents.
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+QUESTION: {query}
+
+Identifie et évalue:
+1. RISQUES PÉNAUX
+2. RISQUES CIVILS
+3. RISQUES RÉPUTATIONNELS
+4. RECOMMANDATIONS
+
+Format structuré avec évaluation précise."""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            risk_prompt,
+            "Tu es un expert en analyse de risques juridiques."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'risk_analysis',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query
+            }
+    except Exception as e:
+        return {'error': f'Erreur analyse: {str(e)}'}
+
+def analyze_compliance(documents: List[Dict[str, Any]], query: str) -> dict:
+    """Analyse de conformité"""
+    
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    compliance_prompt = f"""Analyse la conformité légale et réglementaire.
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+QUESTION: {query}
+
+Vérifie:
+1. CONFORMITÉ LÉGALE
+2. CONFORMITÉ RÉGLEMENTAIRE
+3. MANQUEMENTS IDENTIFIÉS
+4. ACTIONS CORRECTIVES
+5. RECOMMANDATIONS"""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            compliance_prompt,
+            "Tu es un expert en conformité juridique."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'compliance',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query
+            }
+    except Exception as e:
+        return {'error': f'Erreur analyse conformité: {str(e)}'}
+
+def analyze_strategy(documents: List[Dict[str, Any]], query: str) -> dict:
+    """Analyse stratégique"""
+    
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    strategy_prompt = f"""Développe une stratégie juridique basée sur ces documents.
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+QUESTION: {query}
+
+Élabore:
+1. ANALYSE DE LA SITUATION
+2. OPTIONS STRATÉGIQUES
+3. AVANTAGES/INCONVÉNIENTS
+4. STRATÉGIE RECOMMANDÉE
+5. PLAN D'ACTION"""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            strategy_prompt,
+            "Tu es un stratège juridique expérimenté."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'strategy',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query
+            }
+    except Exception as e:
+        return {'error': f'Erreur analyse stratégique: {str(e)}'}
+
+def perform_general_analysis(documents: List[Dict[str, Any]], query: str) -> dict:
+    """Analyse générale des documents"""
+    
+    llm_manager = MultiLLMManager()
+    if not llm_manager.clients:
+        return {'error': 'Aucune IA disponible'}
+    
+    general_prompt = f"""Analyse ces documents pour répondre à la question.
+
+DOCUMENTS:
+{chr(10).join([f"- {doc.get('title', 'Sans titre')}: {doc.get('content', '')[:500]}..." for doc in documents[:10]])}
+
+QUESTION: {query}
+
+Fournis une analyse complète et structurée."""
+    
+    try:
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            general_prompt,
+            "Tu es un expert en analyse juridique."
+        )
+        
+        if response['success']:
+            return {
+                'type': 'general_analysis',
+                'content': response['response'],
+                'document_count': len(documents),
+                'timestamp': datetime.now(),
+                'query': query
+            }
+    except Exception as e:
+        return {'error': f'Erreur analyse: {str(e)}'}
+
+def verify_jurisprudences_in_analysis(content: str):
+    """Vérifie les jurisprudences citées dans l'analyse"""
+    st.markdown("### 🔍 Vérification des jurisprudences citées")
+    
+    try:
+        # Créer le vérificateur
+        verifier = JurisprudenceVerifier()
+        
+        # Afficher l'interface de vérification
+        verification_results = display_jurisprudence_verification(content, verifier)
+        
+        # Stocker les résultats de vérification
+        if verification_results:
+            st.session_state.jurisprudence_verification = verification_results
+            
+            # Résumé
+            verified_count = sum(1 for r in verification_results if r.status == 'verified')
+            total_count = len(verification_results)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Jurisprudences vérifiées", f"{verified_count}/{total_count}")
+            
+            with col2:
+                confidence = (verified_count / total_count * 100) if total_count > 0 else 0
+                st.metric("Fiabilité des sources", f"{confidence:.0f}%")
+        
+        return verification_results
+    except:
+        st.warning("⚠️ Vérificateur de jurisprudences non disponible")
+        return []
+
+# ========================= FONCTIONS DE TRAITEMENT =========================
+
+def process_redaction_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de rédaction générale"""
+    st.info("📝 Traitement de la demande de rédaction...")
+    
+    # Déterminer le type de document
+    doc_type = analysis.document_type or 'document'
+    
+    # Afficher l'interface de configuration
+    st.markdown("### ⚙️ Configuration du document")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Type de document
+        doc_type = st.selectbox(
+            "Type de document",
+            list(DOCUMENT_TEMPLATES.keys()),
+            format_func=lambda x: DOCUMENT_TEMPLATES[x]['name'],
+            key="doc_type_select"
+        )
+        
+        # Style de rédaction
+        style = st.selectbox(
+            "Style de rédaction",
+            list(REDACTION_STYLES.keys()),
+            format_func=lambda x: REDACTION_STYLES[x]['name'],
+            key="style_select",
+            index=list(REDACTION_STYLES.keys()).index(DOCUMENT_TEMPLATES[doc_type]['style'])
+        )
+    
+    with col2:
+        # Parties si applicable
+        if doc_type in ['conclusions_defense', 'plainte_simple', 'assignation']:
+            demandeur = st.text_input("Demandeur/Plaignant", key="demandeur_input")
+            defendeur = st.text_input("Défendeur/Mis en cause", key="defendeur_input")
+        
+        # Référence
+        reference = st.text_input(
+            "Référence dossier",
+            value=analysis.reference or '',
+            placeholder="Ex: @VINCI2024",
+            key="reference_input"
+        )
+    
+    # Bouton de génération
+    if st.button("🚀 Générer le document", type="primary", key="generate_doc_btn"):
+        generate_document(doc_type, style, query, analysis)
+
+def process_plaidoirie_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de plaidoirie"""
+    st.info("🎤 Préparation de plaidoirie...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_preparation_client_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de préparation client"""
+    st.info("👥 Préparation du client...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_import_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande d'import"""
+    st.info("📥 Import de documents...")
+    
+    # Interface d'upload
+    uploaded_files = st.file_uploader(
+        "Sélectionnez vos fichiers",
+        type=['pdf', 'docx', 'txt', 'csv', 'xlsx'],
+        accept_multiple_files=True,
+        key="file_uploader"
+    )
+    
+    if uploaded_files:
+        st.info(f"📄 {len(uploaded_files)} fichier(s) sélectionné(s)")
+        
+        if st.button("📥 Importer", key="import_btn"):
+            with st.spinner("Import en cours..."):
+                import_documents(uploaded_files)
+
+def process_export_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande d'export"""
+    st.info("💾 Export en cours...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_email_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande d'email"""
+    st.info("📧 Préparation de l'email...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_synthesis_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de synthèse"""
+    
+    # Déterminer la source
+    if st.session_state.get('selected_pieces'):
+        synthesize_selected_pieces(st.session_state.selected_pieces)
+    elif analysis.reference:
+        docs = search_by_reference(f"@{analysis.reference}")
+        pieces = []
+        for i, doc in enumerate(docs):
+            pieces.append(PieceSelectionnee(
+                numero=i + 1,
+                titre=doc.get('title', 'Sans titre'),
+                description=doc.get('content', '')[:200] + '...' if doc.get('content') else '',
+                categorie=determine_document_category(doc),
+                source=doc.get('source', '')
+            ))
+        synthesize_selected_pieces(pieces)
+    else:
+        st.warning("⚠️ Aucun contenu à synthétiser")
+        return
+
+def process_template_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de template"""
+    st.info("📄 Gestion des templates...")
+    
+    # Afficher les templates disponibles
+    st.markdown("### 📄 Templates disponibles")
+    
+    for template_id, template in DOCUMENT_TEMPLATES.items():
+        with st.expander(f"📄 {template['name']}", expanded=False):
+            st.markdown("**Structure:**")
+            for element in template['structure']:
+                st.write(f"- {element}")
+            st.markdown(f"**Style:** {REDACTION_STYLES[template['style']]['description']}")
+            
+            if st.button(f"Utiliser ce template", key=f"use_template_{template_id}"):
+                st.session_state.selected_template = template_id
+                st.info(f"✅ Template '{template['name']}' sélectionné")
+
+def process_jurisprudence_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de jurisprudence"""
+    st.info("⚖️ Recherche de jurisprudence...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_timeline_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de chronologie"""
+    st.info("⏱️ Création de la chronologie...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_mapping_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de cartographie"""
+    st.info("🗺️ Création de la cartographie...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_comparison_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de comparaison"""
+    st.info("🔄 Comparaison en cours...")
+    st.warning("⚠️ Fonctionnalité en cours de développement")
+    # TODO: Implémenter
+
+def process_search_request(query: str, analysis: QueryAnalysis):
+    """Traite une demande de recherche simple"""
+    
+    # Utiliser le service de recherche universel
+    search_service = init_search_service()
+    
+    # Utiliser LegalSearchManager si disponible pour enrichir
+    legal_search = None
+    if MANAGERS_AVAILABLE:
+        try:
+            legal_search = LegalSearchManager()
+        except:
+            pass
+    
+    with st.spinner("🔍 Recherche en cours..."):
+        # Recherche principale via UniversalSearchService
+        results = asyncio.run(search_service.search(query))
+        
+        # Enrichir avec LegalSearchManager si disponible
+        if legal_search and 'jurisprudence' in query.lower():
+            try:
+                legal_results = legal_search.search_jurisprudence(query)
+                # Ajouter les résultats juridiques aux résultats principaux
+                if legal_results:
+                    st.info(f"📚 {len(legal_results)} jurisprudences trouvées via LegalSearch")
+            except:
+                pass
+    
+    # Stocker les résultats
+    st.session_state.search_results = results
+    
+    if results.documents:
+        st.success(f"✅ {results.total_count} résultats trouvés")
+    else:
+        st.warning("⚠️ Aucun résultat trouvé")
+
+# ========================= FONCTIONS HELPER =========================
+
+def collect_relevant_documents(analysis: QueryAnalysis) -> List[Dict[str, Any]]:
+    """Collecte les documents pertinents selon l'analyse"""
+    
+    documents = []
+    
+    # Documents locaux
+    for doc_id, doc in st.session_state.get('azure_documents', {}).items():
+        # Convertir en dictionnaire si c'est un objet
+        if hasattr(doc, 'title'):
+            documents.append({
+                'id': doc_id,
+                'title': doc.title,
+                'content': doc.content,
+                'source': doc.source,
+                'metadata': getattr(doc, 'metadata', {})
+            })
+        else:
+            documents.append({
+                'id': doc_id,
+                'title': doc.get('title', 'Sans titre'),
+                'content': doc.get('content', ''),
+                'source': doc.get('source', 'Local'),
+                'metadata': doc.get('metadata', {})
+            })
+    
+    # Filtrer par référence si présente
+    if analysis.reference:
+        ref_lower = analysis.reference.lower()
+        documents = [d for d in documents if ref_lower in d['title'].lower() or ref_lower in d.get('source', '').lower()]
+    
+    return documents
+
+def collect_available_documents(analysis: QueryAnalysis) -> list:
+    """Collecte tous les documents disponibles"""
+    documents = []
+    
+    # Documents locaux
+    for doc_id, doc in st.session_state.get('azure_documents', {}).items():
+        if hasattr(doc, 'title'):
+            documents.append({
+                'id': doc_id,
+                'title': doc.title,
+                'content': doc.content,
+                'source': doc.source,
+                'metadata': getattr(doc, 'metadata', {})
+            })
+        else:
+            documents.append({
+                'id': doc_id,
+                'title': doc.get('title', 'Sans titre'),
+                'content': doc.get('content', ''),
+                'source': doc.get('source', 'Local'),
+                'metadata': doc.get('metadata', {})
+            })
+    
+    return documents
+
+def group_documents_by_category(documents: list) -> dict:
+    """Groupe les documents par catégorie"""
+    categories = defaultdict(list)
+    
+    for doc in documents:
+        category = determine_document_category(doc)
+        categories[category].append(doc)
+    
+    return dict(categories)
+
+def determine_document_category(doc: dict) -> str:
+    """Détermine la catégorie d'un document"""
+    title_lower = doc.get('title', '').lower()
+    content_lower = doc.get('content', '')[:500].lower()
+    
+    category_patterns = {
+        'Procédure': ['plainte', 'procès-verbal', 'audition'],
+        'Expertise': ['expertise', 'expert', 'rapport technique'],
+        'Comptabilité': ['bilan', 'compte', 'facture'],
+        'Contrats': ['contrat', 'convention', 'accord'],
+        'Correspondance': ['courrier', 'email', 'lettre']
+    }
+    
+    for category, keywords in category_patterns.items():
+        if any(kw in title_lower or kw in content_lower for kw in keywords):
+            return category
+    
+    return 'Autres'
+
+def calculate_piece_relevance(doc: dict, analysis: QueryAnalysis) -> float:
+    """Calcule la pertinence d'une pièce"""
+    score = 0.5
+    
+    if analysis.subject_matter:
+        if analysis.subject_matter in doc.get('content', '').lower():
+            score += 0.3
+    
+    if analysis.reference:
+        if analysis.reference in doc.get('title', '').lower():
+            score += 0.2
+    
+    return min(score, 1.0)
+
+def create_bordereau(pieces: list, analysis: QueryAnalysis) -> dict:
+    """Crée un bordereau structuré"""
+    
+    bordereau = {
+        'header': f"""BORDEREAU DE COMMUNICATION DE PIÈCES
+
+AFFAIRE : {analysis.reference.upper() if analysis.reference else 'N/A'}
+DATE : {datetime.now().strftime('%d/%m/%Y')}
+NOMBRE DE PIÈCES : {len(pieces)}""",
+        'pieces': pieces,
+        'footer': f"""Je certifie que les pièces communiquées sont conformes aux originaux.
+
+Fait le {datetime.now().strftime('%d/%m/%Y')}""",
+        'metadata': {
+            'created_at': datetime.now(),
+            'piece_count': len(pieces),
+            'reference': analysis.reference
+        }
+    }
+    
+    return bordereau
+
+def create_bordereau_document(bordereau: dict) -> bytes:
+    """Crée le document du bordereau"""
+    content = bordereau['header'] + '\n\n'
+    
+    for piece in bordereau['pieces']:
+        content += f"{piece.numero}. {piece.titre}\n"
+        if piece.description:
+            content += f"   {piece.description}\n"
+        content += f"   Catégorie: {piece.categorie}\n"
+        if hasattr(piece, 'date') and piece.date:
+            content += f"   Date: {piece.date.strftime('%d/%m/%Y')}\n"
+        content += "\n"
+    
+    content += bordereau['footer']
+    
+    return content.encode('utf-8')
+
+def export_piece_list(pieces: list):
+    """Exporte la liste des pièces"""
+    content = "LISTE DES PIÈCES SÉLECTIONNÉES\n"
+    content += f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    content += f"Nombre de pièces : {len(pieces)}\n\n"
+    
+    # Grouper par catégorie
+    by_category = defaultdict(list)
+    for piece in pieces:
+        by_category[piece.categorie].append(piece)
+    
+    for category, cat_pieces in by_category.items():
+        content += f"\n{category.upper()} ({len(cat_pieces)} pièces)\n"
+        content += "-" * 50 + "\n"
+        
+        for piece in cat_pieces:
+            content += f"{piece.numero}. {piece.titre}\n"
+            if piece.description:
+                content += f"   {piece.description}\n"
+            content += "\n"
+    
+    # Télécharger
+    st.download_button(
+        "💾 Télécharger la liste",
+        content.encode('utf-8'),
+        f"liste_pieces_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain"
+    )
+
+def search_by_reference(reference: str) -> list:
+    """Recherche par référence @"""
+    results = []
+    ref_clean = reference.replace('@', '').strip().lower()
+    
+    for doc_id, doc in st.session_state.get('azure_documents', {}).items():
+        if hasattr(doc, 'title'):
+            if ref_clean in doc.title.lower() or ref_clean in doc.source.lower():
+                results.append({
+                    'id': doc_id,
+                    'title': doc.title,
+                    'content': doc.content,
+                    'source': doc.source
+                })
+        else:
+            if ref_clean in doc.get('title', '').lower() or ref_clean in doc.get('source', '').lower():
+                results.append({
+                    'id': doc_id,
+                    'title': doc.get('title', 'Sans titre'),
+                    'content': doc.get('content', ''),
+                    'source': doc.get('source', 'N/A')
+                })
+    
+    return results
+
+def clear_universal_state():
+    """Efface l'état de l'interface universelle"""
+    keys_to_clear = [
+        'universal_query', 'last_universal_query', 'current_analysis',
+        'redaction_result', 'timeline_result', 'mapping_result',
+        'comparison_result', 'synthesis_result', 'ai_analysis_results',
+        'search_results', 'selected_pieces', 'import_files',
+        'plaidoirie_result', 'preparation_client_result'
+    ]
+    
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+    
+    st.success("✅ Interface réinitialisée")
+    st.rerun()
+
+def save_current_work():
+    """Sauvegarde le travail actuel"""
+    work_data = {
+        'timestamp': datetime.now().isoformat(),
+        'query': st.session_state.get('universal_query', ''),
+        'analysis': {},
+        'results': {}
+    }
+    
+    # Collecter tous les résultats
+    result_keys = [
+        'redaction_result', 'timeline_result', 'mapping_result',
+        'comparison_result', 'synthesis_result', 'ai_analysis_results',
+        'search_results', 'plaidoirie_result', 'preparation_client_result'
+    ]
+    
+    for key in result_keys:
+        if key in st.session_state and st.session_state[key]:
+            # Convertir les objets complexes en dictionnaires
+            if hasattr(st.session_state[key], '__dict__'):
+                work_data['results'][key] = st.session_state[key].__dict__
+            else:
+                work_data['results'][key] = st.session_state[key]
+    
+    # Sauvegarder
+    import json
+    
+    # Fonction pour sérialiser les objets non-sérialisables
+    def default_serializer(obj):
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
+        elif hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        else:
+            return str(obj)
+    
+    json_str = json.dumps(work_data, indent=2, ensure_ascii=False, default=default_serializer)
+    
+    st.download_button(
+        "💾 Télécharger la sauvegarde",
+        json_str,
+        f"sauvegarde_travail_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        "application/json",
+        key="download_work_save"
+    )
+
+async def show_work_statistics():
+    """Affiche les statistiques du travail en cours"""
+    st.info("📊 Statistiques du travail en cours")
+    
+    # Compter les résultats
+    stats = {
+        'Documents': len(st.session_state.get('azure_documents', {})),
+        'Pièces sélectionnées': len(st.session_state.get('selected_pieces', [])),
+        'Analyses': 1 if st.session_state.get('ai_analysis_results') else 0,
+        'Rédactions': 1 if st.session_state.get('redaction_result') else 0
+    }
+    
+    cols = st.columns(len(stats))
+    for i, (label, value) in enumerate(stats.items()):
+        with cols[i]:
+            st.metric(label, value)
+    
+    # Statistiques de recherche si disponibles
+    if 'search_service' in st.session_state:
+        search_stats = await st.session_state.search_service.get_search_statistics()
+        
+        st.markdown("### 📊 Statistiques de recherche")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Recherches totales", search_stats['total_searches'])
+            st.metric("Taille du cache", search_stats['cache_size'])
+        
+        with col2:
+            st.metric("Résultats moyens", f"{search_stats['average_results']:.1f}")
+            
+            if search_stats['popular_keywords']:
+                st.markdown("**Mots-clés populaires:**")
+                for keyword, count in list(search_stats['popular_keywords'].items())[:5]:
+                    st.write(f"• {keyword}: {count} fois")
+
+def share_current_work():
+    """Partage le travail actuel"""
+    st.info("🔗 Fonctionnalité de partage")
+    
+    # Pour l'instant, proposer l'export
+    save_current_work()
+
+def show_document_statistics(content: str):
+    """Affiche les statistiques d'un document"""
+    
+    # Calculs
+    words = content.split()
+    sentences = content.split('.')
+    paragraphs = content.split('\n\n')
+    
+    # Références
+    law_refs = len(re.findall(r'article\s+[LR]?\s*\d+', content, re.IGNORECASE))
+    
+    # Affichage
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Mots", f"{len(words):,}")
+        st.metric("Phrases", f"{len(sentences):,}")
+    
+    with col2:
+        st.metric("Paragraphes", len(paragraphs))
+        st.metric("Mots/phrase", f"{len(words) / max(len(sentences), 1):.1f}")
+    
+    with col3:
+        st.metric("Articles cités", law_refs)
+        avg_word_length = sum(len(w) for w in words) / max(len(words), 1)
+        st.metric("Longueur moy.", f"{avg_word_length:.1f} car/mot")
+
+def generate_document(doc_type: str, style: str, query: str, analysis: QueryAnalysis):
+    """Génère un document selon le type et le style"""
+    try:
+        llm_manager = MultiLLMManager()
+        
+        if not llm_manager.clients:
+            st.error("❌ Aucune IA disponible")
+            return
+        
+        # Utiliser DynamicGenerators si disponible pour enrichir la génération
+        dynamic_gen = None
+        if MANAGERS_AVAILABLE:
+            try:
+                dynamic_gen = DynamicGenerators()
+            except:
+                pass
+        
+        # Construire le prompt selon le template
+        template = DOCUMENT_TEMPLATES[doc_type]
+        style_info = REDACTION_STYLES[style]
+        
+        # Si DynamicGenerators est disponible, l'utiliser pour améliorer le prompt
+        if dynamic_gen and hasattr(dynamic_gen, 'enhance_prompt'):
+            try:
+                enhanced_prompt = dynamic_gen.enhance_prompt(
+                    doc_type=doc_type,
+                    style=style,
+                    context=query,
+                    reference=analysis.reference
+                )
+                prompt = enhanced_prompt
+            except:
+                # Fallback au prompt standard
+                prompt = f"""Rédige un document juridique de type {template['name']}.
+
+STRUCTURE À SUIVRE :
+{chr(10).join(template['structure'])}
+
+STYLE : {style_info['name']}
+- Ton : {style_info['tone']}
+- Vocabulaire : {style_info['vocabulary']}
+
+CONTEXTE : {query}
+RÉFÉRENCE : {analysis.reference or 'N/A'}
+
+Rédige un document complet et professionnel."""
+        else:
+            # Prompt standard
+            prompt = f"""Rédige un document juridique de type {template['name']}.
+
+STRUCTURE À SUIVRE :
+{chr(10).join(template['structure'])}
+
+STYLE : {style_info['name']}
+- Ton : {style_info['tone']}
+- Vocabulaire : {style_info['vocabulary']}
+
+CONTEXTE : {query}
+RÉFÉRENCE : {analysis.reference or 'N/A'}
+
+Rédige un document complet et professionnel."""
+        
+        # Sélectionner un provider
+        provider = list(llm_manager.clients.keys())[0]
+        
+        with st.spinner(f"📝 Génération du {template['name']}..."):
+            response = llm_manager.query_single_llm(
+                provider,
+                prompt,
+                f"Tu es un expert en rédaction juridique spécialisé en {template['name']}."
+            )
+        
+        if response['success']:
+            # Post-traitement avec StyleAnalyzer si disponible
+            final_document = response['response']
+            
+            if MANAGERS_AVAILABLE and StyleAnalyzer:
+                try:
+                    analyzer = StyleAnalyzer()
+                    if hasattr(analyzer, 'analyze_and_improve'):
+                        improved = analyzer.analyze_and_improve(
+                            final_document,
+                            target_style=style,
+                            document_type=doc_type
+                        )
+                        if improved:
+                            final_document = improved
+                            st.info("✨ Document amélioré avec l'analyseur de style")
+                except:
+                    pass
+            
+            st.session_state.redaction_result = {
+                'type': doc_type,
+                'document': final_document,
+                'provider': provider,
+                'timestamp': datetime.now(),
+                'metadata': {
+                    'style': style,
+                    'query': query,
+                    'reference': analysis.reference,
+                    'enhanced': dynamic_gen is not None
+                }
+            }
+            st.success(f"✅ {template['name']} généré avec succès !")
+            st.rerun()
+            
+    except Exception as e:
+        st.error(f"❌ Erreur : {str(e)}")
+
+def import_documents(files):
+    """Importe les documents uploadés"""
+    
+    imported_count = 0
+    doc_manager = None
+    
+    # Utiliser DocumentManager si disponible
+    if MANAGERS_AVAILABLE:
+        try:
+            doc_manager = DocumentManager()
+        except:
+            pass
+    
+    for file in files:
+        try:
+            # Si DocumentManager est disponible, l'utiliser
+            if doc_manager and hasattr(doc_manager, 'import_document'):
+                try:
+                    result = doc_manager.import_document(file)
+                    if result and result.get('success'):
+                        imported_count += 1
+                        st.success(f"✅ {file.name} importé via DocumentManager")
+                        continue
+                except:
+                    # Fallback à la méthode standard
+                    pass
+            
+            # Méthode standard de lecture
+            if file.name.endswith('.txt'):
+                content = file.read().decode('utf-8')
+            elif file.name.endswith('.pdf'):
+                # Si DocumentManager a un extracteur PDF, l'utiliser
+                if doc_manager and hasattr(doc_manager, 'extract_pdf_content'):
+                    try:
+                        content = doc_manager.extract_pdf_content(file)
+                    except:
+                        st.warning(f"⚠️ Import PDF non implémenté pour {file.name}")
+                        continue
+                else:
+                    st.warning(f"⚠️ Import PDF non implémenté pour {file.name}")
+                    continue
+            elif file.name.endswith(('.docx', '.doc')):
+                # Si DocumentManager a un extracteur Word, l'utiliser
+                if doc_manager and hasattr(doc_manager, 'extract_word_content'):
+                    try:
+                        content = doc_manager.extract_word_content(file)
+                    except:
+                        st.warning(f"⚠️ Import Word non implémenté pour {file.name}")
+                        continue
+                else:
+                    st.warning(f"⚠️ Import Word non implémenté pour {file.name}")
+                    continue
+            else:
+                st.warning(f"⚠️ Type de fichier non supporté : {file.name}")
+                continue
+            
+            # Créer le document
+            doc_id = f"import_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{imported_count}"
+            
+            if 'imported_documents' not in st.session_state:
+                st.session_state.imported_documents = {}
+            
+            # Enrichir les métadonnées si possible
+            metadata = {
+                'import_date': datetime.now().isoformat(),
+                'file_size': len(content) if isinstance(content, str) else 0,
+                'file_type': file.name.split('.')[-1].lower()
+            }
+            
+            # Si DocumentManager peut extraire des métadonnées supplémentaires
+            if doc_manager and hasattr(doc_manager, 'extract_metadata'):
+                try:
+                    extra_metadata = doc_manager.extract_metadata(file, content)
+                    metadata.update(extra_metadata)
+                except:
+                    pass
+            
+            st.session_state.imported_documents[doc_id] = {
+                'title': file.name,
+                'content': content,
+                'source': 'Import manuel',
+                'metadata': metadata
+            }
+            
+            imported_count += 1
+            
+        except Exception as e:
+            st.error(f"❌ Erreur import {file.name}: {str(e)}")
+    
+    if imported_count > 0:
+        st.success(f"✅ {imported_count} document(s) importé(s) avec succès")
+        
+        # Si DocumentManager peut indexer les documents
+        if doc_manager and hasattr(doc_manager, 'index_documents'):
+            with st.spinner("Indexation des documents..."):
+                try:
+                    doc_manager.index_documents(st.session_state.imported_documents)
+                    st.info("📚 Documents indexés pour la recherche")
+                except:
+                    pass
+        
+        st.rerun()
 
 # ========================= FIN DU MODULE =========================
