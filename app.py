@@ -605,6 +605,22 @@ def test_azure_search():
             
             if test_manager.search_client:
                 st.success("✅ Azure Search OK")
+                
+                # Tester le nombre de documents
+                doc_count = test_manager.get_document_count()
+                st.info(f"📄 {doc_count:,} documents dans l'index")
+                
+                # Faire une recherche test
+                with st.spinner("Test de recherche..."):
+                    results = test_manager.search("*", top=5)
+                    if results.get("results"):
+                        st.success(f"✅ Recherche OK - {len(results['results'])} résultats trouvés")
+                        # Afficher le premier résultat comme exemple
+                        if results["results"]:
+                            first_result = results["results"][0]
+                            st.caption(f"Exemple: {first_result.title[:100]}...")
+                    else:
+                        st.warning("⚠️ Aucun résultat trouvé")
             else:
                 error = test_manager.get_connection_error()
                 st.error(f"❌ Azure Search KO: {error}")
@@ -651,24 +667,84 @@ def show_search_suggestions(query: str):
 # Fonction principale de recherche
 async def perform_search(query: str, filters: Optional[Dict] = None):
     """Effectue la recherche et affiche les résultats"""
-    search_service = get_search_service()
     
-    # Indicateur de recherche en cours
-    with st.spinner(f"🔍 Recherche en cours pour : **{query}**"):
-        try:
-            results = await search_service.search(query, filters)
-        except Exception as e:
-            st.error(f"Erreur lors de la recherche: {str(e)}")
-            # Retourner un résultat vide
-            from types import SimpleNamespace
-            results = SimpleNamespace(
-                total_count=0,
-                documents=[],
-                suggestions=[],
-                facets={}
-            )
-    
-    return results
+    # Vérifier d'abord si Azure Search est disponible
+    if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
+        # Utiliser Azure Search directement
+        with st.spinner(f"🔍 Recherche dans {st.session_state.azure_search_manager.get_document_count():,} documents..."):
+            try:
+                # Analyser la requête
+                analysis = st.session_state.azure_search_manager.analyze_query(query)
+                
+                # Effectuer la recherche Azure
+                search_results = st.session_state.azure_search_manager.search(
+                    query=query,
+                    filters=filters,
+                    top=50,
+                    use_semantic_search=True
+                )
+                
+                # Convertir les résultats au format attendu
+                from types import SimpleNamespace
+                
+                # Créer la structure de résultats
+                results = SimpleNamespace(
+                    total_count=search_results.get("total_count", 0),
+                    documents=[],
+                    facets=search_results.get("facets", {}),
+                    suggestions=[]
+                )
+                
+                # Convertir les résultats Azure au format de l'application
+                for azure_result in search_results.get("results", []):
+                    doc = SimpleNamespace(
+                        id=azure_result.id,
+                        title=azure_result.title,
+                        content=azure_result.content,
+                        source=azure_result.source,
+                        metadata=azure_result.metadata,
+                        highlights=azure_result.highlights
+                    )
+                    results.documents.append(doc)
+                
+                # Ajouter des suggestions basées sur l'analyse
+                if analysis.get("parties"):
+                    results.suggestions.extend([f"partie:{p}" for p in analysis["parties"][:3]])
+                if analysis.get("infractions"):
+                    results.suggestions.extend([f"infraction:{i}" for i in analysis["infractions"][:2]])
+                
+                return results
+                
+            except Exception as e:
+                st.error(f"Erreur Azure Search: {str(e)}")
+                # Retourner un résultat vide
+                from types import SimpleNamespace
+                return SimpleNamespace(
+                    total_count=0,
+                    documents=[],
+                    suggestions=[],
+                    facets={}
+                )
+    else:
+        # Fallback sur le service universel
+        search_service = get_search_service()
+        
+        # Indicateur de recherche en cours
+        with st.spinner(f"🔍 Recherche en cours pour : **{query}**"):
+            try:
+                results = await search_service.search(query, filters)
+            except Exception as e:
+                st.error(f"Erreur lors de la recherche: {str(e)}")
+                # Retourner un résultat vide
+                from types import SimpleNamespace
+                results = SimpleNamespace(
+                    total_count=0,
+                    documents=[],
+                    suggestions=[],
+                    facets={}
+                )
+        
+        return results
 
 # Fonction pour afficher un résultat améliorée
 def display_result_enhanced(doc, index: int):
@@ -915,12 +991,26 @@ def main():
         
         # Métriques
         st.markdown("---")
-        nb_docs = len(st.session_state.get('azure_documents', {}))
+        
+        # Obtenir le nombre réel de documents depuis Azure Search
+        nb_docs_azure = 0
+        if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
+            try:
+                nb_docs_azure = st.session_state.azure_search_manager.get_document_count()
+            except:
+                nb_docs_azure = 0
+        
+        nb_docs_local = len(st.session_state.get('azure_documents', {}))
         nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
         
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Documents", nb_docs)
+            if nb_docs_azure > 0:
+                st.metric("Documents Azure", f"{nb_docs_azure:,}")
+                if nb_docs_local > 0:
+                    st.caption(f"({nb_docs_local} en local)")
+            else:
+                st.metric("Documents", nb_docs_local)
         with col2:
             st.metric("Pièces", nb_pieces)
         
@@ -931,6 +1021,21 @@ def main():
         
         if st.button("⚙️ Configuration", key="show_config"):
             st.session_state.show_config_modal = True
+        
+        # Test rapide de recherche
+        if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
+            if st.button("🔍 Test rapide de recherche", key="quick_search_test"):
+                with st.spinner("Recherche en cours..."):
+                    try:
+                        results = st.session_state.azure_search_manager.search("*", top=3)
+                        if results.get("results"):
+                            st.success(f"✅ {results['total_count']:,} documents trouvés")
+                            for i, doc in enumerate(results["results"][:3]):
+                                st.caption(f"{i+1}. {doc.title[:50]}...")
+                        else:
+                            st.warning("Aucun résultat")
+                    except Exception as e:
+                        st.error(f"Erreur: {str(e)}")
         
         # Mode développeur (temporaire pour debug)
         st.markdown("---")
@@ -1139,6 +1244,19 @@ DÉTAILS:
                 🔹 **Recherche combinée** :  
                    Ex: `@VINCI2024 conclusions corruption`
                 """)
+            
+            # Info sur la connexion Azure
+            st.markdown("---")
+            st.markdown("**📊 État de la base de données :**")
+            if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
+                try:
+                    doc_count = st.session_state.azure_search_manager.get_document_count()
+                    st.success(f"✅ {doc_count:,} documents disponibles dans Azure Search")
+                    st.info("💡 Utilisez la barre de recherche pour explorer les documents")
+                except:
+                    st.warning("⚠️ Impossible de compter les documents")
+            else:
+                st.warning("⚠️ Azure Search non connecté")
     
     # ====== ROUTAGE SELON LA VERSION CHOISIE ======
     if use_simplified:
@@ -1148,6 +1266,15 @@ DÉTAILS:
         # Continuer avec l'interface classique
         # Zone de recherche principale
         st.markdown("<div class='search-container'>", unsafe_allow_html=True)
+        
+        # Message informatif si Azure est connecté
+        if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
+            try:
+                doc_count = st.session_state.azure_search_manager.get_document_count()
+                if doc_count > 0:
+                    st.info(f"🎯 **{doc_count:,} documents juridiques** disponibles pour la recherche")
+            except:
+                pass
         
         # Créer un conteneur pour la barre de recherche
         search_container = st.container()
@@ -1219,8 +1346,50 @@ DÉTAILS:
             
             # Effectuer la recherche
             try:
-                results = asyncio.run(perform_search(search_query, filters))
-                st.session_state.search_results = results
+                # Essayer d'abord la recherche directe si Azure est disponible
+                if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
+                    # Recherche synchrone directe via Azure
+                    analysis = st.session_state.azure_search_manager.analyze_query(search_query)
+                    
+                    # Construire les filtres Azure
+                    azure_filters = {}
+                    if filters:
+                        azure_filters = filters.copy()
+                    
+                    # Effectuer la recherche
+                    search_results = st.session_state.azure_search_manager.search(
+                        query=search_query,
+                        filters=azure_filters,
+                        top=50,
+                        use_semantic_search=True
+                    )
+                    
+                    # Convertir au format attendu
+                    from types import SimpleNamespace
+                    results = SimpleNamespace(
+                        total_count=search_results.get("total_count", 0),
+                        documents=[],
+                        facets=search_results.get("facets", {}),
+                        suggestions=[]
+                    )
+                    
+                    for azure_result in search_results.get("results", []):
+                        doc = SimpleNamespace(
+                            id=azure_result.id,
+                            title=azure_result.title,
+                            content=azure_result.content,
+                            source=azure_result.source,
+                            metadata=azure_result.metadata,
+                            highlights=azure_result.highlights
+                        )
+                        results.documents.append(doc)
+                    
+                    st.session_state.search_results = results
+                else:
+                    # Fallback sur la recherche asynchrone universelle
+                    results = asyncio.run(perform_search(search_query, filters))
+                    st.session_state.search_results = results
+                    
             except Exception as e:
                 st.error(f"❌ Erreur lors de la recherche: {str(e)}")
                 with st.expander("Détails de l'erreur"):
