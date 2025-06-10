@@ -1,4 +1,212 @@
-# models/configurations.py
+from typing import Dict, List, Any
+import json
+from modules.dataclasses import StyleConfig, DocumentTemplate, TypeDocument, StyleRedaction, LetterheadTemplate
+from datetime import datetime
+
+# ========== PAPIERS EN-TÊTE PAR DÉFAUT ==========
+
+DEFAULT_LETTERHEADS = [
+    LetterheadTemplate(
+        name="Cabinet classique",
+        header_content="""CABINET D'AVOCATS
+[NOM DU CABINET]
+[ADRESSE]
+[TÉLÉPHONE] - [EMAIL]
+Barreau de [VILLE]""",
+        footer_content="""[NOM DU CABINET] - SELARL au capital de [CAPITAL] €
+RCS [VILLE] [NUMÉRO] - TVA : [TVA] - Toque : [TOQUE]
+[ADRESSE COMPLÈTE]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'center',
+            'font-weight': 'bold',
+            'font-size': '14px',
+            'margin-bottom': '30px',
+            'text-transform': 'uppercase'
+        },
+        footer_style={
+            'text-align': 'center',
+            'font-size': '9px',
+            'margin-top': '40px',
+            'color': '#666666'
+        },
+        page_margins={
+            'top': 3.0,
+            'bottom': 2.5,
+            'left': 2.5,
+            'right': 2.5
+        },
+        font_family="Times New Roman",
+        font_size=11,
+        line_spacing=1.5
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet moderne",
+        header_content="""[LOGO]
+[NOM ASSOCIÉ 1] | [NOM ASSOCIÉ 2] | [NOM ASSOCIÉ 3]
+AVOCATS ASSOCIÉS
+[ADRESSE LIGNE 1] • [ADRESSE LIGNE 2]
+T. [TÉLÉPHONE] • F. [FAX] • [EMAIL] • [SITE WEB]""",
+        footer_content="""[NOM CABINET] • Société d'avocats • Barreau de [VILLE]
+SIRET : [SIRET] • TVA Intracommunautaire : [TVA]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'left',
+            'font-weight': 'normal',
+            'font-size': '12px',
+            'margin-bottom': '25px',
+            'line-height': '1.4'
+        },
+        footer_style={
+            'text-align': 'left',
+            'font-size': '8px',
+            'margin-top': '30px',
+            'color': '#888888',
+            'border-top': '1px solid #cccccc',
+            'padding-top': '10px'
+        },
+        page_margins={
+            'top': 2.5,
+            'bottom': 2.0,
+            'left': 3.0,
+            'right': 2.5
+        },
+        font_family="Arial",
+        font_size=11,
+        line_spacing=1.5
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet minimaliste",
+        header_content="""[NOM CABINET]
+[EMAIL] | [TÉLÉPHONE]""",
+        footer_content="""[ADRESSE] • [CODE POSTAL] [VILLE]
+Barreau de [VILLE] • Toque [NUMÉRO]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'right',
+            'font-weight': 'bold',
+            'font-size': '16px',
+            'margin-bottom': '40px',
+            'color': '#333333'
+        },
+        footer_style={
+            'text-align': 'right',
+            'font-size': '9px',
+            'margin-top': '50px',
+            'color': '#999999'
+        },
+        page_margins={
+            'top': 2.0,
+            'bottom': 2.0,
+            'left': 2.5,
+            'right': 2.5
+        },
+        font_family="Helvetica",
+        font_size=11,
+        line_spacing=1.5
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet institutionnel",
+        header_content="""ÉTUDE D'AVOCATS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[NOM CABINET]
+[SPÉCIALITÉS]
+
+[ADRESSE LIGNE 1]
+[ADRESSE LIGNE 2]
+[CODE POSTAL] [VILLE]
+
+Téléphone : [TÉLÉPHONE]
+Télécopie : [FAX]
+Courriel : [EMAIL]""",
+        footer_content="""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Société d'exercice libéral par actions simplifiée d'avocats
+Capital social : [CAPITAL] € - RCS [VILLE] [RCS] - Code APE : [APE]
+TVA intracommunautaire : [TVA] - Barreau de [VILLE]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'center',
+            'font-weight': 'normal',
+            'font-size': '12px',
+            'margin-bottom': '35px',
+            'line-height': '1.6'
+        },
+        footer_style={
+            'text-align': 'center',
+            'font-size': '8px',
+            'margin-top': '35px',
+            'color': '#555555',
+            'line-height': '1.4'
+        },
+        page_margins={
+            'top': 3.5,
+            'bottom': 3.0,
+            'left': 2.5,
+            'right': 2.5
+        },
+        font_family="Georgia",
+        font_size=11,
+        line_spacing=1.5
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet avec colonnes",
+        header_content="""[LOGO]
+┌─────────────────────────┬──────────────────────────────────┐
+│ [NOM CABINET]           │ [ASSOCIÉ 1], Avocat associé     │
+│ Avocats à la Cour       │ [ASSOCIÉ 2], Avocat associé     │
+│                         │ [COLLABORATEUR 1], Avocat        │
+│ [ADRESSE]               │ [COLLABORATEUR 2], Avocat        │
+│ [CODE POSTAL] [VILLE]   │                                  │
+│                         │ [EMAIL GÉNÉRAL]                  │
+│ T : [TÉLÉPHONE]         │ [SITE WEB]                       │
+│ F : [FAX]               │                                  │
+└─────────────────────────┴──────────────────────────────────┘""",
+        footer_content="""Palais de Justice de [VILLE] • Case [NUMÉRO]
+SELARL au capital de [CAPITAL] € • RCS [VILLE] [RCS] • TVA : [TVA]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'left',
+            'font-family': 'Courier New',
+            'font-size': '10px',
+            'margin-bottom': '30px',
+            'white-space': 'pre'
+        },
+        footer_style={
+            'text-align': 'center',
+            'font-size': '8px',
+            'margin-top': '40px',
+            'color': '#666666'
+        },
+        page_margins={
+            'top': 2.5,
+            'bottom': 2.5,
+            'left': 2.0,
+            'right': 2.0
+        },
+        font_family="Arial",
+        font_size=11,
+        line_spacing=1.5
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet élégant",
+        header_content="""[NOM ASSOCIÉ PRINCIPAL]
+ET ASSOCIÉS
+────────────────────────────────────
+AVOCATS AU BARREAU DE [VILLE]
+
+[ADRESSE PRESTIGIEUSE]
+[CODE POSTAL] [VILLE] CEDEX
+
+TÉLÉPHONE : [TÉLÉPHONE]
+TÉLÉCOPIE : [FAX]
+COURRIEL : [EMAIL]""",
+        footer_content="""────────────────────────────────────
+SCP D'AVOCATS • PALAIS DE JUSTICE, CASE# models/configurations.py
 """Configurations pour les templates de génération de documents"""
 
 from typing import Dict, List, Any
