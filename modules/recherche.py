@@ -1,4 +1,3 @@
-# modules/recherche.py
 """Module de recherche unifié avec toutes les fonctionnalités avancées intégrées"""
 
 import streamlit as st
@@ -23,8 +22,7 @@ from modules.dataclasses import (
     Document, DocumentJuridique, Partie, TypePartie, PhaseProcedure,
     TypeDocument, TypeAnalyse, QueryAnalysis, InfractionAffaires,
     PieceSelectionnee, BordereauPieces, collect_available_documents,
-    group_documents_by_category, determine_document_category,
-    calculate_piece_relevance, create_bordereau, create_bordereau_document,
+    group_documents_by_category,
     InfractionIdentifiee, FactWithSource, SourceReference, ArgumentStructure,
     StyleLearningResult, StyleConfig, learn_document_style
 )
@@ -34,6 +32,202 @@ from models.configurations import (
     DEFAULT_LETTERHEADS, FORMULES_JURIDIQUES,
     ARGUMENTATION_PATTERNS, ANALYSIS_CONFIGS
 )
+
+# ========================= FONCTIONS UTILITAIRES LOCALES =========================
+
+def determine_document_category(doc: Dict[str, Any]) -> str:
+    """Détermine la catégorie d'un document"""
+    # Si la catégorie est déjà définie
+    if doc.get('category'):
+        return doc['category']
+    
+    # Sinon, analyser le titre et le contenu
+    title = doc.get('title', '').lower()
+    content = doc.get('content', '').lower()[:1000]  # Premiers 1000 caractères
+    
+    # Mapping des mots-clés vers les catégories
+    category_keywords = {
+        'Procédure': ['assignation', 'citation', 'conclusions', 'jugement', 'arrêt', 'ordonnance', 
+                      'requête', 'pourvoi', 'appel', 'mémoire', 'audience'],
+        'Expertise': ['expertise', 'expert', 'rapport d\'expertise', 'évaluation', 'diagnostic',
+                      'constat', 'analyse technique', 'étude'],
+        'Contrat': ['contrat', 'convention', 'accord', 'bail', 'cession', 'pacte', 'protocole',
+                    'engagement', 'marché', 'commande'],
+        'Correspondance': ['courrier', 'lettre', 'email', 'courriel', 'notification', 'mise en demeure',
+                          'réponse', 'demande', 'réclamation'],
+        'Comptabilité': ['facture', 'devis', 'comptable', 'bilan', 'compte', 'relevé', 'paiement',
+                        'avoir', 'note de frais', 'budget'],
+        'Administratif': ['statuts', 'kbis', 'pv', 'procès-verbal', 'assemblée', 'délibération',
+                         'décision', 'arrêté', 'décret', 'règlement'],
+        'Preuve': ['attestation', 'témoignage', 'déclaration', 'certificat', 'justificatif',
+                   'preuve', 'pièce', 'élément'],
+        'Pénal': ['plainte', 'garde à vue', 'audition', 'procès-verbal', 'enquête', 'instruction',
+                  'commission rogatoire', 'réquisitoire']
+    }
+    
+    # Chercher les mots-clés
+    best_category = 'Autre'
+    max_score = 0
+    
+    for category, keywords in category_keywords.items():
+        score = 0
+        for keyword in keywords:
+            if keyword in title:
+                score += 2  # Plus de poids pour le titre
+            if keyword in content:
+                score += 1
+        
+        if score > max_score:
+            max_score = score
+            best_category = category
+    
+    return best_category
+
+def calculate_piece_relevance(doc: Dict[str, Any], analysis: Any) -> float:
+    """Calcule la pertinence d'une pièce par rapport à l'analyse"""
+    score = 0.5  # Score de base
+    
+    # Si pas d'analyse, retourner le score de base
+    if not analysis:
+        return score
+    
+    # Augmenter le score si le document contient des mots-clés de l'analyse
+    title = doc.get('title', '').lower()
+    content = doc.get('content', '').lower()[:2000]
+    metadata = doc.get('metadata', {})
+    
+    # Vérifier les mots-clés
+    if hasattr(analysis, 'keywords'):
+        for keyword in analysis.keywords:
+            keyword_lower = keyword.lower()
+            if keyword_lower in title:
+                score += 0.2
+            elif keyword_lower in content:
+                score += 0.1
+    
+    # Vérifier la référence
+    if hasattr(analysis, 'reference') and analysis.reference:
+        ref_lower = analysis.reference.lower()
+        if ref_lower in title:
+            score += 0.3
+        elif ref_lower in content:
+            score += 0.15
+    
+    # Vérifier les parties
+    if hasattr(analysis, 'parties'):
+        all_parties = []
+        all_parties.extend(analysis.parties.get('demandeurs', []))
+        all_parties.extend(analysis.parties.get('defendeurs', []))
+        
+        for partie in all_parties:
+            partie_lower = partie.lower()
+            if partie_lower in title:
+                score += 0.15
+            elif partie_lower in content:
+                score += 0.08
+    
+    # Vérifier les infractions
+    if hasattr(analysis, 'infractions'):
+        for infraction in analysis.infractions:
+            infraction_lower = infraction.lower()
+            if infraction_lower in title or infraction_lower in content:
+                score += 0.1
+    
+    # Bonus pour la date si récente
+    if metadata.get('date'):
+        try:
+            doc_date = datetime.fromisoformat(str(metadata['date']))
+            days_old = (datetime.now() - doc_date).days
+            if days_old < 30:
+                score += 0.1
+            elif days_old < 90:
+                score += 0.05
+        except:
+            pass
+    
+    # Bonus pour certains types de documents selon le contexte
+    if hasattr(analysis, 'document_type'):
+        doc_type = determine_document_category(doc)
+        if analysis.document_type == 'plainte' and doc_type in ['Pénal', 'Preuve']:
+            score += 0.15
+        elif analysis.document_type == 'conclusions' and doc_type == 'Procédure':
+            score += 0.15
+    
+    # Limiter le score entre 0 et 1
+    return min(max(score, 0.0), 1.0)
+
+def create_bordereau(pieces: List[PieceSelectionnee], analysis: Any = None) -> BordereauPieces:
+    """Crée un bordereau de pièces"""
+    # Déterminer le titre et l'affaire
+    titre = "Bordereau de communication de pièces"
+    affaire = "Affaire non spécifiée"
+    
+    if analysis:
+        if hasattr(analysis, 'reference') and analysis.reference:
+            affaire = f"Affaire {analysis.reference}"
+        elif hasattr(analysis, 'original_query'):
+            # Extraire l'affaire de la requête
+            ref_match = re.search(r'@(\w+)', analysis.original_query)
+            if ref_match:
+                affaire = f"Affaire {ref_match.group(1)}"
+    
+    # Créer le bordereau
+    bordereau = BordereauPieces(
+        id=f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        titre=titre,
+        affaire=affaire,
+        date_creation=datetime.now(),
+        pieces=pieces
+    )
+    
+    # Ajouter des métadonnées si disponibles
+    if analysis and hasattr(analysis, 'parties'):
+        parties = analysis.parties
+        if parties.get('demandeurs'):
+            bordereau.metadata['demandeurs'] = parties['demandeurs']
+        if parties.get('defendeurs'):
+            bordereau.metadata['defendeurs'] = parties['defendeurs']
+    
+    # Calculer des statistiques
+    bordereau.metadata['stats'] = {
+        'total_pieces': len(pieces),
+        'categories': list(set(p.categorie for p in pieces)),
+        'pertinence_moyenne': sum(p.pertinence for p in pieces) / len(pieces) if pieces else 0
+    }
+    
+    return bordereau
+
+def create_bordereau_document(bordereau: BordereauPieces, format: str = 'text') -> str:
+    """Crée le document du bordereau dans le format spécifié"""
+    if format == 'markdown':
+        return bordereau.export_to_markdown_with_links()
+    elif format == 'text':
+        return bordereau.export_to_text()
+    else:
+        # Format HTML ou autre
+        lines = []
+        lines.append(f"<h1>BORDEREAU DE COMMUNICATION DE PIÈCES</h1>")
+        lines.append(f"<p><strong>AFFAIRE :</strong> {bordereau.affaire}</p>")
+        lines.append(f"<p><strong>DATE :</strong> {bordereau.date_creation.strftime('%d/%m/%Y')}</p>")
+        lines.append(f"<p><strong>NOMBRE DE PIÈCES :</strong> {len(bordereau.pieces)}</p>")
+        
+        lines.append("<table border='1'>")
+        lines.append("<tr><th>N°</th><th>Cote</th><th>Titre</th><th>Date</th><th>Pages</th></tr>")
+        
+        for piece in bordereau.pieces:
+            date_str = piece.date.strftime('%d/%m/%Y') if piece.date else '-'
+            pages_str = str(piece.pages) if piece.pages else '-'
+            lines.append(f"<tr>")
+            lines.append(f"<td>{piece.numero}</td>")
+            lines.append(f"<td>{piece.cote}</td>")
+            lines.append(f"<td>{piece.titre}</td>")
+            lines.append(f"<td>{date_str}</td>")
+            lines.append(f"<td>{pages_str}</td>")
+            lines.append(f"</tr>")
+        
+        lines.append("</table>")
+        
+        return '\n'.join(lines)
 
 # ========================= MANAGERS AVANCÉS - IMPORT CONDITIONNEL =========================
 
@@ -368,21 +562,27 @@ def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> 
     
     return f"""
 Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
+
 PARTIES MISES EN CAUSE :
 {parties_text}
+
 INFRACTIONS À DÉVELOPPER :
 {infractions_text}
+
 STRUCTURE IMPOSÉE :
+
 1. EN-TÊTE COMPLET
    - Destinataire (Doyen des juges d'instruction)
    - Plaignant (à compléter)
    - Objet détaillé
+
 2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
    - Contexte détaillé de l'affaire
    - Chronologie précise et complète
    - Description minutieuse de chaque fait
    - Liens entre les protagonistes
    - Montants et préjudices détaillés
+
 3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
    Pour chaque infraction :
    - Rappel complet des textes
@@ -390,16 +590,19 @@ STRUCTURE IMPOSÉE :
    - Application aux faits espèce par espèce
    - Jurisprudences pertinentes citées
    - Réfutation des arguments contraires
+
 4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
    - Préjudice financier chiffré
    - Préjudice moral développé
    - Préjudice d'image
    - Autres préjudices
+
 5. DEMANDES ET CONCLUSION (1000+ mots)
    - Constitution de partie civile motivée
    - Demandes d'actes précises
    - Mesures conservatoires
    - Provision sur dommages-intérêts
+
 CONSIGNES :
 - Style juridique soutenu et précis
 - Citations de jurisprudences récentes
@@ -423,12 +626,14 @@ def create_standard_plainte_prompt(parties: List[str], infractions: List[str],
 Rédigez une {plainte_type} concernant :
 - Parties : {parties_text}
 - Infractions : {infractions_text}
+
 Structure :
 1. En-tête et qualités
 2. Exposé des faits
 3. Discussion juridique
 4. Préjudices
 5. Demandes
+
 Consignes :
 - Style juridique professionnel
 - Argumentation structurée{jurisprudence_instruction}
@@ -555,21 +760,33 @@ def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE SIMPLE
+
 À l'attention de Monsieur le Procureur de la République
 Tribunal Judiciaire de [VILLE]
+
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
 OBJET : Plainte
+
 Monsieur le Procureur,
+
 Je soussigné(e) [NOM PRÉNOM]
 Demeurant [ADRESSE]
+
 Ai l'honneur de porter plainte contre :
 {parties_text}
+
 Pour les faits suivants :
+
 [EXPOSÉ DES FAITS]
+
 Ces faits sont susceptibles de recevoir les qualifications suivantes :
 {infractions_text}
+
 Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
+
 [SIGNATURE]
+
 Pièces jointes :
 - [LISTE DES PIÈCES]
 """
@@ -582,13 +799,18 @@ def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+
 Monsieur le Doyen des Juges d'Instruction
 Tribunal Judiciaire de [VILLE]
 [ADRESSE]
+
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
 OBJET : Plainte avec constitution de partie civile
 RÉFÉRENCES : [À COMPLÉTER]
+
 Monsieur le Doyen,
+
 Je soussigné(e) [NOM PRÉNOM]
 Né(e) le [DATE] à [LIEU]
 De nationalité française
@@ -596,23 +818,37 @@ Profession : [PROFESSION]
 Demeurant : [ADRESSE COMPLÈTE]
 Téléphone : [TÉLÉPHONE]
 Email : [EMAIL]
+
 Ayant pour conseil : [SI APPLICABLE]
 Maître [NOM AVOCAT]
 Avocat au Barreau de [VILLE]
 [ADRESSE CABINET]
+
 Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
+
 {parties_text}
+
 Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
+
 I. EXPOSÉ DÉTAILLÉ DES FAITS
+
 [DÉVELOPPEMENT DÉTAILLÉ - À COMPLÉTER]
+
 II. DISCUSSION JURIDIQUE
+
 Les faits exposés ci-dessus caractérisent les infractions suivantes :
 {infractions_text}
+
 [ANALYSE JURIDIQUE DÉTAILLÉE - À COMPLÉTER]
+
 III. PRÉJUDICES SUBIS
+
 [DÉTAIL DES PRÉJUDICES - À COMPLÉTER]
+
 IV. CONSTITUTION DE PARTIE CIVILE
+
 Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
+
 Je sollicite :
 - La désignation d'un juge d'instruction
 - L'ouverture d'une information judiciaire
@@ -621,12 +857,18 @@ Je sollicite :
 - Le renvoi devant la juridiction de jugement
 - La condamnation des prévenus
 - L'allocation de dommages-intérêts en réparation du préjudice subi
+
 V. PIÈCES JUSTIFICATIVES
+
 Vous trouverez ci-joint :
 [LISTE DÉTAILLÉE DES PIÈCES]
+
 Je verse la consignation fixée par vos soins.
+
 Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
+
 Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
 [SIGNATURE]
 """
 
@@ -1055,7 +1297,7 @@ def show_piece_selection_advanced(analysis: Any):
     st.markdown("### 📁 Sélection avancée des pièces")
     
     # Collecter les documents disponibles
-    documents = collect_available_documents(analysis)
+    documents = collect_available_documents()
     
     if not documents:
         st.warning("Aucun document disponible. Importez d'abord des documents.")
@@ -1262,6 +1504,7 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
         
         # Prompt de synthèse
         synthesis_prompt = f"""{context}
+
 Crée une synthèse structurée de ces pièces.
 La synthèse doit inclure:
 1. Vue d'ensemble des pièces
@@ -1705,7 +1948,7 @@ class SearchInterface:
         if 'process_bordereau_request' in MODULE_FUNCTIONS:
             return MODULE_FUNCTIONS['process_bordereau_request'](query, query_analysis)
         else:
-            docs = collect_available_documents(query_analysis)
+            docs = collect_available_documents()
             if docs:
                 show_bordereau_interface_advanced(docs, query_analysis)
     
