@@ -48,4 +48,4 @@ DEFAULT_STYLE_CONFIGS = {
         paragraph_length_target=80,
         use_numbering=True,
         numbering_style="dash",
-        common_phrases=[
+        common_phrases=]
