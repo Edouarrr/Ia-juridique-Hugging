@@ -1048,6 +1048,244 @@ FORMULES_JURIDIQUES = {
     }
 }
 
+# ========== PATTERNS D'ARGUMENTATION ==========
+
+ARGUMENTATION_PATTERNS = {
+    'structure_argument': {
+        'syllogisme': {
+            'pattern': [
+                "Majeure : {principe_general}",
+                "Mineure : {application_cas}",
+                "Conclusion : {resultat}"
+            ],
+            'exemple': [
+                "Majeure : Tout contrat légalement formé tient lieu de loi à ceux qui l\'ont fait",
+                "Mineure : En l\'espèce, un contrat a été valablement conclu entre les parties",
+                "Conclusion : Ce contrat doit donc être exécuté selon ses termes"
+            ]
+        },
+        'demonstration': {
+            'pattern': [
+                "Il sera démontré que {these}",
+                "En effet, {argument_1}",
+                "De plus, {argument_2}",
+                "Par ailleurs, {argument_3}",
+                "Il en résulte que {conclusion}"
+            ]
+        },
+        'refutation': {
+            'pattern': [
+                "La partie adverse soutient que {these_adverse}",
+                "Cependant, cette argumentation ne résiste pas à l\'analyse",
+                "En effet, {contre_argument_1}",
+                "De surcroît, {contre_argument_2}",
+                "Par conséquent, {conclusion_refutation}"
+            ]
+        }
+    },
+    
+    'techniques_persuasion': {
+        'argument_autorite': [
+            "Selon la jurisprudence constante de {juridiction}",
+            "Comme l\'a rappelé {autorite} dans {reference}",
+            "La doctrine unanime considère que",
+            "Il est de jurisprudence constante que"
+        ],
+        'argument_analogie': [
+            "Par analogie avec {situation_similaire}",
+            "À l\'instar de {precedent}",
+            "Comme dans l\'affaire {reference}",
+            "De la même manière que"
+        ],
+        'argument_a_fortiori': [
+            "A fortiori",
+            "À plus forte raison",
+            "D\'autant plus que",
+            "Cela est d\'autant plus vrai que"
+        ],
+        'argument_a_contrario': [
+            "A contrario",
+            "En sens inverse",
+            "Par opposition",
+            "À l\'inverse"
+        ]
+    },
+    
+    'enchainements_logiques': {
+        'causalite': [
+            "dès lors que",
+            "dans la mesure où",
+            "attendu que",
+            "considérant que",
+            "puisque",
+            "car",
+            "en raison de"
+        ],
+        'consequence': [
+            "par conséquent",
+            "en conséquence",
+            "il s\'ensuit que",
+            "partant",
+            "de sorte que",
+            "si bien que",
+            "avec pour effet que"
+        ],
+        'condition': [
+            "à condition que",
+            "sous réserve que",
+            "pour autant que",
+            "dans l\'hypothèse où",
+            "au cas où",
+            "si et seulement si"
+        ],
+        'concession': [
+            "bien que",
+            "quoique",
+            "même si",
+            "en dépit de",
+            "malgré",
+            "nonobstant"
+        ]
+    },
+    
+    'formules_argumentatives': {
+        'introduction_argument': [
+            "Il convient d\'examiner",
+            "Il y a lieu de relever",
+            "Il importe de souligner",
+            "Il est nécessaire de rappeler",
+            "Force est de constater"
+        ],
+        'renforcement': [
+            "Il est manifeste que",
+            "Il ne fait aucun doute que",
+            "Il est incontestable que",
+            "Il apparaît clairement que",
+            "Il est évident que"
+        ],
+        'nuance': [
+            "Il semble que",
+            "Il apparaît que",
+            "Il est permis de penser que",
+            "On peut considérer que",
+            "Il n\'est pas exclu que"
+        ],
+        'opposition': [
+            "Il ne saurait être soutenu que",
+            "C\'est à tort que",
+            "Contrairement à ce qui est prétendu",
+            "Il est erroné d\'affirmer que",
+            "Cette thèse ne peut prospérer"
+        ]
+    },
+    
+    'structures_complexes': {
+        'plan_deux_parties': {
+            'structure': [
+                "I. {titre_partie_1}",
+                "A. {sous_partie_1a}",
+                "B. {sous_partie_1b}",
+                "II. {titre_partie_2}",
+                "A. {sous_partie_2a}",
+                "B. {sous_partie_2b}"
+            ],
+            'exemples': [
+                {
+                    'titre': "Sur la responsabilité contractuelle",
+                    'partie_1': "L\'existence d\'un manquement contractuel",
+                    'partie_2': "Le préjudice résultant du manquement"
+                },
+                {
+                    'titre': "Sur la recevabilité et le fond",
+                    'partie_1': "Sur la recevabilité de la demande",
+                    'partie_2': "Sur le bien-fondé de la demande"
+                }
+            ]
+        },
+        'cascade_argumentative': {
+            'pattern': [
+                "Premièrement, {argument_principal}",
+                "Deuxièmement, et subsidiairement, {argument_subsidiaire_1}",
+                "Troisièmement, et plus subsidiairement encore, {argument_subsidiaire_2}",
+                "En tout état de cause, {argument_final}"
+            ]
+        }
+    },
+    
+    'liaisons_juridiques': {
+        'articulation_moyens': [
+            "S\'agissant du premier moyen",
+            "Concernant le second moyen",
+            "Quant au moyen tiré de",
+            "Sur le moyen unique",
+            "Au titre du moyen principal"
+        ],
+        'articulation_demandes': [
+            "À titre principal",
+            "À titre subsidiaire",
+            "À titre infiniment subsidiaire",
+            "En tout état de cause",
+            "Subsidiairement"
+        ],
+        'references_pieces': [
+            "Comme en atteste la pièce n°{numero}",
+            "Il ressort de la pièce n°{numero} que",
+            "La pièce n°{numero} démontre que",
+            "Ainsi qu\'il résulte de la pièce n°{numero}",
+            "Voir en ce sens pièce n°{numero}"
+        ]
+    },
+    
+    'modeles_demonstration': {
+        'preuve_negative': {
+            'pattern': [
+                "Il n\'est rapporté aucune preuve de {element}",
+                "Aucun élément ne permet d\'établir {fait}",
+                "La partie adverse ne démontre pas {allegation}",
+                "Il n\'est justifié d\'aucun {element_requis}"
+            ]
+        },
+        'preuve_positive': {
+            'pattern': [
+                "Il est établi que {fait}",
+                "Les pièces versées démontrent {element}",
+                "Il résulte des éléments du dossier que {conclusion}",
+                "La preuve est rapportée de {fait_prouve}"
+            ]
+        },
+        'charge_preuve': {
+            'pattern': [
+                "Il appartient à {partie} de démontrer {element}",
+                "La charge de la preuve incombe à {partie}",
+                "{partie} doit rapporter la preuve de {allegation}",
+                "C\'est à {partie} qu\'il revient d\'établir {fait}"
+            ]
+        }
+    },
+    
+    'rhetorique_juridique': {
+        'questions_rhetoriques': [
+            "Comment soutenir que {these} alors que {fait_contraire} ?",
+            "Peut-on sérieusement prétendre que {allegation} ?",
+            "N\'est-il pas évident que {evidence} ?",
+            "Quelle crédibilité accorder à {argument} ?"
+        ],
+        'mise_en_perspective': [
+            "Il convient de replacer {element} dans son contexte",
+            "Cette situation doit être appréciée au regard de {critere}",
+            "Il faut considérer {fait} à la lumière de {principe}",
+            "Cela s\'inscrit dans le cadre de {contexte_general}"
+        ],
+        'formules_conclusives': [
+            "Il résulte de tout ce qui précède que",
+            "Au vu de l\'ensemble de ces éléments",
+            "En définitive",
+            "Pour toutes ces raisons",
+            "C\'est dans ces conditions que"
+        ]
+    }
+}
+
 # ========== CLASSE DE CONFIGURATION PRINCIPALE ==========
 
 class DocumentConfigurations:
@@ -1606,3 +1844,14 @@ class DocumentConfigurations:
     def get_style_config(cls, style_name: str) -> Dict[str, Any]:
         """Récupère la configuration d'un style"""
         return cls.STYLES_REDACTION.get(style_name, cls.STYLES_REDACTION['synthetique'])
+
+# ========== EXPORTS ==========
+
+__all__ = [
+    'DEFAULT_LETTERHEADS',
+    'BUILTIN_DOCUMENT_TEMPLATES',
+    'DEFAULT_STYLE_CONFIGS',
+    'FORMULES_JURIDIQUES',
+    'ARGUMENTATION_PATTERNS',
+    'DocumentConfigurations'
+]
