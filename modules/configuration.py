@@ -1,445 +1,570 @@
-#modules/configuration.py
-"""Page de configuration de l'application"""
+# models/configurations.py
+"""Configurations pour les templates de génération de documents"""
 
-import streamlit as st
+from typing import Dict, List, Any
 import json
-import io
-from datetime import datetime
 
-from config.app_config import LLMProvider, get_llm_configs
-from models.dataclasses import LetterheadTemplate, PieceSelectionnee
-from managers.multi_llm_manager import MultiLLMManager
-from utils.helpers import create_env_example
-
-try:
-    from docx import Document as DocxDocument
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
-
-def show_page():
-    """Affiche la page de configuration"""
-    st.header("⚙️ Configuration")
+class DocumentConfigurations:
+    """Gestionnaire des configurations de templates"""
     
-    tabs = st.tabs(["🔑 Clés API", "📄 Papier en-tête", "📊 État du système", "💾 Export/Import"])
-    
-    with tabs[0]:
-        show_api_keys_tab()
-    
-    with tabs[1]:
-        show_letterhead_tab()
-    
-    with tabs[2]:
-        show_system_status_tab()
-    
-    with tabs[3]:
-        show_export_import_tab()
-
-def show_api_keys_tab():
-    """Affiche l'onglet de configuration des clés API"""
-    st.markdown("### Configuration des clés API")
-    
-    st.info("""
-    ℹ️ Les clés API doivent être configurées dans les variables d'environnement ou dans un fichier .env
-    
-    Variables nécessaires:
-    - AZURE_OPENAI_KEY
-    - AZURE_OPENAI_ENDPOINT
-    - AZURE_SEARCH_KEY
-    - AZURE_SEARCH_ENDPOINT
-    - AZURE_STORAGE_CONNECTION_STRING
-    - ANTHROPIC_API_KEY
-    - OPENAI_API_KEY
-    - GOOGLE_API_KEY
-    - PERPLEXITY_API_KEY
-    """)
-    
-    # Créer un fichier .env exemple
-    env_example = create_env_example()
-    
-    st.download_button(
-        "📥 Télécharger un fichier .env exemple",
-        env_example,
-        ".env.example",
-        "text/plain",
-        key="download_env_example"
-    )
-    
-    # Vérifier l'état des clés
-    configs = get_llm_configs()
-    
-    st.markdown("#### 🤖 Providers IA")
-    for provider in LLMProvider:
-        col1, col2 = st.columns([3, 1])
-        
-        config = configs.get(provider, {})
-        
-        with col1:
-            st.text(provider.value)
-        
-        with col2:
-            if config.get('key') or config.get('api_key'):
-                st.success("✅")
-            else:
-                st.error("❌")
-    
-    # Services Azure
-    st.markdown("#### 🔷 Services Azure")
-    
-    services = {
-        "Azure Blob Storage": bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING')),
-        "Azure Search": bool(os.getenv('AZURE_SEARCH_ENDPOINT')),
-        "Azure OpenAI": bool(os.getenv('AZURE_OPENAI_ENDPOINT'))
-    }
-    
-    for service, configured in services.items():
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.text(service)
-        
-        with col2:
-            if configured:
-                st.success("✅")
-            else:
-                st.error("❌")
-
-def show_letterhead_tab():
-    """Affiche l'onglet de configuration du papier en-tête"""
-    st.markdown("### 📄 Configuration du papier en-tête")
-    
-    # Papier en-tête actuel
-    if 'letterhead_template' in st.session_state and st.session_state.letterhead_template:
-        show_current_letterhead()
-    
-    # Créer/Modifier papier en-tête
-    show_letterhead_form()
-    
-    # Import de papier en-tête depuis Word
-    show_letterhead_import()
-
-def show_current_letterhead():
-    """Affiche le papier en-tête actuel"""
-    current_template = st.session_state.letterhead_template
-    
-    with st.expander("Papier en-tête actuel", expanded=True):
-        st.text("En-tête :")
-        st.code(current_template.header_content)
-        st.text("Pied de page :")
-        st.code(current_template.footer_content)
-        
-        if st.button("🗑️ Supprimer le papier en-tête actuel"):
-            st.session_state.letterhead_template = None
-            st.success("✅ Papier en-tête supprimé")
-            st.rerun()
-
-def show_letterhead_form():
-    """Affiche le formulaire de création/modification du papier en-tête"""
-    st.markdown("#### ➕ Créer/Modifier le papier en-tête")
-    
-    with st.form("letterhead_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            nom_template = st.text_input(
-                "Nom du template",
-                value=st.session_state.letterhead_template.name if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "Papier en-tête principal"
-            )
-            
-            header_content = st.text_area(
-                "En-tête",
-                value=st.session_state.letterhead_template.header_content if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "",
-                height=150,
-                placeholder="""Cabinet d'avocats XYZ
-Maître Jean DUPONT
-Avocat au Barreau de Paris
-123 rue de la Justice
-75001 PARIS
-Tél : 01 23 45 67 89
-Email : contact@cabinet-xyz.fr"""
-            )
-            
-            footer_content = st.text_area(
-                "Pied de page",
-                value=st.session_state.letterhead_template.footer_content if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else "",
-                height=80,
-                placeholder="Cabinet XYZ - 123 rue de la Justice, 75001 PARIS - Tél : 01 23 45 67 89"
-            )
-        
-        with col2:
-            # Paramètres de mise en forme
-            st.markdown("**Mise en forme**")
-            
-            font_family = st.selectbox(
-                "Police",
-                ["Arial", "Times New Roman", "Calibri", "Garamond", "Helvetica"],
-                index=0 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else ["Arial", "Times New Roman", "Calibri", "Garamond", "Helvetica"].index(st.session_state.letterhead_template.font_family)
-            )
-            
-            font_size = st.number_input(
-                "Taille de police",
-                min_value=8,
-                max_value=16,
-                value=11 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else st.session_state.letterhead_template.font_size
-            )
-            
-            line_spacing = st.number_input(
-                "Interligne",
-                min_value=1.0,
-                max_value=2.0,
-                step=0.1,
-                value=1.5 if not ('letterhead_template' in st.session_state and st.session_state.letterhead_template) else st.session_state.letterhead_template.line_spacing
-            )
-            
-            st.markdown("**Marges (cm)**")
-            
-            margin_top = st.number_input("Haut", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
-            margin_bottom = st.number_input("Bas", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
-            margin_left = st.number_input("Gauche", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
-            margin_right = st.number_input("Droite", min_value=1.0, max_value=5.0, value=2.5, step=0.5)
-        
-        # Upload logo (optionnel)
-        logo_file = st.file_uploader(
-            "Logo (optionnel)",
-            type=['png', 'jpg', 'jpeg'],
-            key="letterhead_logo"
-        )
-        
-        if st.form_submit_button("💾 Sauvegarder le papier en-tête", type="primary"):
-            # Créer le template
-            new_template = LetterheadTemplate(
-                name=nom_template,
-                header_content=header_content,
-                footer_content=footer_content,
-                font_family=font_family,
-                font_size=font_size,
-                line_spacing=line_spacing,
-                margins={
-                    'top': margin_top,
-                    'bottom': margin_bottom,
-                    'left': margin_left,
-                    'right': margin_right
-                }
-            )
-            
-            # Sauvegarder le logo si uploadé
-            if logo_file:
-                st.session_state.letterhead_image = logo_file.read()
-                new_template.logo_path = "logo_uploaded"
-            
-            st.session_state.letterhead_template = new_template
-            st.success("✅ Papier en-tête sauvegardé avec succès!")
-            st.rerun()
-
-def show_letterhead_import():
-    """Affiche l'import de papier en-tête depuis Word"""
-    st.markdown("#### 📤 Importer depuis un document Word")
-    
-    uploaded_letterhead = st.file_uploader(
-        "Charger un document Word avec papier en-tête",
-        type=['docx'],
-        key="upload_letterhead_word"
-    )
-    
-    if uploaded_letterhead and st.button("📥 Extraire le papier en-tête"):
-        if DOCX_AVAILABLE:
-            try:
-                doc = DocxDocument(uploaded_letterhead)
-                
-                # Extraire l'en-tête
-                header_text = ""
-                if doc.sections:
-                    header = doc.sections[0].header
-                    for paragraph in header.paragraphs:
-                        if paragraph.text.strip():
-                            header_text += paragraph.text + "\n"
-                
-                # Extraire le pied de page
-                footer_text = ""
-                if doc.sections:
-                    footer = doc.sections[0].footer
-                    for paragraph in footer.paragraphs:
-                        if paragraph.text.strip():
-                            footer_text += paragraph.text + "\n"
-                
-                if header_text or footer_text:
-                    st.success("✅ Papier en-tête extrait avec succès!")
-                    st.text("En-tête extrait :")
-                    st.code(header_text)
-                    st.text("Pied de page extrait :")
-                    st.code(footer_text)
-                    
-                    if st.button("Utiliser ce papier en-tête"):
-                        st.session_state.letterhead_template = LetterheadTemplate(
-                            name="Papier en-tête importé",
-                            header_content=header_text.strip(),
-                            footer_content=footer_text.strip()
-                        )
-                        st.success("✅ Papier en-tête importé!")
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Aucun en-tête ou pied de page trouvé dans le document")
-                    
-            except Exception as e:
-                st.error(f"❌ Erreur lors de l'extraction : {str(e)}")
-
-def show_system_status_tab():
-    """Affiche l'onglet d'état du système"""
-    st.markdown("### État du système")
-    
-    # Métriques
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Documents Azure", len(st.session_state.azure_documents))
-    
-    with col2:
-        st.metric("Pièces sélectionnées", len(st.session_state.pieces_selectionnees))
-    
-    with col3:
-        llm_manager = MultiLLMManager()
-        st.metric("IA disponibles", len(llm_manager.clients))
-    
-    with col4:
-        st.metric("Styles appris", len(st.session_state.get('learned_styles', {})))
-    
-    # État des connexions
-    st.markdown("### 🔗 État des connexions")
-    
-    # Azure Blob
-    if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.is_connected():
-        st.success("✅ Azure Blob Storage : Connecté")
-        
-        if st.button("🧪 Tester la connexion Blob", key="test_blob"):
-            try:
-                containers = st.session_state.azure_blob_manager.list_containers()
-                st.success(f"✅ {len(containers)} containers trouvés : {', '.join(containers)}")
-            except Exception as e:
-                st.error(f"❌ Erreur : {str(e)}")
-    else:
-        st.error("❌ Azure Blob Storage : Non connecté")
-    
-    # Azure Search
-    if st.session_state.azure_search_manager and st.session_state.azure_search_manager.search_client:
-        st.success("✅ Azure Search : Connecté")
-        
-        if st.button("🧪 Tester la connexion Search", key="test_search"):
-            try:
-                # Tester avec une recherche simple
-                results = st.session_state.azure_search_manager.search_hybrid("test", top=1)
-                st.success("✅ Connexion fonctionnelle")
-            except Exception as e:
-                st.error(f"❌ Erreur : {str(e)}")
-    else:
-        st.warning("⚠️ Azure Search : Non configuré")
-    
-    # Papier en-tête
-    if 'letterhead_template' in st.session_state and st.session_state.letterhead_template:
-        st.success("✅ Papier en-tête : Configuré")
-    else:
-        st.warning("⚠️ Papier en-tête : Non configuré")
-
-def show_export_import_tab():
-    """Affiche l'onglet d'export/import"""
-    st.markdown("### 💾 Export/Import de configuration")
-    
-    # Export
-    show_export_section()
-    
-    # Import
-    show_import_section()
-
-def show_export_section():
-    """Affiche la section d'export"""
-    st.markdown("#### 📥 Export")
-    
-    export_data = {
-        'pieces_selectionnees': {
-            k: {
-                'document_id': v.document_id,
-                'titre': v.titre,
-                'categorie': v.categorie,
-                'notes': v.notes,
-                'pertinence': v.pertinence
+    # Configuration pour les plaintes
+    PLAINTE_CONFIG = {
+        'sections': [
+            {
+                'id': 'en_tete',
+                'title': 'En-tête',
+                'required': True,
+                'fields': [
+                    {'name': 'tribunal', 'type': 'text', 'label': 'Tribunal compétent'},
+                    {'name': 'date', 'type': 'date', 'label': 'Date'},
+                    {'name': 'reference', 'type': 'text', 'label': 'Référence'}
+                ]
+            },
+            {
+                'id': 'parties',
+                'title': 'Identification des parties',
+                'required': True,
+                'fields': [
+                    {'name': 'plaignant', 'type': 'party', 'label': 'Plaignant'},
+                    {'name': 'mis_en_cause', 'type': 'party', 'label': 'Mis en cause'}
+                ]
+            },
+            {
+                'id': 'faits',
+                'title': 'Exposé des faits',
+                'required': True,
+                'content_type': 'narrative',
+                'min_length': 500
+            },
+            {
+                'id': 'infractions',
+                'title': 'Qualification juridique',
+                'required': True,
+                'fields': [
+                    {'name': 'infractions', 'type': 'multi_select', 'label': 'Infractions'}
+                ]
+            },
+            {
+                'id': 'prejudice',
+                'title': 'Préjudice subi',
+                'required': True,
+                'fields': [
+                    {'name': 'montant', 'type': 'currency', 'label': 'Montant du préjudice'},
+                    {'name': 'description', 'type': 'textarea', 'label': 'Description'}
+                ]
+            },
+            {
+                'id': 'demandes',
+                'title': 'Demandes',
+                'required': True,
+                'content_type': 'list'
             }
-            for k, v in st.session_state.pieces_selectionnees.items()
-        },
-        'learned_styles': st.session_state.get('learned_styles', {}),
-        'letterhead_template': {
-            'name': st.session_state.letterhead_template.name,
-            'header_content': st.session_state.letterhead_template.header_content,
-            'footer_content': st.session_state.letterhead_template.footer_content,
-            'font_family': st.session_state.letterhead_template.font_family,
-            'font_size': st.session_state.letterhead_template.font_size,
-            'line_spacing': st.session_state.letterhead_template.line_spacing,
-            'margins': st.session_state.letterhead_template.margins
-        } if 'letterhead_template' in st.session_state and st.session_state.letterhead_template else None,
-        'timestamp': datetime.now().isoformat()
+        ],
+        'style': {
+            'format': 'formal',
+            'tone': 'juridique',
+            'references': 'codes_penaux'
+        }
     }
     
-    export_json = json.dumps(export_data, indent=2, ensure_ascii=False)
+    # Configuration pour les conclusions
+    CONCLUSIONS_CONFIG = {
+        'sections': [
+            {
+                'id': 'rappel_procedure',
+                'title': 'Rappel de la procédure',
+                'required': True,
+                'auto_generate': True
+            },
+            {
+                'id': 'faits_procedure',
+                'title': 'Faits et procédure',
+                'required': True,
+                'subsections': [
+                    'chronologie',
+                    'actes_procedure',
+                    'incidents'
+                ]
+            },
+            {
+                'id': 'discussion',
+                'title': 'Discussion',
+                'required': True,
+                'subsections': [
+                    'moyens_fond',
+                    'moyens_forme',
+                    'reponse_adverse'
+                ]
+            },
+            {
+                'id': 'dispositif',
+                'title': 'Dispositif',
+                'required': True,
+                'format': 'numbered_list'
+            }
+        ],
+        'numbering': {
+            'style': 'decimal',
+            'levels': 3,
+            'format': '1. / 1.1. / 1.1.1.'
+        }
+    }
     
-    st.download_button(
-        "💾 Exporter la configuration complète",
-        export_json,
-        f"config_penal_affaires_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-        "application/json",
-        key="export_config"
-    )
+    # Configuration pour les courriers
+    COURRIER_CONFIG = {
+        'types': {
+            'mise_en_demeure': {
+                'tone': 'ferme',
+                'structure': [
+                    'objet',
+                    'rappel_faits',
+                    'obligations',
+                    'delai',
+                    'consequences'
+                ]
+            },
+            'reponse_contradictoire': {
+                'tone': 'courtois',
+                'structure': [
+                    'accusé_reception',
+                    'analyse_demandes',
+                    'position_client',
+                    'propositions'
+                ]
+            },
+            'notification': {
+                'tone': 'neutre',
+                'structure': [
+                    'objet',
+                    'information',
+                    'modalites',
+                    'contact'
+                ]
+            }
+        }
+    }
+    
+    # Configuration pour l'analyse
+    ANALYSE_CONFIG = {
+        'criteres': [
+            {
+                'id': 'forces',
+                'title': 'Points forts',
+                'icon': '✅',
+                'weight': 1.0
+            },
+            {
+                'id': 'faiblesses',
+                'title': 'Points faibles',
+                'icon': '⚠️',
+                'weight': 1.0
+            },
+            {
+                'id': 'opportunites',
+                'title': 'Opportunités',
+                'icon': '💡',
+                'weight': 0.8
+            },
+            {
+                'id': 'risques',
+                'title': 'Risques',
+                'icon': '🚨',
+                'weight': 1.2
+            }
+        ],
+        'scoring': {
+            'methode': 'pondérée',
+            'echelle': [1, 10],
+            'seuils': {
+                'favorable': 7,
+                'neutre': 5,
+                'defavorable': 3
+            }
+        }
+    }
+    
+    # Templates de phrases juridiques
+    PHRASES_JURIDIQUES = {
+        'introduction': {
+            'plainte': [
+                "J'ai l'honneur de porter plainte contre {partie} pour les faits suivants :",
+                "Par la présente, je souhaite porter à votre connaissance les agissements délictueux de {partie}",
+                "Je soussigné(e), {plaignant}, porte plainte pour les faits ci-après exposés"
+            ],
+            'conclusions': [
+                "Pour les motifs ci-après développés, le {demandeur} a l'honneur d'exposer ce qui suit :",
+                "Il sera démontré dans les présentes conclusions que {these_principale}",
+                "Les développements qui suivent établiront que {objectif}"
+            ],
+            'assignation': [
+                "L'an {annee} et le {date}, à la requête de {demandeur}",
+                "Nous, {huissier}, huissier de justice, avons donné assignation à {defendeur}",
+                "Par exploit de notre ministère, assignation est donnée à {partie}"
+            ]
+        },
+        'transition': {
+            'moreover': [
+                "En outre,",
+                "Par ailleurs,",
+                "De surcroît,",
+                "Qui plus est,"
+            ],
+            'consequence': [
+                "En conséquence,",
+                "Par conséquent,",
+                "Il s'ensuit que",
+                "Partant,"
+            ],
+            'opposition': [
+                "Cependant,",
+                "Néanmoins,",
+                "Pour autant,",
+                "Toutefois,"
+            ]
+        },
+        'conclusion': {
+            'plainte': [
+                "C'est dans ces conditions que je sollicite l'ouverture d'une enquête",
+                "Au vu de ces éléments, je demande que des poursuites soient engagées",
+                "Je me constitue partie civile et demande réparation de mon préjudice"
+            ],
+            'conclusions': [
+                "PAR CES MOTIFS, plaise au Tribunal de :",
+                "C'est pourquoi il est demandé au Tribunal de :",
+                "En conséquence de tout ce qui précède, le Tribunal est prié de :"
+            ]
+        }
+    }
+    
+    # Formules de politesse
+    FORMULES_POLITESSE = {
+        'courrier': {
+            'debut': {
+                'formel': [
+                    "Monsieur le Président,",
+                    "Madame, Monsieur,",
+                    "Maître,"
+                ],
+                'neutre': [
+                    "Madame, Monsieur,",
+                    "Cher Confrère,",
+                    "Chère Consœur,"
+                ]
+            },
+            'fin': {
+                'formel': [
+                    "Je vous prie d'agréer, Monsieur le Président, l'expression de ma haute considération.",
+                    "Veuillez agréer, Madame, Monsieur, l'expression de mes salutations distinguées.",
+                    "Je vous prie de croire, Maître, en l'assurance de mes sentiments respectueux."
+                ],
+                'neutre': [
+                    "Cordialement,",
+                    "Bien à vous,",
+                    "Sincères salutations,"
+                ]
+            }
+        }
+    }
+    
+    # Configuration des pièces
+    PIECES_CONFIG = {
+        'categories': [
+            {
+                'id': 'contrats',
+                'title': 'Contrats et conventions',
+                'types': ['contrat', 'avenant', 'convention', 'protocole']
+            },
+            {
+                'id': 'correspondances',
+                'title': 'Correspondances',
+                'types': ['courrier', 'email', 'mise_en_demeure', 'notification']
+            },
+            {
+                'id': 'expertises',
+                'title': 'Expertises et rapports',
+                'types': ['expertise', 'rapport', 'constat', 'audit']
+            },
+            {
+                'id': 'comptables',
+                'title': 'Documents comptables',
+                'types': ['facture', 'devis', 'bon_commande', 'releve']
+            },
+            {
+                'id': 'judiciaires',
+                'title': 'Actes judiciaires',
+                'types': ['assignation', 'conclusions', 'jugement', 'ordonnance']
+            }
+        ],
+        'numerotation': {
+            'format': 'Pièce n°{numero}',
+            'groupement': 'par_categorie',
+            'tri': 'chronologique'
+        }
+    }
+    
+    # Styles de rédaction
+    STYLES_REDACTION = {
+        'formel': {
+            'vocabulaire': 'soutenu',
+            'phrases': 'complexes',
+            'ton': 'distant',
+            'connecteurs': ['nonobstant', 'attendu que', 'considérant']
+        },
+        'moderne': {
+            'vocabulaire': 'accessible',
+            'phrases': 'courtes',
+            'ton': 'direct',
+            'connecteurs': ['en effet', 'par ailleurs', 'donc']
+        },
+        'persuasif': {
+            'vocabulaire': 'imagé',
+            'phrases': 'rythmées',
+            'ton': 'convaincant',
+            'connecteurs': ['manifestement', 'indubitablement', 'à l\'évidence']
+        }
+    }
+    
+    # Configuration des timelines
+    TIMELINE_CONFIG = {
+        'elements': [
+            {
+                'type': 'evenement',
+                'icon': '📅',
+                'couleur': '#3498db'
+            },
+            {
+                'type': 'document',
+                'icon': '📄',
+                'couleur': '#2ecc71'
+            },
+            {
+                'type': 'procedure',
+                'icon': '⚖️',
+                'couleur': '#e74c3c'
+            },
+            {
+                'type': 'expertise',
+                'icon': '🔍',
+                'couleur': '#f39c12'
+            }
+        ],
+        'affichage': {
+            'orientation': 'verticale',
+            'groupement': 'par_mois',
+            'details': 'au_survol'
+        }
+    }
+    
+    # Mapping des infractions
+    INFRACTIONS_MAPPING = {
+        'escroquerie': {
+            'article': '313-1',
+            'code': 'pénal',
+            'peine_max': '5 ans et 375 000 €',
+            'elements': ['manœuvres frauduleuses', 'tromperie', 'remise de biens']
+        },
+        'abus_de_confiance': {
+            'article': '314-1',
+            'code': 'pénal',
+            'peine_max': '3 ans et 375 000 €',
+            'elements': ['détournement', 'préjudice', 'remise volontaire']
+        },
+        'abus_de_biens_sociaux': {
+            'article': 'L241-3',
+            'code': 'commerce',
+            'peine_max': '5 ans et 375 000 €',
+            'elements': ['usage contraire', 'intérêt personnel', 'mauvaise foi']
+        },
+        'faux': {
+            'article': '441-1',
+            'code': 'pénal',
+            'peine_max': '3 ans et 45 000 €',
+            'elements': ['altération', 'vérité', 'préjudice']
+        }
+    }
+    
+    # Configuration des validations
+    VALIDATION_RULES = {
+        'plainte': {
+            'min_sections': 4,
+            'required_fields': ['plaignant', 'mis_en_cause', 'faits', 'infractions'],
+            'min_words': 500
+        },
+        'conclusions': {
+            'min_sections': 3,
+            'required_fields': ['parties', 'faits', 'dispositif'],
+            'min_words': 1000
+        },
+        'assignation': {
+            'min_sections': 5,
+            'required_fields': ['demandeur', 'defendeur', 'tribunal', 'date_audience'],
+            'min_words': 800
+        }
+    }
+    
+    # Templates d'emails
+    EMAIL_TEMPLATES = {
+        'envoi_pieces': {
+            'objet': 'Transmission de pièces - Dossier {reference}',
+            'corps': """Maître,
 
-def show_import_section():
-    """Affiche la section d'import"""
-    st.markdown("#### 📤 Import")
-    
-    uploaded_file = st.file_uploader(
-        "Charger une configuration",
-        type=['json'],
-        key="import_config_file"
-    )
-    
-    if uploaded_file:
-        try:
-            config_data = json.load(uploaded_file)
-            
-            # Prévisualisation
-            with st.expander("Voir le contenu"):
-                st.json(config_data)
-            
-            if st.button("⬆️ Importer", key="import_config_button"):
-                import_configuration(config_data)
-                st.success("✅ Configuration importée avec succès")
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"❌ Erreur lors de l'import: {str(e)}")
+Suite à notre entretien de ce jour, je vous prie de bien vouloir trouver ci-joint les pièces suivantes :
 
-def import_configuration(config_data):
-    """Importe la configuration depuis les données"""
-    # Importer les pièces sélectionnées
-    if 'pieces_selectionnees' in config_data:
-        for piece_id, piece_data in config_data['pieces_selectionnees'].items():
-            piece = PieceSelectionnee(
-                document_id=piece_data['document_id'],
-                titre=piece_data['titre'],
-                categorie=piece_data['categorie'],
-                notes=piece_data.get('notes', ''),
-                pertinence=piece_data.get('pertinence', 5)
+{liste_pieces}
+
+Ces documents viennent compléter le dossier référencé {reference}.
+
+Je reste à votre disposition pour tout complément d'information.
+
+Bien cordialement,
+{expediteur}"""
+        },
+        'demande_informations': {
+            'objet': 'Demande d\'informations complémentaires - {dossier}',
+            'corps': """Cher Confrère,
+
+Dans le cadre du dossier {dossier}, j'aurais besoin des informations suivantes :
+
+{liste_questions}
+
+Je vous serais reconnaissant de bien vouloir me faire parvenir ces éléments dans les meilleurs délais.
+
+Bien confraternellement,
+{expediteur}"""
+        }
+    }
+    
+    # Configuration des exports
+    EXPORT_CONFIG = {
+        'formats': {
+            'word': {
+                'extension': '.docx',
+                'template': 'cabinet_template.docx',
+                'styles': True
+            },
+            'pdf': {
+                'extension': '.pdf',
+                'compression': True,
+                'protection': False
+            },
+            'bundle': {
+                'extension': '.zip',
+                'inclure_pieces': True,
+                'structure': 'hierarchique'
+            }
+        },
+        'naming': {
+            'pattern': '{date}_{type}_{reference}_{version}',
+            'date_format': 'YYYYMMDD',
+            'version_format': 'v{numero}'
+        }
+    }
+    
+    # Actions rapides
+    QUICK_ACTIONS = {
+        'redaction': [
+            {'id': 'plainte', 'label': 'Nouvelle plainte', 'icon': '📝'},
+            {'id': 'conclusions', 'label': 'Conclusions', 'icon': '📋'},
+            {'id': 'assignation', 'label': 'Assignation', 'icon': '📨'},
+            {'id': 'courrier', 'label': 'Courrier', 'icon': '✉️'}
+        ],
+        'analyse': [
+            {'id': 'forces_faiblesses', 'label': 'Analyse SWOT', 'icon': '📊'},
+            {'id': 'chronologie', 'label': 'Timeline', 'icon': '📅'},
+            {'id': 'pieces', 'label': 'Inventaire pièces', 'icon': '📁'},
+            {'id': 'synthese', 'label': 'Synthèse', 'icon': '📝'}
+        ],
+        'gestion': [
+            {'id': 'import', 'label': 'Importer', 'icon': '📥'},
+            {'id': 'export', 'label': 'Exporter', 'icon': '📤'},
+            {'id': 'email', 'label': 'Envoyer', 'icon': '📧'},
+            {'id': 'planning', 'label': "Plan d'action", 'icon': '🎯'}
+        ]
+    }
+    
+    # Méthodes de classe
+    @classmethod
+    def get_template_config(cls, template_type: str) -> Dict[str, Any]:
+        """Récupère la configuration d'un template"""
+        configs = {
+            'plainte': cls.PLAINTE_CONFIG,
+            'conclusions': cls.CONCLUSIONS_CONFIG,
+            'courrier': cls.COURRIER_CONFIG,
+            'analyse': cls.ANALYSE_CONFIG
+        }
+        return configs.get(template_type, {})
+    
+    @classmethod
+    def get_phrases(cls, category: str, subcategory: str = None) -> List[str]:
+        """Récupère des phrases types"""
+        if subcategory:
+            return cls.PHRASES_JURIDIQUES.get(category, {}).get(subcategory, [])
+        return cls.PHRASES_JURIDIQUES.get(category, {})
+    
+    @classmethod
+    def get_validation_rules(cls, doc_type: str) -> Dict[str, Any]:
+        """Récupère les règles de validation"""
+        return cls.VALIDATION_RULES.get(doc_type, {})
+    
+    @classmethod
+    def get_infraction_details(cls, infraction: str) -> Dict[str, Any]:
+        """Récupère les détails d'une infraction"""
+        # Normaliser la clé
+        key = infraction.lower().replace(' ', '_').replace("'", "")
+        return cls.INFRACTIONS_MAPPING.get(key, {})
+    
+    @classmethod
+    def get_export_format(cls, format_name: str) -> Dict[str, Any]:
+        """Récupère la configuration d'export"""
+        return cls.EXPORT_CONFIG['formats'].get(format_name, {})
+    
+    @classmethod
+    def get_quick_actions(cls, category: str = None) -> List[Dict[str, str]]:
+        """Récupère les actions rapides"""
+        if category:
+            return cls.QUICK_ACTIONS.get(category, [])
+        
+        # Retourner toutes les actions
+        all_actions = []
+        for actions in cls.QUICK_ACTIONS.values():
+            all_actions.extend(actions)
+        return all_actions
+    
+    @classmethod
+    def validate_document(cls, doc_type: str, document: Dict[str, Any]) -> Dict[str, Any]:
+        """Valide un document selon les règles"""
+        rules = cls.get_validation_rules(doc_type)
+        validation_result = {
+            'valid': True,
+            'errors': [],
+            'warnings': []
+        }
+        
+        # Vérifier les champs requis
+        for field in rules.get('required_fields', []):
+            if field not in document or not document[field]:
+                validation_result['valid'] = False
+                validation_result['errors'].append(f"Champ requis manquant : {field}")
+        
+        # Vérifier le nombre de mots
+        content = document.get('content', '')
+        word_count = len(content.split())
+        min_words = rules.get('min_words', 0)
+        
+        if word_count < min_words:
+            validation_result['warnings'].append(
+                f"Document trop court : {word_count} mots (minimum recommandé : {min_words})"
             )
-            st.session_state.pieces_selectionnees[piece_id] = piece
+        
+        return validation_result
     
-    # Importer les styles appris
-    if 'learned_styles' in config_data:
-        st.session_state.learned_styles = config_data['learned_styles']
+    @classmethod
+    def format_piece_number(cls, numero: int, categorie: str = None) -> str:
+        """Formate un numéro de pièce"""
+        pattern = cls.PIECES_CONFIG['numerotation']['format']
+        return pattern.format(numero=numero)
     
-    # Importer le papier en-tête
-    if 'letterhead_template' in config_data and config_data['letterhead_template']:
-        lt = config_data['letterhead_template']
-        st.session_state.letterhead_template = LetterheadTemplate(
-            name=lt['name'],
-            header_content=lt['header_content'],
-            footer_content=lt['footer_content'],
-            font_family=lt.get('font_family', 'Arial'),
-            font_size=lt.get('font_size', 11),
-            line_spacing=lt.get('line_spacing', 1.5),
-            margins=lt.get('margins', {'top': 2.5, 'bottom': 2.5, 'left': 2.5, 'right': 2.5})
-        )
+    @classmethod
+    def get_style_config(cls, style_name: str) -> Dict[str, Any]:
+        """Récupère la configuration d'un style"""
+        return cls.STYLES_REDACTION.get(style_name, cls.STYLES_REDACTION['moderne'])
