@@ -12,7 +12,7 @@ from difflib import SequenceMatcher
 
 # Import du service de recherche depuis les managers
 try:
-    from managers import UniversalSearchService, get_universal_search_service
+    from managers.universal_search_service import UniversalSearchService, get_universal_search_service
     SEARCH_SERVICE_AVAILABLE = True
 except ImportError:
     SEARCH_SERVICE_AVAILABLE = False
@@ -232,39 +232,40 @@ def create_bordereau_document(bordereau: BordereauPieces, format: str = 'text') 
 # ========================= MANAGERS AVANCÉS - IMPORT CONDITIONNEL =========================
 
 MANAGERS = {
+    'azure_blob': False,
+    'azure_search': False,
     'company_info': False,
-    'jurisprudence_verifier': False,
-    'style_analyzer': False,
-    'dynamic_generators': False,
     'document_manager': False,
+    'dynamic_generators': False,
+    'export_manager': False,
+    'jurisprudence_verifier': False,
     'legal_search': False,
-    'multi_llm': False
+    'llm_manager': False,
+    'multi_llm': False,
+    'style_analyzer': False,
+    'template_manager': False,
+    'universal_search': False
 }
 
-# Import des managers avec gestion d'erreur individuelle
+# Import des managers Azure
+try:
+    from managers.azure_blob_manager import AzureBlobManager
+    MANAGERS['azure_blob'] = True
+except ImportError as e:
+    print(f"Import AzureBlobManager failed: {e}")
+
+try:
+    from managers.azure_search_manager import AzureSearchManager
+    MANAGERS['azure_search'] = True
+except ImportError as e:
+    print(f"Import AzureSearchManager failed: {e}")
+
+# Import des autres managers
 try:
     from managers.company_info_manager import CompanyInfoManager
     MANAGERS['company_info'] = True
 except ImportError as e:
     print(f"Import CompanyInfoManager failed: {e}")
-
-try:
-    from managers.jurisprudence_verifier import JurisprudenceVerifier
-    MANAGERS['jurisprudence_verifier'] = True
-except ImportError as e:
-    print(f"Import JurisprudenceVerifier failed: {e}")
-
-try:
-    from managers.style_analyzer import StyleAnalyzer
-    MANAGERS['style_analyzer'] = True
-except ImportError as e:
-    print(f"Import StyleAnalyzer failed: {e}")
-
-try:
-    from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
-    MANAGERS['dynamic_generators'] = True
-except ImportError as e:
-    print(f"Import dynamic_generators functions failed: {e}")
 
 try:
     from managers.document_manager import DocumentManager
@@ -273,16 +274,52 @@ except ImportError as e:
     print(f"Import DocumentManager failed: {e}")
 
 try:
+    from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
+    MANAGERS['dynamic_generators'] = True
+except ImportError as e:
+    print(f"Import dynamic_generators functions failed: {e}")
+
+try:
+    from managers.export_manager import ExportManager
+    MANAGERS['export_manager'] = True
+except ImportError as e:
+    print(f"Import ExportManager failed: {e}")
+
+try:
+    from managers.jurisprudence_verifier import JurisprudenceVerifier
+    MANAGERS['jurisprudence_verifier'] = True
+except ImportError as e:
+    print(f"Import JurisprudenceVerifier failed: {e}")
+
+try:
     from managers.legal_search import LegalSearchManager
     MANAGERS['legal_search'] = True
 except ImportError as e:
     print(f"Import LegalSearchManager failed: {e}")
 
 try:
+    from managers.llm_manager import LLMManager, get_llm_manager
+    MANAGERS['llm_manager'] = True
+except ImportError as e:
+    print(f"Import LLMManager failed: {e}")
+
+try:
     from managers.multi_llm_manager import MultiLLMManager
     MANAGERS['multi_llm'] = True
 except ImportError as e:
     print(f"Import MultiLLMManager failed: {e}")
+
+try:
+    from managers.style_analyzer import StyleAnalyzer
+    MANAGERS['style_analyzer'] = True
+except ImportError as e:
+    print(f"Import StyleAnalyzer failed: {e}")
+
+try:
+    from managers.template_manager import TemplateManager
+    MANAGERS['template_manager'] = True
+except ImportError as e:
+    print(f"Import TemplateManager failed: {e}")
 
 # APIs - Import conditionnel
 try:
@@ -296,24 +333,24 @@ except ImportError:
 MODULES_AVAILABLE = {}
 MODULE_FUNCTIONS = {}
 
-# Import conditionnel de tous les modules
+# Import conditionnel de tous les modules - CORRECTION : utiliser show_page pour tous
 modules_to_import = [
     ('analyse_ia', ['show_page']),
-    ('bordereau', ['process_bordereau_request', 'create_bordereau']),
-    ('comparison', ['process_comparison_request']),
+    ('bordereau', ['show_page']),
+    ('comparison', ['show_page']),
     ('configuration', ['show_page']),
-    ('email', ['process_email_request']),
-    ('explorer', ['show_explorer_interface']),
-    ('import_export', ['process_import_request', 'process_export_request']),
-    ('jurisprudence', ['process_jurisprudence_request', 'show_jurisprudence_interface']),
-    ('mapping', ['process_mapping_request']),
-    ('plaidoirie', ['process_plaidoirie_request']),
-    ('preparation_client', ['process_preparation_client_request']),
-    ('redaction_unified', ['process_redaction_request']),
+    ('email', ['show_page']),
+    ('explorer', ['show_page']),
+    ('import_export', ['show_page']),
+    ('jurisprudence', ['show_page']),
+    ('mapping', ['show_page']),
+    ('plaidoirie', ['show_page']),
+    ('preparation_client', ['show_page']),
+    ('redaction_unified', ['show_page']),
     ('selection_piece', ['show_page']),
-    ('synthesis', ['process_synthesis_request']),
-    ('templates', ['process_template_request']),
-    ('timeline', ['process_timeline_request'])
+    ('synthesis', ['show_page']),
+    ('templates', ['show_page']),
+    ('timeline', ['show_page'])
 ]
 
 for module_name, functions in modules_to_import:
@@ -323,10 +360,7 @@ for module_name, functions in modules_to_import:
         
         for func_name in functions:
             if hasattr(module, func_name):
-                if func_name == 'show_page':
-                    MODULE_FUNCTIONS[f'{module_name}_page'] = getattr(module, func_name)
-                else:
-                    MODULE_FUNCTIONS[func_name] = getattr(module, func_name)
+                MODULE_FUNCTIONS[f'{module_name}_page'] = getattr(module, func_name)
     except ImportError:
         MODULES_AVAILABLE[module_name] = False
 
@@ -562,27 +596,21 @@ def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> 
     
     return f"""
 Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
-
 PARTIES MISES EN CAUSE :
 {parties_text}
-
 INFRACTIONS À DÉVELOPPER :
 {infractions_text}
-
 STRUCTURE IMPOSÉE :
-
 1. EN-TÊTE COMPLET
    - Destinataire (Doyen des juges d'instruction)
    - Plaignant (à compléter)
    - Objet détaillé
-
 2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
    - Contexte détaillé de l'affaire
    - Chronologie précise et complète
    - Description minutieuse de chaque fait
    - Liens entre les protagonistes
    - Montants et préjudices détaillés
-
 3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
    Pour chaque infraction :
    - Rappel complet des textes
@@ -590,19 +618,16 @@ STRUCTURE IMPOSÉE :
    - Application aux faits espèce par espèce
    - Jurisprudences pertinentes citées
    - Réfutation des arguments contraires
-
 4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
    - Préjudice financier chiffré
    - Préjudice moral développé
    - Préjudice d'image
    - Autres préjudices
-
 5. DEMANDES ET CONCLUSION (1000+ mots)
    - Constitution de partie civile motivée
    - Demandes d'actes précises
    - Mesures conservatoires
    - Provision sur dommages-intérêts
-
 CONSIGNES :
 - Style juridique soutenu et précis
 - Citations de jurisprudences récentes
@@ -626,14 +651,12 @@ def create_standard_plainte_prompt(parties: List[str], infractions: List[str],
 Rédigez une {plainte_type} concernant :
 - Parties : {parties_text}
 - Infractions : {infractions_text}
-
 Structure :
 1. En-tête et qualités
 2. Exposé des faits
 3. Discussion juridique
 4. Préjudices
 5. Demandes
-
 Consignes :
 - Style juridique professionnel
 - Argumentation structurée{jurisprudence_instruction}
@@ -760,33 +783,21 @@ def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE SIMPLE
-
 À l'attention de Monsieur le Procureur de la République
 Tribunal Judiciaire de [VILLE]
-
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 OBJET : Plainte
-
 Monsieur le Procureur,
-
 Je soussigné(e) [NOM PRÉNOM]
 Demeurant [ADRESSE]
-
 Ai l'honneur de porter plainte contre :
 {parties_text}
-
 Pour les faits suivants :
-
 [EXPOSÉ DES FAITS]
-
 Ces faits sont susceptibles de recevoir les qualifications suivantes :
 {infractions_text}
-
 Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
-
 [SIGNATURE]
-
 Pièces jointes :
 - [LISTE DES PIÈCES]
 """
@@ -799,18 +810,13 @@ def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
 Monsieur le Doyen des Juges d'Instruction
 Tribunal Judiciaire de [VILLE]
 [ADRESSE]
-
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 OBJET : Plainte avec constitution de partie civile
 RÉFÉRENCES : [À COMPLÉTER]
-
 Monsieur le Doyen,
-
 Je soussigné(e) [NOM PRÉNOM]
 Né(e) le [DATE] à [LIEU]
 De nationalité française
@@ -818,37 +824,23 @@ Profession : [PROFESSION]
 Demeurant : [ADRESSE COMPLÈTE]
 Téléphone : [TÉLÉPHONE]
 Email : [EMAIL]
-
 Ayant pour conseil : [SI APPLICABLE]
 Maître [NOM AVOCAT]
 Avocat au Barreau de [VILLE]
 [ADRESSE CABINET]
-
 Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
-
 {parties_text}
-
 Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
-
 I. EXPOSÉ DÉTAILLÉ DES FAITS
-
 [DÉVELOPPEMENT DÉTAILLÉ - À COMPLÉTER]
-
 II. DISCUSSION JURIDIQUE
-
 Les faits exposés ci-dessus caractérisent les infractions suivantes :
 {infractions_text}
-
 [ANALYSE JURIDIQUE DÉTAILLÉE - À COMPLÉTER]
-
 III. PRÉJUDICES SUBIS
-
 [DÉTAIL DES PRÉJUDICES - À COMPLÉTER]
-
 IV. CONSTITUTION DE PARTIE CIVILE
-
 Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
-
 Je sollicite :
 - La désignation d'un juge d'instruction
 - L'ouverture d'une information judiciaire
@@ -857,18 +849,12 @@ Je sollicite :
 - Le renvoi devant la juridiction de jugement
 - La condamnation des prévenus
 - L'allocation de dommages-intérêts en réparation du préjudice subi
-
 V. PIÈCES JUSTIFICATIVES
-
 Vous trouverez ci-joint :
 [LISTE DÉTAILLÉE DES PIÈCES]
-
 Je verse la consignation fixée par vos soins.
-
 Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
-
 Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 [SIGNATURE]
 """
 
@@ -1117,8 +1103,8 @@ async def enhanced_multi_llm_comparison(prompt: str, options: Dict[str, Any] = N
     with col1:
         models = st.multiselect(
             "Modèles à comparer",
-            multi_llm.get_available_models(),
-            default=multi_llm.get_available_models()[:3]
+            multi_llm.get_available_providers(),
+            default=multi_llm.get_available_providers()[:3]
         )
     
     with col2:
@@ -1504,7 +1490,6 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
         
         # Prompt de synthèse
         synthesis_prompt = f"""{context}
-
 Crée une synthèse structurée de ces pièces.
 La synthèse doit inclure:
 1. Vue d'ensemble des pièces
@@ -1889,8 +1874,8 @@ class SearchInterface:
         """Traite une demande de rédaction"""
         st.info("📝 Détection d'une demande de rédaction...")
         
-        if 'process_redaction_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_redaction_request'](query, query_analysis)
+        if 'redaction_unified_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['redaction_unified_page']()
         else:
             st.warning("Module de rédaction non disponible")
     
@@ -1903,36 +1888,36 @@ class SearchInterface:
     
     async def _process_plaidoirie_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de plaidoirie"""
-        if 'process_plaidoirie_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_plaidoirie_request'](query, query_analysis)
+        if 'plaidoirie_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['plaidoirie_page']()
         else:
             st.warning("Module plaidoirie non disponible")
     
     async def _process_preparation_client_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de préparation client"""
-        if 'process_preparation_client_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_preparation_client_request'](query, query_analysis)
+        if 'preparation_client_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['preparation_client_page']()
         else:
             st.warning("Module préparation client non disponible")
     
     async def _process_import_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande d'import"""
-        if 'process_import_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_import_request'](query, query_analysis)
+        if 'import_export_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['import_export_page']()
         else:
             st.warning("Module import non disponible")
     
     async def _process_export_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande d'export"""
-        if 'process_export_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_export_request'](query, query_analysis)
+        if 'import_export_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['import_export_page']()
         else:
             st.warning("Module export non disponible")
     
     async def _process_email_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande d'email"""
-        if 'process_email_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_email_request'](query, query_analysis)
+        if 'email_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['email_page']()
         else:
             st.warning("Module email non disponible")
     
@@ -1945,8 +1930,8 @@ class SearchInterface:
     
     async def _process_bordereau_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de bordereau"""
-        if 'process_bordereau_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_bordereau_request'](query, query_analysis)
+        if 'bordereau_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['bordereau_page']()
         else:
             docs = collect_available_documents()
             if docs:
@@ -1954,8 +1939,8 @@ class SearchInterface:
     
     async def _process_synthesis_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de synthèse"""
-        if 'process_synthesis_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_synthesis_request'](query, query_analysis)
+        if 'synthesis_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['synthesis_page']()
         elif st.session_state.get('selected_pieces'):
             return await synthesize_selected_pieces(st.session_state.selected_pieces)
         else:
@@ -1963,38 +1948,36 @@ class SearchInterface:
     
     async def _process_template_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de template"""
-        if 'process_template_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_template_request'](query, query_analysis)
+        if 'templates_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['templates_page']()
         else:
             st.warning("Module templates non disponible")
     
     async def _process_jurisprudence_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de jurisprudence"""
-        if 'process_jurisprudence_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_jurisprudence_request'](query, query_analysis)
-        elif 'show_jurisprudence_interface' in MODULE_FUNCTIONS:
-            MODULE_FUNCTIONS['show_jurisprudence_interface']()
+        if 'jurisprudence_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['jurisprudence_page']()
         else:
             st.warning("Module jurisprudence non disponible")
     
     async def _process_timeline_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de timeline"""
-        if 'process_timeline_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_timeline_request'](query, query_analysis)
+        if 'timeline_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['timeline_page']()
         else:
             st.warning("Module timeline non disponible")
     
     async def _process_mapping_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de cartographie"""
-        if 'process_mapping_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_mapping_request'](query, query_analysis)
+        if 'mapping_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['mapping_page']()
         else:
             st.warning("Module cartographie non disponible")
     
     async def _process_comparison_request(self, query: str, query_analysis: QueryAnalysis):
         """Traite une demande de comparaison"""
-        if 'process_comparison_request' in MODULE_FUNCTIONS:
-            return MODULE_FUNCTIONS['process_comparison_request'](query, query_analysis)
+        if 'comparison_page' in MODULE_FUNCTIONS:
+            MODULE_FUNCTIONS['comparison_page']()
         else:
             st.warning("Module comparaison non disponible")
     
@@ -2278,7 +2261,7 @@ def show_page():
     if st.checkbox("🔧 Voir l'état des modules"):
         show_modules_status()
     
-    # Barre de recherche principale avec auto-complétion
+    # Barre de recherche principale avec auto-complétion - MODIFICATION : text_area de 6 lignes
     col1, col2 = st.columns([5, 1])
     
     with col1:
@@ -2289,12 +2272,22 @@ def show_page():
         elif 'universal_query' in st.session_state:
             default_value = st.session_state.universal_query
         
-        query = st.text_input(
+        # MODIFICATION : Utiliser text_area au lieu de text_input pour 6 lignes
+        query = st.text_area(
             "Entrez votre commande ou recherche",
             value=default_value,
-            placeholder="Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...",
+            placeholder="""Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...
+
+Utilisez @ pour référencer une affaire spécifique
+Vous pouvez écrire des requêtes complexes sur plusieurs lignes
+
+Exemples :
+- rédiger plainte contre Vinci, SOGEPROM @projet_26_05_2025
+- analyser les risques juridiques dans le dossier de corruption
+- créer un bordereau avec toutes les pièces comptables""",
             key="universal_query",
-            help="Utilisez @ pour référencer une affaire spécifique"
+            height=150,  # Hauteur pour environ 6 lignes
+            help="Utilisez @ pour référencer une affaire spécifique. Vous pouvez écrire sur plusieurs lignes."
         )
         
         # Auto-complétion des références
@@ -2315,6 +2308,8 @@ def show_page():
                                 st.rerun()
     
     with col2:
+        # Ajuster la hauteur du bouton pour correspondre à la text_area
+        st.markdown("<br>", unsafe_allow_html=True)  # Espacement
         search_button = st.button("🔍 Rechercher", key="search_button", use_container_width=True)
     
     # Prévisualisation en temps réel
@@ -2414,8 +2409,8 @@ def show_page():
             st.info("Fonctionnalité de partage à implémenter")
 
 def show_modules_status():
-    """Affiche l'état détaillé des modules"""
-    with st.expander("🔧 État des modules et fonctions", expanded=True):
+    """Affiche l'état détaillé des modules et des managers"""
+    with st.expander("🔧 État des modules et managers", expanded=True):
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -2423,20 +2418,32 @@ def show_modules_status():
             st.metric("Fonctions importées", len(MODULE_FUNCTIONS))
         
         with col2:
-            st.metric("Managers avancés", sum(1 for v in MANAGERS.values() if v))
+            st.metric("Managers disponibles", sum(1 for v in MANAGERS.values() if v))
             st.metric("Service de recherche", "✅" if SEARCH_SERVICE_AVAILABLE else "❌")
         
         with col3:
-            st.metric("Templates", len(BUILTIN_DOCUMENT_TEMPLATES))
-            st.metric("Styles", len(DEFAULT_STYLE_CONFIGS))
+            if CONFIGURATIONS_AVAILABLE:
+                st.metric("Templates", len(BUILTIN_DOCUMENT_TEMPLATES))
+                st.metric("Styles", len(DEFAULT_STYLE_CONFIGS))
+            else:
+                st.metric("Templates", "❌")
+                st.metric("Styles", "❌")
         
-        # Liste détaillée
+        # Liste détaillée des modules
         st.markdown("### 📋 Modules actifs")
         for module, available in MODULES_AVAILABLE.items():
             if available:
                 st.success(f"✅ {module}")
             else:
                 st.error(f"❌ {module}")
+        
+        # Liste détaillée des managers
+        st.markdown("### 🔧 Managers actifs")
+        for manager, available in MANAGERS.items():
+            if available:
+                st.success(f"✅ {manager}")
+            else:
+                st.error(f"❌ {manager}")
 
 def show_quick_actions():
     """Affiche les actions rapides"""
@@ -2579,7 +2586,7 @@ def show_plainte_results():
     
     with col2:
         if st.button("📊 Statistiques", key="stats_plainte"):
-            show_plainte_statistics(edited_content)
+            show_document_statistics(edited_content)
     
     with col3:
         if st.button("✅ Vérifier", key="verify_plainte"):
