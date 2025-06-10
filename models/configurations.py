@@ -265,7 +265,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "[Signatures des parties]"
         ],
-        style=StyleRedaction.MODERNE,
+        style=StyleRedaction.SYNTHETIQUE,
         category="Contrats",
         description="Modèle de contrat générique"
     ),
@@ -371,7 +371,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "[Signature]"
         ],
-        style=StyleRedaction.MODERNE,
+        style=StyleRedaction.PEDAGOGIQUE,
         category="Correspondance",
         description="Modèle de courrier entre avocats"
     ),
@@ -457,9 +457,9 @@ DEFAULT_STYLE_CONFIGS = {
         citation_style="detailed"
     ),
     
-    "moderne": StyleConfig(
-        name="Moderne simplifié",
-        formality_level="moderne",
+    "simple": StyleConfig(
+        name="Style simplifié",
+        formality_level="formel",
         sentence_length_target=15,
         paragraph_length_target=80,
         use_numbering=True,
@@ -513,7 +513,7 @@ DEFAULT_STYLE_CONFIGS = {
     
     "synthetique": StyleConfig(
         name="Synthétique efficace",
-        formality_level="moderne",
+        formality_level="formel",
         sentence_length_target=12,
         paragraph_length_target=60,
         use_numbering=True,
@@ -845,7 +845,7 @@ class DocumentConfigurations:
             'ton': 'distant',
             'connecteurs': ['nonobstant', 'attendu que', 'considérant']
         },
-        'moderne': {
+        'synthetique': {
             'vocabulaire': 'accessible',
             'phrases': 'courtes',
             'ton': 'direct',
@@ -856,6 +856,18 @@ class DocumentConfigurations:
             'phrases': 'rythmées',
             'ton': 'convaincant',
             'connecteurs': ['manifestement', 'indubitablement', 'à l\'évidence']
+        },
+        'technique': {
+            'vocabulaire': 'précis',
+            'phrases': 'structurées',
+            'ton': 'neutre',
+            'connecteurs': ['conformément à', 'en application de', 'aux termes de']
+        },
+        'pedagogique': {
+            'vocabulaire': 'clair',
+            'phrases': 'simples',
+            'ton': 'explicatif',
+            'connecteurs': ['ainsi', 'c\'est-à-dire', 'en d\'autres termes']
         }
     }
     
@@ -1093,4 +1105,4 @@ Bien confraternellement,
     @classmethod
     def get_style_config(cls, style_name: str) -> Dict[str, Any]:
         """Récupère la configuration d'un style"""
-        return cls.STYLES_REDACTION.get(style_name, cls.STYLES_REDACTION['moderne'])
+        return cls.STYLES_REDACTION.get(style_name, cls.STYLES_REDACTION['synthetique'])
