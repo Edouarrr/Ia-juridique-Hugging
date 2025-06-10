@@ -18,20 +18,36 @@ except ImportError:
     SEARCH_SERVICE_AVAILABLE = False
 
 # Import des dataclasses et configurations
-from modules.dataclasses import (
-    Document, DocumentJuridique, Partie, TypePartie, PhaseProcedure,
-    TypeDocument, TypeAnalyse, QueryAnalysis, InfractionAffaires,
-    PieceSelectionnee, BordereauPieces, collect_available_documents,
-    group_documents_by_category,
-    InfractionIdentifiee, FactWithSource, SourceReference, ArgumentStructure,
-    StyleLearningResult, StyleConfig, learn_document_style
-)
+try:
+    from modules.dataclasses import (
+        Document, DocumentJuridique, Partie, TypePartie, PhaseProcedure,
+        TypeDocument, TypeAnalyse, QueryAnalysis, InfractionAffaires,
+        PieceSelectionnee, BordereauPieces, collect_available_documents,
+        group_documents_by_category,
+        InfractionIdentifiee, FactWithSource, SourceReference, ArgumentStructure,
+        StyleLearningResult, StyleConfig, learn_document_style
+    )
+    DATACLASSES_AVAILABLE = True
+except ImportError:
+    DATACLASSES_AVAILABLE = False
 
-from models.configurations import (
-    DEFAULT_STYLE_CONFIGS, BUILTIN_DOCUMENT_TEMPLATES,
-    DEFAULT_LETTERHEADS, FORMULES_JURIDIQUES,
-    ARGUMENTATION_PATTERNS, ANALYSIS_CONFIGS
-)
+# Import des configurations
+try:
+    from models.configurations import (
+        DEFAULT_STYLE_CONFIGS, BUILTIN_DOCUMENT_TEMPLATES,
+        DEFAULT_LETTERHEADS, FORMULES_JURIDIQUES,
+        ARGUMENTATION_PATTERNS, ANALYSIS_CONFIGS
+    )
+    CONFIGURATIONS_AVAILABLE = True
+except ImportError:
+    CONFIGURATIONS_AVAILABLE = False
+    # Valeurs par défaut si les configurations ne sont pas disponibles
+    DEFAULT_STYLE_CONFIGS = {}
+    BUILTIN_DOCUMENT_TEMPLATES = {}
+    DEFAULT_LETTERHEADS = {}
+    FORMULES_JURIDIQUES = {}
+    ARGUMENTATION_PATTERNS = {}
+    ANALYSIS_CONFIGS = {}
 
 # ========================= FONCTIONS UTILITAIRES LOCALES =========================
 
@@ -156,8 +172,12 @@ def calculate_piece_relevance(doc: Dict[str, Any], analysis: Any) -> float:
     # Limiter le score entre 0 et 1
     return min(max(score, 0.0), 1.0)
 
-def create_bordereau(pieces: List[PieceSelectionnee], analysis: Any = None) -> BordereauPieces:
+def create_bordereau(pieces: List['PieceSelectionnee'], analysis: Any = None) -> 'BordereauPieces':
     """Crée un bordereau de pièces"""
+    if not DATACLASSES_AVAILABLE:
+        st.error("Les dataclasses ne sont pas disponibles")
+        return None
+    
     # Déterminer le titre et l'affaire
     titre = "Bordereau de communication de pièces"
     affaire = "Affaire non spécifiée"
@@ -197,7 +217,7 @@ def create_bordereau(pieces: List[PieceSelectionnee], analysis: Any = None) -> B
     
     return bordereau
 
-def create_bordereau_document(bordereau: BordereauPieces, format: str = 'text') -> str:
+def create_bordereau_document(bordereau: 'BordereauPieces', format: str = 'text') -> str:
     """Crée le document du bordereau dans le format spécifié"""
     if format == 'markdown':
         return bordereau.export_to_markdown_with_links()
@@ -596,21 +616,27 @@ def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> 
     
     return f"""
 Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
+
 PARTIES MISES EN CAUSE :
 {parties_text}
+
 INFRACTIONS À DÉVELOPPER :
 {infractions_text}
+
 STRUCTURE IMPOSÉE :
+
 1. EN-TÊTE COMPLET
    - Destinataire (Doyen des juges d'instruction)
    - Plaignant (à compléter)
    - Objet détaillé
+
 2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
    - Contexte détaillé de l'affaire
    - Chronologie précise et complète
    - Description minutieuse de chaque fait
    - Liens entre les protagonistes
    - Montants et préjudices détaillés
+
 3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
    Pour chaque infraction :
    - Rappel complet des textes
@@ -618,16 +644,19 @@ STRUCTURE IMPOSÉE :
    - Application aux faits espèce par espèce
    - Jurisprudences pertinentes citées
    - Réfutation des arguments contraires
+
 4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
    - Préjudice financier chiffré
    - Préjudice moral développé
    - Préjudice d'image
    - Autres préjudices
+
 5. DEMANDES ET CONCLUSION (1000+ mots)
    - Constitution de partie civile motivée
    - Demandes d'actes précises
    - Mesures conservatoires
    - Provision sur dommages-intérêts
+
 CONSIGNES :
 - Style juridique soutenu et précis
 - Citations de jurisprudences récentes
@@ -651,12 +680,14 @@ def create_standard_plainte_prompt(parties: List[str], infractions: List[str],
 Rédigez une {plainte_type} concernant :
 - Parties : {parties_text}
 - Infractions : {infractions_text}
+
 Structure :
 1. En-tête et qualités
 2. Exposé des faits
 3. Discussion juridique
 4. Préjudices
 5. Demandes
+
 Consignes :
 - Style juridique professionnel
 - Argumentation structurée{jurisprudence_instruction}
@@ -783,21 +814,35 @@ def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE SIMPLE
+
 À l'attention de Monsieur le Procureur de la République
 Tribunal Judiciaire de [VILLE]
+
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
 OBJET : Plainte
+
 Monsieur le Procureur,
+
 Je soussigné(e) [NOM PRÉNOM]
 Demeurant [ADRESSE]
+
 Ai l'honneur de porter plainte contre :
+
 {parties_text}
+
 Pour les faits suivants :
+
 [EXPOSÉ DES FAITS]
+
 Ces faits sont susceptibles de recevoir les qualifications suivantes :
+
 {infractions_text}
+
 Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
+
 [SIGNATURE]
+
 Pièces jointes :
 - [LISTE DES PIÈCES]
 """
@@ -810,13 +855,18 @@ def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+
 Monsieur le Doyen des Juges d'Instruction
 Tribunal Judiciaire de [VILLE]
 [ADRESSE]
+
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
 OBJET : Plainte avec constitution de partie civile
 RÉFÉRENCES : [À COMPLÉTER]
+
 Monsieur le Doyen,
+
 Je soussigné(e) [NOM PRÉNOM]
 Né(e) le [DATE] à [LIEU]
 De nationalité française
@@ -824,23 +874,38 @@ Profession : [PROFESSION]
 Demeurant : [ADRESSE COMPLÈTE]
 Téléphone : [TÉLÉPHONE]
 Email : [EMAIL]
+
 Ayant pour conseil : [SI APPLICABLE]
 Maître [NOM AVOCAT]
 Avocat au Barreau de [VILLE]
 [ADRESSE CABINET]
+
 Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
+
 {parties_text}
+
 Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
+
 I. EXPOSÉ DÉTAILLÉ DES FAITS
+
 [DÉVELOPPEMENT DÉTAILLÉ - À COMPLÉTER]
+
 II. DISCUSSION JURIDIQUE
+
 Les faits exposés ci-dessus caractérisent les infractions suivantes :
+
 {infractions_text}
+
 [ANALYSE JURIDIQUE DÉTAILLÉE - À COMPLÉTER]
+
 III. PRÉJUDICES SUBIS
+
 [DÉTAIL DES PRÉJUDICES - À COMPLÉTER]
+
 IV. CONSTITUTION DE PARTIE CIVILE
+
 Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
+
 Je sollicite :
 - La désignation d'un juge d'instruction
 - L'ouverture d'une information judiciaire
@@ -849,12 +914,18 @@ Je sollicite :
 - Le renvoi devant la juridiction de jugement
 - La condamnation des prévenus
 - L'allocation de dommages-intérêts en réparation du préjudice subi
+
 V. PIÈCES JUSTIFICATIVES
+
 Vous trouverez ci-joint :
 [LISTE DÉTAILLÉE DES PIÈCES]
+
 Je verse la consignation fixée par vos soins.
+
 Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
+
 Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+
 [SIGNATURE]
 """
 
@@ -1283,14 +1354,29 @@ def show_piece_selection_advanced(analysis: Any):
     st.markdown("### 📁 Sélection avancée des pièces")
     
     # Collecter les documents disponibles
-    documents = collect_available_documents()
+    if DATACLASSES_AVAILABLE and hasattr(globals().get('collect_available_documents'), '__call__'):
+        documents = collect_available_documents()
+    else:
+        # Fallback si la fonction n'est pas disponible
+        documents = []
+        # Collecter depuis session state
+        all_docs = st.session_state.get('azure_documents', {})
+        for doc_id, doc in all_docs.items():
+            if hasattr(doc, '__dict__'):
+                documents.append(doc.__dict__)
+            else:
+                documents.append(doc)
     
     if not documents:
         st.warning("Aucun document disponible. Importez d'abord des documents.")
         return
     
     # Grouper par catégorie
-    categories = group_documents_by_category(documents)
+    if DATACLASSES_AVAILABLE and hasattr(globals().get('group_documents_by_category'), '__call__'):
+        categories = group_documents_by_category(documents)
+    else:
+        # Fallback simple
+        categories = {'Documents': documents}
     
     # Options de filtrage
     col1, col2 = st.columns(2)
@@ -1320,12 +1406,12 @@ def show_piece_selection_advanced(analysis: Any):
                 with col1:
                     selected = st.checkbox(
                         "",
-                        key=f"select_{doc['id']}",
-                        value=doc['id'] in st.session_state.get('selected_pieces_ids', [])
+                        key=f"select_{doc.get('id', hash(str(doc)))}",
+                        value=doc.get('id', hash(str(doc))) in st.session_state.get('selected_pieces_ids', [])
                     )
                 
                 with col2:
-                    st.write(f"**{doc['title']}**")
+                    st.write(f"**{doc.get('title', 'Sans titre')}**")
                     if doc.get('metadata', {}).get('date'):
                         st.caption(f"Date: {doc['metadata']['date']}")
                 
@@ -1363,12 +1449,16 @@ def show_piece_selection_advanced(analysis: Any):
         
         # Stocker la sélection
         st.session_state.selected_pieces = selected_pieces
-        st.session_state.selected_pieces_ids = [p['id'] for p in selected_pieces]
+        st.session_state.selected_pieces_ids = [p.get('id', hash(str(p))) for p in selected_pieces]
 
 def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
     """Interface avancée de création de bordereau"""
     
     st.markdown("### 📋 Création du bordereau")
+    
+    if not DATACLASSES_AVAILABLE:
+        st.error("Les dataclasses ne sont pas disponibles pour créer le bordereau")
+        return
     
     # Préparer les pièces pour le bordereau
     pieces = []
@@ -1386,52 +1476,53 @@ def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
     # Créer le bordereau
     bordereau = create_bordereau(pieces, analysis)
     
-    # Afficher le bordereau
-    st.text_area(
-        "Aperçu du bordereau",
-        value=bordereau.export_to_text()[:1000] + "...",
-        height=300
-    )
-    
-    # Options d'export
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        format_export = st.selectbox(
-            "Format d'export",
-            ["Texte", "Markdown", "PDF", "Word"]
+    if bordereau:
+        # Afficher le bordereau
+        st.text_area(
+            "Aperçu du bordereau",
+            value=bordereau.export_to_text()[:1000] + "...",
+            height=300
         )
-    
-    with col2:
-        if st.button("📥 Télécharger le bordereau"):
-            if format_export == "Texte":
-                content = bordereau.export_to_text()
-            elif format_export == "Markdown":
-                content = bordereau.export_to_markdown_with_links()
-            else:
-                content = bordereau.export_to_text()  # Fallback
-            
-            st.download_button(
-                "💾 Télécharger",
-                content.encode('utf-8'),
-                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'txt' if format_export == 'Texte' else 'md'}",
-                "text/plain" if format_export == "Texte" else "text/markdown"
+        
+        # Options d'export
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            format_export = st.selectbox(
+                "Format d'export",
+                ["Texte", "Markdown", "PDF", "Word"]
             )
-    
-    # Statistiques
-    st.markdown("#### 📊 Statistiques")
-    summary = bordereau.generate_summary()
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Total pièces", summary['total_pieces'])
-    
-    with col2:
-        st.metric("Catégories", len(summary['pieces_by_category']))
-    
-    with col3:
-        st.metric("Sources", summary['sources_count'])
+        
+        with col2:
+            if st.button("📥 Télécharger le bordereau"):
+                if format_export == "Texte":
+                    content = bordereau.export_to_text()
+                elif format_export == "Markdown":
+                    content = bordereau.export_to_markdown_with_links()
+                else:
+                    content = bordereau.export_to_text()  # Fallback
+                
+                st.download_button(
+                    "💾 Télécharger",
+                    content.encode('utf-8'),
+                    f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'txt' if format_export == 'Texte' else 'md'}",
+                    "text/plain" if format_export == "Texte" else "text/markdown"
+                )
+        
+        # Statistiques
+        st.markdown("#### 📊 Statistiques")
+        summary = bordereau.generate_summary()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total pièces", summary['total_pieces'])
+        
+        with col2:
+            st.metric("Catégories", len(summary['pieces_by_category']))
+        
+        with col3:
+            st.metric("Sources", summary['sources_count'])
 
 def export_piece_list(pieces: List[Any]):
     """Exporte la liste des pièces"""
@@ -1468,6 +1559,7 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
     """Synthétise les pièces sélectionnées"""
     
     if not MANAGERS['multi_llm']:
+        st.error('Module Multi-LLM non disponible')
         return {'error': 'Module Multi-LLM non disponible'}
     
     try:
@@ -1475,6 +1567,7 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
         llm_manager = MultiLLMManager()
         
         if not llm_manager.clients:
+            st.error('Aucune IA disponible')
             return {'error': 'Aucune IA disponible'}
         
         # Construire le contexte
@@ -1490,6 +1583,7 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
         
         # Prompt de synthèse
         synthesis_prompt = f"""{context}
+
 Crée une synthèse structurée de ces pièces.
 La synthèse doit inclure:
 1. Vue d'ensemble des pièces
@@ -1513,11 +1607,31 @@ La synthèse doit inclure:
                 'timestamp': datetime.now()
             }
             st.session_state.synthesis_result = synthesis_result
+            
+            # Afficher directement le résultat
+            with st.expander("📝 Synthèse générée", expanded=True):
+                st.write(response['response'])
+                
+                # Actions
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        "📥 Télécharger",
+                        response['response'].encode('utf-8'),
+                        f"synthese_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        "text/plain"
+                    )
+                with col2:
+                    if st.button("🔄 Regénérer"):
+                        st.rerun()
+            
             return synthesis_result
         else:
+            st.error(f"Échec de la synthèse : {response.get('error', 'Erreur inconnue')}")
             return {'error': 'Échec de la synthèse'}
             
     except Exception as e:
+        st.error(f'Erreur synthèse: {str(e)}')
         return {'error': f'Erreur synthèse: {str(e)}'}
 
 # ========================= STATISTIQUES ET UTILS =========================
@@ -1667,7 +1781,10 @@ async def show_work_statistics():
                     'source': doc.source if hasattr(doc, 'source') else doc.get('source', '')
                 })
             
-            categories = group_documents_by_category(all_docs)
+            if DATACLASSES_AVAILABLE and hasattr(globals().get('group_documents_by_category'), '__call__'):
+                categories = group_documents_by_category(all_docs)
+            else:
+                categories = {'Documents': all_docs}
             
             st.write("**Documents par catégorie:**")
             for cat, docs in categories.items():
@@ -1681,7 +1798,7 @@ async def show_work_statistics():
 
 # ========================= TRAITEMENT DES PLAINTES COMPLET =========================
 
-async def process_plainte_request(query: str, analysis: QueryAnalysis):
+async def process_plainte_request(query: str, analysis: 'QueryAnalysis'):
     """Traite une demande de plainte avec toutes les options"""
     
     st.markdown("### 📋 Configuration de la plainte")
@@ -1794,7 +1911,12 @@ class SearchInterface:
             self.search_service = get_universal_search_service()
         else:
             self.search_service = None
-        self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
+        
+        # Phase par défaut
+        if DATACLASSES_AVAILABLE:
+            self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
+        else:
+            self.current_phase = None
     
     async def process_universal_query(self, query: str):
         """Traite une requête en utilisant le service de recherche"""
@@ -1846,20 +1968,37 @@ class SearchInterface:
             # Recherche par défaut
             return await self._process_search_request(query, query_analysis)
     
-    def _simple_query_analysis(self, query: str) -> QueryAnalysis:
+    def _simple_query_analysis(self, query: str):
         """Analyse simple de la requête si le service n'est pas disponible"""
-        analysis = QueryAnalysis(
-            original_query=query,
-            query_lower=query.lower(),
-            timestamp=datetime.now()
-        )
+        # Créer un objet d'analyse simple
+        if DATACLASSES_AVAILABLE and hasattr(globals().get('QueryAnalysis'), '__call__'):
+            analysis = QueryAnalysis(
+                original_query=query,
+                query_lower=query.lower(),
+                timestamp=datetime.now()
+            )
+        else:
+            # Fallback avec une classe simple
+            class SimpleQueryAnalysis:
+                def __init__(self, query):
+                    self.original_query = query
+                    self.query_lower = query.lower()
+                    self.timestamp = datetime.now()
+                    self.command_type = 'search'
+                    self.reference = None
+                    self.parties = {'demandeurs': [], 'defendeurs': []}
+                    self.infractions = []
+            
+            analysis = SimpleQueryAnalysis(query)
         
         # Détection basique du type de commande
         query_lower = analysis.query_lower
         if any(word in query_lower for word in ['rédige', 'rédiger', 'écrire', 'créer']):
             analysis.command_type = 'redaction'
-        else:
-            analysis.command_type = 'search'
+        elif any(word in query_lower for word in ['plainte', 'cpc']):
+            analysis.command_type = 'plainte'
+        elif any(word in query_lower for word in ['analyse', 'analyser']):
+            analysis.command_type = 'analysis'
         
         # Extraction basique de la référence
         ref_match = re.search(r'@(\w+)', query)
@@ -1870,7 +2009,7 @@ class SearchInterface:
     
     # ===================== PROCESSEURS DE REQUÊTES =====================
     
-    async def _process_redaction_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_redaction_request(self, query: str, query_analysis):
         """Traite une demande de rédaction"""
         st.info("📝 Détection d'une demande de rédaction...")
         
@@ -1879,65 +2018,70 @@ class SearchInterface:
         else:
             st.warning("Module de rédaction non disponible")
     
-    async def _process_analysis_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_analysis_request(self, query: str, query_analysis):
         """Traite une demande d'analyse"""
         if 'analyse_ia_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['analyse_ia_page']()
         else:
             st.warning("Module d'analyse non disponible")
     
-    async def _process_plaidoirie_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_plaidoirie_request(self, query: str, query_analysis):
         """Traite une demande de plaidoirie"""
         if 'plaidoirie_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['plaidoirie_page']()
         else:
             st.warning("Module plaidoirie non disponible")
     
-    async def _process_preparation_client_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_preparation_client_request(self, query: str, query_analysis):
         """Traite une demande de préparation client"""
         if 'preparation_client_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['preparation_client_page']()
         else:
             st.warning("Module préparation client non disponible")
     
-    async def _process_import_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_import_request(self, query: str, query_analysis):
         """Traite une demande d'import"""
         if 'import_export_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['import_export_page']()
         else:
             st.warning("Module import non disponible")
     
-    async def _process_export_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_export_request(self, query: str, query_analysis):
         """Traite une demande d'export"""
         if 'import_export_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['import_export_page']()
         else:
             st.warning("Module export non disponible")
     
-    async def _process_email_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_email_request(self, query: str, query_analysis):
         """Traite une demande d'email"""
         if 'email_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['email_page']()
         else:
             st.warning("Module email non disponible")
     
-    async def _process_piece_selection_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_piece_selection_request(self, query: str, query_analysis):
         """Traite une demande de sélection de pièces"""
         if 'selection_piece_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['selection_piece_page']()
         else:
             show_piece_selection_advanced(query_analysis)
     
-    async def _process_bordereau_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_bordereau_request(self, query: str, query_analysis):
         """Traite une demande de bordereau"""
         if 'bordereau_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['bordereau_page']()
         else:
-            docs = collect_available_documents()
+            if DATACLASSES_AVAILABLE and hasattr(globals().get('collect_available_documents'), '__call__'):
+                docs = collect_available_documents()
+            else:
+                docs = []
             if docs:
                 show_bordereau_interface_advanced(docs, query_analysis)
+            else:
+                st.warning("Aucun document disponible pour créer un bordereau")
     
-    async def _process_synthesis_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_synthesis_request(self, query: str, query_analysis):
         """Traite une demande de synthèse"""
         if 'synthesis_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['synthesis_page']()
@@ -1946,42 +2090,42 @@ class SearchInterface:
         else:
             st.warning("Module synthèse non disponible ou aucune pièce sélectionnée")
     
-    async def _process_template_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_template_request(self, query: str, query_analysis):
         """Traite une demande de template"""
         if 'templates_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['templates_page']()
         else:
             st.warning("Module templates non disponible")
     
-    async def _process_jurisprudence_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_jurisprudence_request(self, query: str, query_analysis):
         """Traite une demande de jurisprudence"""
         if 'jurisprudence_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['jurisprudence_page']()
         else:
             st.warning("Module jurisprudence non disponible")
     
-    async def _process_timeline_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_timeline_request(self, query: str, query_analysis):
         """Traite une demande de timeline"""
         if 'timeline_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['timeline_page']()
         else:
             st.warning("Module timeline non disponible")
     
-    async def _process_mapping_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_mapping_request(self, query: str, query_analysis):
         """Traite une demande de cartographie"""
         if 'mapping_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['mapping_page']()
         else:
             st.warning("Module cartographie non disponible")
     
-    async def _process_comparison_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_comparison_request(self, query: str, query_analysis):
         """Traite une demande de comparaison"""
         if 'comparison_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['comparison_page']()
         else:
             st.warning("Module comparaison non disponible")
     
-    async def _process_search_request(self, query: str, query_analysis: QueryAnalysis):
+    async def _process_search_request(self, query: str, query_analysis):
         """Traite une demande de recherche par défaut"""
         st.info("🔍 Recherche en cours...")
         
