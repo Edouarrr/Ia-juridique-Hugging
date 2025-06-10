@@ -1170,7 +1170,7 @@ Bien cordialement,
 {expediteur}"""
         },
         'demande_informations': {
-            'objet': "Demande d'informations complémentaires - {dossier}",
+            "objet": "Demande d'informations complémentaires - {dossier}",
             'corps': """Cher Confrère,
 Dans le cadre du dossier {dossier}, j'aurais besoin des informations suivantes :
 {liste_questions}
