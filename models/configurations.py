@@ -8,7 +8,7 @@ from datetime import datetime
 DEFAULT_LETTERHEADS = [
     LetterheadTemplate(
         name="Cabinet classique",
-        header_content="""CABINET D'AVOCATS
+        header_content="""CABINET D\'AVOCATS
 [NOM DU CABINET]
 [ADRESSE]
 [TÉLÉPHONE] - [EMAIL]
@@ -48,7 +48,7 @@ RCS [VILLE] [NUMÉRO] - TVA : [TVA] - Toque : [TOQUE]
 AVOCATS ASSOCIÉS
 [ADRESSE LIGNE 1] • [ADRESSE LIGNE 2]
 T. [TÉLÉPHONE] • F. [FAX] • [EMAIL] • [SITE WEB]""",
-        footer_content="""[NOM CABINET] • Société d'avocats • Barreau de [VILLE]
+        footer_content="""[NOM CABINET] • Société d\'avocats • Barreau de [VILLE]
 SIRET : [SIRET] • TVA Intracommunautaire : [TVA]""",
         logo_path=None,
         header_style={
@@ -110,7 +110,7 @@ Barreau de [VILLE] • Toque [NUMÉRO]""",
     
     LetterheadTemplate(
         name="Cabinet institutionnel",
-        header_content="""ÉTUDE D'AVOCATS
+        header_content="""ÉTUDE D\'AVOCATS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [NOM CABINET]
 [SPÉCIALITÉS]
@@ -123,7 +123,7 @@ Téléphone : [TÉLÉPHONE]
 Télécopie : [FAX]
 Courriel : [EMAIL]""",
         footer_content="""━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Société d'exercice libéral par actions simplifiée d'avocats
+Société d\'exercice libéral par actions simplifiée d\'avocats
 Capital social : [CAPITAL] € - RCS [VILLE] [RCS] - Code APE : [APE]
 TVA intracommunautaire : [TVA] - Barreau de [VILLE]""",
         logo_path=None,
@@ -206,7 +206,10 @@ TÉLÉPHONE : [TÉLÉPHONE]
 TÉLÉCOPIE : [FAX]
 COURRIEL : [EMAIL]""",
         footer_content="""────────────────────────────────────
-SCP D'AVOCATS • PALAIS DE JUSTICE, CASE# models/configurations.py
+SCP D\'AVOCATS • PALAIS DE JUSTICE, CASE [NUMÉRO] • [CODE POSTAL] [VILLE]
+RCS [VILLE] [RCS] • TVA INTRACOMMUNAUTAIRE : [TVA]""",
+        logo_path=None, [NUMÉRO] • [CODE POSTAL] [VILLE]
+RCS [VILLE] [RCS] • TVA INTRACOMMUNAUTAIRE : [TVA]""",# models/configurations.py
 """Configurations pour les templates de génération de documents"""
 
 from typing import Dict, List, Any
@@ -223,7 +226,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
         structure=[
             "Monsieur le Procureur de la République,",
             "",
-            "J'ai l'honneur de porter plainte contre [MIS EN CAUSE] pour les faits suivants :",
+            "J\'ai l\'honneur de porter plainte contre [MIS EN CAUSE] pour les faits suivants :",
             "",
             "## EXPOSÉ DES FAITS",
             "[Description détaillée des faits]",
@@ -233,12 +236,12 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "## DEMANDES",
             "En conséquence, je sollicite :",
-            "- L'ouverture d'une enquête",
+            "- L\'ouverture d\'une enquête",
             "- [Autres demandes]",
             "",
-            "Je me tiens à votre disposition pour tout complément d'information.",
+            "Je me tiens à votre disposition pour tout complément d\'information.",
             "",
-            "Je vous prie d'agréer, Monsieur le Procureur de la République, l'expression de ma haute considération.",
+            "Je vous prie d\'agréer, Monsieur le Procureur de la République, l\'expression de ma haute considération.",
             "",
             "[Signature]"
         ],
@@ -254,7 +257,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
         structure=[
             "Monsieur le Doyen des Juges d'Instruction,",
             "",
-            "J'ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :",
+            "J\'ai l\'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :",
             "",
             "[IDENTIFICATION DES MIS EN CAUSE]",
             "",
@@ -281,7 +284,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "PAR CES MOTIFS,",
             "Je vous demande de bien vouloir :",
             "- Recevoir ma plainte avec constitution de partie civile",
-            "- Ordonner l'ouverture d'une information judiciaire",
+            "- Ordonner l\'ouverture d\'une information judiciaire",
             "- [Autres demandes]",
             "",
             "Sous toutes réserves",
@@ -351,12 +354,12 @@ BUILTIN_DOCUMENT_TEMPLATES = [
         name="Assignation devant le Tribunal",
         type=TypeDocument.ASSIGNATION,
         structure=[
-            "L'AN [ANNÉE] ET LE [DATE]",
+            "L\'AN [ANNÉE] ET LE [DATE]",
             "",
             "À LA REQUÊTE DE :",
             "[IDENTIFICATION COMPLÈTE DU DEMANDEUR]",
             "",
-            "J'AI, HUISSIER DE JUSTICE SOUSSIGNÉ,",
+            "J\'AI, HUISSIER DE JUSTICE SOUSSIGNÉ,",
             "",
             "DONNÉ ASSIGNATION À :",
             "[IDENTIFICATION COMPLÈTE DU DÉFENDEUR]",
