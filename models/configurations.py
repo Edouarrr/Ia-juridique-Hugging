@@ -839,6 +839,215 @@ DEFAULT_STYLE_CONFIGS = {
     )
 }
 
+# ========== FORMULES JURIDIQUES ==========
+
+FORMULES_JURIDIQUES = {
+    'introduction': {
+        'plainte': [
+            "J\'ai l\'honneur de porter plainte contre {partie} pour les faits suivants :",
+            "Par la présente, je souhaite porter à votre connaissance les agissements délictueux de {partie}",
+            "Je soussigné(e), {plaignant}, porte plainte pour les faits ci-après exposés",
+            "Je me permets de solliciter votre intervention concernant les faits graves suivants",
+            "J\'ai l\'honneur de vous saisir d\'une plainte concernant {partie}"
+        ],
+        'conclusions': [
+            "Pour les motifs ci-après développés, le {demandeur} a l\'honneur d\'exposer ce qui suit :",
+            "Il sera démontré dans les présentes conclusions que {these_principale}",
+            "Les développements qui suivent établiront que {objectif}",
+            "Le {demandeur} entend démontrer par les présentes que",
+            "Aux termes des présentes conclusions, il sera établi que"
+        ],
+        'assignation': [
+            "L\'an {annee} et le {date}, à la requête de {demandeur}",
+            "Nous, {huissier}, huissier de justice, avons donné assignation à {defendeur}",
+            "Par exploit de notre ministère, assignation est donnée à {partie}",
+            "À la demande de {demandeur}, nous avons fait citation à comparaître",
+            "Par acte de notre ministère, nous avons assigné {defendeur}"
+        ],
+        'mise_en_demeure': [
+            "Par la présente, je vous mets en demeure de {obligation}",
+            "Je vous somme de {action} dans les plus brefs délais",
+            "Vous êtes mis en demeure de procéder à {obligation}",
+            "La présente constitue une mise en demeure de {action}",
+            "Sans réponse de votre part sous {delai}, je me verrai contraint de"
+        ]
+    },
+    'transition': {
+        'moreover': [
+            "En outre,",
+            "Par ailleurs,",
+            "De surcroît,",
+            "Qui plus est,",
+            "Au surplus,",
+            "De plus,",
+            "Également,",
+            "Aussi convient-il de relever que"
+        ],
+        'consequence': [
+            "En conséquence,",
+            "Par conséquent,",
+            "Il s\'ensuit que",
+            "Partant,",
+            "Dès lors,",
+            "Il en résulte que",
+            "Il en découle que",
+            "Ainsi,"
+        ],
+        'opposition': [
+            "Cependant,",
+            "Néanmoins,",
+            "Pour autant,",
+            "Toutefois,",
+            "Nonobstant,",
+            "En revanche,",
+            "Or,",
+            "Pourtant,"
+        ],
+        'precision': [
+            "En l\'espèce,",
+            "Plus précisément,",
+            "À cet égard,",
+            "Sur ce point,",
+            "S\'agissant de",
+            "Concernant",
+            "Quant à",
+            "Au cas présent,"
+        ]
+    },
+    'argumentation': {
+        'affirmation': [
+            "Il est constant que",
+            "Il est établi que",
+            "Il ne fait aucun doute que",
+            "Il est manifeste que",
+            "Force est de constater que",
+            "Il apparaît que",
+            "Il résulte de ce qui précède que",
+            "Il convient de relever que"
+        ],
+        'refutation': [
+            "Contrairement à ce qui est soutenu",
+            "Il ne saurait être prétendu que",
+            "C\'est à tort que",
+            "Il est erroné de soutenir que",
+            "Cette argumentation ne résiste pas à l\'analyse",
+            "Cette thèse ne peut prospérer",
+            "Ce moyen est inopérant",
+            "Cette prétention est mal fondée"
+        ],
+        'nuance': [
+            "Sans qu\'il soit nécessaire de",
+            "Quand bien même",
+            "À supposer même que",
+            "En admettant que",
+            "Même à considérer que",
+            "Pour autant que",
+            "Dans la mesure où",
+            "Sous réserve de"
+        ]
+    },
+    'conclusion': {
+        'plainte': [
+            "C\'est dans ces conditions que je sollicite l\'ouverture d\'une enquête",
+            "Au vu de ces éléments, je demande que des poursuites soient engagées",
+            "Je me constitue partie civile et demande réparation de mon préjudice",
+            "En conséquence, je vous prie de bien vouloir donner suite à ma plainte",
+            "Je sollicite que toutes suites utiles soient données à la présente"
+        ],
+        'conclusions': [
+            "PAR CES MOTIFS, plaise au Tribunal de :",
+            "C\'est pourquoi il est demandé au Tribunal de :",
+            "En conséquence de tout ce qui précède, le Tribunal est prié de :",
+            "Au vu de l\'ensemble de ces éléments, il y a lieu de :",
+            "C\'est dans ces conditions qu\'il est demandé au Tribunal de :"
+        ],
+        'courrier': [
+            "Je vous prie d\'agréer, {destinataire}, l\'expression de mes salutations distinguées",
+            "Veuillez croire, {destinataire}, en l\'assurance de ma considération distinguée",
+            "Je vous prie de recevoir, {destinataire}, mes salutations respectueuses",
+            "Restant à votre disposition pour tout complément d\'information",
+            "Dans l\'attente de votre retour, je vous prie d\'agréer"
+        ]
+    },
+    'formules_types': {
+        'demande_communication': [
+            "Je vous serais reconnaissant de bien vouloir me communiquer",
+            "Je vous prie de bien vouloir me transmettre",
+            "Je sollicite la communication de",
+            "Il vous est demandé de produire",
+            "Vous êtes prié de communiquer"
+        ],
+        'demande_delai': [
+            "Je sollicite un délai supplémentaire pour",
+            "Je vous prie de bien vouloir m\'accorder un délai",
+            "Un délai supplémentaire est nécessaire pour",
+            "Je demande la prorogation du délai pour",
+            "Il est sollicité un report de délai"
+        ],
+        'contestation': [
+            "Je conteste formellement",
+            "Je m\'inscris en faux contre",
+            "Je m\'oppose à",
+            "Je forme opposition à",
+            "J\'entends contester"
+        ],
+        'reservation': [
+            "Sous toutes réserves",
+            "Toutes mes réserves étant expressément maintenues",
+            "Sans reconnaissance préjudiciable",
+            "Sans que cela puisse me porter préjudice",
+            "Sous réserve de tous mes droits"
+        ]
+    },
+    'civilites': {
+        'magistrat': {
+            'debut': [
+                "Monsieur le Président,",
+                "Madame la Présidente,",
+                "Monsieur le Juge,",
+                "Madame la Juge,",
+                "Monsieur le Procureur de la République,",
+                "Madame la Procureure de la République,"
+            ],
+            'fin': [
+                "Je vous prie d\'agréer, Monsieur le Président, l\'expression de ma haute considération",
+                "Veuillez agréer, Madame la Présidente, l\'expression de mes sentiments respectueux",
+                "Je vous prie de croire, Monsieur le Procureur, en l\'assurance de ma haute considération"
+            ]
+        },
+        'confrere': {
+            'debut': [
+                "Cher Confrère,",
+                "Chère Consœur,",
+                "Maître,",
+                "Mon cher Confrère,",
+                "Ma chère Consœur,"
+            ],
+            'fin': [
+                "Je vous prie de croire, Cher Confrère, en l\'assurance de mes sentiments confraternels dévoués",
+                "Bien confraternellement",
+                "Avec mes sentiments confraternels les meilleurs",
+                "Veuillez agréer, Chère Consœur, mes salutations confraternelles"
+            ]
+        },
+        'client': {
+            'debut': [
+                "Madame,",
+                "Monsieur,",
+                "Madame, Monsieur,",
+                "Cher Client,",
+                "Chère Cliente,"
+            ],
+            'fin': [
+                "Je reste à votre entière disposition pour tout complément d\'information",
+                "N\'hésitez pas à me contacter pour toute question",
+                "Je vous prie d\'agréer, Madame, l\'expression de mes salutations distinguées",
+                "Cordialement"
+            ]
+        }
+    }
+}
+
 # ========== CLASSE DE CONFIGURATION PRINCIPALE ==========
 
 class DocumentConfigurations:
