@@ -3303,33 +3303,62 @@ async def fetch_company_info_societe(company_name: str) -> Optional[InformationE
 
 # ========== FONCTION MANQUANTE : collect_available_documents ==========
 
-def collect_available_documents() -> List[Document]:
+def collect_available_documents(analysis: Optional[Any] = None) -> List[Document]:
     """
     Collecte tous les documents disponibles dans le système
+    
+    Args:
+        analysis: Objet d'analyse optionnel pour filtrer
     
     Returns:
         Liste des documents disponibles
     """
-    # Cette fonction est un placeholder
-    # Dans une implémentation réelle, elle devrait :
-    # 1. Scanner le répertoire des documents
-    # 2. Charger depuis une base de données
-    # 3. Récupérer depuis un système de stockage
-    
     documents = []
     
-    # Pour l'instant, retourner une liste vide
-    # ou des documents de test si nécessaire
+    # Import conditionnel de streamlit si disponible
+    try:
+        import streamlit as st
+        
+        # Récupérer depuis session_state si disponible
+        if hasattr(st, 'session_state'):
+            # Documents Azure
+            if 'azure_documents' in st.session_state:
+                for doc_id, doc in st.session_state.azure_documents.items():
+                    if isinstance(doc, Document):
+                        documents.append(doc)
+                    else:
+                        # Convertir en Document si nécessaire
+                        documents.append(ensure_document_object(doc))
+            
+            # Documents importés
+            if 'imported_documents' in st.session_state:
+                for doc_id, doc in st.session_state.imported_documents.items():
+                    if isinstance(doc, Document):
+                        documents.append(doc)
+                    else:
+                        documents.append(ensure_document_object(doc))
+    except ImportError:
+        pass
+    
+    # Filtrer selon l'analyse si fournie
+    if analysis and hasattr(analysis, 'reference') and analysis.reference:
+        # Filtrer par référence
+        filtered = []
+        for doc in documents:
+            if doc.has_reference(analysis.reference):
+                filtered.append(doc)
+        return filtered
+    
     return documents
 
 # ========== FONCTION MANQUANTE : group_documents_by_category ==========
 
-def group_documents_by_category(documents: List[Document]) -> Dict[str, List[Document]]:
+def group_documents_by_category(documents: List[Any]) -> Dict[str, List[Any]]:
     """
     Groupe les documents par catégorie
     
     Args:
-        documents: Liste des documents à grouper
+        documents: Liste des documents à grouper (peuvent être des Document ou des dict)
         
     Returns:
         Dictionnaire avec les catégories comme clés et les listes de documents comme valeurs
@@ -3338,7 +3367,12 @@ def group_documents_by_category(documents: List[Document]) -> Dict[str, List[Doc
     
     for doc in documents:
         # Déterminer la catégorie
-        category = doc.category if doc.category else "Autre"
+        if isinstance(doc, Document):
+            category = doc.category if doc.category else "Autre"
+        elif isinstance(doc, dict):
+            category = doc.get('category', doc.get('categorie', 'Autre'))
+        else:
+            category = "Autre"
         
         # Ajouter au groupe
         if category not in grouped:
@@ -3347,9 +3381,299 @@ def group_documents_by_category(documents: List[Document]) -> Dict[str, List[Doc
     
     # Trier les documents dans chaque catégorie par date
     for category in grouped:
-        grouped[category].sort(key=lambda d: d.created_at, reverse=True)
+        grouped[category].sort(
+            key=lambda d: (
+                d.created_at if isinstance(d, Document) and hasattr(d, 'created_at')
+                else d.get('created_at', datetime.now()) if isinstance(d, dict)
+                else datetime.now()
+            ),
+            reverse=True
+        )
     
     return grouped
+
+# ========== FONCTION MANQUANTE : determine_document_category ==========
+
+def determine_document_category(doc: Any) -> str:
+    """
+    Détermine la catégorie d'un document en analysant son contenu et ses métadonnées
+    
+    Args:
+        doc: Document (Document object ou dict)
+        
+    Returns:
+        Catégorie du document
+    """
+    # Si la catégorie est déjà définie
+    if isinstance(doc, Document) and doc.category:
+        return doc.category
+    elif isinstance(doc, dict) and doc.get('category'):
+        return doc['category']
+    
+    # Récupérer le titre et le contenu
+    if isinstance(doc, Document):
+        title = doc.title.lower() if doc.title else ""
+        content = doc.content.lower()[:500] if doc.content else ""
+        metadata = doc.metadata or {}
+    else:
+        title = doc.get('title', '').lower()
+        content = doc.get('content', '')[:500].lower()
+        metadata = doc.get('metadata', {})
+    
+    # Patterns de catégorisation
+    category_patterns = {
+        'Procédure': [
+            'assignation', 'citation', 'conclusions', 'requête', 'ordonnance',
+            'jugement', 'arrêt', 'signification', 'pourvoi', 'appel'
+        ],
+        'Expertise': [
+            'expertise', 'expert', 'rapport d\'expertise', 'évaluation',
+            'diagnostic', 'analyse technique'
+        ],
+        'Contrats': [
+            'contrat', 'convention', 'accord', 'protocole', 'avenant',
+            'bail', 'cession', 'vente', 'achat'
+        ],
+        'Correspondance': [
+            'courrier', 'lettre', 'email', 'courriel', 'notification',
+            'mise en demeure', 'réponse'
+        ],
+        'Comptabilité': [
+            'facture', 'devis', 'comptable', 'bilan', 'compte',
+            'relevé', 'paiement', 'virement'
+        ],
+        'Administration': [
+            'administratif', 'déclaration', 'formulaire', 'attestation',
+            'certificat', 'permis', 'autorisation'
+        ],
+        'Pièces personnelles': [
+            'identité', 'passeport', 'permis de conduire', 'carte',
+            'acte de naissance', 'état civil'
+        ],
+        'Auditions': [
+            'audition', 'procès-verbal', 'pv', 'interrogatoire',
+            'déposition', 'témoignage'
+        ],
+        'Plaintes': [
+            'plainte', 'dénonciation', 'partie civile', 'constitution'
+        ]
+    }
+    
+    # Chercher dans les patterns
+    for category, patterns in category_patterns.items():
+        for pattern in patterns:
+            if pattern in title or pattern in content:
+                return category
+    
+    # Vérifier le type dans les métadonnées
+    doc_type = metadata.get('type', '').lower()
+    if doc_type:
+        for category, patterns in category_patterns.items():
+            for pattern in patterns:
+                if pattern in doc_type:
+                    return category
+    
+    # Par défaut
+    return "Autre"
+
+# ========== FONCTION MANQUANTE : calculate_piece_relevance ==========
+
+def calculate_piece_relevance(doc: Any, analysis: Any) -> float:
+    """
+    Calcule la pertinence d'une pièce par rapport à une analyse
+    
+    Args:
+        doc: Document à évaluer
+        analysis: Analyse de requête ou contexte
+        
+    Returns:
+        Score de pertinence entre 0 et 1
+    """
+    score = 0.0
+    
+    # Récupérer les informations du document
+    if isinstance(doc, Document):
+        title = doc.title.lower() if doc.title else ""
+        content = doc.content.lower() if doc.content else ""
+        tags = doc.tags or []
+        metadata = doc.metadata or {}
+    else:
+        title = doc.get('title', '').lower()
+        content = doc.get('content', '').lower()
+        tags = doc.get('tags', [])
+        metadata = doc.get('metadata', {})
+    
+    # Analyser selon le contexte
+    if hasattr(analysis, 'keywords') and analysis.keywords:
+        # Calculer le score basé sur les mots-clés
+        for keyword in analysis.keywords:
+            keyword_lower = keyword.lower()
+            # Titre (poids fort)
+            if keyword_lower in title:
+                score += 0.3
+            # Contenu (poids moyen)
+            if keyword_lower in content:
+                score += 0.1
+            # Tags (poids fort)
+            if keyword_lower in [tag.lower() for tag in tags]:
+                score += 0.2
+    
+    # Bonus pour référence correspondante
+    if hasattr(analysis, 'reference') and analysis.reference:
+        ref = analysis.reference.lower()
+        if ref in title:
+            score += 0.4
+        elif ref in content[:200]:  # Début du contenu
+            score += 0.2
+    
+    # Bonus pour infractions correspondantes
+    if hasattr(analysis, 'infractions') and analysis.infractions:
+        for infraction in analysis.infractions:
+            if infraction.lower() in content:
+                score += 0.15
+    
+    # Bonus pour parties correspondantes
+    if hasattr(analysis, 'parties') and analysis.parties:
+        all_parties = []
+        for parties_list in analysis.parties.values():
+            all_parties.extend(parties_list)
+        
+        for partie in all_parties:
+            if partie.lower() in title or partie.lower() in content[:500]:
+                score += 0.1
+    
+    # Bonus pour date récente
+    if metadata.get('date'):
+        try:
+            doc_date = datetime.fromisoformat(metadata['date']) if isinstance(metadata['date'], str) else metadata['date']
+            days_old = (datetime.now() - doc_date).days
+            if days_old < 30:
+                score += 0.1
+            elif days_old < 90:
+                score += 0.05
+        except:
+            pass
+    
+    # Normaliser le score entre 0 et 1
+    return min(1.0, max(0.0, score))
+
+# ========== FONCTION MANQUANTE : create_bordereau ==========
+
+def create_bordereau(pieces: List[PieceSelectionnee], analysis: Any = None) -> BordereauPieces:
+    """
+    Crée un bordereau de pièces
+    
+    Args:
+        pieces: Liste des pièces sélectionnées
+        analysis: Contexte d'analyse optionnel
+        
+    Returns:
+        BordereauPieces créé
+    """
+    # Déterminer le titre et l'affaire
+    titre = "Bordereau de communication de pièces"
+    affaire = "Dossier"
+    
+    if analysis:
+        if hasattr(analysis, 'reference') and analysis.reference:
+            affaire = f"Affaire {analysis.reference}"
+        elif hasattr(analysis, 'parties') and analysis.parties:
+            # Utiliser les parties pour nommer l'affaire
+            demandeurs = analysis.parties.get('demandeurs', [])
+            defendeurs = analysis.parties.get('defendeurs', [])
+            
+            if demandeurs and defendeurs:
+                affaire = f"{demandeurs[0]} c/ {defendeurs[0]}"
+            elif demandeurs:
+                affaire = f"Affaire {demandeurs[0]}"
+            elif defendeurs:
+                affaire = f"Affaire {defendeurs[0]}"
+    
+    # Créer le bordereau
+    bordereau = BordereauPieces(
+        id=f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        titre=titre,
+        affaire=affaire,
+        pieces=pieces
+    )
+    
+    # Ajouter les métadonnées depuis l'analyse
+    if analysis and hasattr(analysis, 'to_dict'):
+        bordereau.metadata['analysis'] = analysis.to_dict()
+    
+    return bordereau
+
+# ========== FONCTION MANQUANTE : create_bordereau_document ==========
+
+def create_bordereau_document(bordereau: BordereauPieces, format: str = "markdown") -> str:
+    """
+    Crée le document du bordereau dans le format spécifié
+    
+    Args:
+        bordereau: BordereauPieces à exporter
+        format: Format de sortie ("text", "markdown", "html")
+        
+    Returns:
+        Contenu du document formaté
+    """
+    if format == "text":
+        return bordereau.export_to_text()
+    elif format == "markdown":
+        return bordereau.export_to_markdown_with_links()
+    elif format == "html":
+        # Conversion markdown vers HTML si nécessaire
+        content = bordereau.export_to_markdown_with_links()
+        
+        # Conversion basique (dans une vraie app, utiliser markdown2 ou similaire)
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{bordereau.titre}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+        h1 {{ color: #333; }}
+        h2 {{ color: #666; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+        th {{ background-color: #f2f2f2; }}
+        .footer {{ margin-top: 40px; font-style: italic; }}
+    </style>
+</head>
+<body>
+    <h1>{bordereau.titre}</h1>
+    <p><strong>Affaire:</strong> {bordereau.affaire}</p>
+    <p><strong>Date:</strong> {bordereau.date_creation.strftime('%d/%m/%Y')}</p>
+    <p><strong>Nombre de pièces:</strong> {len(bordereau.pieces)}</p>
+    <hr>
+"""
+        
+        # Ajouter les pièces par catégorie
+        by_category = bordereau.organize_by_category()
+        for category, pieces in sorted(by_category.items()):
+            html_content += f"<h2>{category.upper()} ({len(pieces)} pièces)</h2>\n"
+            html_content += "<table>\n<tr><th>N°</th><th>Cote</th><th>Titre</th><th>Date</th><th>Force probante</th></tr>\n"
+            
+            for piece in sorted(pieces, key=lambda p: p.numero):
+                date_str = piece.date.strftime('%d/%m/%Y') if piece.date else "-"
+                html_content += f"<tr><td>{piece.numero}</td><td>{piece.cote}</td><td>{piece.titre}</td><td>{date_str}</td><td>{piece.force_probante.value}</td></tr>\n"
+            
+            html_content += "</table>\n"
+        
+        html_content += f"""
+    <div class="footer">
+        <p>Je certifie que les pièces communiquées sont conformes aux originaux.</p>
+        <p>Fait le {datetime.now().strftime('%d/%m/%Y')}</p>
+        <p>{bordereau.expediteur or '[Signature]'}</p>
+    </div>
+</body>
+</html>
+"""
+        return html_content
+    else:
+        # Par défaut, retourner le format texte
+        return bordereau.export_to_text()
 
 # ========== EXPORTS ==========
 __all__ = [
@@ -3459,5 +3783,9 @@ __all__ = [
     'fetch_company_info_pappers',
     'fetch_company_info_societe',
     'collect_available_documents',
-    'group_documents_by_category',  # Fonction ajoutée
+    'group_documents_by_category',
+    'determine_document_category',
+    'calculate_piece_relevance',
+    'create_bordereau',
+    'create_bordereau_document',
 ]
