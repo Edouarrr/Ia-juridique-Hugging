@@ -1286,6 +1286,333 @@ ARGUMENTATION_PATTERNS = {
     }
 }
 
+# ========== CONFIGURATIONS D'ANALYSE ==========
+
+ANALYSIS_CONFIGS = {
+    'types_analyse': {
+        'general': {
+            'nom': "Analyse générale",
+            'description': "Analyse complète d\'un document ou d\'une situation juridique",
+            'sections': [
+                'contexte',
+                'qualification_juridique',
+                'points_cles',
+                'risques',
+                'recommandations'
+            ],
+            'prompt_template': "Analyser de manière approfondie {document} en identifiant les enjeux juridiques principaux"
+        },
+        'risques': {
+            'nom': "Analyse des risques",
+            'description': "Identification et évaluation des risques juridiques",
+            'sections': [
+                'risques_identifies',
+                'probabilite_realisation',
+                'impact_potentiel',
+                'mesures_preventives',
+                'plan_action'
+            ],
+            'niveaux_risque': ['faible', 'moyen', 'élevé', 'critique'],
+            'matrice_evaluation': {
+                'probabilite': ['rare', 'possible', 'probable', 'certain'],
+                'impact': ['négligeable', 'modéré', 'important', 'catastrophique']
+            }
+        },
+        'conformite': {
+            'nom': "Analyse de conformité",
+            'description': "Vérification de la conformité aux obligations légales",
+            'sections': [
+                'obligations_identifiees',
+                'niveau_conformite',
+                'ecarts_constates',
+                'actions_correctives',
+                'calendrier_mise_conformite'
+            ],
+            'criteres_evaluation': [
+                'respect_delais',
+                'formalites_accomplies',
+                'documents_requis',
+                'autorisations_obtenues'
+            ]
+        },
+        'strategie': {
+            'nom': "Analyse stratégique",
+            'description': "Élaboration de stratégies juridiques",
+            'sections': [
+                'objectifs',
+                'options_disponibles',
+                'avantages_inconvenients',
+                'recommandation_strategique',
+                'plan_execution'
+            ],
+            'facteurs_decision': [
+                'probabilite_succes',
+                'cout_financier',
+                'duree_procedure',
+                'impact_reputation',
+                'complexite_execution'
+            ]
+        },
+        'infractions': {
+            'nom': "Analyse des infractions",
+            'description': "Identification et qualification des infractions pénales",
+            'sections': [
+                'faits_analyses',
+                'qualifications_possibles',
+                'elements_constitutifs',
+                'preuves_disponibles',
+                'sanctions_encourues'
+            ],
+            'elements_analyser': [
+                'element_legal',
+                'element_materiel',
+                'element_moral',
+                'circonstances_aggravantes',
+                'causes_exoneration'
+            ]
+        },
+        'jurisprudence': {
+            'nom': "Analyse jurisprudentielle",
+            'description': "Analyse de l\'état de la jurisprudence sur une question",
+            'sections': [
+                'question_posee',
+                'jurisprudence_constante',
+                'evolutions_recentes',
+                'divergences_jurisprudentielles',
+                'tendances_futures'
+            ],
+            'sources_analyser': [
+                'cour_cassation',
+                'conseil_etat',
+                'cours_appel',
+                'doctrine',
+                'droit_compare'
+            ]
+        }
+    },
+    
+    'criteres_analyse': {
+        'juridique': {
+            'pertinence_juridique': {
+                'description': "Pertinence des arguments juridiques",
+                'indicateurs': [
+                    'fondement_textuel',
+                    'coherence_jurisprudence',
+                    'logique_argumentation'
+                ],
+                'echelle': [1, 10]
+            },
+            'solidite_fondements': {
+                'description': "Solidité des fondements juridiques",
+                'indicateurs': [
+                    'textes_applicables',
+                    'jurisprudence_etablie',
+                    'doctrine_majoritaire'
+                ],
+                'echelle': [1, 10]
+            },
+            'exhaustivite': {
+                'description': "Exhaustivité de l\'analyse",
+                'indicateurs': [
+                    'tous_aspects_couverts',
+                    'exceptions_identifiees',
+                    'cas_particuliers_traites'
+                ],
+                'echelle': [1, 10]
+            }
+        },
+        'strategique': {
+            'rapport_cout_benefice': {
+                'description': "Rapport coût/bénéfice de la stratégie",
+                'facteurs': [
+                    'cout_procedure',
+                    'duree_estimee',
+                    'gains_potentiels',
+                    'risques_associes'
+                ]
+            },
+            'faisabilite': {
+                'description': "Faisabilité de la mise en œuvre",
+                'facteurs': [
+                    'ressources_necessaires',
+                    'competences_requises',
+                    'delais_respecter',
+                    'contraintes_pratiques'
+                ]
+            },
+            'impact': {
+                'description': "Impact potentiel",
+                'dimensions': [
+                    'impact_juridique',
+                    'impact_financier',
+                    'impact_reputationnel',
+                    'impact_operationnel'
+                ]
+            }
+        }
+    },
+    
+    'methodes_analyse': {
+        'swot_juridique': {
+            'nom': "Analyse SWOT juridique",
+            'composantes': {
+                'forces': "Points forts de la position juridique",
+                'faiblesses': "Points faibles et vulnérabilités",
+                'opportunites': "Opportunités juridiques à exploiter",
+                'menaces': "Risques et menaces juridiques"
+            },
+            'application': [
+                'contentieux',
+                'negociation',
+                'structuration',
+                'compliance'
+            ]
+        },
+        'arbre_decision': {
+            'nom': "Arbre de décision juridique",
+            'elements': [
+                'decision_initiale',
+                'options_disponibles',
+                'consequences_chaque_option',
+                'probabilites_succes',
+                'recommandation_finale'
+            ]
+        },
+        'matrice_risques': {
+            'nom': "Matrice des risques juridiques",
+            'axes': {
+                'probabilite': ['très faible', 'faible', 'moyenne', 'élevée', 'très élevée'],
+                'impact': ['négligeable', 'mineur', 'modéré', 'majeur', 'catastrophique']
+            },
+            'zones': {
+                'acceptable': "Risque acceptable - surveillance simple",
+                'attention': "Risque sous surveillance - mesures préventives",
+                'critique': "Risque critique - action immédiate requise"
+            }
+        }
+    },
+    
+    'templates_analyse': {
+        'note_synthese': {
+            'structure': [
+                "## Objet de l\'analyse",
+                "## Résumé exécutif",
+                "## Contexte factuel",
+                "## Analyse juridique",
+                "### Points de droit",
+                "### Application aux faits",
+                "## Risques identifiés",
+                "## Recommandations",
+                "## Conclusion"
+            ],
+            'longueur_cible': 1500
+        },
+        'memorandum': {
+            'structure': [
+                "# MÉMORANDUM",
+                "**À :** {destinataire}",
+                "**De :** {auteur}",
+                "**Date :** {date}",
+                "**Objet :** {objet}",
+                "",
+                "## Question posée",
+                "## Réponse synthétique",
+                "## Analyse détaillée",
+                "## Précédents pertinents",
+                "## Recommandations pratiques"
+            ],
+            'style': 'concis et direct'
+        },
+        'rapport_diligence': {
+            'structure': [
+                "# RAPPORT DE DUE DILIGENCE",
+                "## 1. Synthèse",
+                "## 2. Méthodologie",
+                "## 3. Documents analysés",
+                "## 4. Constats",
+                "### 4.1 Points positifs",
+                "### 4.2 Points d\'attention",
+                "### 4.3 Risques majeurs",
+                "## 5. Recommandations",
+                "## 6. Réserves",
+                "## Annexes"
+            ],
+            'elements_verifier': [
+                'structure_juridique',
+                'contrats_majeurs',
+                'litiges_en_cours',
+                'conformite_reglementaire',
+                'propriete_intellectuelle',
+                'aspects_sociaux'
+            ]
+        }
+    },
+    
+    'indicateurs_qualite': {
+        'completude': {
+            'description': "Analyse complète de tous les aspects",
+            'criteres': [
+                'tous_points_traites',
+                'sources_citees',
+                'exceptions_mentionnees',
+                'alternatives_explorees'
+            ]
+        },
+        'clarte': {
+            'description': "Clarté et lisibilité de l\'analyse",
+            'criteres': [
+                'structure_logique',
+                'langage_accessible',
+                'synthese_presente',
+                'conclusions_claires'
+            ]
+        },
+        'pertinence': {
+            'description': "Pertinence pratique de l\'analyse",
+            'criteres': [
+                'reponse_question_posee',
+                'recommandations_actionnables',
+                'prise_compte_contexte',
+                'utilite_operationnelle'
+            ]
+        },
+        'fiabilite': {
+            'description': "Fiabilité juridique de l\'analyse",
+            'criteres': [
+                'sources_a_jour',
+                'jurisprudence_recente',
+                'interpretations_consensuelles',
+                'reserves_appropriees'
+            ]
+        }
+    },
+    
+    'formats_sortie': {
+        'executive_summary': {
+            'longueur_max': 500,
+            'sections': ['enjeu', 'analyse', 'risques', 'recommandation'],
+            'style': 'bullet_points'
+        },
+        'analyse_detaillee': {
+            'longueur_min': 2000,
+            'sections': 'completes',
+            'style': 'paragraphes_structures',
+            'citations': 'obligatoires'
+        },
+        'tableau_synthese': {
+            'format': 'tableau',
+            'colonnes': ['aspect', 'analyse', 'risque', 'action'],
+            'tri': 'par_priorite'
+        },
+        'presentation': {
+            'format': 'slides',
+            'nombre_slides': '10-15',
+            'contenu': ['titre', 'synthese', 'details', 'conclusion'],
+            'visuels': 'graphiques_recommandes'
+        }
+    }
+}
+
 # ========== CLASSE DE CONFIGURATION PRINCIPALE ==========
 
 class DocumentConfigurations:
@@ -1853,5 +2180,6 @@ __all__ = [
     'DEFAULT_STYLE_CONFIGS',
     'FORMULES_JURIDIQUES',
     'ARGUMENTATION_PATTERNS',
+    'ANALYSIS_CONFIGS',
     'DocumentConfigurations'
 ]
