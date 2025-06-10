@@ -270,7 +270,7 @@ def show_azure_status_detailed():
         st.error("❌ Manager non initialisé")
     elif hasattr(search_manager, 'search_client') and search_manager.search_client:
         st.success("✅ Connecté")
-        st.caption("Index: juridique-index")
+        st.caption("Index: search-rag-juridique")  # MODIFICATION ICI : nouvel index
     else:
         st.error("❌ Non connecté")
         if hasattr(search_manager, 'get_connection_error'):
@@ -350,7 +350,7 @@ def show_configuration_modal():
                     st.write(f"**Manager:** ✅ Initialisé")
                     if hasattr(search_manager, 'search_client') and search_manager.search_client:
                         st.success("✅ Connexion active")
-                        st.write(f"**Index:** {getattr(search_manager, 'index_name', 'juridique-index')}")
+                        st.write(f"**Index:** {getattr(search_manager, 'index_name', 'search-rag-juridique')}")  # MODIFICATION ICI : nouvel index
                     else:
                         st.error("❌ Connexion échouée")
                         if hasattr(search_manager, 'get_connection_error'):
@@ -842,11 +842,9 @@ def main():
                             report_text = f"""
 RAPPORT DE VÉRIFICATION DES IMPORTS
 ==================================
-
 ✅ Modules OK: {len(report['success'])}
 ❌ Erreurs: {len(report['errors'])}
 ⚠️ Avertissements: {len(report['warnings'])}
-
 DÉTAILS:
 --------
 """
@@ -1125,4 +1123,4 @@ if __name__ == "__main__":
         st.code(str(e))
         st.code(traceback.format_exc())
         print("ERREUR FATALE:")
-        print(traceback.format_exc())
+        print(traceback.format_exc()))
