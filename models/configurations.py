@@ -1,3 +1,6 @@
+# models/configurations.py
+"""Configurations pour les templates de génération de documents"""
+
 from typing import Dict, List, Any
 import json
 from modules.dataclasses import StyleConfig, DocumentTemplate, TypeDocument, StyleRedaction, LetterheadTemplate
@@ -46,10 +49,10 @@ RCS [VILLE] [NUMÉRO] - TVA : [TVA] - Toque : [TOQUE]
         header_content="""[LOGO]
 [NOM ASSOCIÉ 1] | [NOM ASSOCIÉ 2] | [NOM ASSOCIÉ 3]
 AVOCATS ASSOCIÉS
-[ADRESSE LIGNE 1] • [ADRESSE LIGNE 2]
-T. [TÉLÉPHONE] • F. [FAX] • [EMAIL] • [SITE WEB]""",
-        footer_content="""[NOM CABINET] • Société d\'avocats • Barreau de [VILLE]
-SIRET : [SIRET] • TVA Intracommunautaire : [TVA]""",
+[ADRESSE LIGNE 1] - [ADRESSE LIGNE 2]
+T. [TÉLÉPHONE] - F. [FAX] - [EMAIL] - [SITE WEB]""",
+        footer_content="""[NOM CABINET] - Société d\'avocats - Barreau de [VILLE]
+SIRET : [SIRET] - TVA Intracommunautaire : [TVA]""",
         logo_path=None,
         header_style={
             'text-align': 'left',
@@ -81,8 +84,8 @@ SIRET : [SIRET] • TVA Intracommunautaire : [TVA]""",
         name="Cabinet minimaliste",
         header_content="""[NOM CABINET]
 [EMAIL] | [TÉLÉPHONE]""",
-        footer_content="""[ADRESSE] • [CODE POSTAL] [VILLE]
-Barreau de [VILLE] • Toque [NUMÉRO]""",
+        footer_content="""[ADRESSE] - [CODE POSTAL] [VILLE]
+Barreau de [VILLE] - Toque [NUMÉRO]""",
         logo_path=None,
         header_style={
             'text-align': 'right',
@@ -165,8 +168,8 @@ TVA intracommunautaire : [TVA] - Barreau de [VILLE]""",
 │ T : [TÉLÉPHONE]         │ [SITE WEB]                       │
 │ F : [FAX]               │                                  │
 └─────────────────────────┴──────────────────────────────────┘""",
-        footer_content="""Palais de Justice de [VILLE] • Case [NUMÉRO]
-SELARL au capital de [CAPITAL] € • RCS [VILLE] [RCS] • TVA : [TVA]""",
+        footer_content="""Palais de Justice de [VILLE] - Case [NUMÉRO]
+SELARL au capital de [CAPITAL] € - RCS [VILLE] [RCS] - TVA : [TVA]""",
         logo_path=None,
         header_style={
             'text-align': 'left',
@@ -206,15 +209,103 @@ TÉLÉPHONE : [TÉLÉPHONE]
 TÉLÉCOPIE : [FAX]
 COURRIEL : [EMAIL]""",
         footer_content="""────────────────────────────────────
-SCP D\'AVOCATS • PALAIS DE JUSTICE, CASE [NUMÉRO] • [CODE POSTAL] [VILLE]
-RCS [VILLE] [RCS] • TVA INTRACOMMUNAUTAIRE : [TVA]""",
-        logo_path=None, [NUMÉRO] • [CODE POSTAL] [VILLE]
-RCS [VILLE] [RCS] • TVA INTRACOMMUNAUTAIRE : [TVA]""",# models/configurations.py
-"""Configurations pour les templates de génération de documents"""
+SCP D\'AVOCATS - PALAIS DE JUSTICE, CASE [NUMÉRO] - [CODE POSTAL] [VILLE]
+RCS [VILLE] [RCS] - TVA INTRACOMMUNAUTAIRE : [TVA]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'center',
+            'font-weight': 'normal',
+            'font-size': '13px',
+            'margin-bottom': '35px',
+            'line-height': '1.8',
+            'letter-spacing': '1px'
+        },
+        footer_style={
+            'text-align': 'center',
+            'font-size': '8px',
+            'margin-top': '45px',
+            'color': '#444444',
+            'letter-spacing': '0.5px'
+        },
+        page_margins={
+            'top': 3.5,
+            'bottom': 3.0,
+            'left': 3.0,
+            'right': 3.0
+        },
+        font_family="Garamond",
+        font_size=12,
+        line_spacing=1.6
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet numérique",
+        header_content="""[NOM CABINET] | AVOCATS 2.0
+[EMAIL] - [TÉLÉPHONE] - [SITE WEB]
+Visio : [LIEN VISIO] - LinkedIn : [LINKEDIN]""",
+        footer_content="""Signature électronique certifiée - Coffre-fort numérique sécurisé
+[ADRESSE] - SIRET : [SIRET] - Membre du réseau [RÉSEAU]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'left',
+            'font-weight': 'bold',
+            'font-size': '11px',
+            'margin-bottom': '25px',
+            'color': '#2c3e50'
+        },
+        footer_style={
+            'text-align': 'left',
+            'font-size': '8px',
+            'margin-top': '30px',
+            'color': '#7f8c8d'
+        },
+        page_margins={
+            'top': 2.0,
+            'bottom': 2.0,
+            'left': 2.5,
+            'right': 2.5
+        },
+        font_family="Segoe UI",
+        font_size=11,
+        line_spacing=1.4
+    ),
+    
+    LetterheadTemplate(
+        name="Cabinet spécialisé",
+        header_content="""[NOM CABINET]
+AVOCATS SPÉCIALISÉS EN [SPÉCIALITÉ]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Certificat de spécialisation n°[NUMÉRO]
 
-from typing import Dict, List, Any
-import json
-from modules.dataclasses import StyleConfig, DocumentTemplate, TypeDocument, StyleRedaction
+[ADRESSE] - [CODE POSTAL] [VILLE]
+T. [TÉLÉPHONE] - F. [FAX] - [EMAIL]""",
+        footer_content="""Membre de [ASSOCIATION SPÉCIALISÉE] - Formateur [ORGANISME]
+[NOM STRUCTURE] - RCS [VILLE] [RCS] - Assurance RCP [ASSUREUR] n°[POLICE]""",
+        logo_path=None,
+        header_style={
+            'text-align': 'center',
+            'font-weight': 'normal',
+            'font-size': '12px',
+            'margin-bottom': '30px',
+            'line-height': '1.6'
+        },
+        footer_style={
+            'text-align': 'center',
+            'font-size': '8px',
+            'margin-top': '35px',
+            'color': '#666666'
+        },
+        page_margins={
+            'top': 3.0,
+            'bottom': 2.5,
+            'left': 2.5,
+            'right': 2.5
+        },
+        font_family="Calibri",
+        font_size=11,
+        line_spacing=1.5
+    )
+]
 
 # ========== TEMPLATES DE DOCUMENTS INTÉGRÉS ==========
 
@@ -255,7 +346,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
         name="Plainte avec constitution de partie civile",
         type=TypeDocument.PLAINTE_CPC,
         structure=[
-            "Monsieur le Doyen des Juges d'Instruction,",
+            "Monsieur le Doyen des Juges d\'Instruction,",
             "",
             "J\'ai l\'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :",
             "",
@@ -293,7 +384,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
         ],
         style=StyleRedaction.FORMEL,
         category="Pénal",
-        description="Modèle de plainte avec constitution de partie civile pour saisir le juge d'instruction"
+        description="Modèle de plainte avec constitution de partie civile pour saisir le juge d\'instruction"
     ),
     
     DocumentTemplate(
@@ -322,7 +413,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "[Argumentation juridique]",
             "",
             "B. En fait",
-            "[Application aux faits de l'espèce]",
+            "[Application aux faits de l\'espèce]",
             "",
             "### II. SUR [DEUXIÈME MOYEN]",
             "[Structure similaire]",
@@ -390,7 +481,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
         ],
         style=StyleRedaction.FORMEL,
         category="Procédure civile",
-        description="Modèle d'assignation en justice"
+        description="Modèle d\'assignation en justice"
     ),
     
     DocumentTemplate(
@@ -412,7 +503,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "En effet, [RAPPEL DES FAITS ET DU FONDEMENT].",
             "",
-            "Malgré mes relances [DÉMARCHES AMIABLES], vous n'avez pas donné suite.",
+            "Malgré mes relances [DÉMARCHES AMIABLES], vous n\'avez pas donné suite.",
             "",
             "En conséquence, je vous demande de [ACTION PRÉCISE] dans un délai de [DÉLAI] à compter de la réception de la présente.",
             "",
@@ -421,7 +512,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "- [Dommages et intérêts]",
             "- [Frais de procédure]",
             "",
-            "Dans l'attente de votre réponse, je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées.",
+            "Dans l\'attente de votre réponse, je vous prie d\'agréer, Madame, Monsieur, l\'expression de mes salutations distinguées.",
             "",
             "[Signature]"
         ],
@@ -440,17 +531,17 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "ENTRE LES SOUSSIGNÉS :",
             "",
             "[PARTIE 1], ci-après dénommé « [DÉNOMINATION] »",
-            "D'une part,",
+            "D\'une part,",
             "",
             "ET",
             "",
             "[PARTIE 2], ci-après dénommé « [DÉNOMINATION] »",
-            "D'autre part,",
+            "D\'autre part,",
             "",
             "IL A ÉTÉ CONVENU CE QUI SUIT :",
             "",
             "## Article 1 - Objet",
-            "[Description de l'objet du contrat]",
+            "[Description de l\'objet du contrat]",
             "",
             "## Article 2 - Obligations des parties",
             "### 2.1 Obligations de [PARTIE 1]",
@@ -496,7 +587,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "## II. DISCUSSION",
             "",
-            "### A. Sur l'irrecevabilité des demandes",
+            "### A. Sur l\'irrecevabilité des demandes",
             "[Si applicable]",
             "",
             "### B. Sur le mal-fondé des demandes",
@@ -516,7 +607,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "PAR CES MOTIFS,",
             "",
             "Plaise au Tribunal de :",
-            "- Débouter [DEMANDEUR] de l'ensemble de ses demandes",
+            "- Débouter [DEMANDEUR] de l\'ensemble de ses demandes",
             "- [Demandes reconventionnelles]",
             "- Condamner [DEMANDEUR] aux dépens",
             "",
@@ -536,7 +627,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "À Monsieur/Madame le Président du [JURIDICTION]",
             "",
-            "Le requérant a l'honneur de vous exposer ce qui suit :",
+            "Le requérant a l\'honneur de vous exposer ce qui suit :",
             "",
             "## FAITS",
             "[Exposé des faits]",
@@ -545,7 +636,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "[Fondements juridiques]",
             "",
             "## DEMANDE",
-            "C'est pourquoi le requérant sollicite qu'il plaise au Tribunal de :",
+            "C\'est pourquoi le requérant sollicite qu\'il plaise au Tribunal de :",
             "[Demande précise]",
             "",
             "PIÈCES JOINTES :",
@@ -578,7 +669,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "",
             "[Corps du courrier]",
             "",
-            "Dans l'attente de vous lire, je vous prie de croire, Cher Confrère, en l'assurance de mes sentiments confraternels dévoués.",
+            "Dans l\'attente de vous lire, je vous prie de croire, Cher Confrère, en l\'assurance de mes sentiments confraternels dévoués.",
             "",
             "[Signature]"
         ],
@@ -589,10 +680,10 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     
     DocumentTemplate(
         id="note_analyse",
-        name="Note d'analyse juridique",
+        name="Note d\'analyse juridique",
         type=TypeDocument.NOTE,
         structure=[
-            "NOTE D'ANALYSE",
+            "NOTE D\'ANALYSE",
             "",
             "Date : [DATE]",
             "Objet : [OBJET]",
@@ -611,7 +702,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "### B. Règles applicables",
             "[Textes et jurisprudence]",
             "",
-            "### C. Application au cas d'espèce",
+            "### C. Application au cas d\'espèce",
             "[Raisonnement]",
             "",
             "## III. ÉVALUATION DES RISQUES",
@@ -622,13 +713,13 @@ BUILTIN_DOCUMENT_TEMPLATES = [
             "2. [Recommandation 2]",
             "",
             "## V. PROCHAINES ÉTAPES",
-            "[Plan d'action]",
+            "[Plan d\'action]",
             "",
             "[Signature]"
         ],
         style=StyleRedaction.SYNTHETIQUE,
         category="Analyse",
-        description="Modèle de note d'analyse juridique interne"
+        description="Modèle de note d\'analyse juridique interne"
     )
 ]
 
@@ -1162,24 +1253,13 @@ class DocumentConfigurations:
     
     # Templates d'emails
     EMAIL_TEMPLATES = {
-        'envoi_pieces': {
-            'objet': 'Transmission de pièces - Dossier {reference}',
-            'corps': """Maître,
-Suite à notre entretien de ce jour, je vous prie de bien vouloir trouver ci-joint les pièces suivantes :
-{liste_pieces}
-Ces documents viennent compléter le dossier référencé {reference}.
-Je reste à votre disposition pour tout complément d'information.
-Bien cordialement,
-{expediteur}"""
+        "envoi_pieces": {
+            "objet": "Transmission de pièces - Dossier {reference}",
+            "corps": "Maître,\n\nSuite à notre entretien de ce jour, je vous prie de bien vouloir trouver ci-joint les pièces suivantes :\n{liste_pieces}\n\nCes documents viennent compléter le dossier référencé {reference}.\n\nJe reste à votre disposition pour tout complément concernant ce dossier.\n\nBien cordialement,\n{expediteur}"
         },
-        'demande_informations': {
-            "objet": "Demande d'informations complémentaires - {dossier}",
-            'corps': """Cher Confrère,
-Dans le cadre du dossier {dossier}, j'aurais besoin des informations suivantes :
-{liste_questions}
-Je vous serais reconnaissant de bien vouloir me faire parvenir ces éléments dans les meilleurs délais.
-Bien confraternellement,
-{expediteur}"""
+        "demande_informations": {
+            "objet": "Demande de renseignements complémentaires - {dossier}",
+            "corps": "Cher Confrère,\n\nDans le cadre du dossier {dossier}, il me faudrait les informations suivantes :\n{liste_questions}\n\nJe vous serais reconnaissant de bien vouloir me faire parvenir ces éléments dans les meilleurs délais.\n\nBien confraternellement,\n{expediteur}"
         }
     }
     
