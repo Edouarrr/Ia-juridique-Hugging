@@ -1,560 +1,587 @@
-"""Gestionnaire Azure Search avec support vectoriel et recherche hybride"""
+"""
+Gestionnaire Azure Cognitive Search pour la recherche de documents juridiques
+"""
 
 import os
-from typing import List, Dict, Any, Optional, Tuple
-from azure.core.credentials import AzureKeyCredential
-import traceback
 import logging
+from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime
+import json
+import re
+from dataclasses import dataclass, field
 
-# Imports Azure Search
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Import conditionnel d'Azure Search
 try:
     from azure.search.documents import SearchClient
     from azure.search.documents.indexes import SearchIndexClient
-    from azure.search.documents.models import (
-        SearchMode,
-        QueryType,
-        VectorizedQuery,
-        VectorFilterMode,
-        HybridSearch,
-        HybridCountAndFacetMode,
-        RawVectorQuery
+    from azure.search.documents.indexes.models import (
+        SearchIndex,
+        SimpleField,
+        SearchableField,
+        SearchField,
+        SearchFieldDataType,
+        VectorSearch,
+        HnswAlgorithmConfiguration,
+        VectorSearchProfile,
+        SemanticConfiguration,
+        SemanticPrioritizedFields,
+        SemanticField,
+        SemanticSearch,
+        ScoringProfile,
+        TextWeights
     )
+    from azure.search.documents.models import (
+        VectorizedQuery,
+        QueryType,
+        QueryCaptionType,
+        QueryAnswerType
+    )
+    from azure.core.credentials import AzureKeyCredential
+    from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
     AZURE_SEARCH_AVAILABLE = True
 except ImportError as e:
+    logger.error(f"Azure Search SDK non disponible: {e}")
     AZURE_SEARCH_AVAILABLE = False
-    print(f"[AzureSearchManager] ❌ Azure Search SDK non disponible: {e}")
+    # Classes de substitution pour éviter les erreurs
+    SearchClient = None
+    SearchIndexClient = None
+    AzureKeyCredential = None
 
-logger = logging.getLogger(__name__)
+@dataclass
+class SearchResult:
+    """Résultat de recherche structuré"""
+    id: str
+    title: str
+    content: str
+    source: str
+    score: float
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    highlights: List[str] = field(default_factory=list)
 
 class AzureSearchManager:
-    """Gestionnaire pour Azure Cognitive Search avec support vectoriel"""
+    """Gestionnaire pour Azure Cognitive Search"""
     
     def __init__(self):
         """Initialise le gestionnaire Azure Search"""
         self.search_client = None
         self.index_client = None
-        self.index_name = "search-rag-juridique"  # Index avec support vectoriel
-        self._connection_error = None
-        self._index_fields = None
-        self._has_vector_search = False
-        self._vector_field_name = None
-        
-        print(f"[AzureSearchManager] Initialisation - AZURE_SEARCH_AVAILABLE: {AZURE_SEARCH_AVAILABLE}")
-        
-        if not AZURE_SEARCH_AVAILABLE:
-            self._connection_error = "SDK Azure Search non disponible"
-            return
-        
-        # Récupérer les variables d'environnement
+        self.index_name = os.getenv('AZURE_SEARCH_INDEX', 'juridique-index')
         self.endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
         self.key = os.getenv('AZURE_SEARCH_KEY')
+        self.connection_error = None
         
-        # Méthodes alternatives pour récupérer les credentials
+        logger.info(f"Initialisation Azure Search - Index: {self.index_name}")
+        
+        if not AZURE_SEARCH_AVAILABLE:
+            self.connection_error = "SDK Azure Search non disponible. Installez azure-search-documents."
+            logger.error(self.connection_error)
+            return
+            
         if not self.endpoint or not self.key:
-            try:
-                import streamlit as st
-                if hasattr(st, 'secrets'):
-                    self.endpoint = self.endpoint or st.secrets.get('AZURE_SEARCH_ENDPOINT')
-                    self.key = self.key or st.secrets.get('AZURE_SEARCH_KEY')
-            except:
-                pass
-        
-        # Initialiser la connexion
-        self._initialize_connection()
-    
-    def _initialize_connection(self):
-        """Initialise la connexion à Azure Search"""
+            self.connection_error = "Variables d'environnement AZURE_SEARCH_ENDPOINT et AZURE_SEARCH_KEY requises"
+            logger.error(self.connection_error)
+            return
+            
         try:
-            if not self.endpoint or not self.key:
-                self._connection_error = "Variables d'environnement manquantes (AZURE_SEARCH_ENDPOINT ou AZURE_SEARCH_KEY)"
-                print(f"[AzureSearchManager] ❌ {self._connection_error}")
-                return
-            
-            print(f"[AzureSearchManager] Endpoint: {self.endpoint}")
-            print(f"[AzureSearchManager] Index: {self.index_name}")
-            
-            # Créer les credentials
+            # Créer les clients Azure Search
             credential = AzureKeyCredential(self.key)
             
-            # Créer le client pour l'index
-            self.index_client = SearchIndexClient(
-                endpoint=self.endpoint,
-                credential=credential
-            )
-            
-            # Créer le client de recherche
             self.search_client = SearchClient(
                 endpoint=self.endpoint,
                 index_name=self.index_name,
                 credential=credential
             )
             
-            # Tester la connexion et analyser l'index
-            self._test_connection()
-            self._analyze_index_capabilities()
+            self.index_client = SearchIndexClient(
+                endpoint=self.endpoint,
+                credential=credential
+            )
+            
+            # Vérifier la connexion et créer l'index si nécessaire
+            self._ensure_index_exists()
+            
+            logger.info(f"✅ Azure Search connecté avec succès à l'index '{self.index_name}'")
             
         except Exception as e:
-            self._connection_error = f"Erreur de connexion: {str(e)}"
+            self.connection_error = f"Erreur de connexion Azure Search: {str(e)}"
+            logger.error(self.connection_error)
             self.search_client = None
             self.index_client = None
-            logger.error(f"[AzureSearchManager] Erreur initialisation: {e}")
-            print(f"[AzureSearchManager] ❌ {self._connection_error}")
-    
-    def _test_connection(self):
-        """Teste la connexion en vérifiant l'existence de l'index"""
-        try:
-            # Vérifier que l'index existe
-            indexes = list(self.index_client.list_indexes())
-            index_names = [index.name for index in indexes]
-            
-            print(f"[AzureSearchManager] Indexes disponibles: {index_names}")
-            
-            if self.index_name not in index_names:
-                self._connection_error = f"Index '{self.index_name}' introuvable. Indexes disponibles: {', '.join(index_names)}"
-                self.search_client = None
-                print(f"[AzureSearchManager] ❌ {self._connection_error}")
-            else:
-                self._connection_error = None
-                print(f"[AzureSearchManager] ✅ Connexion réussie à l'index '{self.index_name}'")
-                
-        except Exception as e:
-            self._connection_error = f"Erreur lors du test de connexion: {str(e)}"
-            self.search_client = None
-            print(f"[AzureSearchManager] ❌ {self._connection_error}")
-    
-    def _analyze_index_capabilities(self):
-        """Analyse les capacités de l'index (champs vectoriels, etc.)"""
-        if not self.search_client:
-            return
-        
-        try:
-            # Récupérer la définition de l'index
-            index = self.index_client.get_index(self.index_name)
-            self._index_fields = {field.name: field for field in index.fields}
-            
-            print(f"[AzureSearchManager] Champs de l'index: {list(self._index_fields.keys())}")
-            
-            # Détecter les champs vectoriels
-            for field_name, field in self._index_fields.items():
-                # Vérifier si c'est un champ vectoriel
-                if hasattr(field, 'vector_search_dimensions') and field.vector_search_dimensions:
-                    self._has_vector_search = True
-                    self._vector_field_name = field_name
-                    print(f"[AzureSearchManager] ✅ Champ vectoriel détecté: '{field_name}' ({field.vector_search_dimensions} dimensions)")
-                    break
-                
-                # Alternative: vérifier le type du champ
-                if hasattr(field, 'type') and 'vector' in str(field.type).lower():
-                    self._has_vector_search = True
-                    self._vector_field_name = field_name
-                    print(f"[AzureSearchManager] ✅ Champ vectoriel détecté (par type): '{field_name}'")
-                    break
-            
-            if not self._has_vector_search:
-                print("[AzureSearchManager] ℹ️ Pas de champ vectoriel détecté - recherche textuelle uniquement")
-                
-        except Exception as e:
-            logger.warning(f"[AzureSearchManager] Impossible d'analyser les capacités de l'index: {e}")
-            print(f"[AzureSearchManager] ⚠️ Analyse de l'index échouée: {e}")
-            self._index_fields = {}
     
     def is_connected(self) -> bool:
         """Vérifie si la connexion est active"""
-        return self.search_client is not None and self._connection_error is None
+        return self.search_client is not None
     
     def get_connection_error(self) -> Optional[str]:
-        """Retourne l'erreur de connexion si elle existe"""
-        return self._connection_error
+        """Retourne l'erreur de connexion s'il y en a une"""
+        return self.connection_error
     
-    async def search(self, query: str, top: int = 10, filter_string: Optional[str] = None, 
-                    vector_query: Optional[List[float]] = None, search_mode: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Effectue une recherche asynchrone dans l'index (compatible avec universal_search_service)
-        
-        Args:
-            query: La requête de recherche textuelle
-            top: Nombre maximum de résultats
-            filter_string: Filtre OData
-            vector_query: Vecteur de requête pour la recherche sémantique (optionnel)
-            search_mode: Mode de recherche forcé ('vector', 'hybrid', 'text') ou None pour auto
+    def _ensure_index_exists(self):
+        """Vérifie que l'index existe, le crée si nécessaire"""
+        if not self.index_client:
+            return
             
-        Returns:
-            Liste des documents trouvés
-        """
-        # Déléguer à la méthode synchrone
-        results, _ = self.search_sync(query, top, filter_string, vector_query, search_mode)
-        return results
+        try:
+            # Vérifier si l'index existe
+            self.index_client.get_index(self.index_name)
+            logger.info(f"Index '{self.index_name}' existe déjà")
+        except ResourceNotFoundError:
+            # L'index n'existe pas, le créer
+            logger.info(f"Création de l'index '{self.index_name}'...")
+            self._create_index()
     
-    def search(self, query: str, top: int = 10, filters: Optional[str] = None, 
-               vector_query: Optional[List[float]] = None, search_mode: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Alias pour search_sync pour compatibilité"""
-        return self.search_sync(query, top, filters, vector_query, search_mode)
+    def _create_index(self):
+        """Crée l'index avec le schéma approprié"""
+        if not AZURE_SEARCH_AVAILABLE or not self.index_client:
+            return
+            
+        try:
+            # Définir les champs de l'index
+            fields = [
+                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
+                SearchableField(name="title", type=SearchFieldDataType.String, 
+                              searchable=True, filterable=True, sortable=True),
+                SearchableField(name="content", type=SearchFieldDataType.String, 
+                              searchable=True),
+                SimpleField(name="source", type=SearchFieldDataType.String, 
+                          filterable=True, facetable=True),
+                SimpleField(name="document_type", type=SearchFieldDataType.String, 
+                          filterable=True, facetable=True),
+                SimpleField(name="date", type=SearchFieldDataType.DateTimeOffset, 
+                          filterable=True, sortable=True),
+                SimpleField(name="parties", type=SearchFieldDataType.Collection(SearchFieldDataType.String), 
+                          filterable=True, facetable=True),
+                SimpleField(name="infractions", type=SearchFieldDataType.Collection(SearchFieldDataType.String), 
+                          filterable=True, facetable=True),
+                SimpleField(name="reference", type=SearchFieldDataType.String, 
+                          filterable=True),
+                SimpleField(name="metadata", type=SearchFieldDataType.String),
+                
+                # Champ pour la recherche vectorielle (si nécessaire)
+                SearchField(
+                    name="content_vector",
+                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                    searchable=True,
+                    vector_search_dimensions=1536,  # Pour OpenAI embeddings
+                    vector_search_profile_name="myHnswProfile"
+                )
+            ]
+            
+            # Configuration de la recherche vectorielle
+            vector_search = VectorSearch(
+                algorithms=[
+                    HnswAlgorithmConfiguration(
+                        name="myHnsw",
+                        parameters={
+                            "m": 4,
+                            "efConstruction": 400,
+                            "efSearch": 500,
+                            "metric": "cosine"
+                        }
+                    )
+                ],
+                profiles=[
+                    VectorSearchProfile(
+                        name="myHnswProfile",
+                        algorithm_configuration_name="myHnsw"
+                    )
+                ]
+            )
+            
+            # Configuration de la recherche sémantique
+            semantic_config = SemanticConfiguration(
+                name="my-semantic-config",
+                prioritized_fields=SemanticPrioritizedFields(
+                    title_field=SemanticField(field_name="title"),
+                    content_fields=[SemanticField(field_name="content")]
+                )
+            )
+            
+            semantic_search = SemanticSearch(configurations=[semantic_config])
+            
+            # Profils de scoring pour améliorer la pertinence
+            scoring_profiles = [
+                ScoringProfile(
+                    name="titleBoost",
+                    text_weights=TextWeights(
+                        weights={"title": 2.0, "content": 1.0}
+                    )
+                )
+            ]
+            
+            # Créer l'index
+            index = SearchIndex(
+                name=self.index_name,
+                fields=fields,
+                vector_search=vector_search,
+                semantic_search=semantic_search,
+                scoring_profiles=scoring_profiles,
+                default_scoring_profile="titleBoost"
+            )
+            
+            self.index_client.create_index(index)
+            logger.info(f"✅ Index '{self.index_name}' créé avec succès")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de l'index: {e}")
+            raise
     
-    def search_sync(self, query: str, top: int = 10, filters: Optional[str] = None, 
-                    vector_query: Optional[List[float]] = None, search_mode: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def search(self, query: str, filters: Optional[Dict] = None, 
+               top: int = 50, skip: int = 0,
+               include_total_count: bool = True,
+               search_mode: str = "any",
+               query_type: str = "simple",
+               use_semantic_search: bool = False) -> Dict[str, Any]:
         """
-        Effectue une recherche synchrone dans l'index avec support vectoriel/hybride/textuel
+        Effectue une recherche dans l'index
         
         Args:
-            query: La requête de recherche textuelle
-            top: Nombre maximum de résultats
+            query: Requête de recherche
             filters: Filtres OData optionnels
-            vector_query: Vecteur de requête pour la recherche sémantique (optionnel)
-            search_mode: Mode de recherche forcé ('vector', 'hybrid', 'text') ou None pour auto
+            top: Nombre maximum de résultats
+            skip: Nombre de résultats à ignorer
+            include_total_count: Inclure le nombre total
+            search_mode: "any" ou "all"
+            query_type: "simple", "full", ou "semantic"
+            use_semantic_search: Utiliser la recherche sémantique
             
         Returns:
-            Tuple (Liste des documents trouvés, métadonnées de recherche)
+            Dictionnaire avec les résultats et métadonnées
         """
-        if not self.is_connected():
-            return [], {"error": self._connection_error}
+        if not self.search_client:
+            return {
+                "results": [],
+                "total_count": 0,
+                "error": "Client de recherche non initialisé"
+            }
         
         try:
-            # Déterminer le mode de recherche
-            if search_mode is None:
-                search_mode = self._determine_search_mode(query, vector_query)
-            
-            logger.info(f"[AzureSearchManager] 🔍 Mode de recherche: {search_mode}")
-            print(f"[AzureSearchManager] 🔍 Recherche '{query}' en mode: {search_mode}")
-            
-            # Paramètres de base
+            # Construire les paramètres de recherche
             search_params = {
+                "search_text": query,
                 "top": top,
-                "include_total_count": True,
-                "select": "*"  # Récupérer tous les champs
+                "skip": skip,
+                "include_total_count": include_total_count,
+                "search_mode": search_mode,
+                "query_type": QueryType.SIMPLE if query_type == "simple" else QueryType.FULL,
+                "highlight_fields": "title,content",
+                "highlight_pre_tag": "<mark>",
+                "highlight_post_tag": "</mark>"
             }
             
+            # Ajouter les filtres OData si fournis
             if filters:
-                search_params["filter"] = filters
+                filter_expressions = []
+                
+                if "document_type" in filters:
+                    filter_expressions.append(f"document_type eq '{filters['document_type']}'")
+                
+                if "partie" in filters:
+                    filter_expressions.append(f"parties/any(p: p eq '{filters['partie']}')")
+                
+                if "infractions" in filters:
+                    infraction_filters = [f"infractions/any(i: i eq '{inf}')" for inf in filters['infractions']]
+                    filter_expressions.append(f"({' or '.join(infraction_filters)})")
+                
+                if "date_range" in filters and len(filters["date_range"]) == 2:
+                    start_date = filters["date_range"][0].isoformat()
+                    end_date = filters["date_range"][1].isoformat()
+                    filter_expressions.append(f"date ge {start_date} and date le {end_date}")
+                
+                if filter_expressions:
+                    search_params["filter"] = " and ".join(filter_expressions)
             
-            # Configuration selon le mode de recherche
-            if search_mode == "vector" and vector_query and self._has_vector_search:
-                # Recherche vectorielle pure
-                print(f"[AzureSearchManager] Mode vectoriel avec {len(vector_query)} dimensions")
-                vector_queries = [VectorizedQuery(
-                    vector=vector_query,
-                    k_nearest_neighbors=top,
-                    fields=self._vector_field_name
-                )]
-                search_params["vector_queries"] = vector_queries
-                
-            elif search_mode == "hybrid" and vector_query and self._has_vector_search:
-                # Recherche hybride (textuelle + vectorielle)
-                print(f"[AzureSearchManager] Mode hybride")
-                search_params["search_text"] = query
+            # Ajouter la recherche sémantique si activée
+            if use_semantic_search and query_type == "semantic":
                 search_params["query_type"] = QueryType.SEMANTIC
-                
-                # Essayer de trouver la configuration sémantique
-                if hasattr(self, '_semantic_config_name'):
-                    search_params["semantic_configuration_name"] = self._semantic_config_name
-                else:
-                    search_params["semantic_configuration_name"] = "default"
-                
-                vector_queries = [VectorizedQuery(
-                    vector=vector_query,
-                    k_nearest_neighbors=top,
-                    fields=self._vector_field_name
-                )]
-                search_params["vector_queries"] = vector_queries
-                
-            else:
-                # Recherche textuelle classique
-                print(f"[AzureSearchManager] Mode textuel")
-                search_params["search_text"] = query
-                search_params["search_mode"] = SearchMode.ALL
-                search_params["query_type"] = QueryType.SIMPLE
-                
-                # Activer la recherche sémantique si disponible
-                if self._has_semantic_search():
-                    search_params["query_type"] = QueryType.SEMANTIC
-                    search_params["semantic_configuration_name"] = "default"
+                search_params["semantic_configuration_name"] = "my-semantic-config"
+                search_params["query_caption"] = QueryCaptionType.EXTRACTIVE
+                search_params["query_answer"] = QueryAnswerType.EXTRACTIVE
             
             # Effectuer la recherche
-            print(f"[AzureSearchManager] Exécution de la recherche...")
             results = self.search_client.search(**search_params)
             
             # Traiter les résultats
-            documents = []
-            total_count = 0
+            search_results = []
+            facets = {}
             
             for result in results:
-                doc = dict(result)
+                # Créer un objet SearchResult
+                search_result = SearchResult(
+                    id=result.get("id", ""),
+                    title=result.get("title", "Sans titre"),
+                    content=result.get("content", ""),
+                    source=result.get("source", "Unknown"),
+                    score=result.get("@search.score", 0.0),
+                    metadata={
+                        "document_type": result.get("document_type", ""),
+                        "date": result.get("date", ""),
+                        "parties": result.get("parties", []),
+                        "infractions": result.get("infractions", []),
+                        "reference": result.get("reference", "")
+                    }
+                )
                 
-                # Ajouter les métadonnées de scoring
-                if hasattr(result, '@search.score'):
-                    doc['@search.score'] = getattr(result, '@search.score')
-                    doc['search_score'] = doc['@search.score']  # Alias pour compatibilité
+                # Ajouter les highlights si disponibles
+                if "@search.highlights" in result:
+                    highlights = []
+                    for field, values in result["@search.highlights"].items():
+                        highlights.extend(values)
+                    search_result.highlights = highlights
                 
-                if hasattr(result, '@search.reranker_score'):
-                    doc['reranker_score'] = getattr(result, '@search.reranker_score')
-                
-                if hasattr(result, '@search.captions'):
-                    captions = getattr(result, '@search.captions')
-                    if captions:
-                        doc['captions'] = [{'text': c.text, 'highlights': c.highlights} for c in captions]
-                
-                documents.append(doc)
+                search_results.append(search_result)
             
-            # Récupérer le nombre total
-            if hasattr(results, 'get_count'):
-                total_count = results.get_count()
+            # Récupérer les facettes si disponibles
+            if hasattr(results, "facets") and results.facets:
+                facets = dict(results.facets)
             
-            print(f"[AzureSearchManager] ✅ {len(documents)} résultats trouvés (total: {total_count})")
+            # Récupérer le nombre total si disponible
+            total_count = 0
+            if hasattr(results, "get_count"):
+                total_count = results.get_count() or len(search_results)
             
-            # Métadonnées de recherche
-            metadata = {
+            return {
+                "results": search_results,
                 "total_count": total_count,
-                "search_mode": search_mode,
-                "has_vector": vector_query is not None,
-                "index_has_vector": self._has_vector_search
+                "facets": facets,
+                "query": query,
+                "filters": filters
             }
             
-            return documents, metadata
-            
         except Exception as e:
-            error_msg = f"Erreur lors de la recherche: {e}"
-            logger.error(f"[AzureSearchManager] {error_msg}")
-            print(f"[AzureSearchManager] ❌ {error_msg}")
-            return [], {"error": str(e)}
+            logger.error(f"Erreur lors de la recherche: {e}")
+            return {
+                "results": [],
+                "total_count": 0,
+                "error": str(e)
+            }
     
-    def _determine_search_mode(self, query: str, vector_query: Optional[List[float]]) -> str:
-        """Détermine automatiquement le mode de recherche optimal"""
-        if vector_query and self._has_vector_search:
-            # Si on a un vecteur et que l'index le supporte
-            if query and len(query.strip()) > 0:
-                return "hybrid"  # Recherche hybride si on a aussi du texte
-            else:
-                return "vector"  # Recherche vectorielle pure
-        else:
-            return "text"  # Recherche textuelle par défaut
-    
-    def _has_semantic_search(self) -> bool:
-        """Vérifie si la recherche sémantique est disponible"""
-        # Cette méthode pourrait être améliorée en vérifiant la configuration réelle
-        # Pour l'instant, on suppose qu'elle est disponible si on a des champs vectoriels
-        return self._has_vector_search
-    
-    def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
+    def index_document(self, document: Dict[str, Any]) -> bool:
         """
-        Récupère un document spécifique par son ID
+        Indexe un document dans Azure Search
         
         Args:
-            document_id: L'ID du document
-            
-        Returns:
-            Le document ou None si non trouvé
-        """
-        if not self.is_connected():
-            return None
-        
-        try:
-            document = self.search_client.get_document(key=document_id)
-            return dict(document)
-        except Exception as e:
-            print(f"[AzureSearchManager] Erreur lors de la récupération du document: {e}")
-            return None
-    
-    def upload_documents(self, documents: List[Dict[str, Any]]) -> bool:
-        """
-        Upload des documents dans l'index
-        
-        Args:
-            documents: Liste des documents à uploader
+            document: Document à indexer avec les champs requis
             
         Returns:
             True si succès, False sinon
         """
-        if not self.is_connected():
+        if not self.search_client:
+            logger.error("Client de recherche non initialisé")
             return False
         
         try:
-            result = self.search_client.upload_documents(documents=documents)
-            success = all(r.succeeded for r in result)
-            print(f"[AzureSearchManager] Upload de {len(documents)} documents: {'✅ Succès' if success else '❌ Échec'}")
-            return success
+            # Valider et préparer le document
+            doc_to_index = {
+                "id": document.get("id", ""),
+                "title": document.get("title", ""),
+                "content": document.get("content", ""),
+                "source": document.get("source", ""),
+                "document_type": document.get("document_type", "unknown"),
+                "date": document.get("date", datetime.now().isoformat()),
+                "parties": document.get("parties", []),
+                "infractions": document.get("infractions", []),
+                "reference": document.get("reference", ""),
+                "metadata": json.dumps(document.get("metadata", {}))
+            }
+            
+            # Ajouter le vecteur si fourni
+            if "content_vector" in document:
+                doc_to_index["content_vector"] = document["content_vector"]
+            
+            # Indexer le document
+            result = self.search_client.upload_documents(documents=[doc_to_index])
+            
+            if result[0].succeeded:
+                logger.info(f"Document {doc_to_index['id']} indexé avec succès")
+                return True
+            else:
+                logger.error(f"Échec de l'indexation du document {doc_to_index['id']}")
+                return False
+                
         except Exception as e:
-            print(f"[AzureSearchManager] ❌ Erreur lors de l'upload des documents: {e}")
+            logger.error(f"Erreur lors de l'indexation: {e}")
             return False
+    
+    def index_documents_batch(self, documents: List[Dict[str, Any]], 
+                            batch_size: int = 100) -> Tuple[int, int]:
+        """
+        Indexe plusieurs documents par batch
+        
+        Args:
+            documents: Liste de documents à indexer
+            batch_size: Taille des batchs
+            
+        Returns:
+            Tuple (nombre de succès, nombre d'échecs)
+        """
+        if not self.search_client:
+            logger.error("Client de recherche non initialisé")
+            return 0, len(documents)
+        
+        success_count = 0
+        failure_count = 0
+        
+        # Traiter par batch
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+            
+            try:
+                # Préparer les documents
+                docs_to_index = []
+                for doc in batch:
+                    doc_to_index = {
+                        "id": doc.get("id", ""),
+                        "title": doc.get("title", ""),
+                        "content": doc.get("content", ""),
+                        "source": doc.get("source", ""),
+                        "document_type": doc.get("document_type", "unknown"),
+                        "date": doc.get("date", datetime.now().isoformat()),
+                        "parties": doc.get("parties", []),
+                        "infractions": doc.get("infractions", []),
+                        "reference": doc.get("reference", ""),
+                        "metadata": json.dumps(doc.get("metadata", {}))
+                    }
+                    
+                    if "content_vector" in doc:
+                        doc_to_index["content_vector"] = doc["content_vector"]
+                    
+                    docs_to_index.append(doc_to_index)
+                
+                # Indexer le batch
+                results = self.search_client.upload_documents(documents=docs_to_index)
+                
+                # Compter les succès et échecs
+                for result in results:
+                    if result.succeeded:
+                        success_count += 1
+                    else:
+                        failure_count += 1
+                        
+            except Exception as e:
+                logger.error(f"Erreur lors de l'indexation du batch: {e}")
+                failure_count += len(batch)
+        
+        logger.info(f"Indexation terminée: {success_count} succès, {failure_count} échecs")
+        return success_count, failure_count
     
     def delete_document(self, document_id: str) -> bool:
         """
         Supprime un document de l'index
         
         Args:
-            document_id: L'ID du document à supprimer
+            document_id: ID du document à supprimer
             
         Returns:
             True si succès, False sinon
         """
-        if not self.is_connected():
+        if not self.search_client:
             return False
         
         try:
             result = self.search_client.delete_documents(documents=[{"id": document_id}])
             return result[0].succeeded
         except Exception as e:
-            print(f"[AzureSearchManager] ❌ Erreur lors de la suppression du document: {e}")
+            logger.error(f"Erreur lors de la suppression: {e}")
             return False
     
-    def list_containers(self) -> List[str]:
-        """Pour compatibilité avec l'ancienne interface - retourne liste vide"""
-        return []
-    
-    def get_index_statistics(self) -> Optional[Dict[str, Any]]:
-        """
-        Récupère les statistiques détaillées de l'index
-        
-        Returns:
-            Dictionnaire avec les statistiques ou None
-        """
-        if not self.is_connected():
-            return None
+    def get_document_count(self) -> int:
+        """Retourne le nombre total de documents dans l'index"""
+        if not self.search_client:
+            return 0
         
         try:
-            # Récupérer le nombre de documents
-            results = self.search_client.search(
-                search_text="*",
-                top=0,
-                include_total_count=True
-            )
-            
-            total_count = results.get_count() if hasattr(results, 'get_count') else 0
-            
-            # Analyser les capacités
-            capabilities = {
-                "text_search": True,
-                "vector_search": self._has_vector_search,
-                "semantic_search": self._has_semantic_search(),
-                "vector_field": self._vector_field_name
-            }
-            
-            # Récupérer les champs disponibles
-            field_names = list(self._index_fields.keys()) if self._index_fields else []
-            
-            return {
-                "index_name": self.index_name,
-                "document_count": total_count,
-                "endpoint": self.endpoint,
-                "capabilities": capabilities,
-                "fields": field_names,
-                "vector_dimensions": self._get_vector_dimensions()
-            }
-            
-        except Exception as e:
-            logger.error(f"[AzureSearchManager] Erreur lors de la récupération des statistiques: {e}")
-            return None
+            result = self.search_client.search(search_text="*", top=0, include_total_count=True)
+            return result.get_count() or 0
+        except Exception:
+            return 0
     
-    def _get_vector_dimensions(self) -> Optional[int]:
-        """Récupère le nombre de dimensions du champ vectoriel"""
-        if not self._has_vector_search or not self._vector_field_name or not self._index_fields:
-            return None
-        
-        try:
-            field = self._index_fields.get(self._vector_field_name)
-            if field and hasattr(field, 'vector_search_dimensions'):
-                return field.vector_search_dimensions
-        except:
-            pass
-        
-        return None
-    
-    def search_similar_documents(self, document_id: str, top: int = 10) -> List[Dict[str, Any]]:
+    def analyze_query(self, query: str) -> Dict[str, Any]:
         """
-        Recherche des documents similaires basée sur un document existant
+        Analyse une requête pour extraire les éléments clés
         
         Args:
-            document_id: ID du document de référence
-            top: Nombre de résultats similaires
+            query: Requête à analyser
             
         Returns:
-            Liste des documents similaires
+            Dictionnaire avec les éléments extraits
         """
-        if not self.is_connected():
-            return []
+        analysis = {
+            "original_query": query,
+            "reference": None,
+            "document_types": [],
+            "parties": [],
+            "keywords": [],
+            "infractions": []
+        }
         
-        try:
-            # Récupérer le document source
-            source_doc = self.get_document(document_id)
-            if not source_doc:
-                return []
-            
-            # Si on a un champ vectoriel, utiliser la similarité vectorielle
-            if self._has_vector_search and self._vector_field_name in source_doc:
-                vector = source_doc[self._vector_field_name]
-                documents, _ = self.search_sync(
-                    query="",
-                    top=top,
-                    vector_query=vector,
-                    search_mode="vector"
-                )
-                # Filtrer le document source des résultats
-                return [doc for doc in documents if doc.get('id') != document_id]
-            
-            # Sinon, utiliser une recherche textuelle basée sur le contenu
-            else:
-                # Extraire du texte pertinent du document
-                text_content = self._extract_searchable_text(source_doc)
-                if text_content:
-                    documents, _ = self.search_sync(
-                        query=text_content[:500],  # Limiter la longueur
-                        top=top + 1  # +1 car on va filtrer le document source
-                    )
-                    return [doc for doc in documents if doc.get('id') != document_id][:top]
-            
-            return []
-            
-        except Exception as e:
-            logger.error(f"[AzureSearchManager] Erreur recherche documents similaires: {e}")
-            return []
+        # Extraire la référence @
+        ref_match = re.search(r'@(\w+)', query)
+        if ref_match:
+            analysis["reference"] = ref_match.group(1)
+            query = query.replace(ref_match.group(0), "")
+        
+        # Détecter les types de documents
+        doc_types = ["conclusions", "plainte", "assignation", "courrier", "expertise", "jugement"]
+        for doc_type in doc_types:
+            if doc_type.lower() in query.lower():
+                analysis["document_types"].append(doc_type)
+        
+        # Détecter les infractions
+        infractions = [
+            "abus de biens sociaux", "corruption", "escroquerie", 
+            "abus de confiance", "blanchiment", "faux", "recel"
+        ]
+        for infraction in infractions:
+            if infraction.lower() in query.lower():
+                analysis["infractions"].append(infraction)
+        
+        # Extraire les parties (mots en majuscules)
+        parties = re.findall(r'\b[A-Z]{3,}\b', query)
+        analysis["parties"] = list(set(parties))
+        
+        # Extraire les mots-clés restants
+        keywords = query.split()
+        keywords = [k for k in keywords if len(k) > 2 and k not in analysis["parties"]]
+        analysis["keywords"] = keywords
+        
+        return analysis
     
-    def _extract_searchable_text(self, document: Dict[str, Any]) -> str:
-        """Extrait le texte recherchable d'un document"""
-        # Chercher les champs de contenu communs
-        content_fields = ['content', 'text', 'description', 'title', 'body']
-        
-        for field in content_fields:
-            if field in document and document[field]:
-                return str(document[field])
-        
-        # Si aucun champ standard, concatener les valeurs textuelles
-        text_parts = []
-        for key, value in document.items():
-            if isinstance(value, str) and len(value) > 10 and not key.startswith('_'):
-                text_parts.append(value)
-        
-        return " ".join(text_parts[:3])  # Limiter à 3 champs
-    
-    def get_search_suggestions(self, query: str, top: int = 5) -> List[str]:
+    def get_search_suggestions(self, partial_query: str) -> List[str]:
         """
-        Obtient des suggestions de recherche basées sur la requête
+        Retourne des suggestions basées sur une requête partielle
         
         Args:
-            query: Début de la requête
-            top: Nombre de suggestions
+            partial_query: Début de requête
             
         Returns:
             Liste de suggestions
         """
-        if not self.is_connected() or len(query) < 2:
-            return []
+        suggestions = []
+        
+        if not self.search_client or len(partial_query) < 2:
+            return suggestions
         
         try:
-            # Utiliser la fonctionnalité de suggestion si disponible
-            # Sinon, faire une recherche partielle
+            # Rechercher avec autocomplete si disponible
             results = self.search_client.search(
-                search_text=f"{query}*",
-                top=top * 2,
-                search_mode=SearchMode.ALL,
-                select="title,content"
+                search_text=f"{partial_query}*",
+                top=5,
+                search_mode="all",
+                select="title,reference"
             )
             
-            suggestions = set()
             for result in results:
-                # Extraire des mots-clés pertinents
-                if 'title' in result:
-                    suggestions.add(result['title'][:50])
-                
-            return list(suggestions)[:top]
+                if result.get("title"):
+                    suggestions.append(result["title"])
+                if result.get("reference") and result["reference"] not in suggestions:
+                    suggestions.append(f"@{result['reference']}")
             
         except Exception as e:
-            logger.error(f"[AzureSearchManager] Erreur suggestions: {e}")
-            return []
+            logger.error(f"Erreur lors de la génération de suggestions: {e}")
+        
+        return suggestions[:5]  # Limiter à 5 suggestions
