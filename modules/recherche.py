@@ -16,6 +16,54 @@ try:
     SEARCH_SERVICE_AVAILABLE = True
 except ImportError:
     SEARCH_SERVICE_AVAILABLE = False
+    # Définir une classe de fallback pour UniversalSearchService
+    class UniversalSearchService:
+        def __init__(self):
+            self.cache = {}
+        
+        def analyze_query_advanced(self, query: str):
+            return self._simple_query_analysis(query)
+        
+        def _simple_query_analysis(self, query: str):
+            class SimpleQueryAnalysis:
+                def __init__(self, query):
+                    self.original_query = query
+                    self.query_lower = query.lower()
+                    self.timestamp = datetime.now()
+                    self.command_type = 'search'
+                    self.reference = None
+                    self.parties = {'demandeurs': [], 'defendeurs': []}
+                    self.infractions = []
+            
+            return SimpleQueryAnalysis(query)
+        
+        async def search(self, query: str):
+            class SearchResult:
+                def __init__(self):
+                    self.documents = []
+                    self.facets = {}
+                    self.suggestions = []
+            return SearchResult()
+        
+        def generate_reference_suggestions(self, partial: str):
+            return []
+        
+        def collect_all_references(self):
+            return []
+        
+        def clear_cache(self):
+            self.cache.clear()
+        
+        async def get_search_statistics(self):
+            return {
+                'total_searches': 0,
+                'average_results': 0,
+                'cache_size': 0,
+                'popular_keywords': {}
+            }
+    
+    def get_universal_search_service():
+        return UniversalSearchService()
 
 # Import des dataclasses et configurations
 try:
@@ -30,6 +78,23 @@ try:
     DATACLASSES_AVAILABLE = True
 except ImportError:
     DATACLASSES_AVAILABLE = False
+    # Classes de fallback minimales
+    class Document:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+    
+    class QueryAnalysis:
+        def __init__(self, original_query, **kwargs):
+            self.original_query = original_query
+            self.query_lower = original_query.lower()
+            self.timestamp = datetime.now()
+            self.command_type = 'search'
+            self.reference = None
+            self.parties = {'demandeurs': [], 'defendeurs': []}
+            self.infractions = []
+            for k, v in kwargs.items():
+                setattr(self, k, v)
 
 # Import des configurations
 try:
@@ -48,6 +113,18 @@ except ImportError:
     FORMULES_JURIDIQUES = {}
     ARGUMENTATION_PATTERNS = {}
     ANALYSIS_CONFIGS = {}
+
+# ========================= CLASSE UniversalSearchInterface =========================
+
+class UniversalSearchInterface:
+    """Interface de recherche universelle - classe qui était manquante"""
+    
+    def __init__(self):
+        self.search_service = get_universal_search_service() if SEARCH_SERVICE_AVAILABLE else None
+    
+    def show_interface(self):
+        """Affiche l'interface de recherche universelle"""
+        show_page()
 
 # ========================= FONCTIONS UTILITAIRES LOCALES =========================
 
@@ -347,6 +424,12 @@ try:
     HAS_API_UTILS = True
 except ImportError:
     HAS_API_UTILS = False
+    # Fonctions de fallback
+    def get_available_models():
+        return ["claude-3-sonnet", "gpt-4", "gpt-3.5-turbo"]
+    
+    async def call_llm_api(prompt, model="claude-3-sonnet", temperature=0.3, max_tokens=2000):
+        return "API non disponible - Génération de contenu désactivée"
 
 # ========================= IMPORTS DES MODULES SPÉCIFIQUES =========================
 
@@ -616,27 +699,21 @@ def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> 
     
     return f"""
 Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
-
 PARTIES MISES EN CAUSE :
 {parties_text}
-
 INFRACTIONS À DÉVELOPPER :
 {infractions_text}
-
 STRUCTURE IMPOSÉE :
-
 1. EN-TÊTE COMPLET
    - Destinataire (Doyen des juges d'instruction)
    - Plaignant (à compléter)
    - Objet détaillé
-
 2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
    - Contexte détaillé de l'affaire
    - Chronologie précise et complète
    - Description minutieuse de chaque fait
    - Liens entre les protagonistes
    - Montants et préjudices détaillés
-
 3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
    Pour chaque infraction :
    - Rappel complet des textes
@@ -644,19 +721,16 @@ STRUCTURE IMPOSÉE :
    - Application aux faits espèce par espèce
    - Jurisprudences pertinentes citées
    - Réfutation des arguments contraires
-
 4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
    - Préjudice financier chiffré
    - Préjudice moral développé
    - Préjudice d'image
    - Autres préjudices
-
 5. DEMANDES ET CONCLUSION (1000+ mots)
    - Constitution de partie civile motivée
    - Demandes d'actes précises
    - Mesures conservatoires
    - Provision sur dommages-intérêts
-
 CONSIGNES :
 - Style juridique soutenu et précis
 - Citations de jurisprudences récentes
@@ -680,14 +754,12 @@ def create_standard_plainte_prompt(parties: List[str], infractions: List[str],
 Rédigez une {plainte_type} concernant :
 - Parties : {parties_text}
 - Infractions : {infractions_text}
-
 Structure :
 1. En-tête et qualités
 2. Exposé des faits
 3. Discussion juridique
 4. Préjudices
 5. Demandes
-
 Consignes :
 - Style juridique professionnel
 - Argumentation structurée{jurisprudence_instruction}
@@ -814,35 +886,21 @@ def generate_plainte_simple(parties_defenderesses: List[str], infractions: List[
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE SIMPLE
-
 À l'attention de Monsieur le Procureur de la République
 Tribunal Judiciaire de [VILLE]
-
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 OBJET : Plainte
-
 Monsieur le Procureur,
-
 Je soussigné(e) [NOM PRÉNOM]
 Demeurant [ADRESSE]
-
 Ai l'honneur de porter plainte contre :
-
 {parties_text}
-
 Pour les faits suivants :
-
 [EXPOSÉ DES FAITS]
-
 Ces faits sont susceptibles de recevoir les qualifications suivantes :
-
 {infractions_text}
-
 Je vous prie d'agréer, Monsieur le Procureur, l'expression de ma considération distinguée.
-
 [SIGNATURE]
-
 Pièces jointes :
 - [LISTE DES PIÈCES]
 """
@@ -855,18 +913,13 @@ def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str
     infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
     
     return f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
 Monsieur le Doyen des Juges d'Instruction
 Tribunal Judiciaire de [VILLE]
 [ADRESSE]
-
 [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 OBJET : Plainte avec constitution de partie civile
 RÉFÉRENCES : [À COMPLÉTER]
-
 Monsieur le Doyen,
-
 Je soussigné(e) [NOM PRÉNOM]
 Né(e) le [DATE] à [LIEU]
 De nationalité française
@@ -874,38 +927,23 @@ Profession : [PROFESSION]
 Demeurant : [ADRESSE COMPLÈTE]
 Téléphone : [TÉLÉPHONE]
 Email : [EMAIL]
-
 Ayant pour conseil : [SI APPLICABLE]
 Maître [NOM AVOCAT]
 Avocat au Barreau de [VILLE]
 [ADRESSE CABINET]
-
 Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
-
 {parties_text}
-
 Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
-
 I. EXPOSÉ DÉTAILLÉ DES FAITS
-
 [DÉVELOPPEMENT DÉTAILLÉ - À COMPLÉTER]
-
 II. DISCUSSION JURIDIQUE
-
 Les faits exposés ci-dessus caractérisent les infractions suivantes :
-
 {infractions_text}
-
 [ANALYSE JURIDIQUE DÉTAILLÉE - À COMPLÉTER]
-
 III. PRÉJUDICES SUBIS
-
 [DÉTAIL DES PRÉJUDICES - À COMPLÉTER]
-
 IV. CONSTITUTION DE PARTIE CIVILE
-
 Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
-
 Je sollicite :
 - La désignation d'un juge d'instruction
 - L'ouverture d'une information judiciaire
@@ -914,18 +952,12 @@ Je sollicite :
 - Le renvoi devant la juridiction de jugement
 - La condamnation des prévenus
 - L'allocation de dommages-intérêts en réparation du préjudice subi
-
 V. PIÈCES JUSTIFICATIVES
-
 Vous trouverez ci-joint :
 [LISTE DÉTAILLÉE DES PIÈCES]
-
 Je verse la consignation fixée par vos soins.
-
 Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
-
 Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
-
 [SIGNATURE]
 """
 
@@ -1354,7 +1386,7 @@ def show_piece_selection_advanced(analysis: Any):
     st.markdown("### 📁 Sélection avancée des pièces")
     
     # Collecter les documents disponibles
-    if DATACLASSES_AVAILABLE and hasattr(globals().get('collect_available_documents'), '__call__'):
+    if DATACLASSES_AVAILABLE and 'collect_available_documents' in globals():
         documents = collect_available_documents()
     else:
         # Fallback si la fonction n'est pas disponible
@@ -1372,7 +1404,7 @@ def show_piece_selection_advanced(analysis: Any):
         return
     
     # Grouper par catégorie
-    if DATACLASSES_AVAILABLE and hasattr(globals().get('group_documents_by_category'), '__call__'):
+    if DATACLASSES_AVAILABLE and 'group_documents_by_category' in globals():
         categories = group_documents_by_category(documents)
     else:
         # Fallback simple
@@ -1583,7 +1615,6 @@ async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
         
         # Prompt de synthèse
         synthesis_prompt = f"""{context}
-
 Crée une synthèse structurée de ces pièces.
 La synthèse doit inclure:
 1. Vue d'ensemble des pièces
@@ -1781,7 +1812,7 @@ async def show_work_statistics():
                     'source': doc.source if hasattr(doc, 'source') else doc.get('source', '')
                 })
             
-            if DATACLASSES_AVAILABLE and hasattr(globals().get('group_documents_by_category'), '__call__'):
+            if DATACLASSES_AVAILABLE and 'group_documents_by_category' in globals():
                 categories = group_documents_by_category(all_docs)
             else:
                 categories = {'Documents': all_docs}
@@ -1914,7 +1945,10 @@ class SearchInterface:
         
         # Phase par défaut
         if DATACLASSES_AVAILABLE:
-            self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
+            try:
+                self.current_phase = PhaseProcedure.ENQUETE_PRELIMINAIRE
+            except:
+                self.current_phase = None
         else:
             self.current_phase = None
     
@@ -1971,7 +2005,7 @@ class SearchInterface:
     def _simple_query_analysis(self, query: str):
         """Analyse simple de la requête si le service n'est pas disponible"""
         # Créer un objet d'analyse simple
-        if DATACLASSES_AVAILABLE and hasattr(globals().get('QueryAnalysis'), '__call__'):
+        if DATACLASSES_AVAILABLE:
             analysis = QueryAnalysis(
                 original_query=query,
                 query_lower=query.lower(),
@@ -2072,7 +2106,7 @@ class SearchInterface:
         if 'bordereau_page' in MODULE_FUNCTIONS:
             MODULE_FUNCTIONS['bordereau_page']()
         else:
-            if DATACLASSES_AVAILABLE and hasattr(globals().get('collect_available_documents'), '__call__'):
+            if DATACLASSES_AVAILABLE and 'collect_available_documents' in globals():
                 docs = collect_available_documents()
             else:
                 docs = []
@@ -2421,10 +2455,8 @@ def show_page():
             "Entrez votre commande ou recherche",
             value=default_value,
             placeholder="""Ex: rédiger conclusions @affaire_martin, analyser risques, importer documents...
-
 Utilisez @ pour référencer une affaire spécifique
 Vous pouvez écrire des requêtes complexes sur plusieurs lignes
-
 Exemples :
 - rédiger plainte contre Vinci, SOGEPROM @projet_26_05_2025
 - analyser les risques juridiques dans le dossier de corruption
