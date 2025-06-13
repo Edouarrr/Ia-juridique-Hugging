@@ -1,431 +1,390 @@
 # utils/formatters.py
 """
-Utilitaires pour le formatage de documents juridiques
+Fonctions de formatage pour l'application juridique
 """
-
+from datetime import datetime, date
+from typing import Union, Optional, Any
+import locale
 import re
-from typing import Dict, List, Optional, Any, Tuple, Union
-from datetime import datetime
 
-# Import des types nécessaires avec gestion d'erreur
+# Essayer de définir la locale française
 try:
-    from models.dataclasses import (
-        LetterheadTemplate,
-        DocumentJuridique,
-        Partie
-    )
-except ImportError:
+    locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
+except:
     try:
-        from modules.dataclasses import (
-            LetterheadTemplate,
-            DocumentJuridique,
-            Partie
-        )
-    except ImportError:
-        # Classes fallback minimales
-        class LetterheadTemplate:
-            def __init__(self, **kwargs):
-                self.cabinet_name = kwargs.get('cabinet_name', '')
-                self.lawyers = kwargs.get('lawyers', [])
-                self.address = kwargs.get('address', '')
-                self.phone = kwargs.get('phone', '')
-                self.fax = kwargs.get('fax', '')
-                self.email = kwargs.get('email', '')
-                self.bar_mentions = kwargs.get('bar_mentions', [])
-                self.logo_path = kwargs.get('logo_path', '')
-        
-        class DocumentJuridique:
-            def __init__(self, **kwargs):
-                self.numero_reference = kwargs.get('numero_reference', '')
-                self.type_document = kwargs.get('type_document', '')
-                self.date_document = kwargs.get('date_document')
-                self.juridiction = kwargs.get('juridiction', '')
-        
-        class Partie:
-            def __init__(self, **kwargs):
-                self.nom = kwargs.get('nom', '')
-                self.type = kwargs.get('type', '')
-                self.forme_juridique = kwargs.get('forme_juridique', '')
-                self.numero_immatriculation = kwargs.get('numero_immatriculation', '')
-                self.adresse = kwargs.get('adresse', '')
-                self.representant = kwargs.get('representant', '')
-                self.avocat = kwargs.get('avocat', '')
+        locale.setlocale(locale.LC_TIME, 'fr_FR')
+    except:
+        # Si la locale française n'est pas disponible, on continue avec la locale par défaut
+        pass
 
-
-def create_letterhead_from_template(template: LetterheadTemplate) -> str:
-    """Crée un en-tête de lettre à partir d'un template"""
-    lines = []
-    
-    # Nom du cabinet
-    if template.cabinet_name:
-        lines.append(template.cabinet_name.upper())
-        lines.append("")
-    
-    # Avocats
-    if template.lawyers:
-        for lawyer in template.lawyers:
-            lines.append(lawyer)
-        lines.append("")
-    
-    # Adresse
-    if template.address:
-        lines.append(template.address)
-    
-    # Contact
-    contact_parts = []
-    if template.phone:
-        contact_parts.append(f"Tél: {template.phone}")
-    if template.fax:
-        contact_parts.append(f"Fax: {template.fax}")
-    if template.email:
-        contact_parts.append(f"Email: {template.email}")
-    
-    if contact_parts:
-        lines.append(" - ".join(contact_parts))
-    
-    # Barreaux et mentions
-    if template.bar_mentions:
-        lines.append("")
-        for mention in template.bar_mentions:
-            lines.append(mention)
-    
-    # Logo (placeholder)
-    if template.logo_path:
-        lines.append("")
-        lines.append(f"[LOGO: {template.logo_path}]")
-    
-    return "\n".join(lines)
-
-
-def create_formatted_docx(content: str, style_config: Dict[str, Any]) -> bytes:
+def format_date(date_obj: Union[datetime, date, str], format_str: str = "%d/%m/%Y") -> str:
     """
-    Crée un document Word formaté
-    Note: En production, utiliserait python-docx
-    """
-    # Configuration par défaut
-    default_config = {
-        'font': 'Times New Roman',
-        'font_size': 12,
-        'line_spacing': 1.5,
-        'margins': {
-            'top': 2.5,
-            'bottom': 2.5,
-            'left': 2.5,
-            'right': 2.5
-        },
-        'alignment': 'justify'
-    }
+    Formate une date selon le format spécifié.
     
-    # Fusionner avec la configuration fournie
-    config = {**default_config, **style_config}
-    
-    # Simuler la création d'un document Word
-    formatted_content = f"""
-DOCUMENT WORD
-=============
-
-Configuration appliquée:
-- Police: {config['font']} {config['font_size']}pt
-- Interligne: {config['line_spacing']}
-- Alignement: {config['alignment']}
-- Marges: {config['margins']['top']}cm (haut), {config['margins']['bottom']}cm (bas), {config['margins']['left']}cm (gauche), {config['margins']['right']}cm (droite)
-
--------------------
-
-{content}
-
--------------------
-
-[Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}]
-"""
-    
-    return formatted_content.encode('utf-8')
-
-
-def format_party_designation(partie: Partie, phase: str = "instruction") -> str:
-    """Formate la désignation d'une partie selon la phase procédurale"""
-    designation_parts = []
-    
-    # Nom principal
-    if partie.type == "personne_morale" and partie.forme_juridique:
-        designation_parts.append(f"{partie.forme_juridique} {partie.nom}")
-    else:
-        designation_parts.append(partie.nom)
-    
-    # Numéro d'immatriculation
-    if partie.numero_immatriculation:
-        designation_parts.append(f"immatriculée au RCS sous le n° {partie.numero_immatriculation}")
-    
-    # Adresse
-    if partie.adresse:
-        designation_parts.append(partie.adresse)
-    
-    # Représentation (selon la phase)
-    if phase == "instruction" and partie.representant:
-        designation_parts.append(f"représentée par {partie.representant}")
-    
-    # Avocat
-    if partie.avocat:
-        if phase == "jugement":
-            designation_parts.append(f"comparant par Me {partie.avocat}, avocat")
-        else:
-            designation_parts.append(f"ayant pour avocat Me {partie.avocat}")
-    
-    return ", ".join(designation_parts)
-
-
-def apply_legal_numbering(sections: List[str], style: str = "roman") -> List[str]:
-    """Applique une numérotation juridique aux sections"""
-    numbered_sections = []
-    
-    for i, section in enumerate(sections, 1):
-        if style == "roman":
-            number = _to_roman(i)
-        elif style == "letter":
-            number = _to_letter(i)
-        elif style == "decimal":
-            number = f"{i}."
-        else:  # numeric
-            number = str(i)
+    Args:
+        date_obj: L'objet date à formater (datetime, date ou string)
+        format_str: Le format de sortie (par défaut JJ/MM/AAAA)
         
-        numbered_sections.append(f"{number} {section}")
+    Returns:
+        La date formatée en string
+    """
+    if not date_obj:
+        return ""
     
-    return numbered_sections
+    # Si c'est déjà une string, essayer de la parser
+    if isinstance(date_obj, str):
+        try:
+            # Essayer différents formats courants
+            for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"]:
+                try:
+                    date_obj = datetime.strptime(date_obj, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                # Si aucun format ne marche, retourner la string originale
+                return date_obj
+        except:
+            return date_obj
+    
+    # Formater la date
+    try:
+        return date_obj.strftime(format_str)
+    except:
+        return str(date_obj)
 
-
-def _to_roman(num: int) -> str:
-    """Convertit un nombre en chiffres romains"""
-    values = [
-        (1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'),
-        (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
-        (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')
+def format_date_long(date_obj: Union[datetime, date, str]) -> str:
+    """
+    Formate une date en format long (ex: 15 janvier 2024).
+    
+    Args:
+        date_obj: L'objet date à formater
+        
+    Returns:
+        La date en format long
+    """
+    if not date_obj:
+        return ""
+    
+    # Convertir en datetime si nécessaire
+    if isinstance(date_obj, str):
+        date_obj = datetime.strptime(date_obj, "%Y-%m-%d")
+    elif isinstance(date_obj, date) and not isinstance(date_obj, datetime):
+        date_obj = datetime.combine(date_obj, datetime.min.time())
+    
+    # Noms des mois en français
+    mois_fr = [
+        "", "janvier", "février", "mars", "avril", "mai", "juin",
+        "juillet", "août", "septembre", "octobre", "novembre", "décembre"
     ]
     
-    result = ''
-    for value, letter in values:
-        count = num // value
-        if count:
-            result += letter * count
-            num -= value * count
+    try:
+        jour = date_obj.day
+        mois = mois_fr[date_obj.month]
+        annee = date_obj.year
+        return f"{jour} {mois} {annee}"
+    except:
+        return format_date(date_obj)
+
+def format_datetime(dt_obj: Union[datetime, str], 
+                   include_seconds: bool = False) -> str:
+    """
+    Formate une date et heure.
     
-    return result
-
-
-def _to_letter(num: int) -> str:
-    """Convertit un nombre en lettre (A, B, C...)"""
-    if num <= 26:
-        return chr(ord('A') + num - 1)
+    Args:
+        dt_obj: L'objet datetime à formater
+        include_seconds: Inclure les secondes ou non
+        
+    Returns:
+        La date et heure formatées
+    """
+    if not dt_obj:
+        return ""
+    
+    if include_seconds:
+        format_str = "%d/%m/%Y %H:%M:%S"
     else:
-        # Pour les nombres > 26: AA, AB, AC...
-        first = (num - 1) // 26
-        second = (num - 1) % 26
-        return chr(ord('A') + first - 1) + chr(ord('A') + second)
+        format_str = "%d/%m/%Y %H:%M"
+    
+    return format_date(dt_obj, format_str)
 
-
-def create_document_header(doc: DocumentJuridique) -> str:
-    """Crée l'en-tête d'un document juridique"""
-    header_lines = []
+def format_currency(amount: Union[float, int, str], 
+                   currency: str = "EUR",
+                   decimal_places: int = 2) -> str:
+    """
+    Formate un montant monétaire.
     
-    # Numéro de référence
-    if doc.numero_reference:
-        header_lines.append(f"N° {doc.numero_reference}")
-        header_lines.append("")
-    
-    # Type de document
-    header_lines.append(doc.type_document.upper())
-    header_lines.append("")
-    
-    # Date
-    if doc.date_document:
-        from .date_time import format_legal_date
-        header_lines.append(format_legal_date(doc.date_document))
-        header_lines.append("")
-    
-    # Juridiction
-    if doc.juridiction:
-        header_lines.append(doc.juridiction)
-        header_lines.append("")
-    
-    return "\n".join(header_lines)
-
-
-def create_table_of_contents(sections: List[Dict[str, Any]]) -> str:
-    """Crée une table des matières"""
-    toc_lines = ["TABLE DES MATIÈRES", "=" * 50, ""]
-    
-    for i, section in enumerate(sections, 1):
-        # Indentation selon le niveau
-        indent = "  " * (section.get('level', 1) - 1)
+    Args:
+        amount: Le montant à formater
+        currency: La devise (EUR par défaut)
+        decimal_places: Nombre de décimales
         
-        # Numérotation selon le niveau
-        if section.get('level', 1) == 1:
-            number = _to_roman(i) + "."
-        else:
-            number = f"{i}."
+    Returns:
+        Le montant formaté
+    """
+    if amount is None:
+        return ""
+    
+    # Convertir en float si nécessaire
+    try:
+        if isinstance(amount, str):
+            # Nettoyer la string (enlever espaces, remplacer virgule par point)
+            amount = amount.strip().replace(',', '.').replace(' ', '')
+        amount = float(amount)
+    except (ValueError, TypeError):
+        return str(amount)
+    
+    # Formater avec le bon nombre de décimales
+    formatted = f"{amount:,.{decimal_places}f}"
+    
+    # Remplacer les séparateurs pour le format français
+    formatted = formatted.replace(',', ' ').replace('.', ',')
+    
+    # Ajouter le symbole de devise
+    if currency == "EUR":
+        return f"{formatted} €"
+    elif currency == "USD":
+        return f"${formatted}"
+    else:
+        return f"{formatted} {currency}"
+
+def format_percentage(value: Union[float, int, str], 
+                     decimal_places: int = 2) -> str:
+    """
+    Formate un pourcentage.
+    
+    Args:
+        value: La valeur à formater (entre 0 et 100)
+        decimal_places: Nombre de décimales
         
-        # Titre
-        line = f"{indent}{number} {section['title']}"
+    Returns:
+        Le pourcentage formaté
+    """
+    if value is None:
+        return ""
+    
+    try:
+        value = float(value)
+        return f"{value:.{decimal_places}f} %"
+    except (ValueError, TypeError):
+        return str(value)
+
+def format_phone(phone: str, country: str = "FR") -> str:
+    """
+    Formate un numéro de téléphone.
+    
+    Args:
+        phone: Le numéro à formater
+        country: Le code pays (FR par défaut)
         
-        # Numéro de page si disponible
-        if 'page' in section:
-            # Calculer les points de suite
-            line_length = len(line)
-            dots_count = max(1, 60 - line_length - len(str(section['page'])))
-            dots = "." * dots_count
-            line += f" {dots} {section['page']}"
+    Returns:
+        Le numéro formaté
+    """
+    if not phone:
+        return ""
+    
+    # Nettoyer le numéro (garder seulement les chiffres)
+    phone_digits = re.sub(r'\D', '', phone)
+    
+    if country == "FR":
+        # Format français
+        if len(phone_digits) == 10:
+            # Format: 01 23 45 67 89
+            return ' '.join([phone_digits[i:i+2] for i in range(0, 10, 2)])
+        elif len(phone_digits) == 11 and phone_digits.startswith('33'):
+            # Format international: +33 1 23 45 67 89
+            return f"+33 {phone_digits[2]} " + ' '.join([phone_digits[i:i+2] for i in range(3, 11, 2)])
+    
+    # Si le format n'est pas reconnu, retourner tel quel
+    return phone
+
+def format_case_number(number: str) -> str:
+    """
+    Formate un numéro de dossier juridique.
+    
+    Args:
+        number: Le numéro à formater
         
-        toc_lines.append(line)
+    Returns:
+        Le numéro formaté
+    """
+    if not number:
+        return ""
     
-    return "\n".join(toc_lines)
+    # Nettoyer le numéro
+    number = str(number).strip()
+    
+    # Détecter le format et formater en conséquence
+    # Format RG : 20/12345
+    if '/' in number and len(number.split('/')) == 2:
+        parts = number.split('/')
+        return f"RG {parts[0]}/{parts[1]}"
+    
+    return number
 
-
-def split_into_pages(text: str, lines_per_page: int = 50) -> List[str]:
-    """Divise un texte en pages"""
-    lines = text.split('\n')
-    pages = []
+def format_name(first_name: str = "", last_name: str = "", 
+                title: str = "", format_type: str = "full") -> str:
+    """
+    Formate un nom de personne.
     
-    current_page = []
-    current_line_count = 0
-    
-    for line in lines:
-        # Compter les lignes en tenant compte du retour à la ligne
-        line_count = 1 + (len(line) // 80)  # Environ 80 caractères par ligne
+    Args:
+        first_name: Prénom
+        last_name: Nom de famille
+        title: Titre (M., Mme, Me, etc.)
+        format_type: Type de format ("full", "initials", "last_only")
         
-        if current_line_count + line_count > lines_per_page and current_page:
-            # Nouvelle page
-            pages.append('\n'.join(current_page))
-            current_page = [line]
-            current_line_count = line_count
-        else:
-            current_page.append(line)
-            current_line_count += line_count
+    Returns:
+        Le nom formaté
+    """
+    parts = []
     
-    # Ajouter la dernière page
-    if current_page:
-        pages.append('\n'.join(current_page))
+    if title:
+        parts.append(title)
     
-    return pages
+    if format_type == "full":
+        if first_name:
+            parts.append(first_name.strip().title())
+        if last_name:
+            parts.append(last_name.strip().upper())
+    elif format_type == "initials":
+        if first_name:
+            parts.append(f"{first_name[0].upper()}.")
+        if last_name:
+            parts.append(last_name.strip().upper())
+    elif format_type == "last_only":
+        if last_name:
+            parts.append(last_name.strip().upper())
+    
+    return " ".join(parts)
 
-
-def add_page_numbers(pages: List[str], start_number: int = 1, position: str = "bottom") -> List[str]:
-    """Ajoute des numéros de page"""
-    numbered_pages = []
-    total_pages = len(pages)
+def format_address(street: str = "", postal_code: str = "", 
+                  city: str = "", country: str = "") -> str:
+    """
+    Formate une adresse postale.
     
-    for i, page in enumerate(pages, start_number):
-        if position == "top":
-            header = f"Page {i} / {total_pages}\n{'-' * 50}\n\n"
-            numbered_page = header + page
-        else:  # bottom
-            footer = f"\n\n{'-' * 50}\nPage {i} / {total_pages}"
-            numbered_page = page + footer
+    Args:
+        street: Rue et numéro
+        postal_code: Code postal
+        city: Ville
+        country: Pays
         
-        numbered_pages.append(numbered_page)
-    
-    return numbered_pages
-
-
-def format_legal_list(items: List[str], style: str = "dash", indent: int = 0) -> str:
-    """Formate une liste selon les conventions juridiques"""
-    formatted_items = []
-    indent_str = "  " * indent
-    
-    for i, item in enumerate(items, 1):
-        if style == "dash":
-            prefix = "- "
-        elif style == "bullet":
-            prefix = "• "
-        elif style == "number":
-            prefix = f"{i}. "
-        elif style == "letter":
-            prefix = f"{_to_letter(i)}. "
-        elif style == "roman":
-            prefix = f"{_to_roman(i).lower()}. "
-        else:
-            prefix = ""
-        
-        formatted_items.append(f"{indent_str}{prefix}{item}")
-    
-    return "\n".join(formatted_items)
-
-
-def format_signature_block(
-    signatories: List[Dict[str, str]], 
-    date_location: str = None,
-    include_date: bool = True
-) -> str:
-    """Crée un bloc de signatures"""
+    Returns:
+        L'adresse formatée sur plusieurs lignes
+    """
     lines = []
     
-    # Date et lieu
-    if include_date:
-        from .date_time import format_legal_date
-        date_str = format_legal_date(datetime.now())
-        if date_location:
-            lines.append(f"Fait à {date_location}, {date_str}")
-        else:
-            lines.append(f"Fait {date_str}")
-        lines.append("")
+    if street:
+        lines.append(street.strip())
     
-    # Signatures
-    if len(signatories) == 1:
-        # Une seule signature centrée
-        lines.append("")
-        lines.append("")
-        lines.append("_" * 30)
-        lines.append(signatories[0].get('name', ''))
-        if signatories[0].get('title'):
-            lines.append(signatories[0]['title'])
-    else:
-        # Plusieurs signatures en colonnes
-        lines.append("")
-        lines.append("")
-        
-        # Ligne de signatures
-        sig_line = "    ".join(["_" * 25 for _ in signatories])
-        lines.append(sig_line)
-        
-        # Noms
-        names = []
-        for sig in signatories:
-            name = sig.get('name', '')
-            # Centrer le nom sous la ligne
-            name = name.center(25)
-            names.append(name)
-        lines.append("    ".join(names))
-        
-        # Titres si présents
-        if any(sig.get('title') for sig in signatories):
-            titles = []
-            for sig in signatories:
-                title = sig.get('title', '')
-                title = title.center(25)
-                titles.append(title)
-            lines.append("    ".join(titles))
+    city_line = []
+    if postal_code:
+        city_line.append(postal_code.strip())
+    if city:
+        city_line.append(city.strip().upper())
+    
+    if city_line:
+        lines.append(" ".join(city_line))
+    
+    if country and country.upper() != "FRANCE":
+        lines.append(country.strip().upper())
     
     return "\n".join(lines)
 
+def format_duration(minutes: int) -> str:
+    """
+    Formate une durée en heures et minutes.
+    
+    Args:
+        minutes: Nombre de minutes
+        
+    Returns:
+        La durée formatée
+    """
+    if not minutes or minutes < 0:
+        return "0 min"
+    
+    hours = minutes // 60
+    mins = minutes % 60
+    
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if mins > 0 or hours == 0:
+        parts.append(f"{mins}min")
+    
+    return " ".join(parts)
 
-def format_annex_reference(annex_number: int, title: str) -> str:
-    """Formate une référence d'annexe"""
-    return f"ANNEXE {annex_number} : {title}"
+def format_file_path(path: str, max_length: int = 50) -> str:
+    """
+    Formate un chemin de fichier pour l'affichage.
+    
+    Args:
+        path: Le chemin complet
+        max_length: Longueur maximale
+        
+    Returns:
+        Le chemin formaté (tronqué si nécessaire)
+    """
+    if not path:
+        return ""
+    
+    if len(path) <= max_length:
+        return path
+    
+    # Garder le début et la fin
+    parts = path.split('/')
+    if len(parts) > 2:
+        return f"{parts[0]}/.../{parts[-1]}"
+    else:
+        # Tronquer au milieu
+        start = path[:max_length//2 - 2]
+        end = path[-(max_length//2 - 2):]
+        return f"{start}...{end}"
 
+def format_list_items(items: list, separator: str = ", ", 
+                     last_separator: str = " et ") -> str:
+    """
+    Formate une liste d'éléments en texte.
+    
+    Args:
+        items: Liste d'éléments
+        separator: Séparateur entre éléments
+        last_separator: Séparateur avant le dernier élément
+        
+    Returns:
+        La liste formatée en texte
+    """
+    if not items:
+        return ""
+    
+    items = [str(item) for item in items if item]
+    
+    if len(items) == 1:
+        return items[0]
+    elif len(items) == 2:
+        return f"{items[0]}{last_separator}{items[1]}"
+    else:
+        return separator.join(items[:-1]) + last_separator + items[-1]
 
-def create_document_footer(
-    doc_type: str,
-    page_current: int = None,
-    page_total: int = None,
-    reference: str = None
-) -> str:
-    """Crée un pied de page pour un document"""
-    footer_parts = []
+def format_legal_reference(type_ref: str, number: str, 
+                          date_ref: Optional[Union[datetime, date, str]] = None) -> str:
+    """
+    Formate une référence juridique.
     
-    if reference:
-        footer_parts.append(f"Réf: {reference}")
+    Args:
+        type_ref: Type de référence (Cass., CA, TGI, etc.)
+        number: Numéro de la décision
+        date_ref: Date de la décision
+        
+    Returns:
+        La référence formatée
+    """
+    parts = [type_ref]
     
-    footer_parts.append(doc_type)
+    if date_ref:
+        parts.append(format_date(date_ref))
     
-    if page_current and page_total:
-        footer_parts.append(f"Page {page_current}/{page_total}")
+    if number:
+        parts.append(f"n° {number}")
     
-    return " - ".join(footer_parts)
+    return ", ".join(parts)
