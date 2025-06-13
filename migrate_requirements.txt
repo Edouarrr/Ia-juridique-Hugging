@@ -1,0 +1,182 @@
+"""Script pour migrer vers un requirements.txt optimisé"""
+
+import os
+import sys
+
+# Configuration minimale requise
+MINIMAL_REQUIREMENTS = """# requirements.txt - Version minimale
+streamlit>=1.28.0
+azure-storage-blob>=12.19.0
+azure-search-documents>=11.4.0
+azure-core>=1.26.0
+python-docx>=0.8.11
+PyPDF2>=3.0.0
+openpyxl>=3.1.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.17.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+Pillow>=10.0.0
+openai>=1.0.0
+"""
+
+# Configuration optimisée
+OPTIMIZED_REQUIREMENTS = """# requirements.txt - Version optimisée
+# Framework
+streamlit>=1.28.0
+
+# Azure (obligatoire)
+azure-storage-blob>=12.19.0
+azure-search-documents>=11.4.0
+azure-core>=1.26.0
+azure-identity>=1.14.0
+
+# Documents
+python-docx>=0.8.11
+openpyxl>=3.1.0
+PyPDF2>=3.0.0
+reportlab>=4.0.0
+
+# IA et LLM
+openai>=1.0.0
+# anthropic>=0.25.0         # Décommentez si vous utilisez Claude
+# google-generativeai>=0.5.0 # Décommentez si vous utilisez Gemini
+# mistralai>=0.0.8          # Décommentez si vous utilisez Mistral
+
+# Données
+pandas>=2.0.0
+numpy>=1.24.0
+python-dateutil>=2.8.2
+
+# Visualisation
+plotly>=5.17.0
+matplotlib>=3.7.0
+
+# Utilitaires
+python-dotenv>=1.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+Pillow>=10.0.0
+aiofiles>=23.0.0
+
+# Sécurité
+cryptography>=41.0.0
+"""
+
+def backup_current():
+    """Sauvegarde le requirements.txt actuel"""
+    if os.path.exists('requirements.txt'):
+        import shutil
+        backup_name = 'requirements.txt.backup'
+        counter = 1
+        while os.path.exists(backup_name):
+            backup_name = f'requirements.txt.backup.{counter}'
+            counter += 1
+        
+        shutil.copy2('requirements.txt', backup_name)
+        print(f"✅ Sauvegarde créée : {backup_name}")
+        return backup_name
+    return None
+
+def write_requirements(content, filename='requirements.txt'):
+    """Écrit le nouveau requirements.txt"""
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(f"✅ {filename} créé avec succès")
+
+def analyze_current():
+    """Analyse le requirements.txt actuel"""
+    if not os.path.exists('requirements.txt'):
+        print("❌ Aucun requirements.txt trouvé")
+        return None
+    
+    with open('requirements.txt', 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    packages = []
+    stdlib_errors = []
+    
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith('#'):
+            if line in ['datetime', 'asyncio', 'typing']:
+                stdlib_errors.append(line)
+            else:
+                packages.append(line)
+    
+    return {
+        'total_lines': len(lines),
+        'packages': len(packages),
+        'stdlib_errors': stdlib_errors,
+        'has_azure': any('azure' in p for p in packages),
+        'has_langchain': any('langchain' in p for p in packages),
+        'has_tests': any(p.startswith(('pytest', 'black', 'flake8')) for p in packages)
+    }
+
+def main():
+    print("🔧 Migration vers un requirements.txt optimisé\n")
+    
+    # Analyser l'existant
+    analysis = analyze_current()
+    
+    if analysis:
+        print("📊 Analyse du requirements.txt actuel:")
+        print(f"  - Lignes totales : {analysis['total_lines']}")
+        print(f"  - Packages : {analysis['packages']}")
+        print(f"  - Azure présent : {'✅' if analysis['has_azure'] else '❌'}")
+        
+        if analysis['stdlib_errors']:
+            print(f"\n❌ Erreurs détectées (modules Python standard):")
+            for err in analysis['stdlib_errors']:
+                print(f"  - {err}")
+        
+        if analysis['has_langchain']:
+            print("\n🟡 Langchain détecté (non utilisé dans le code actuel)")
+        
+        if analysis['has_tests']:
+            print("\n🟡 Packages de test détectés (pas nécessaires en production)")
+    
+    # Menu
+    print("\n🚀 Choisissez une option:")
+    print("1. Migration vers version MINIMALE (démarrage rapide)")
+    print("2. Migration vers version OPTIMISÉE (recommandée)")
+    print("3. Créer les deux versions pour comparaison")
+    print("4. Annuler")
+    
+    choice = input("\nVotre choix (1-4): ").strip()
+    
+    if choice == '4':
+        print("❌ Migration annulée")
+        return
+    
+    # Backup
+    backup = backup_current()
+    
+    # Migration
+    if choice == '1':
+        write_requirements(MINIMAL_REQUIREMENTS)
+        print("\n✅ Migration vers version minimale terminée!")
+        print("💡 Testez avec: pip install -r requirements.txt")
+        
+    elif choice == '2':
+        write_requirements(OPTIMIZED_REQUIREMENTS)
+        print("\n✅ Migration vers version optimisée terminée!")
+        print("💡 N'oubliez pas de décommenter les APIs LLM que vous utilisez")
+        
+    elif choice == '3':
+        write_requirements(MINIMAL_REQUIREMENTS, 'requirements_minimal.txt')
+        write_requirements(OPTIMIZED_REQUIREMENTS, 'requirements_optimized.txt')
+        print("\n✅ Les deux versions ont été créées!")
+        print("💡 Comparez et choisissez celle qui vous convient")
+    
+    if backup:
+        print(f"\n💾 Votre ancien fichier est sauvegardé dans: {backup}")
+    
+    print("\n📝 Prochaines étapes:")
+    print("1. Testez localement: pip install -r requirements.txt")
+    print("2. Committez et poussez vers Hugging Face")
+    print("3. Surveillez les logs de build")
+
+if __name__ == "__main__":
+    main()
