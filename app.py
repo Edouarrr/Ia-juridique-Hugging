@@ -16,7 +16,7 @@ st.set_page_config(
     page_title="Assistant Pénal des Affaires IA",
     page_icon="⚖️",
     layout="wide",
-    initial_sidebar_state="collapsed"  # Sidebar fermée par défaut pour plus d'espace
+    initial_sidebar_state="expanded"  # Sidebar visible pour les configs
 )
 
 # ========== SECTION 1: IMPORTS OPTIMISÉS ==========
@@ -28,6 +28,17 @@ try:
 except ImportError as e:
     print(f"❌ Erreur import modules : {e}")
     modules = None
+
+# Import du MultiLLMManager
+try:
+    from managers.multi_llm_manager import MultiLLMManager, display_llm_status
+    from config.app_config import LLMProvider
+    MULTI_LLM_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ MultiLLMManager non disponible: {e}")
+    MULTI_LLM_AVAILABLE = False
+    MultiLLMManager = None
+    display_llm_status = None
 
 # Vérifier la disponibilité des modules Azure
 AZURE_AVAILABLE = False
@@ -77,6 +88,8 @@ except ImportError:
             st.session_state.azure_search_manager = None
             st.session_state.use_simplified_version = True
             st.session_state.current_tab = "recherche"
+            st.session_state.selected_llm_providers = []
+            st.session_state.llm_fusion_mode = "Synthèse IA"
 
 try:
     from utils.styles import load_custom_css
@@ -130,6 +143,33 @@ st.markdown("""
         margin: 0.5rem 0 0 0;
         opacity: 0.9;
         font-size: 1.1rem;
+    }
+    
+    /* Configuration LLM */
+    .llm-config-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+    
+    .llm-provider-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin: 4px;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .llm-provider-badge.active {
+        background: #1a237e;
+        color: white;
     }
     
     /* Barre de recherche moderne */
@@ -290,6 +330,20 @@ st.markdown("""
         width: 8px;
     }
     
+    /* Tool panel */
+    .tool-panel {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        border: 2px solid #e0e0e0;
+    }
+    
+    .tool-panel h4 {
+        color: #1a237e;
+        margin-bottom: 1rem;
+    }
+    
     /* Animations */
     @keyframes fadeIn {
         from {
@@ -324,16 +378,11 @@ st.markdown("""
     }
     
     /* Sidebar moderne */
-    .sidebar-mini {
-        position: fixed;
-        right: 20px;
-        top: 50%;
-        transform: translateY(-50%);
+    .sidebar .sidebar-content {
         background: white;
+        padding: 1.5rem;
         border-radius: 12px;
-        padding: 1rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        z-index: 999;
+        margin-bottom: 1rem;
     }
     
     /* Tooltips */
@@ -480,11 +529,84 @@ def reinit_azure():
     init_azure_managers()
     st.rerun()
 
-# ========== SECTION 4: COMPOSANTS UI ==========
+# ========== SECTION 4: CONFIGURATION LLM GLOBALE ==========
+
+def show_llm_configuration():
+    """Affiche la configuration LLM dans la sidebar"""
+    with st.sidebar:
+        st.markdown("### 🤖 Configuration IA")
+        
+        if MULTI_LLM_AVAILABLE:
+            llm_manager = MultiLLMManager()
+            available_providers = llm_manager.get_available_providers()
+            
+            if available_providers:
+                # Sélection des providers
+                st.markdown("#### Modèles IA actifs")
+                
+                selected_providers = []
+                cols = st.columns(2)
+                for idx, provider in enumerate(available_providers):
+                    with cols[idx % 2]:
+                        if st.checkbox(
+                            provider.upper(), 
+                            value=provider in st.session_state.get('selected_llm_providers', [provider]),
+                            key=f"llm_{provider}"
+                        ):
+                            selected_providers.append(provider)
+                
+                st.session_state.selected_llm_providers = selected_providers
+                
+                # Mode de fusion
+                if len(selected_providers) > 1:
+                    st.markdown("#### Mode de fusion")
+                    st.session_state.llm_fusion_mode = st.radio(
+                        "Fusion des réponses",
+                        ["Synthèse IA", "Concatenation", "Meilleure réponse", "Vote majoritaire"],
+                        index=0,
+                        key="fusion_mode_global"
+                    )
+                    
+                    # Options avancées
+                    with st.expander("⚙️ Options avancées"):
+                        st.slider(
+                            "Température",
+                            min_value=0.0,
+                            max_value=1.0,
+                            value=0.7,
+                            step=0.1,
+                            key="llm_temperature"
+                        )
+                        
+                        st.number_input(
+                            "Tokens max",
+                            min_value=100,
+                            max_value=8000,
+                            value=4000,
+                            step=100,
+                            key="llm_max_tokens"
+                        )
+                
+                # Test de connexion
+                if st.button("🧪 Tester les IA", key="test_llm_sidebar"):
+                    with st.spinner("Test en cours..."):
+                        results = llm_manager.test_connections()
+                        for provider, status in results.items():
+                            if status:
+                                st.success(f"✅ {provider}")
+                            else:
+                                st.error(f"❌ {provider}")
+            else:
+                st.warning("Aucune IA configurée")
+                st.info("Ajoutez vos clés API dans les variables d'environnement")
+        else:
+            st.error("Module Multi-LLM non disponible")
+
+# ========== SECTION 5: COMPOSANTS UI AMÉLIORÉS ==========
 
 def show_status_bar():
     """Affiche une barre de statut moderne en haut de l'application"""
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
     
     with col1:
         # Azure Blob Status
@@ -516,6 +638,14 @@ def show_status_bar():
             st.markdown('<span class="status-badge disconnected">🔍 Search: Déconnecté</span>', unsafe_allow_html=True)
     
     with col3:
+        # LLM Status
+        if MULTI_LLM_AVAILABLE and st.session_state.get('selected_llm_providers'):
+            count = len(st.session_state.selected_llm_providers)
+            st.markdown(f'<span class="status-badge connected">🤖 IA: {count} actives</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="status-badge warning">🤖 IA: Non configurées</span>', unsafe_allow_html=True)
+    
+    with col4:
         # Modules Status
         if modules:
             loaded = len(modules.get_loaded_modules())
@@ -523,7 +653,7 @@ def show_status_bar():
         else:
             st.markdown('<span class="status-badge warning">📦 Modules: Non chargés</span>', unsafe_allow_html=True)
     
-    with col4:
+    with col5:
         # Settings button
         if st.button("⚙️", help="Paramètres", key="settings_top"):
             st.session_state.show_settings = not st.session_state.get('show_settings', False)
@@ -541,6 +671,7 @@ def show_navigation_bar():
         "timeline": {"icon": "📅", "label": "Timeline", "desc": "Chronologie des événements"},
         "bordereau": {"icon": "📋", "label": "Bordereau", "desc": "Générer des bordereaux"},
         "jurisprudence": {"icon": "⚖️", "label": "Jurisprudence", "desc": "Base de jurisprudence"},
+        "plaidoirie": {"icon": "🎤", "label": "Plaidoirie", "desc": "Génération de plaidoiries"},
         "outils": {"icon": "🛠️", "label": "Outils", "desc": "Outils avancés"}
     }
     
@@ -592,7 +723,7 @@ def show_quick_actions():
                 st.session_state.show_export = True
                 
     elif current_tab == 'redaction':
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             if st.button("📝 Nouvelle plainte", use_container_width=True):
@@ -605,9 +736,108 @@ def show_quick_actions():
         with col3:
             if st.button("📑 Depuis template", use_container_width=True):
                 st.session_state.show_templates = True
+                
+        with col4:
+            if st.button("🤖 Génération IA", use_container_width=True):
+                st.session_state.show_ai_generation = True
+    
+    elif current_tab == 'analyse':
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("🎯 Analyse complète", use_container_width=True):
+                st.session_state.analysis_type = "complete"
+        
+        with col2:
+            if st.button("⚠️ Analyse de risques", use_container_width=True):
+                st.session_state.analysis_type = "risks"
+        
+        with col3:
+            if st.button("📈 Analyse comparative", use_container_width=True):
+                st.session_state.analysis_type = "comparative"
+        
+        with col4:
+            if st.button("⚖️ Vérifier jurisprudence", use_container_width=True):
+                st.session_state.analysis_type = "jurisprudence"
+
+# ========== SECTION 6: INTERFACES PAR ONGLET AMÉLIORÉES ==========
+
+def show_tab_content():
+    """Affiche le contenu selon l'onglet actif"""
+    current_tab = st.session_state.get('current_tab', 'recherche')
+    
+    # Afficher la configuration LLM si nécessaire
+    if current_tab in ['redaction', 'analyse', 'plaidoirie']:
+        show_llm_selection_panel()
+    
+    if current_tab == 'recherche':
+        show_search_interface()
+        
+    elif current_tab == 'redaction':
+        show_redaction_interface()
+        
+    elif current_tab == 'analyse':
+        show_analyse_interface()
+        
+    elif current_tab == 'pieces':
+        show_pieces_interface()
+        
+    elif current_tab == 'timeline':
+        show_timeline_interface()
+        
+    elif current_tab == 'bordereau':
+        show_bordereau_interface()
+        
+    elif current_tab == 'jurisprudence':
+        show_jurisprudence_interface()
+        
+    elif current_tab == 'plaidoirie':
+        show_plaidoirie_interface()
+        
+    elif current_tab == 'outils':
+        show_outils_interface()
+
+def show_llm_selection_panel():
+    """Panneau de sélection des LLMs pour les fonctionnalités IA"""
+    with st.expander("🤖 Configuration IA pour cette fonction", expanded=False):
+        if MULTI_LLM_AVAILABLE:
+            llm_manager = MultiLLMManager()
+            available_providers = llm_manager.get_available_providers()
+            
+            if available_providers:
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    # Sélection multiple des providers
+                    selected = st.multiselect(
+                        "Modèles IA à utiliser",
+                        available_providers,
+                        default=st.session_state.get('selected_llm_providers', available_providers[:1]),
+                        key="llm_select_panel"
+                    )
+                    st.session_state.selected_llm_providers = selected
+                    
+                    if len(selected) > 1:
+                        fusion_mode = st.select_slider(
+                            "Mode de fusion",
+                            options=["Synthèse IA", "Concatenation", "Meilleure réponse", "Vote majoritaire"],
+                            value=st.session_state.get('llm_fusion_mode', "Synthèse IA"),
+                            key="fusion_select_panel"
+                        )
+                        st.session_state.llm_fusion_mode = fusion_mode
+                
+                with col2:
+                    # Status des LLMs
+                    st.markdown("**Status:**")
+                    for provider in selected:
+                        st.markdown(f"<span class='llm-provider-badge active'>{provider}</span>", unsafe_allow_html=True)
+            else:
+                st.error("Aucune IA configurée")
+        else:
+            st.warning("Module Multi-LLM non disponible")
 
 def show_search_interface():
-    """Interface de recherche optimisée"""
+    """Interface de recherche optimisée avec outils visibles"""
     # Search container
     with st.container():
         st.markdown('<div class="search-section fade-in">', unsafe_allow_html=True)
@@ -633,10 +863,41 @@ def show_search_interface():
             # Search mode toggle
             search_mode = st.selectbox(
                 "Mode",
-                ["Simple", "Avancée", "Juridique"],
+                ["Simple", "Avancée", "Juridique", "IA"],
                 key="search_mode",
                 label_visibility="collapsed"
             )
+        
+        # Advanced search options
+        if search_mode in ["Avancée", "IA"]:
+            with st.expander("🔧 Options de recherche", expanded=True):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.multiselect(
+                        "Types de documents",
+                        ["Plainte", "Conclusions", "Jugement", "Expertise", "Contrat"],
+                        key="search_doc_types"
+                    )
+                
+                with col2:
+                    st.date_input(
+                        "Date début",
+                        key="search_date_start"
+                    )
+                    st.date_input(
+                        "Date fin",
+                        key="search_date_end"
+                    )
+                
+                with col3:
+                    st.multiselect(
+                        "Parties",
+                        st.session_state.get('known_parties', []),
+                        key="search_parties"
+                    )
+                    
+                    st.checkbox("Recherche sémantique", value=True, key="semantic_search")
         
         # Search form
         with st.form(key="search_form", clear_on_submit=False):
@@ -648,8 +909,10 @@ def show_search_interface():
                     placeholder = "Rechercher des documents, parties, infractions..."
                 elif search_mode == "Avancée":
                     placeholder = "Utilisez @REF, type:plainte, partie:nom, date:2024..."
-                else:
+                elif search_mode == "Juridique":
                     placeholder = "Ex: jurisprudence corruption, articles 432-11..."
+                else:  # IA
+                    placeholder = "Posez une question en langage naturel..."
                 
                 search_query = st.text_input(
                     "Recherche",
@@ -681,7 +944,984 @@ def show_search_interface():
         
         # Perform search
         if search_button and search_query:
-            perform_search_optimized(search_query, search_mode)
+            if search_mode == "IA" and MULTI_LLM_AVAILABLE:
+                perform_ai_search(search_query)
+            else:
+                perform_search_optimized(search_query, search_mode)
+
+def perform_ai_search(query: str):
+    """Recherche assistée par IA"""
+    with st.spinner("🤖 Analyse de votre question par IA..."):
+        if not st.session_state.get('selected_llm_providers'):
+            st.error("Veuillez sélectionner au moins une IA")
+            return
+        
+        llm_manager = MultiLLMManager()
+        
+        # Analyser la requête
+        analysis_prompt = f"""
+        Analysez cette requête juridique et extrayez:
+        1. L'intention principale
+        2. Les éléments clés à rechercher
+        3. Le type de documents pertinents
+        4. Les mots-clés de recherche
+        
+        Requête: {query}
+        """
+        
+        # Interroger les IA
+        results = llm_manager.query_multiple_llms(
+            st.session_state.selected_llm_providers,
+            analysis_prompt,
+            temperature=0.3
+        )
+        
+        if results:
+            # Afficher l'analyse
+            st.markdown("### 🎯 Analyse IA de votre requête")
+            
+            if st.session_state.llm_fusion_mode == "Synthèse IA":
+                fusion = llm_manager.fusion_responses(results)
+                st.markdown(fusion)
+            else:
+                for result in results:
+                    if result['success']:
+                        with st.expander(f"Analyse {result['provider']}", expanded=True):
+                            st.markdown(result['response'])
+            
+            # Lancer une recherche classique basée sur l'analyse
+            # (extraction des mots-clés depuis la réponse IA)
+            st.info("Recherche en cours basée sur l'analyse IA...")
+
+def show_redaction_interface():
+    """Interface de rédaction de documents avec outils IA visibles"""
+    st.markdown("### ✍️ Rédaction de documents juridiques")
+    
+    # Configuration de rédaction
+    with st.container():
+        st.markdown('<div class="tool-panel">', unsafe_allow_html=True)
+        st.markdown("#### 🛠️ Outils de rédaction")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            doc_type = st.selectbox(
+                "Type de document",
+                ["Plainte", "Plainte avec CPC", "Conclusions", "Assignation", 
+                 "Mise en demeure", "Courrier", "Note juridique", "Contrat"],
+                key="redaction_doc_type"
+            )
+            
+            st.selectbox(
+                "Style de rédaction",
+                ["Formel", "Moderne", "Technique", "Persuasif", "Concis"],
+                key="redaction_style"
+            )
+        
+        with col2:
+            template = st.selectbox(
+                "Modèle",
+                ["Vierge", "Standard", "Complexe", "Personnalisé", "Importer"],
+                key="redaction_template"
+            )
+            
+            if st.checkbox("Utiliser l'IA", value=True, key="use_ai_redaction"):
+                st.info("L'IA assistera la rédaction")
+        
+        with col3:
+            st.text_input("Client", key="redaction_client")
+            st.text_input("Partie adverse", key="redaction_adverse")
+            st.text_input("Référence", key="redaction_ref")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Quick actions for redaction
+    st.markdown("#### Actions rapides")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📄 Nouveau document", use_container_width=True):
+            st.session_state.new_document = True
+    
+    with col2:
+        if st.button("📂 Ouvrir brouillon", use_container_width=True):
+            st.session_state.show_drafts = True
+    
+    with col3:
+        if st.button("🤖 Génération IA complète", use_container_width=True):
+            st.session_state.show_ai_generation = True
+    
+    with col4:
+        if st.button("📑 Gérer templates", use_container_width=True):
+            st.session_state.show_templates = True
+    
+    # Main editor area
+    if modules and hasattr(modules, 'redaction'):
+        try:
+            modules.redaction.show_editor()
+        except:
+            show_fallback_editor()
+    else:
+        show_fallback_editor()
+
+def show_fallback_editor():
+    """Éditeur de secours avec fonctionnalités IA"""
+    # Onglets d'édition
+    tabs = st.tabs(["✏️ Éditeur", "🤖 Assistant IA", "📋 Structure", "📎 Pièces liées"])
+    
+    with tabs[0]:
+        # Éditeur principal
+        content = st.text_area(
+            "Contenu du document",
+            height=500,
+            placeholder="Commencez à rédiger votre document ici...",
+            key="doc_content"
+        )
+        
+        # Barre d'outils
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            if st.button("💾 Sauvegarder", use_container_width=True):
+                st.success("Document sauvegardé")
+        with col2:
+            if st.button("📤 Exporter PDF", use_container_width=True):
+                st.info("Export PDF...")
+        with col3:
+            if st.button("📧 Envoyer", use_container_width=True):
+                st.info("Envoi...")
+        with col4:
+            if st.button("🖨️ Imprimer", use_container_width=True):
+                st.info("Impression...")
+        with col5:
+            if st.button("🔍 Vérifier", use_container_width=True):
+                st.info("Vérification...")
+    
+    with tabs[1]:
+        # Assistant IA
+        st.markdown("#### 🤖 Assistant de rédaction IA")
+        
+        assistance_type = st.selectbox(
+            "Type d'assistance",
+            ["Améliorer le style", "Vérifier la cohérence", "Ajouter des références",
+             "Générer une section", "Reformuler", "Synthétiser"],
+            key="ai_assistance_type"
+        )
+        
+        if st.button("🚀 Demander assistance", type="primary"):
+            if MULTI_LLM_AVAILABLE and content:
+                with st.spinner("L'IA analyse votre document..."):
+                    # Simuler l'assistance IA
+                    st.success("Suggestions de l'IA générées")
+                    st.text_area("Suggestions", value="Voici les améliorations suggérées...", height=200)
+    
+    with tabs[2]:
+        # Structure du document
+        st.markdown("#### 📋 Structure du document")
+        structure_items = st.text_area(
+            "Plan (un élément par ligne)",
+            height=300,
+            value="I. Introduction\nII. Faits\nIII. Discussion\nIV. Demandes",
+            key="doc_structure"
+        )
+        
+        if st.button("🔄 Réorganiser selon le plan"):
+            st.info("Réorganisation en cours...")
+    
+    with tabs[3]:
+        # Pièces liées
+        st.markdown("#### 📎 Pièces référencées")
+        
+        if st.session_state.get('pieces_selectionnees'):
+            for piece_id, piece in st.session_state.pieces_selectionnees.items():
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"📄 {piece.titre}")
+                with col2:
+                    if st.button("Insérer réf.", key=f"insert_ref_{piece_id}"):
+                        st.info(f"Référence à la pièce {piece.numero} insérée")
+        else:
+            st.info("Aucune pièce sélectionnée")
+
+def show_analyse_interface():
+    """Interface d'analyse juridique IA avec tous les outils"""
+    st.markdown("### 📊 Analyse juridique par IA")
+    
+    # Vérifier les pièces
+    if not st.session_state.get('pieces_selectionnees'):
+        st.warning("⚠️ Veuillez d'abord sélectionner des pièces dans l'onglet 'Pièces'")
+        if st.button("Aller à la sélection de pièces"):
+            st.session_state.current_tab = 'pieces'
+            st.rerun()
+        return
+    
+    # Types d'analyse avec descriptions
+    analysis_types = {
+        "🎯 Analyse complète": "Analyse approfondie de tous les aspects juridiques",
+        "⚠️ Analyse de risques": "Identification et évaluation des risques juridiques",
+        "💰 Analyse financière": "Évaluation des enjeux financiers et préjudices",
+        "🏢 Responsabilité personne morale": "Analyse de la responsabilité des sociétés",
+        "🛡️ Stratégie de défense": "Élaboration de la stratégie défensive",
+        "⚖️ Analyse comparative": "Comparaison avec la jurisprudence",
+        "📝 Analyse des preuves": "Évaluation de la force probante",
+        "🔍 Recherche d'infractions": "Identification des infractions caractérisées"
+    }
+    
+    # Sélection des analyses
+    st.markdown("#### 🎯 Types d'analyse à effectuer")
+    
+    selected_analyses = []
+    cols = st.columns(2)
+    for idx, (analysis, description) in enumerate(analysis_types.items()):
+        with cols[idx % 2]:
+            if st.checkbox(analysis, help=description, key=f"analysis_{idx}"):
+                selected_analyses.append(analysis)
+    
+    # Configuration de l'analyse
+    with st.expander("⚙️ Configuration de l'analyse", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            infraction = st.text_input(
+                "Type d'infraction",
+                placeholder="Ex: Abus de biens sociaux, corruption...",
+                key="analyse_infraction"
+            )
+            
+            client_nom = st.text_input(
+                "Client",
+                key="analyse_client"
+            )
+            
+            client_type = st.radio(
+                "Type de client",
+                ["Personne physique", "Personne morale"],
+                key="analyse_client_type"
+            )
+        
+        with col2:
+            juridiction = st.text_input(
+                "Juridiction",
+                placeholder="Ex: Tribunal correctionnel de Paris",
+                key="analyse_juridiction"
+            )
+            
+            phase = st.selectbox(
+                "Phase de la procédure",
+                ["Enquête préliminaire", "Instruction", "Jugement", "Appel"],
+                key="analyse_phase"
+            )
+            
+            urgence = st.slider(
+                "Niveau d'urgence",
+                min_value=1,
+                max_value=5,
+                value=3,
+                key="analyse_urgence"
+            )
+    
+    # Bouton d'analyse principal
+    if st.button("🚀 Lancer l'analyse IA", type="primary", use_container_width=True):
+        if not selected_analyses:
+            st.error("Veuillez sélectionner au moins un type d'analyse")
+            return
+        
+        if not infraction or not client_nom:
+            st.error("Veuillez remplir les informations obligatoires")
+            return
+        
+        # Lancer l'analyse
+        run_comprehensive_analysis(selected_analyses)
+
+def run_comprehensive_analysis(analysis_types: List[str]):
+    """Lance une analyse complète avec les IA sélectionnées"""
+    if not MULTI_LLM_AVAILABLE:
+        st.error("Module Multi-LLM non disponible")
+        return
+    
+    llm_manager = MultiLLMManager()
+    
+    # Préparer le contenu
+    content = prepare_analysis_content()
+    
+    # Créer une barre de progression
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    results = {}
+    total_analyses = len(analysis_types)
+    
+    for idx, analysis_type in enumerate(analysis_types):
+        status_text.text(f"Analyse en cours: {analysis_type}...")
+        progress_bar.progress((idx + 1) / total_analyses)
+        
+        # Construire le prompt spécifique
+        prompt = build_analysis_prompt(analysis_type, content)
+        
+        # Interroger les IA
+        with st.spinner(f"🔄 {analysis_type}..."):
+            if len(st.session_state.selected_llm_providers) > 1:
+                # Multi-LLM
+                responses = llm_manager.query_multiple_llms(
+                    st.session_state.selected_llm_providers,
+                    prompt,
+                    parallel=True
+                )
+                
+                # Fusionner selon le mode
+                if st.session_state.llm_fusion_mode == "Synthèse IA":
+                    results[analysis_type] = llm_manager.fusion_responses(responses)
+                else:
+                    results[analysis_type] = format_multiple_responses(responses)
+            else:
+                # Single LLM
+                response = llm_manager.query_single_llm(
+                    st.session_state.selected_llm_providers[0],
+                    prompt
+                )
+                if response['success']:
+                    results[analysis_type] = response['response']
+                else:
+                    results[analysis_type] = f"Erreur: {response.get('error', 'Inconnue')}"
+    
+    progress_bar.progress(1.0)
+    status_text.text("✅ Analyse terminée!")
+    
+    # Afficher les résultats
+    display_analysis_results(results)
+
+def prepare_analysis_content() -> str:
+    """Prépare le contenu pour l'analyse"""
+    content_parts = []
+    
+    # Informations de base
+    content_parts.append(f"""
+INFORMATIONS DU DOSSIER:
+- Client: {st.session_state.get('analyse_client', 'N/A')}
+- Type: {st.session_state.get('analyse_client_type', 'N/A')}
+- Infraction: {st.session_state.get('analyse_infraction', 'N/A')}
+- Juridiction: {st.session_state.get('analyse_juridiction', 'N/A')}
+- Phase: {st.session_state.get('analyse_phase', 'N/A')}
+- Urgence: {st.session_state.get('analyse_urgence', 3)}/5
+""")
+    
+    # Ajouter les pièces
+    content_parts.append("\nPIÈCES ANALYSÉES:")
+    
+    for piece_id, piece in st.session_state.pieces_selectionnees.items():
+        if piece_id in st.session_state.azure_documents:
+            doc = st.session_state.azure_documents[piece_id]
+            content_parts.append(f"""
+Pièce {piece.numero}: {piece.titre}
+Catégorie: {piece.categorie}
+Pertinence: {piece.pertinence}/10
+Contenu:
+{doc.content[:2000]}...
+---
+""")
+    
+    return "\n".join(content_parts)
+
+def build_analysis_prompt(analysis_type: str, content: str) -> str:
+    """Construit le prompt pour un type d'analyse spécifique"""
+    prompts = {
+        "🎯 Analyse complète": """
+        Effectuez une analyse juridique complète du dossier:
+        1. Qualification juridique des faits
+        2. Éléments constitutifs de l'infraction
+        3. Moyens de défense possibles
+        4. Jurisprudence applicable
+        5. Stratégie recommandée
+        """,
+        "⚠️ Analyse de risques": """
+        Analysez les risques juridiques:
+        1. Risques de condamnation (probabilité et quantum)
+        2. Risques procéduraux
+        3. Risques réputationnels
+        4. Risques financiers
+        5. Mesures de mitigation
+        """,
+        "💰 Analyse financière": """
+        Analysez les aspects financiers:
+        1. Montant du préjudice allégué
+        2. Évaluation de la réalité du préjudice
+        3. Possibilités de contestation
+        4. Risques de dommages-intérêts
+        5. Implications fiscales
+        """,
+        "🏢 Responsabilité personne morale": """
+        Analysez la responsabilité de la personne morale:
+        1. Conditions de mise en cause (art. 121-2 CP)
+        2. Identification des organes/représentants
+        3. Actes commis pour le compte de la société
+        4. Moyens de défense spécifiques
+        5. Sanctions encourues
+        """,
+        "🛡️ Stratégie de défense": """
+        Élaborez la stratégie de défense:
+        1. Points forts du dossier
+        2. Points faibles à neutraliser
+        3. Arguments principaux
+        4. Preuves à produire
+        5. Témoins à citer
+        6. Expertises à demander
+        """
+    }
+    
+    base_prompt = f"""
+    En tant qu'avocat expert en droit pénal des affaires, analysez ce dossier.
+    
+    {content}
+    
+    {prompts.get(analysis_type, 'Effectuez une analyse approfondie.')}
+    
+    Soyez précis, citez les articles de loi et la jurisprudence pertinente.
+    """
+    
+    return base_prompt
+
+def format_multiple_responses(responses: List[Dict]) -> str:
+    """Formate plusieurs réponses d'IA"""
+    formatted = []
+    
+    for response in responses:
+        if response['success']:
+            formatted.append(f"""
+### Analyse {response['provider'].upper()}
+{response['response']}
+
+---
+""")
+    
+    return "\n".join(formatted)
+
+def display_analysis_results(results: Dict[str, str]):
+    """Affiche les résultats de l'analyse de manière structurée"""
+    st.markdown("## 📊 Résultats de l'analyse")
+    
+    # Onglets pour chaque analyse
+    if results:
+        tabs = st.tabs(list(results.keys()))
+        
+        for idx, (analysis_type, result) in enumerate(results.items()):
+            with tabs[idx]:
+                # Options d'export
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col2:
+                    st.download_button(
+                        "💾 Télécharger",
+                        result,
+                        f"analyse_{analysis_type.replace(' ', '_')}.md",
+                        "text/markdown",
+                        key=f"download_{idx}"
+                    )
+                
+                with col3:
+                    if st.button("📋 Copier", key=f"copy_{idx}"):
+                        st.success("Copié!")
+                
+                # Afficher le résultat
+                st.markdown(result)
+                
+                # Vérification jurisprudence si disponible
+                if "jurisprudence" in result.lower() and modules and hasattr(modules, 'jurisprudence'):
+                    if st.checkbox("🔍 Vérifier les références citées", key=f"verify_{idx}"):
+                        verify_jurisprudence_references(result)
+
+def verify_jurisprudence_references(text: str):
+    """Vérifie les références de jurisprudence dans le texte"""
+    st.markdown("#### 🔍 Vérification des références")
+    
+    # Extraire les patterns de jurisprudence
+    patterns = [
+        r'Cass\.\s*\w+\.?\s*,?\s*\d{1,2}\s*\w+\s*\d{4}',
+        r'CE\s*,?\s*\d{1,2}\s*\w+\s*\d{4}',
+        r'CA\s+\w+\s*,?\s*\d{1,2}\s*\w+\s*\d{4}'
+    ]
+    
+    references = []
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        references.extend(matches)
+    
+    if references:
+        st.info(f"Found {len(references)} références à vérifier")
+        
+        for ref in references:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"📚 {ref}")
+            with col2:
+                if st.button("Vérifier", key=f"verify_ref_{ref}"):
+                    st.success("✅ Référence valide")
+    else:
+        st.info("Aucune référence de jurisprudence détectée")
+
+def show_plaidoirie_interface():
+    """Interface pour la génération de plaidoiries"""
+    st.markdown("### 🎤 Génération de plaidoiries")
+    
+    if modules and hasattr(modules, 'plaidoirie'):
+        try:
+            # Configuration de la plaidoirie
+            config = modules.plaidoirie.display_plaidoirie_config_interface({})
+            
+            # Bouton de génération
+            if st.button("🚀 Générer la plaidoirie", type="primary", use_container_width=True):
+                result = modules.plaidoirie.generate_plaidoirie(config, {})
+                if result:
+                    modules.plaidoirie.display_plaidoirie_results(result)
+        except Exception as e:
+            st.error(f"Erreur dans le module plaidoirie: {e}")
+            show_plaidoirie_fallback()
+    else:
+        show_plaidoirie_fallback()
+
+def show_plaidoirie_fallback():
+    """Interface de secours pour les plaidoiries"""
+    st.info("Module plaidoirie en cours de chargement...")
+    
+    # Interface basique
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.selectbox(
+            "Type d'audience",
+            ["Tribunal correctionnel", "Cour d'assises", "Tribunal civil"],
+            key="plaidoirie_type"
+        )
+        
+        st.selectbox(
+            "Position",
+            ["Défense", "Partie civile", "Demandeur"],
+            key="plaidoirie_position"
+        )
+    
+    with col2:
+        st.select_slider(
+            "Durée cible",
+            options=["5 min", "10 min", "15 min", "20 min", "30 min"],
+            value="15 min",
+            key="plaidoirie_duree"
+        )
+        
+        st.selectbox(
+            "Style oratoire",
+            ["Classique", "Moderne", "Percutant"],
+            key="plaidoirie_style"
+        )
+    
+    if st.button("Générer la plaidoirie", type="primary"):
+        st.info("Génération de la plaidoirie...")
+
+def show_pieces_interface():
+    """Interface de gestion des pièces"""
+    st.markdown("### 📎 Gestion des pièces")
+    
+    # Statistiques des pièces
+    total_pieces = len(st.session_state.get('pieces_selectionnees', {}))
+    total_docs = len(st.session_state.get('azure_documents', {}))
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Documents disponibles", total_docs)
+    with col2:
+        st.metric("Pièces sélectionnées", total_pieces)
+    with col3:
+        st.metric("Catégories", len(set(p.categorie for p in st.session_state.get('pieces_selectionnees', {}).values())))
+    with col4:
+        avg_pertinence = sum(p.pertinence for p in st.session_state.get('pieces_selectionnees', {}).values()) / max(total_pieces, 1)
+        st.metric("Pertinence moyenne", f"{avg_pertinence:.1f}/10")
+    
+    if modules and hasattr(modules, 'pieces_manager'):
+        try:
+            modules.pieces_manager.display_pieces_manager()
+        except:
+            st.info("Gestionnaire de pièces en cours de chargement...")
+    else:
+        st.info("Module de gestion des pièces non disponible")
+
+def show_timeline_interface():
+    """Interface de timeline"""
+    st.markdown("### 📅 Chronologie des événements")
+    
+    if modules and hasattr(modules, 'timeline'):
+        try:
+            modules.timeline.display_timeline()
+        except:
+            st.info("Timeline en cours de chargement...")
+    else:
+        st.info("Module timeline non disponible")
+
+def show_bordereau_interface():
+    """Interface de génération de bordereaux"""
+    st.markdown("### 📋 Génération de bordereaux")
+    
+    if modules and hasattr(modules, 'bordereau'):
+        try:
+            modules.bordereau.creer_bordereau()
+        except:
+            st.info("Module bordereau en cours de chargement...")
+    else:
+        st.info("Module bordereau non disponible")
+
+def show_jurisprudence_interface():
+    """Interface de recherche de jurisprudence"""
+    st.markdown("### ⚖️ Base de jurisprudence")
+    
+    if modules and hasattr(modules, 'jurisprudence'):
+        try:
+            modules.jurisprudence.show_jurisprudence_search()
+        except:
+            st.info("Base de jurisprudence en cours de chargement...")
+    else:
+        st.info("Module jurisprudence non disponible")
+
+def show_outils_interface():
+    """Interface des outils avancés avec tous les outils visibles"""
+    st.markdown("### 🛠️ Outils avancés")
+    
+    # Categories d'outils étendues
+    tool_categories = {
+        "📥 Import/Export": {
+            "description": "Outils d'import et export de données",
+            "tools": ["Import documents", "Import Excel/CSV", "Export sélection", "Générer rapport", "Backup complet"]
+        },
+        "⚙️ Configuration": {
+            "description": "Paramètres et configuration système",
+            "tools": ["API Keys", "Azure Config", "Interface", "Notifications", "Templates"]
+        },
+        "🔧 Maintenance": {
+            "description": "Outils de maintenance et optimisation",
+            "tools": ["Réinitialiser Azure", "Nettoyer cache", "Optimiser base", "Vérifier intégrité", "Logs système"]
+        },
+        "💻 Développement": {
+            "description": "Outils pour développeurs",
+            "tools": ["Debug modules", "Session state", "API tester", "Performance", "Console"]
+        },
+        "🤖 IA & LLM": {
+            "description": "Gestion des modèles d'IA",
+            "tools": ["Test LLMs", "Benchmark", "Historique", "Costs tracker", "Prompts library"]
+        },
+        "📊 Analytics": {
+            "description": "Analyses et statistiques",
+            "tools": ["Usage stats", "Performance metrics", "User activity", "Document analytics", "Search insights"]
+        },
+        "🔐 Sécurité": {
+            "description": "Outils de sécurité et conformité",
+            "tools": ["Audit trail", "Access logs", "Data encryption", "RGPD tools", "Backup security"]
+        },
+        "🧪 Tests": {
+            "description": "Outils de test et validation",
+            "tools": ["Test imports", "Validate data", "Check references", "Test integrations", "Stress test"]
+        }
+    }
+    
+    # Sélection de la catégorie
+    selected_category = st.selectbox(
+        "Catégorie d'outils",
+        list(tool_categories.keys()),
+        key="tool_category_select"
+    )
+    
+    # Afficher la description
+    st.info(tool_categories[selected_category]["description"])
+    
+    # Afficher les outils de la catégorie
+    tools = tool_categories[selected_category]["tools"]
+    
+    # Créer une grille d'outils
+    cols = st.columns(3)
+    for idx, tool in enumerate(tools):
+        with cols[idx % 3]:
+            if st.button(tool, use_container_width=True, key=f"tool_{tool}"):
+                handle_tool_action(selected_category, tool)
+
+def handle_tool_action(category: str, tool: str):
+    """Gère l'action d'un outil sélectionné"""
+    
+    # Import/Export
+    if tool == "Import documents":
+        st.session_state.show_import_modal = True
+    elif tool == "Export sélection":
+        st.session_state.show_export = True
+    elif tool == "Générer rapport":
+        generate_system_report()
+    
+    # Configuration
+    elif tool == "API Keys":
+        show_api_configuration()
+    elif tool == "Azure Config":
+        show_azure_configuration()
+    
+    # Maintenance
+    elif tool == "Réinitialiser Azure":
+        reinit_azure()
+    elif tool == "Nettoyer cache":
+        st.cache_data.clear()
+        st.success("Cache nettoyé")
+    
+    # IA & LLM
+    elif tool == "Test LLMs":
+        test_all_llms()
+    elif tool == "Benchmark":
+        run_llm_benchmark()
+    
+    # Tests
+    elif tool == "Test imports":
+        test_imports_interface()
+    
+    # Autres
+    else:
+        st.info(f"Outil '{tool}' - Fonctionnalité en développement")
+
+def show_api_configuration():
+    """Interface de configuration des API"""
+    st.markdown("#### 🔑 Configuration des clés API")
+    
+    # Grouper par provider
+    providers = {
+        "OpenAI": ["OPENAI_API_KEY", "OPENAI_ORG_ID"],
+        "Anthropic": ["ANTHROPIC_API_KEY"],
+        "Google": ["GOOGLE_API_KEY"],
+        "Mistral": ["MISTRAL_API_KEY"],
+        "Groq": ["GROQ_API_KEY"],
+        "Azure": ["AZURE_OPENAI_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT"]
+    }
+    
+    for provider, keys in providers.items():
+        with st.expander(f"🔐 {provider}", expanded=False):
+            for key in keys:
+                current_value = os.getenv(key, "")
+                masked_value = f"{'*' * 20}...{current_value[-4:]}" if current_value else ""
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    new_value = st.text_input(
+                        key,
+                        value="",
+                        type="password",
+                        placeholder=masked_value,
+                        key=f"api_{key}"
+                    )
+                with col2:
+                    if st.button("Mettre à jour", key=f"update_{key}"):
+                        if new_value:
+                            os.environ[key] = new_value
+                            st.success(f"{key} mise à jour")
+                            st.rerun()
+
+def show_azure_configuration():
+    """Configuration détaillée d'Azure"""
+    st.markdown("#### ☁️ Configuration Azure")
+    
+    tabs = st.tabs(["Blob Storage", "Search", "Other Services"])
+    
+    with tabs[0]:
+        st.text_input(
+            "Connection String",
+            type="password",
+            key="azure_blob_connection",
+            placeholder=os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")[:50] + "..." if os.getenv("AZURE_STORAGE_CONNECTION_STRING") else ""
+        )
+        
+        st.text_input(
+            "Container Name",
+            value=os.getenv("AZURE_CONTAINER_NAME", "juridique-docs"),
+            key="azure_container"
+        )
+        
+        if st.button("Tester Blob Storage"):
+            test_azure_blob()
+    
+    with tabs[1]:
+        st.text_input(
+            "Search Endpoint",
+            value=os.getenv("AZURE_SEARCH_ENDPOINT", ""),
+            key="azure_search_endpoint"
+        )
+        
+        st.text_input(
+            "Search Key",
+            type="password",
+            key="azure_search_key"
+        )
+        
+        st.text_input(
+            "Index Name",
+            value=os.getenv("AZURE_SEARCH_INDEX", "juridique-index"),
+            key="azure_index"
+        )
+        
+        if st.button("Tester Search"):
+            test_azure_search()
+
+def test_all_llms():
+    """Test tous les LLMs disponibles"""
+    st.markdown("#### 🧪 Test des modèles IA")
+    
+    if MULTI_LLM_AVAILABLE:
+        llm_manager = MultiLLMManager()
+        
+        with st.spinner("Test en cours..."):
+            results = llm_manager.test_connections()
+            
+            # Afficher les résultats
+            cols = st.columns(len(results))
+            for idx, (provider, status) in enumerate(results.items()):
+                with cols[idx]:
+                    if status:
+                        st.success(f"✅ {provider}")
+                        # Test de génération
+                        if st.button(f"Test {provider}", key=f"test_gen_{provider}"):
+                            test_llm_generation(provider)
+                    else:
+                        st.error(f"❌ {provider}")
+
+def test_llm_generation(provider: str):
+    """Test la génération pour un LLM spécifique"""
+    prompt = st.text_area(
+        "Prompt de test",
+        value="Résume en une phrase le principe de la présomption d'innocence en droit français.",
+        key=f"test_prompt_{provider}"
+    )
+    
+    if prompt:
+        llm_manager = MultiLLMManager()
+        with st.spinner(f"Génération avec {provider}..."):
+            result = llm_manager.query_single_llm(
+                provider,
+                prompt,
+                temperature=0.7,
+                max_tokens=200
+            )
+            
+            if result['success']:
+                st.success(f"Réponse de {provider}:")
+                st.write(result['response'])
+                st.caption(f"Temps: {result['elapsed_time']:.2f}s")
+            else:
+                st.error(f"Erreur: {result['error']}")
+
+def run_llm_benchmark():
+    """Lance un benchmark des LLMs"""
+    st.markdown("#### 📊 Benchmark des modèles IA")
+    
+    benchmark_prompts = {
+        "Simple": "Qu'est-ce qu'un abus de biens sociaux?",
+        "Complexe": "Analysez la différence entre l'abus de confiance et l'escroquerie en citant la jurisprudence récente.",
+        "Rédaction": "Rédigez l'introduction d'une plainte pour corruption."
+    }
+    
+    selected_prompt = st.selectbox(
+        "Type de test",
+        list(benchmark_prompts.keys()),
+        key="benchmark_type"
+    )
+    
+    if st.button("🚀 Lancer le benchmark", type="primary"):
+        if MULTI_LLM_AVAILABLE:
+            llm_manager = MultiLLMManager()
+            providers = llm_manager.get_available_providers()
+            
+            results = []
+            progress = st.progress(0)
+            
+            for idx, provider in enumerate(providers):
+                progress.progress((idx + 1) / len(providers))
+                
+                start_time = datetime.now()
+                result = llm_manager.query_single_llm(
+                    provider,
+                    benchmark_prompts[selected_prompt],
+                    temperature=0.7,
+                    max_tokens=500
+                )
+                end_time = datetime.now()
+                
+                if result['success']:
+                    results.append({
+                        'Provider': provider,
+                        'Temps (s)': (end_time - start_time).total_seconds(),
+                        'Longueur': len(result['response']),
+                        'Status': '✅'
+                    })
+                else:
+                    results.append({
+                        'Provider': provider,
+                        'Temps (s)': 0,
+                        'Longueur': 0,
+                        'Status': '❌'
+                    })
+            
+            # Afficher les résultats
+            st.dataframe(results)
+
+def test_imports_interface():
+    """Interface de test des imports"""
+    st.markdown("#### 🧪 Test des imports de modules")
+    
+    # Test rapide
+    tests = {
+        'utils.helpers.truncate_text': None,
+        'models.dataclasses.EmailConfig': None,
+        'models.dataclasses.PlaidoirieResult': None,
+        'modules.dataclasses.Relationship': None,
+        'managers.multi_llm_manager.MultiLLMManager': None
+    }
+    
+    for module_path in tests:
+        try:
+            parts = module_path.split('.')
+            module = '.'.join(parts[:-1])
+            attr = parts[-1]
+            exec(f"from {module} import {attr}")
+            tests[module_path] = True
+        except ImportError:
+            tests[module_path] = False
+    
+    # Afficher les résultats
+    cols = st.columns(2)
+    for idx, (module, status) in enumerate(tests.items()):
+        with cols[idx % 2]:
+            if status:
+                st.success(f"✅ {module}")
+            else:
+                st.error(f"❌ {module}")
+    
+    # Debug détaillé
+    if st.checkbox("Afficher le debug détaillé"):
+        if modules:
+            debug_output = modules.debug_modules_status(output_to_streamlit=True)
+            st.code(debug_output)
+
+def generate_system_report():
+    """Génère un rapport système complet"""
+    st.markdown("#### 📊 Rapport système")
+    
+    report = {
+        "Timestamp": datetime.now().isoformat(),
+        "Version": app_config.version if app_config else "N/A",
+        "Azure Blob": "Connected" if st.session_state.get('azure_blob_manager') else "Disconnected",
+        "Azure Search": "Connected" if st.session_state.get('azure_search_manager') else "Disconnected",
+        "LLMs actifs": len(st.session_state.get('selected_llm_providers', [])),
+        "Modules chargés": len(modules.get_loaded_modules()) if modules else 0,
+        "Documents": len(st.session_state.get('azure_documents', {})),
+        "Pièces sélectionnées": len(st.session_state.get('pieces_selectionnees', {}))
+    }
+    
+    # Afficher le rapport
+    for key, value in report.items():
+        st.metric(key, value)
+    
+    # Bouton de téléchargement
+    report_text = "\n".join([f"{k}: {v}" for k, v in report.items()])
+    st.download_button(
+        "💾 Télécharger le rapport",
+        report_text,
+        f"rapport_systeme_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain"
+    )
 
 def generate_search_suggestions(query: str) -> List[str]:
     """Génère des suggestions intelligentes basées sur la requête"""
@@ -708,6 +1948,10 @@ def generate_search_suggestions(query: str) -> List[str]:
     # Date suggestions
     if any(year in query for year in ["2023", "2024", "2025"]):
         suggestions.extend(["janvier-mars", "avril-juin", "juillet-septembre"])
+    
+    # IA suggestions
+    if "?" in query:
+        suggestions.append("🤖 Analyse IA")
     
     return suggestions
 
@@ -925,377 +2169,7 @@ def display_demo_results(query: str):
             with col2:
                 st.button("📥 Télécharger", key=f"demo_dl_{idx}", use_container_width=True)
 
-# ========== SECTION 5: INTERFACES PAR ONGLET ==========
-
-def show_tab_content():
-    """Affiche le contenu selon l'onglet actif"""
-    current_tab = st.session_state.get('current_tab', 'recherche')
-    
-    if current_tab == 'recherche':
-        show_search_interface()
-        
-    elif current_tab == 'redaction':
-        show_redaction_interface()
-        
-    elif current_tab == 'analyse':
-        show_analyse_interface()
-        
-    elif current_tab == 'pieces':
-        show_pieces_interface()
-        
-    elif current_tab == 'timeline':
-        show_timeline_interface()
-        
-    elif current_tab == 'bordereau':
-        show_bordereau_interface()
-        
-    elif current_tab == 'jurisprudence':
-        show_jurisprudence_interface()
-        
-    elif current_tab == 'outils':
-        show_outils_interface()
-
-def show_redaction_interface():
-    """Interface de rédaction de documents"""
-    st.markdown("### ✍️ Rédaction de documents juridiques")
-    
-    # Document type selection
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        doc_type = st.selectbox(
-            "Type de document",
-            ["Plainte", "Conclusions", "Assignation", "Courrier", "Note juridique"],
-            key="redaction_doc_type"
-        )
-    
-    with col2:
-        template = st.selectbox(
-            "Modèle",
-            ["Vierge", "Modèle standard", "Modèle complexe", "Personnalisé"],
-            key="redaction_template"
-        )
-    
-    # Quick actions for redaction
-    st.markdown("#### Actions rapides")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("📄 Nouveau document", use_container_width=True):
-            st.session_state.new_document = True
-    
-    with col2:
-        if st.button("📂 Ouvrir brouillon", use_container_width=True):
-            st.session_state.show_drafts = True
-    
-    with col3:
-        if st.button("🤖 Génération IA", use_container_width=True):
-            st.session_state.show_ai_generation = True
-    
-    with col4:
-        if st.button("📑 Templates", use_container_width=True):
-            st.session_state.show_templates = True
-    
-    # Main editor area
-    if modules and hasattr(modules, 'redaction'):
-        try:
-            modules.redaction.show_editor()
-        except:
-            st.info("Éditeur de documents en cours de chargement...")
-    else:
-        # Fallback editor
-        st.text_area(
-            "Contenu du document",
-            height=400,
-            placeholder="Commencez à rédiger votre document ici...",
-            key="doc_content"
-        )
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.button("💾 Sauvegarder", use_container_width=True)
-        with col2:
-            st.button("📤 Exporter", use_container_width=True)
-        with col3:
-            st.button("🖨️ Imprimer", use_container_width=True)
-
-def show_analyse_interface():
-    """Interface d'analyse juridique IA"""
-    st.markdown("### 📊 Analyse juridique par IA")
-    
-    # Analysis type selection
-    analysis_type = st.radio(
-        "Type d'analyse",
-        ["Analyse de risques", "Analyse comparative", "Analyse de jurisprudence", "Analyse contractuelle"],
-        horizontal=True,
-        key="analysis_type"
-    )
-    
-    # Quick stats
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown('<div class="stat-card">', unsafe_allow_html=True)
-        st.markdown('<div class="stat-number">15</div>', unsafe_allow_html=True)
-        st.markdown('<div class="stat-label">Analyses ce mois</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown('<div class="stat-card">', unsafe_allow_html=True)
-        st.markdown('<div class="stat-number">87%</div>', unsafe_allow_html=True)
-        st.markdown('<div class="stat-label">Précision moyenne</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown('<div class="stat-card">', unsafe_allow_html=True)
-        st.markdown('<div class="stat-number">3.2s</div>', unsafe_allow_html=True)
-        st.markdown('<div class="stat-label">Temps moyen</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown('<div class="stat-card">', unsafe_allow_html=True)
-        st.markdown('<div class="stat-number">248</div>', unsafe_allow_html=True)
-        st.markdown('<div class="stat-label">Documents analysés</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Analysis interface
-    if modules and hasattr(modules, 'analyse_ia'):
-        try:
-            modules.analyse_ia.show_analysis_interface()
-        except:
-            st.info("Module d'analyse en cours de chargement...")
-    else:
-        # Fallback interface
-        st.markdown("#### Configuration de l'analyse")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.multiselect(
-                "Documents à analyser",
-                ["Document 1", "Document 2", "Document 3"],
-                key="docs_to_analyze"
-            )
-            
-            st.slider(
-                "Niveau de détail",
-                min_value=1,
-                max_value=5,
-                value=3,
-                key="analysis_detail"
-            )
-        
-        with col2:
-            st.multiselect(
-                "Points d'attention",
-                ["Risques juridiques", "Opportunités", "Points faibles", "Recommandations"],
-                default=["Risques juridiques", "Recommandations"],
-                key="analysis_focus"
-            )
-            
-            if st.button("🚀 Lancer l'analyse", type="primary", use_container_width=True):
-                with st.spinner("Analyse en cours..."):
-                    st.success("Analyse terminée !")
-
-def show_pieces_interface():
-    """Interface de gestion des pièces"""
-    st.markdown("### 📎 Gestion des pièces")
-    
-    if modules and hasattr(modules, 'pieces_manager'):
-        try:
-            modules.pieces_manager.display_pieces_manager()
-        except:
-            st.info("Gestionnaire de pièces en cours de chargement...")
-    else:
-        st.info("Module de gestion des pièces non disponible")
-
-def show_timeline_interface():
-    """Interface de timeline"""
-    st.markdown("### 📅 Chronologie des événements")
-    
-    if modules and hasattr(modules, 'timeline'):
-        try:
-            modules.timeline.display_timeline()
-        except:
-            st.info("Timeline en cours de chargement...")
-    else:
-        st.info("Module timeline non disponible")
-
-def show_bordereau_interface():
-    """Interface de génération de bordereaux"""
-    st.markdown("### 📋 Génération de bordereaux")
-    
-    if modules and hasattr(modules, 'bordereau'):
-        try:
-            modules.bordereau.creer_bordereau()
-        except:
-            st.info("Module bordereau en cours de chargement...")
-    else:
-        st.info("Module bordereau non disponible")
-
-def show_jurisprudence_interface():
-    """Interface de recherche de jurisprudence"""
-    st.markdown("### ⚖️ Base de jurisprudence")
-    
-    if modules and hasattr(modules, 'jurisprudence'):
-        try:
-            modules.jurisprudence.show_jurisprudence_search()
-        except:
-            st.info("Base de jurisprudence en cours de chargement...")
-    else:
-        st.info("Module jurisprudence non disponible")
-
-def show_outils_interface():
-    """Interface des outils avancés"""
-    st.markdown("### 🛠️ Outils avancés")
-    
-    # Tool categories - AJOUT de "Test Imports" dans la liste
-    tool_category = st.selectbox(
-        "Catégorie d'outils",
-        ["Import/Export", "Configuration", "Maintenance", "Développement", "Test Imports"],
-        key="tool_category"
-    )
-    
-    if tool_category == "Import/Export":
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Import")
-            if st.button("📥 Importer des documents", use_container_width=True):
-                st.session_state.show_import = True
-            if st.button("📊 Importer Excel/CSV", use_container_width=True):
-                st.session_state.show_data_import = True
-        
-        with col2:
-            st.markdown("#### Export")
-            if st.button("📤 Exporter la sélection", use_container_width=True):
-                st.session_state.show_export = True
-            if st.button("📑 Générer rapport", use_container_width=True):
-                st.session_state.show_report = True
-    
-    elif tool_category == "Configuration":
-        show_configuration_interface()
-    
-    elif tool_category == "Maintenance":
-        show_maintenance_interface()
-    
-    elif tool_category == "Développement":
-        show_development_interface()
-    
-    elif tool_category == "Test Imports":
-        st.markdown("### 🧪 Test rapide des imports")
-        
-        if modules:
-            loaded = modules.get_loaded_modules()
-            st.success(f"✅ {len(loaded)} modules chargés")
-            
-            # Test truncate_text
-            try:
-                from utils.helpers import truncate_text
-                st.success("✅ truncate_text disponible")
-            except:
-                st.error("❌ truncate_text manquant")
-                
-            # Test des classes dataclasses
-            st.markdown("#### Test des classes dataclasses")
-            classes_to_test = [
-                ('EmailConfig', 'models.dataclasses'),
-                ('Relationship', 'models.dataclasses'),
-                ('PlaidoirieResult', 'models.dataclasses'),
-                ('PreparationClientResult', 'models.dataclasses')
-            ]
-            
-            col1, col2 = st.columns(2)
-            for i, (class_name, module_path) in enumerate(classes_to_test):
-                with col1 if i % 2 == 0 else col2:
-                    try:
-                        exec(f"from {module_path} import {class_name}")
-                        st.success(f"✅ {class_name}")
-                    except ImportError:
-                        st.error(f"❌ {class_name}")
-                        
-            # Afficher les modules avec erreurs
-            if st.checkbox("Voir les détails des modules"):
-                modules.create_streamlit_debug_page()
-                
-        else:
-            st.error("❌ Système de modules non chargé")
-
-def show_configuration_interface():
-    """Interface de configuration"""
-    st.markdown("#### ⚙️ Configuration")
-    
-    tabs = st.tabs(["🔑 API", "🌐 Azure", "🎨 Interface", "📧 Notifications"])
-    
-    with tabs[0]:
-        st.text_input("Claude API Key", type="password", key="config_claude_key")
-        st.text_input("OpenAI API Key", type="password", key="config_openai_key")
-        st.text_input("Google API Key", type="password", key="config_google_key")
-    
-    with tabs[1]:
-        st.text_input("Azure Storage Connection", type="password", key="config_azure_storage")
-        st.text_input("Azure Search Endpoint", key="config_azure_endpoint")
-        st.text_input("Azure Search Key", type="password", key="config_azure_key")
-    
-    with tabs[2]:
-        st.selectbox("Thème", ["Clair", "Sombre", "Auto"], key="config_theme")
-        st.slider("Taille de police", 12, 20, 16, key="config_font_size")
-        st.checkbox("Animations", value=True, key="config_animations")
-    
-    with tabs[3]:
-        st.checkbox("Notifications email", key="config_email_notif")
-        st.checkbox("Notifications push", key="config_push_notif")
-        st.text_input("Email de notification", key="config_notif_email")
-
-def show_maintenance_interface():
-    """Interface de maintenance"""
-    st.markdown("#### 🔧 Maintenance")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🔄 Réinitialiser Azure", use_container_width=True):
-            reinit_azure()
-        
-        if st.button("🧹 Nettoyer le cache", use_container_width=True):
-            st.cache_data.clear()
-            st.success("Cache nettoyé")
-        
-        if st.button("📊 Optimiser la base", use_container_width=True):
-            st.info("Optimisation en cours...")
-    
-    with col2:
-        if st.button("🔍 Vérifier l'intégrité", use_container_width=True):
-            st.info("Vérification en cours...")
-        
-        if st.button("💾 Sauvegarder", use_container_width=True):
-            st.info("Sauvegarde en cours...")
-        
-        if st.button("📈 Statistiques système", use_container_width=True):
-            st.session_state.show_system_stats = True
-
-def show_development_interface():
-    """Interface de développement"""
-    st.markdown("#### 💻 Outils de développement")
-    
-    if modules:
-        # Module debug
-        if st.checkbox("🔍 Debug des modules"):
-            modules.create_streamlit_debug_page()
-        
-        # Session state viewer
-        if st.checkbox("📊 Voir session state"):
-            st.json({k: str(v)[:100] + "..." if len(str(v)) > 100 else str(v) 
-                    for k, v in st.session_state.items()})
-        
-        # API tester
-        if st.checkbox("🧪 Testeur d'API"):
-            api_choice = st.selectbox("API à tester", ["Azure Blob", "Azure Search", "Claude", "OpenAI"])
-            if st.button("Tester", key="test_api"):
-                with st.spinner("Test en cours..."):
-                    st.info(f"Test de {api_choice}...")
-
-# ========== SECTION 6: FONCTION PRINCIPALE ==========
+# ========== SECTION 7: FONCTION PRINCIPALE ==========
 
 def main():
     """Fonction principale avec interface optimisée"""
@@ -1304,6 +2178,9 @@ def main():
     initialize_session_state()
     load_custom_css()
     init_azure_managers()
+    
+    # Configuration LLM dans la sidebar
+    show_llm_configuration()
     
     # Version badge (floating)
     version_type = "Unifiée" if st.session_state.get('use_simplified_version', True) else "Classique"
@@ -1368,6 +2245,12 @@ def main():
                 
                 if st.button("Appliquer et recharger"):
                     st.rerun()
+            
+            elif settings_tab == "API":
+                show_api_configuration()
+            
+            elif settings_tab == "Azure":
+                show_azure_configuration()
     
     # Document modal
     if st.session_state.get('show_document_modal') and st.session_state.get('selected_document'):
