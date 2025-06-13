@@ -1,4 +1,3 @@
-# services/style_learning_service.py
 """Service d'apprentissage du style de rédaction depuis des documents Word/PDF"""
 
 import re
@@ -9,11 +8,41 @@ import docx
 import PyPDF2
 from collections import Counter
 import streamlit as st
+from dataclasses import dataclass, field
 
-from models.dataclasses import (
-    Document, StyleLearningResult, StyleConfig, 
-    StyleRedaction, DocumentJuridique
-)
+# ========================= STRUCTURES DE DONNÉES =========================
+
+@dataclass
+class StyleLearningResult:
+    """Résultat de l'apprentissage du style"""
+    style_name: str
+    documents_analyzed: int
+    average_sentence_length: int = 0
+    average_paragraph_length: int = 0
+    paragraph_numbering_style: Optional[str] = None
+    paragraph_numbering_pattern: Optional[str] = None
+    formality_score: float = 0.5
+    technical_terms_frequency: float = 0.0
+    transition_words: List[str] = field(default_factory=list)
+    argument_patterns: List[str] = field(default_factory=list)
+    citation_patterns: List[str] = field(default_factory=list)
+    conclusion_patterns: List[str] = field(default_factory=list)
+    common_phrases: List[str] = field(default_factory=list)
+    use_bold: bool = False
+    use_italic: bool = False
+    heading_style: str = "Normal"
+    confidence_score: float = 0.5
+
+@dataclass
+class Document:
+    """Document pour l'analyse de style"""
+    id: str
+    title: str
+    content: str
+    source: str
+    metadata: Dict = field(default_factory=dict)
+
+# ========================= SERVICE PRINCIPAL =========================
 
 class StyleLearningService:
     """Service pour apprendre le style de rédaction depuis des documents"""
@@ -504,3 +533,13 @@ class StyleLearningService:
         summary.append(f"\n**Confiance dans l'analyse : {style.confidence_score:.0%}**")
         
         return "\n".join(summary)
+
+# Singleton
+_style_learning_service = None
+
+def get_style_learning_service() -> StyleLearningService:
+    """Retourne l'instance singleton du service"""
+    global _style_learning_service
+    if _style_learning_service is None:
+        _style_learning_service = StyleLearningService()
+    return _style_learning_service
