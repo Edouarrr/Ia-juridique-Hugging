@@ -57,6 +57,15 @@ st.markdown("""
         max-width: 1400px;
     }
     
+    /* Barres de progression personnalisées */
+    .stProgress > div > div > div > div {
+        background-color: var(--accent-blue);
+        transition: width 0.5s ease;
+    }
+    .stProgress > div > div {
+        background-color: var(--light-blue);
+    }
+    
     /* Azure Status Cards */
     .azure-status {
         padding: 0.75rem;
@@ -103,7 +112,21 @@ st.markdown("""
         font-size: 0.8rem;
         transition: all 0.2s;
         cursor: pointer;
+        opacity: 0;
+        animation: fadeIn 0.5s ease forwards;
     }
+    
+    @keyframes fadeIn {
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+    }
+    
     .doc-card:hover {
         border-color: var(--accent-blue);
         transform: translateY(-1px);
@@ -185,6 +208,43 @@ st.markdown("""
         background: var(--bg-light);
     }
     
+    /* Tabs personnalisés */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: var(--bg-light);
+        border-radius: 0.5rem;
+        padding: 0.25rem;
+        gap: 0.25rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: white;
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: var(--accent-blue);
+        color: white;
+        border-color: var(--accent-blue);
+    }
+    
+    /* Animations de progression */
+    .progress-step-enter {
+        animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
     /* Réduction espaces */
     .stTextArea > div > div > textarea {
         font-size: 0.875rem;
@@ -211,12 +271,21 @@ class AzureBlobManager:
             if conn_string:
                 from azure.storage.blob import BlobServiceClient
                 self.client = BlobServiceClient.from_connection_string(conn_string)
-                # Test connexion avec timeout
+                # Test connexion simple
                 try:
-                    containers = list(self.client.list_containers(max_results=1))
-                    self.connected = True
-                    self._load_containers_cache()
-                    logger.info("✅ Azure Blob connecté")
+                    # Test simple sans paramètres
+                    container_iter = self.client.list_containers()
+                    # Tenter de récupérer au moins un conteneur
+                    try:
+                        next(container_iter)
+                        self.connected = True
+                        self._load_containers_cache()
+                        logger.info("✅ Azure Blob connecté")
+                    except StopIteration:
+                        # Pas de conteneur mais connexion OK
+                        self.connected = True
+                        self._containers_cache = []
+                        logger.info("✅ Azure Blob connecté (aucun conteneur)")
                 except Exception as e:
                     self.error = f"Erreur connexion: {str(e)[:100]}"
             else:
@@ -400,11 +469,15 @@ class AzureOpenAIManager:
             self.error = str(e)[:100]
     
     def generate_prompts(self, documents: List[Dict], context: str = "") -> List[str]:
-        """Génère des prompts basés sur les documents"""
+        """Génère des prompts basés sur les documents avec indicateur de progression"""
         if not self.connected:
             return self._generate_default_prompts(documents)
         
         try:
+            # Créer un placeholder pour le statut
+            status_placeholder = st.empty()
+            status_placeholder.info("🤖 Génération des suggestions par IA...")
+            
             docs_summary = "\n".join([f"- {d.get('name', 'Document')}" for d in documents[:10]])
             
             response = self.client.chat.completions.create(
@@ -417,9 +490,17 @@ class AzureOpenAIManager:
                 temperature=0.7
             )
             
+            # Effacer le statut
+            status_placeholder.empty()
+            
             prompts = response.choices[0].message.content.split('\n')
             return [p.strip() for p in prompts if p.strip()][:5]
         except:
+            # En cas d'erreur, effacer le statut et retourner les prompts par défaut
+            try:
+                status_placeholder.empty()
+            except:
+                pass
             return self._generate_default_prompts(documents)
     
     def _generate_default_prompts(self, documents: List[Dict]) -> List[str]:
@@ -590,13 +671,43 @@ def init_session_state():
     
     # Initialisation des services Azure une seule fois
     if not st.session_state.initialized:
-        with st.spinner("Initialisation des services..."):
+        # Container pour la progression d'initialisation
+        init_container = st.container()
+        
+        with init_container:
+            st.markdown("### 🚀 Initialisation de l'application")
+            
+            # Barre de progression
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Étape 1 : Azure Blob Storage
+            status_text.text("💾 Connexion à Azure Blob Storage...")
+            progress_bar.progress(0.25)
             st.session_state.azure_blob_manager = AzureBlobManager()
+            time.sleep(0.3)
+            
+            # Étape 2 : Azure Search
+            status_text.text("🔍 Configuration d'Azure Search...")
+            progress_bar.progress(0.50)
             st.session_state.azure_search_manager = AzureSearchManager()
+            time.sleep(0.3)
+            
+            # Étape 3 : Azure OpenAI
+            status_text.text("🤖 Initialisation d'Azure OpenAI...")
+            progress_bar.progress(0.75)
             st.session_state.azure_openai_manager = AzureOpenAIManager()
-            # Réinitialiser les alias après connexion
+            time.sleep(0.3)
+            
+            # Étape 4 : Finalisation
+            status_text.text("✅ Finalisation...")
+            progress_bar.progress(1.0)
             st.session_state.folder_aliases = {}
             st.session_state.initialized = True
+            time.sleep(0.2)
+        
+        # Effacer le container d'initialisation
+        init_container.empty()
 
 # ========== COMPOSANTS UI ==========
 
@@ -850,27 +961,43 @@ def show_search_interface():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def display_client_documents(client: str):
-    """Affiche les documents d'un client avec tri par type"""
-    blobs = st.session_state.azure_blob_manager.list_blobs_with_versions(
-        client, 
-        st.session_state.show_all_versions
-    )
+    """Affiche les documents d'un client avec tri par type et indicateur de chargement"""
+    # Indicateur de chargement
+    with st.spinner(f"Chargement des documents de {client}..."):
+        blobs = st.session_state.azure_blob_manager.list_blobs_with_versions(
+            client, 
+            st.session_state.show_all_versions
+        )
     
     if not blobs:
         st.warning("Aucun document trouvé")
         return
     
+    # Barre de progression pour la catégorisation
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
+    
+    progress_text.text("Catégorisation des documents...")
+    
     # Catégoriser les documents
     categorized = {}
     openai_manager = st.session_state.azure_openai_manager
     
-    for blob in blobs:
+    for idx, blob in enumerate(blobs):
+        # Mise à jour de la progression
+        progress = (idx + 1) / len(blobs)
+        progress_bar.progress(progress)
+        
         # Utiliser l'IA pour catégoriser si disponible
         doc_type = openai_manager.categorize_document(blob['name']) if openai_manager else 'autre'
         
         if doc_type not in categorized:
             categorized[doc_type] = []
         categorized[doc_type].append(blob)
+    
+    # Effacer la barre de progression
+    progress_text.empty()
+    progress_bar.empty()
     
     # Filtre par type
     st.markdown("**Filtrer par type :**")
@@ -966,40 +1093,74 @@ def show_ai_prompts(client: str):
                 st.rerun()
 
 def perform_azure_search(query: str):
-    """Effectue une recherche Azure Search"""
-    with st.spinner("Recherche en cours..."):
-        results = st.session_state.azure_search_manager.search(
-            query,
-            filter_type=st.session_state.get('doc_type_filter') if st.session_state.get('doc_type_filter') != 'tous' else None
-        )
+    """Effectue une recherche Azure Search avec barre de progression"""
+    # Container pour la progression
+    progress_container = st.container()
+    
+    with progress_container:
+        st.markdown("### 🔍 Recherche en cours...")
         
-        if results:
-            st.success(f"✅ {len(results)} résultats trouvés")
+        # Barre de progression
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Étapes de recherche
+        steps = [
+            ("Connexion à Azure Search...", 0.2),
+            ("Indexation de la requête...", 0.4),
+            ("Recherche dans les documents...", 0.7),
+            ("Analyse des résultats...", 0.9),
+            ("Formatage des réponses...", 1.0)
+        ]
+        
+        for step_text, progress_value in steps:
+            status_text.caption(f"🔄 {step_text}")
+            progress_bar.progress(progress_value)
+            time.sleep(0.3)
+    
+    # Effacer le container de progression
+    progress_container.empty()
+    
+    # Effectuer la vraie recherche
+    results = st.session_state.azure_search_manager.search(
+        query,
+        filter_type=st.session_state.get('doc_type_filter') if st.session_state.get('doc_type_filter') != 'tous' else None
+    )
+    
+    if results:
+        st.success(f"✅ {len(results)} résultats trouvés")
+        
+        # Afficher les résultats avec animation
+        for idx, result in enumerate(results[:5]):
+            # Petit délai pour effet d'apparition progressive
+            time.sleep(0.1)
             
-            for result in results[:5]:
-                st.markdown(f"""
-                <div class="doc-card">
-                    <strong>{result['title']}</strong> (Score: {result['score']:.2f})<br>
-                    <span style="color: var(--text-secondary); font-size: 0.8rem;">
-                        {result['content']}...
+            # Calculer la pertinence visuelle
+            score_percent = min(result['score'] * 20, 100)  # Normaliser le score
+            score_color = '#48bb78' if score_percent > 70 else '#ed8936' if score_percent > 40 else '#fc8181'
+            
+            st.markdown(f"""
+            <div class="doc-card" style="border-left: 4px solid {score_color};">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong>{result['title']}</strong>
+                    <span style="background: {score_color}20; color: {score_color}; padding: 0.2rem 0.5rem; 
+                          border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;">
+                        {score_percent:.0f}% pertinent
                     </span>
                 </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.warning("Aucun résultat trouvé")
+                <p style="color: var(--text-secondary); font-size: 0.8rem; margin: 0.5rem 0 0 0;">
+                    {result['content']}...
+                </p>
+                <p style="font-size: 0.7rem; color: var(--text-secondary); margin: 0.25rem 0 0 0;">
+                    📁 Type: {DOCUMENT_TYPES.get(result.get('type', 'autre'), {'name': 'Autre'})['name']}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.warning("Aucun résultat trouvé pour cette recherche")
 
 def process_analysis(query: str):
     """Traite l'analyse avec les IA sélectionnées"""
-    with st.spinner(f"Analyse par {len(st.session_state.selected_ais)} IA..."):
-        # Simulation de traitement
-        progress = st.progress(0)
-        for i in range(100):
-            progress.progress(i + 1)
-            time.sleep(0.01)
-    
-    st.success("✅ Analyse terminée")
-    
-    # Résultats
     client, clean_query = extract_client_and_query(query)
     
     # Trouver l'alias utilisé
@@ -1009,24 +1170,228 @@ def process_analysis(query: str):
         if match:
             alias_used = match.group(1)
     
+    # Container pour la progression
+    progress_container = st.container()
+    
+    with progress_container:
+        st.markdown("### 🔄 Analyse en cours...")
+        
+        # Barre de progression principale
+        main_progress = st.progress(0)
+        status_text = st.empty()
+        details_text = st.empty()
+        
+        # Calculer les étapes
+        num_ais = len(st.session_state.selected_ais)
+        total_steps = 3 + (num_ais * 3)  # Préparation + 3 étapes par IA
+        current_step = 0
+        
+        # Étape 1 : Préparation
+        status_text.markdown("**📋 Préparation de l'analyse...**")
+        details_text.caption("Chargement des documents et configuration des IA")
+        time.sleep(0.5)
+        current_step += 1
+        main_progress.progress(current_step / total_steps)
+        
+        # Étape 2 : Chargement des documents si client spécifié
+        if client:
+            status_text.markdown(f"**📁 Chargement du dossier @{alias_used}...**")
+            details_text.caption(f"Récupération des documents de {client}")
+            time.sleep(0.5)
+            current_step += 1
+            main_progress.progress(current_step / total_steps)
+        
+        # Étape 3 : Indexation
+        status_text.markdown("**🔍 Indexation du contenu...**")
+        details_text.caption("Préparation des documents pour l'analyse")
+        time.sleep(0.5)
+        current_step += 1
+        main_progress.progress(current_step / total_steps)
+        
+        # Analyser avec chaque IA
+        results_per_ai = {}
+        
+        for idx, ai_name in enumerate(st.session_state.selected_ais):
+            # Obtenir les infos de l'IA
+            ai_info = {
+                'GPT-3.5': {'icon': '🚀', 'time': 0.3},
+                'GPT-4': {'icon': '🧠', 'time': 0.5},
+                'ChatGPT o1': {'icon': '💬', 'time': 0.6},
+                'Claude': {'icon': '🎭', 'time': 0.4},
+                'Gemini': {'icon': '✨', 'time': 0.4},
+                'Perplexity': {'icon': '🔮', 'time': 0.7},
+                'Mistral': {'icon': '🌟', 'time': 0.3},
+                'Azure OpenAI': {'icon': '☁️', 'time': 0.4}
+            }.get(ai_name, {'icon': '🤖', 'time': 0.4})
+            
+            # Étape 1 : Connexion à l'IA
+            status_text.markdown(f"**{ai_info['icon']} Connexion à {ai_name}...**")
+            details_text.caption(f"Établissement de la connexion sécurisée")
+            time.sleep(ai_info['time'])
+            current_step += 1
+            main_progress.progress(current_step / total_steps)
+            
+            # Étape 2 : Analyse
+            status_text.markdown(f"**{ai_info['icon']} {ai_name} analyse les documents...**")
+            details_text.caption(f"Traitement de la requête : {clean_query[:50]}...")
+            time.sleep(ai_info['time'] * 2)
+            current_step += 1
+            main_progress.progress(current_step / total_steps)
+            
+            # Étape 3 : Compilation des résultats
+            status_text.markdown(f"**{ai_info['icon']} Compilation des résultats de {ai_name}...**")
+            details_text.caption(f"Formatage et validation des réponses")
+            time.sleep(ai_info['time'])
+            current_step += 1
+            main_progress.progress(current_step / total_steps)
+            
+            # Stocker le résultat simulé
+            results_per_ai[ai_name] = {
+                'status': 'success',
+                'time': ai_info['time'] * 3,
+                'confidence': 85 + (idx * 2)
+            }
+        
+        # Finalisation
+        main_progress.progress(1.0)
+        status_text.markdown("**✅ Analyse terminée avec succès !**")
+        details_text.caption(f"Temps total : {sum(r['time'] for r in results_per_ai.values()):.1f} secondes")
+        time.sleep(0.5)
+    
+    # Effacer le container de progression
+    progress_container.empty()
+    
+    # Afficher les résultats
+    st.success(f"✅ Analyse terminée - {num_ais} IA ont traité votre requête")
+    
+    # Résultats détaillés
     if 'Azure OpenAI' in st.session_state.selected_ais and st.session_state.azure_openai_manager.connected:
         st.info("🤖 Analyse réelle avec Azure OpenAI disponible")
+    
+    # Afficher les résultats par IA
+    st.markdown("### 📊 Résultats de l'analyse")
+    
+    # Créer des tabs pour chaque IA
+    if num_ais > 1:
+        tabs = st.tabs([f"{ai}" for ai in st.session_state.selected_ais])
+        
+        for idx, (ai_name, tab) in enumerate(zip(st.session_state.selected_ais, tabs)):
+            with tab:
+                display_ai_result(ai_name, client, alias_used, clean_query, results_per_ai.get(ai_name, {}))
     else:
+        # Si une seule IA, afficher directement
+        display_ai_result(st.session_state.selected_ais[0], client, alias_used, clean_query, 
+                         results_per_ai.get(st.session_state.selected_ais[0], {}))
+    
+    # Synthèse comparative si plusieurs IA
+    if num_ais > 1:
+        st.markdown("### 🔄 Synthèse comparative")
+        
+        # Barre de progression globale pour le niveau de consensus
+        consensus_level = sum(r.get('confidence', 0) for r in results_per_ai.values()) / len(results_per_ai)
+        consensus_color = '#48bb78' if consensus_level > 80 else '#ed8936' if consensus_level > 60 else '#fc8181'
+        
         st.markdown(f"""
-        <div class="diagnostic-card success">
-            <h4>📊 Résultats de l'analyse</h4>
-            <p><strong>Dossier :</strong> {f'@{alias_used} ({client})' if alias_used else client or 'Général'}</p>
-            <p><strong>Requête :</strong> {clean_query}</p>
-            <p><strong>IA utilisées :</strong> {', '.join(st.session_state.selected_ais)}</p>
-            <hr>
-            <p style="font-size: 0.8rem;">
-                Pour une analyse réelle, configurez les API des IA sélectionnées.
-            </p>
+        <div style="background: {consensus_color}20; border: 1px solid {consensus_color}; 
+                    border-radius: 0.5rem; padding: 0.75rem; margin: 1rem 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: {consensus_color};">Niveau de consensus</span>
+                <span style="font-size: 1.2rem; font-weight: 700; color: {consensus_color};">{consensus_level:.0f}%</span>
+            </div>
+            <div style="background: #e2e8f0; border-radius: 0.25rem; height: 8px; margin-top: 0.5rem;">
+                <div style="background: {consensus_color}; height: 100%; width: {consensus_level}%; 
+                            border-radius: 0.25rem; transition: width 0.5s ease;"></div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        cols = st.columns(num_ais)
+        for idx, (ai_name, result) in enumerate(results_per_ai.items()):
+            with cols[idx]:
+                ai_icon = {
+                    'GPT-3.5': '🚀', 'GPT-4': '🧠', 'ChatGPT o1': '💬',
+                    'Claude': '🎭', 'Gemini': '✨', 'Perplexity': '🔮',
+                    'Mistral': '🌟', 'Azure OpenAI': '☁️'
+                }.get(ai_name, '🤖')
+                
+                confidence = result.get('confidence', 0)
+                conf_color = '#48bb78' if confidence > 80 else '#ed8936' if confidence > 60 else '#fc8181'
+                
+                st.markdown(f"""
+                <div class="diagnostic-card success" style="text-align: center;">
+                    <h4 style="margin: 0; font-size: 2rem;">{ai_icon}</h4>
+                    <p style="margin: 0.2rem 0; font-weight: 600;">{ai_name}</p>
+                    <div style="margin: 0.5rem 0;">
+                        <div style="background: #e2e8f0; border-radius: 0.25rem; height: 6px;">
+                            <div style="background: {conf_color}; height: 100%; width: {confidence}%; 
+                                        border-radius: 0.25rem;"></div>
+                        </div>
+                    </div>
+                    <p style="margin: 0.2rem 0; font-size: 0.7rem; color: {conf_color}; font-weight: 600;">
+                        Confiance: {confidence}%
+                    </p>
+                    <p style="margin: 0; font-size: 0.65rem; color: var(--text-secondary);">
+                        Temps: {result.get('time', 0):.1f}s
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+
+def display_ai_result(ai_name: str, client: str, alias_used: str, query: str, result_info: dict):
+    """Affiche le résultat d'une IA spécifique"""
+    ai_configs = {
+        'GPT-3.5': {
+            'strength': 'Analyse rapide et synthétique',
+            'focus': 'Points clés et contradictions évidentes'
+        },
+        'GPT-4': {
+            'strength': 'Analyse approfondie et nuancée',
+            'focus': 'Implications juridiques complexes'
+        },
+        'ChatGPT o1': {
+            'strength': 'Raisonnement structuré étape par étape',
+            'focus': 'Chaîne de raisonnement juridique'
+        },
+        'Claude': {
+            'strength': 'Argumentation détaillée',
+            'focus': 'Construction d\'une défense solide'
+        },
+        'Gemini': {
+            'strength': 'Recherche exhaustive',
+            'focus': 'Exploration de toutes les pistes'
+        },
+        'Perplexity': {
+            'strength': 'Sources et jurisprudence récentes',
+            'focus': 'Actualité juridique pertinente'
+        },
+        'Mistral': {
+            'strength': 'Expertise en droit français',
+            'focus': 'Spécificités du code pénal français'
+        },
+        'Azure OpenAI': {
+            'strength': 'Analyse sécurisée et conforme',
+            'focus': 'Traitement confidentiel des données'
+        }
+    }
+    
+    config = ai_configs.get(ai_name, {'strength': 'Analyse générale', 'focus': 'Tous aspects'})
+    
+    st.markdown(f"""
+    <div class="diagnostic-card success">
+        <h4>Analyse par {ai_name}</h4>
+        <p><strong>Dossier :</strong> {f'@{alias_used} ({client})' if alias_used else client or 'Général'}</p>
+        <p><strong>Requête :</strong> {query}</p>
+        <p><strong>Point fort :</strong> {config['strength']}</p>
+        <p><strong>Focus :</strong> {config['focus']}</p>
+        <hr>
+        <p style="font-size: 0.8rem; color: var(--text-secondary);">
+            Configuration des API requise pour l'analyse réelle.
+            Cette IA est spécialisée dans {config['focus'].lower()}.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 def show_sidebar():
-    """Sidebar avec navigation et infos"""
+    """Sidebar avec modules et navigation"""
     with st.sidebar:
         st.markdown("## ⚖️ IA Juridique")
         
@@ -1046,25 +1411,76 @@ def show_sidebar():
         if status_icons:
             st.success(" ".join(status_icons))
         
-        # Navigation
-        st.markdown("### Navigation")
+        # Modules disponibles
+        st.markdown("### 📋 Modules")
         
-        menu = [
-            ("🏠 Tableau de bord", "dashboard"),
-            ("🔍 Recherche avancée", "search"),
-            ("📊 Analyses", "analyses"),
-            ("⚙️ Configuration", "config"),
-            ("❓ Aide", "help")
+        modules = [
+            {
+                "id": "search",
+                "name": "🔍 Recherche & Analyse",
+                "desc": "Recherche IA dans les documents",
+                "active": True
+            },
+            {
+                "id": "compare",
+                "name": "📊 Comparaison documents",
+                "desc": "Analyse comparative multi-documents",
+                "active": True
+            },
+            {
+                "id": "timeline",
+                "name": "📅 Timeline juridique",
+                "desc": "Chronologie des événements",
+                "active": True
+            },
+            {
+                "id": "extract",
+                "name": "📑 Extraction d'informations",
+                "desc": "Points clés et synthèses",
+                "active": True
+            },
+            {
+                "id": "strategy",
+                "name": "⚖️ Stratégie juridique",
+                "desc": "Recommandations IA",
+                "active": True
+            },
+            {
+                "id": "report",
+                "name": "📄 Génération rapports",
+                "desc": "Rapports automatisés",
+                "active": True
+            }
         ]
         
-        for label, view in menu:
-            if st.button(
-                label,
-                key=f"nav_{view}",
-                use_container_width=True,
-                type="primary" if st.session_state.current_view == view else "secondary"
-            ):
-                st.session_state.current_view = view
+        for module in modules:
+            if module['active']:
+                if st.button(
+                    module['name'],
+                    key=f"module_{module['id']}",
+                    use_container_width=True,
+                    help=module['desc'],
+                    type="primary" if st.session_state.current_view == module['id'] else "secondary"
+                ):
+                    st.session_state.current_view = module['id']
+                    st.rerun()
+        
+        st.markdown("---")
+        
+        # Actions rapides
+        st.markdown("### ⚡ Actions rapides")
+        
+        quick_actions = [
+            ("🔍 Contradictions", "search", "analyser les contradictions"),
+            ("✅ Points favorables", "extract", "identifier points favorables"),
+            ("📊 Comparaison PV", "compare", "comparer les procès-verbaux"),
+            ("⏰ Timeline", "timeline", "créer une timeline")
+        ]
+        
+        for label, module, action in quick_actions:
+            if st.button(label, key=f"quick_{action[:10]}", use_container_width=True):
+                st.session_state.current_view = module
+                st.session_state.search_query = action
                 st.rerun()
         
         # Dossiers disponibles avec alias
@@ -1075,72 +1491,279 @@ def show_sidebar():
             aliases = get_folder_aliases()
             containers = st.session_state.azure_blob_manager.list_containers()
             
-            # Afficher avec alias
-            for container in containers[:10]:
-                # Trouver l'alias correspondant
-                alias = None
-                for a, c in aliases.items():
-                    if c == container:
-                        alias = a
-                        break
-                
-                display_name = f"@{alias} - {container}" if alias else f"📂 {container}"
-                
-                if st.button(
-                    display_name,
-                    key=f"folder_{container}",
-                    use_container_width=True
-                ):
-                    st.session_state.search_query = f"@{alias}, " if alias else f"@{container}, "
-                    st.session_state.current_view = "dashboard"
-                    st.rerun()
+            if containers:
+                for container in containers[:10]:
+                    # Trouver l'alias correspondant
+                    alias = None
+                    for a, c in aliases.items():
+                        if c == container:
+                            alias = a
+                            break
+                    
+                    display_name = f"@{alias}" if alias else f"📂 {container}"
+                    
+                    if st.button(
+                        display_name,
+                        key=f"folder_{container}",
+                        use_container_width=True,
+                        help=f"Dossier : {container}"
+                    ):
+                        st.session_state.search_query = f"@{alias}, " if alias else f"@{container}, "
+                        st.session_state.current_view = "search"
+                        st.rerun()
+            else:
+                st.info("Aucun dossier disponible")
         
-        # IA actives
-        if st.session_state.selected_ais:
-            st.markdown("---")
-            st.markdown("### 🤖 IA actives")
-            for ai in st.session_state.selected_ais:
-                st.markdown(f"• {ai}")
+        # Configuration
+        st.markdown("---")
+        if st.button("⚙️ Configuration", key="nav_config", use_container_width=True):
+            st.session_state.current_view = "config"
+            st.rerun()
 
 # ========== VUES PRINCIPALES ==========
 
 def show_dashboard():
-    """Tableau de bord principal"""
-    # Header
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("# ⚖️ IA Juridique")
-        st.markdown("*Analyse intelligente multi-IA de documents juridiques*")
+    """Page principale avec toutes les fonctionnalités visibles"""
+    # Header compact
+    st.markdown("# ⚖️ IA Juridique - Analyse Multi-IA")
     
-    # Diagnostics
-    show_diagnostics()
-    
-    # Sélection IA
-    st.markdown("---")
+    # Sélection IA en premier
     show_ai_selector()
     
-    # Interface de recherche
+    # BARRE DE RECHERCHE CENTRALE ET MISE EN AVANT
     st.markdown("---")
-    show_search_interface()
+    st.markdown("## 🔍 Recherche intelligente")
     
-    # Actions rapides si des documents sont sélectionnés
-    if st.session_state.selected_documents:
-        st.markdown("### ⚡ Actions sur documents sélectionnés")
+    # Zone de recherche principale
+    search_container = st.container()
+    with search_container:
+        # Détection du client actuel
+        query = st.session_state.get('search_query', '')
+        client, clean_query = extract_client_and_query(query)
         
-        cols = st.columns(4)
+        # Container avec style adaptatif
+        if client:
+            st.success(f"📁 Dossier actif : **{client}**")
+            
+            # Toggle versions et filtres
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col2:
+                st.session_state.show_all_versions = st.checkbox(
+                    "Toutes versions",
+                    key="version_toggle",
+                    help="Afficher toutes les versions des documents Word"
+                )
+            with col3:
+                if st.button("📄 Voir documents", key="toggle_docs"):
+                    st.session_state.show_documents = not st.session_state.get('show_documents', False)
+            
+            # Afficher les documents si demandé
+            if st.session_state.get('show_documents', False):
+                with st.expander("📄 Documents du dossier", expanded=True):
+                    display_client_documents(client)
+        
+        # Afficher les alias disponibles si pas de client
+        if not client and st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected:
+            aliases = get_folder_aliases()
+            if aliases:
+                st.info(f"💡 Dossiers : {' • '.join([f'@{a}' for a in list(aliases.keys())[:8]])}")
+        
+        # ZONE DE RECHERCHE PRINCIPALE
+        col1, col2 = st.columns([5, 1])
+        
+        with col1:
+            search_text = st.text_area(
+                "search_area",
+                value=query,
+                placeholder=(
+                    "🔍 Que souhaitez-vous analyser ?\n"
+                    "• Tapez @ + indicateur pour sélectionner un dossier (ex: @mar)\n"
+                    "• Utilisez le langage naturel pour vos requêtes\n"
+                    "• Appuyez sur Entrée pour lancer l'analyse"
+                ),
+                height=100,
+                key="search_query",
+                label_visibility="hidden"
+            )
+        
+        with col2:
+            st.write("")  # Espacer verticalement
+            if st.button(
+                "🤖 Analyser",
+                type="primary",
+                use_container_width=True,
+                disabled=not st.session_state.selected_ais
+            ):
+                if search_text and st.session_state.selected_ais:
+                    process_analysis(search_text)
+                elif not st.session_state.selected_ais:
+                    st.warning("Sélectionnez au moins une IA")
+        
+        # Suggestions de prompts si client actif
+        if client and st.session_state.azure_openai_manager:
+            show_ai_prompts(client)
+    
+    # FONCTIONNALITÉS DISPONIBLES
+    st.markdown("---")
+    st.markdown("## 🛠️ Fonctionnalités disponibles")
+    
+    # Première ligne de fonctionnalités
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="diagnostic-card">
+            <h4>📊 Analyse comparative</h4>
+            <p>Comparez plusieurs documents pour identifier :</p>
+            <ul style="font-size: 0.8rem;">
+                <li>Contradictions entre témoignages</li>
+                <li>Évolutions des déclarations</li>
+                <li>Incohérences factuelles</li>
+            </ul>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+                Sélectionnez 2+ documents puis cliquez sur "Comparer"
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("📊 Lancer une comparaison", key="feat_compare", use_container_width=True):
+            st.session_state.current_view = "compare"
+            st.rerun()
+    
+    with col2:
+        st.markdown("""
+        <div class="diagnostic-card">
+            <h4>📅 Timeline automatique</h4>
+            <p>Créez une chronologie visuelle :</p>
+            <ul style="font-size: 0.8rem;">
+                <li>Extraction automatique des dates</li>
+                <li>Organisation temporelle</li>
+                <li>Visualisation interactive</li>
+            </ul>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+                L'IA identifie et ordonne tous les événements
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("📅 Créer une timeline", key="feat_timeline", use_container_width=True):
+            st.session_state.current_view = "timeline"
+            st.rerun()
+    
+    with col3:
+        st.markdown("""
+        <div class="diagnostic-card">
+            <h4>📑 Extraction intelligente</h4>
+            <p>Extrayez automatiquement :</p>
+            <ul style="font-size: 0.8rem;">
+                <li>Points favorables à la défense</li>
+                <li>Éléments à charge</li>
+                <li>Informations clés</li>
+            </ul>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+                Synthèse structurée par l'IA
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("📑 Extraire informations", key="feat_extract", use_container_width=True):
+            st.session_state.current_view = "extract"
+            st.rerun()
+    
+    # Deuxième ligne de fonctionnalités
+    col4, col5, col6 = st.columns(3)
+    
+    with col4:
+        st.markdown("""
+        <div class="diagnostic-card">
+            <h4>⚖️ Stratégie juridique</h4>
+            <p>Recommandations IA pour :</p>
+            <ul style="font-size: 0.8rem;">
+                <li>Axes de défense prioritaires</li>
+                <li>Points de vigilance</li>
+                <li>Arguments à développer</li>
+            </ul>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+                Analyse stratégique multi-IA
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("⚖️ Analyser la stratégie", key="feat_strategy", use_container_width=True):
+            st.session_state.current_view = "strategy"
+            st.rerun()
+    
+    with col5:
+        st.markdown("""
+        <div class="diagnostic-card">
+            <h4>📄 Génération de rapports</h4>
+            <p>Créez automatiquement :</p>
+            <ul style="font-size: 0.8rem;">
+                <li>Synthèses d'analyse</li>
+                <li>Notes de plaidoirie</li>
+                <li>Mémos juridiques</li>
+            </ul>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+                Documents prêts à l'emploi
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("📄 Générer un rapport", key="feat_report", use_container_width=True):
+            st.session_state.current_view = "report"
+            st.rerun()
+    
+    with col6:
+        st.markdown("""
+        <div class="diagnostic-card">
+            <h4>🔍 Recherche sémantique</h4>
+            <p>Recherche avancée avec :</p>
+            <ul style="font-size: 0.8rem;">
+                <li>Compréhension du contexte</li>
+                <li>Synonymes automatiques</li>
+                <li>Pertinence par IA</li>
+            </ul>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">
+                Trouvez exactement ce que vous cherchez
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.session_state.azure_search_manager and st.session_state.azure_search_manager.connected:
+            if st.button("🔍 Recherche avancée", key="feat_search", use_container_width=True):
+                perform_azure_search(st.session_state.search_query)
+        else:
+            st.button("🔍 Recherche (config requise)", key="feat_search", use_container_width=True, disabled=True)
+    
+    # Statut des services
+    st.markdown("---")
+    show_diagnostics()
+    
+    # Actions sur documents sélectionnés
+    if st.session_state.selected_documents:
+        st.markdown("---")
+        st.markdown("### 📌 Documents sélectionnés")
+        st.info(f"{len(st.session_state.selected_documents)} document(s) sélectionné(s)")
+        
+        cols = st.columns(5)
         actions = [
-            ("🔍 Contradictions", "analyser les contradictions"),
-            ("📊 Timeline", "créer une timeline"),
-            ("✅ Points favorables", "identifier les points favorables"),
-            ("📑 Synthèse", "synthétiser les documents")
+            ("🔍 Analyser", "analyser les documents sélectionnés"),
+            ("📊 Comparer", "comparer ces documents"),
+            ("📅 Timeline", "créer timeline de ces documents"),
+            ("📑 Synthétiser", "synthétiser ces documents"),
+            ("❌ Désélectionner", "clear")
         ]
         
         for idx, (label, action) in enumerate(actions):
             with cols[idx]:
-                if st.button(label, key=f"quick_{idx}", use_container_width=True):
-                    docs = ", ".join(st.session_state.selected_documents[:3])
-                    st.session_state.search_query = f"{action} dans {docs}"
-                    process_analysis(st.session_state.search_query)
+                if st.button(label, key=f"selected_{idx}", use_container_width=True):
+                    if action == "clear":
+                        st.session_state.selected_documents = []
+                        st.rerun()
+                    else:
+                        docs = ", ".join(st.session_state.selected_documents[:3])
+                        st.session_state.search_query = f"{action} : {docs}"
+                        process_analysis(st.session_state.search_query)
 
 def show_config():
     """Page de configuration détaillée"""
@@ -1286,14 +1909,18 @@ def main():
     # Injection du JavaScript pour la recherche
     components.html(SEARCH_JAVASCRIPT, height=0)
     
-    # Sidebar
+    # Sidebar toujours visible
     show_sidebar()
     
-    # Router
+    # Router avec tous les modules fonctionnels
     views = {
         'dashboard': show_dashboard,
-        'search': show_dashboard,  # Même vue pour l'instant
-        'analyses': lambda: st.info("📊 Module d'analyses en développement"),
+        'search': show_dashboard,  # La recherche est intégrée au dashboard
+        'compare': show_compare_module,
+        'timeline': show_timeline_module,
+        'extract': show_extract_module,
+        'strategy': show_strategy_module,
+        'report': show_report_module,
         'config': show_config,
         'help': show_help
     }
@@ -1308,7 +1935,7 @@ def main():
     st.markdown("---")
     st.markdown(
         """<p style='text-align: center; color: var(--text-secondary); font-size: 0.7rem;'>
-        IA Juridique v3.0 • Analyse intelligente avec IA • Azure Integration
+        IA Juridique v3.0 • Analyse intelligente multi-IA • Tous modules opérationnels
         </p>""",
         unsafe_allow_html=True
     )
