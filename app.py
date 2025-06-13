@@ -1,3 +1,4 @@
+# app.py
 """Application principale avec interface optimisée et navigation intelligente"""
 
 import streamlit as st
@@ -85,73 +86,71 @@ except ImportError:
             st.session_state.workflow_active = None
             st.session_state.multi_ia_active = True
 
-try:
-    from utils.styles import load_custom_css
-except ImportError:
-    def load_custom_css():
-        pass
+# ========== SECTION 2: GESTIONNAIRES AZURE ==========
 
-# Import du service de recherche universelle
-try:
-    from managers.universal_search_service import UniversalSearchService
-    SEARCH_SERVICE_AVAILABLE = True
-except ImportError:
-    SEARCH_SERVICE_AVAILABLE = False
-    class UniversalSearchService:
-        async def search(self, query: str, filters: Optional[Dict] = None):
-            from types import SimpleNamespace
-            return SimpleNamespace(
-                total_count=0,
-                documents=[],
-                suggestions=[],
-                facets={}
-            )
+def init_azure_managers():
+    """Initialise les gestionnaires Azure si disponibles"""
+    if not AZURE_AVAILABLE:
+        return
+    
+    # Azure Blob Manager
+    if app_config.enable_azure_storage and 'azure_blob_manager' not in st.session_state:
+        try:
+            from managers.azure_blob_manager import AzureBlobManager
+            st.session_state.azure_blob_manager = AzureBlobManager()
+            print("✅ Azure Blob Manager initialisé")
+        except Exception as e:
+            print(f"❌ Erreur Azure Blob Manager: {e}")
+    
+    # Azure Search Manager
+    if app_config.enable_azure_search and 'azure_search_manager' not in st.session_state:
+        try:
+            from managers.azure_search_manager import AzureSearchManager
+            st.session_state.azure_search_manager = AzureSearchManager()
+            print("✅ Azure Search Manager initialisé")
+        except Exception as e:
+            print(f"❌ Erreur Azure Search Manager: {e}")
 
-# Import des managers principaux
-try:
-    from managers.multi_llm_manager import MultiLLMManager
-    MULTI_LLM_AVAILABLE = True
-except ImportError:
-    MULTI_LLM_AVAILABLE = False
+# ========== SECTION 3: IMPORTS DES MODULES ==========
 
-# Import des dataclasses
-try:
-    from models.dataclasses import (
-        Document, PieceSelectionnee, PieceProcedure,
-        EmailConfig, Relationship, PlaidoirieResult, 
-        PreparationClientResult
-    )
-    DATACLASSES_AVAILABLE = True
-except ImportError:
-    DATACLASSES_AVAILABLE = False
-    print("⚠️ models.dataclasses non disponible")
-
-# ========== IMPORTS DES MODULES MÉTIER (RÉORGANISÉS PAR CATÉGORIE) ==========
-
+# Dictionnaire pour tracker la disponibilité des modules
 modules_disponibles = {}
 
-# === 1. RECHERCHE ET ANALYSE ===
-# Module unifié de recherche et analyse (PRIORITAIRE)
+# === 1. MODULES DE BASE ===
+# Module de configuration
+try:
+    from modules.configuration import show_configuration_page
+    modules_disponibles['configuration'] = True
+except ImportError:
+    modules_disponibles['configuration'] = False
+
+# Module export manager
+try:
+    from managers.export_manager import ExportManager
+    modules_disponibles['export_manager'] = True
+    print("✅ Export Manager disponible")
+except ImportError:
+    modules_disponibles['export_manager'] = False
+    print("⚠️ Export Manager non disponible")
+
+# === 2. RECHERCHE ET ANALYSE ===
+# Module de recherche et analyse unifié (REMPLACE recherche + analyse_ia)
 try:
     from modules.recherche_analyse_unifiee import (
-        show_page as show_recherche_analyse_page,
-        UnifiedSearchAnalysisInterface,
-        NaturalLanguageAnalyzer
+        show_recherche_analyse_page,
+        process_search_analysis_query
     )
     modules_disponibles['recherche_analyse_unifiee'] = True
     print("✅ Module recherche_analyse_unifiee chargé")
-except ImportError as e:
+except ImportError:
     modules_disponibles['recherche_analyse_unifiee'] = False
-    print(f"❌ Module recherche_analyse_unifiee non disponible: {e}")
+    print("❌ Module recherche_analyse_unifiee non disponible")
 
 # Module de jurisprudence
 try:
     from modules.jurisprudence import (
-        show_page as show_jurisprudence_page,
         show_jurisprudence_interface,
-        get_jurisprudence_for_document,
-        format_jurisprudence_citation,
-        verify_and_update_citations
+        process_jurisprudence_request
     )
     modules_disponibles['jurisprudence'] = True
     print("✅ Module jurisprudence chargé")
@@ -162,10 +161,11 @@ except ImportError:
 try:
     from modules.risques import display_risques_interface
     modules_disponibles['risques'] = True
+    print("✅ Module risques chargé")
 except ImportError:
     modules_disponibles['risques'] = False
 
-# === 2. GESTION DOCUMENTAIRE ===
+# === GESTION DOCUMENTAIRE ===
 # Module unifié de gestion des pièces (REMPLACE pieces_manager ET bordereau)
 try:
     from modules.pieces_manager import (
@@ -247,145 +247,48 @@ try:
 except ImportError:
     modules_disponibles['template'] = False
 
-# === 4. PRODUCTION ET VISUALISATION ===
-# Module Timeline
+# === 4. VISUALISATION ET ANALYSE ===
+# Module timeline
 try:
-    from modules.timeline import process_timeline_request
+    from modules.timeline import show_timeline_page, process_timeline_request
     modules_disponibles['timeline'] = True
     print("✅ Module timeline chargé")
-    
-    def show_timeline_page():
-        """Page principale du module timeline"""
-        st.markdown("## 📅 Timeline des événements")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            query = st.text_area(
-                "Décrivez la chronologie souhaitée",
-                placeholder="Ex: Créer une timeline des événements financiers dans le dossier VINCI\n"
-                           "Ou: Chronologie des auditions et témoignages\n"
-                           "Ou: Timeline procédurale de l'affaire",
-                height=100,
-                key="timeline_query"
-            )
-        
-        with col2:
-            st.markdown("#### Options rapides")
-            if st.button("📅 Timeline complète", use_container_width=True):
-                st.session_state.timeline_query = "Créer une timeline complète de tous les événements"
-            if st.button("⚖️ Timeline procédurale", use_container_width=True):
-                st.session_state.timeline_query = "Timeline des événements procéduraux"
-            if st.button("💰 Timeline financière", use_container_width=True):
-                st.session_state.timeline_query = "Timeline des transactions financiers"
-        
-        if query and st.button("🚀 Générer la timeline", type="primary", use_container_width=True):
-            process_timeline_request(query, {'reference': query})
-        
-        if st.session_state.get('timeline_result'):
-            st.markdown("---")
-            st.markdown("### 📊 Timeline générée")
-            from modules.timeline import display_timeline_results
-            display_timeline_results(st.session_state.timeline_result)
-            
 except ImportError:
     modules_disponibles['timeline'] = False
-    def show_timeline_page():
-        st.error("Module timeline non disponible")
 
-# Module Comparison
+# Module comparison
 try:
-    from modules.comparison import process_comparison_request
+    from modules.comparison import show_comparison_page
     modules_disponibles['comparison'] = True
-    print("✅ Module comparison chargé")
-    
-    def show_comparison_page():
-        """Page principale du module comparison"""
-        st.markdown("## 🔄 Comparaison de documents")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            query = st.text_area(
-                "Décrivez la comparaison souhaitée",
-                placeholder="Ex: Comparer les témoignages de Martin et Dupont\n"
-                           "Ou: Analyser les divergences entre les expertises\n"
-                           "Ou: Comparer les versions du contrat",
-                height=100,
-                key="comparison_query"
-            )
-        
-        with col2:
-            st.markdown("#### Comparaisons types")
-            if st.button("📋 Auditions", use_container_width=True):
-                st.session_state.comparison_query = "Comparer toutes les auditions"
-            if st.button("🔬 Expertises", use_container_width=True):
-                st.session_state.comparison_query = "Comparer les rapports d'expertise"
-            if st.button("📄 Versions", use_container_width=True):
-                st.session_state.comparison_query = "Comparer les versions des documents"
-        
-        if query and st.button("🚀 Lancer la comparaison", type="primary", use_container_width=True):
-            process_comparison_request(query, {'reference': query})
-        
-        if st.session_state.get('comparison_result'):
-            st.markdown("---")
-            st.markdown("### 📊 Résultats de la comparaison")
-            from modules.comparison import display_comparison_results
-            display_comparison_results(st.session_state.comparison_result)
-            
 except ImportError:
     modules_disponibles['comparison'] = False
-    def show_comparison_page():
-        st.error("Module comparison non disponible")
 
-# Module de cartographie (mapping)
+# Module synthesis
+try:
+    from modules.synthesis import show_synthesis_page
+    modules_disponibles['synthesis'] = True
+except ImportError:
+    modules_disponibles['synthesis'] = False
+
+# Module mapping
 try:
     from modules.mapping import process_mapping_request
     modules_disponibles['mapping'] = True
 except ImportError:
     modules_disponibles['mapping'] = False
 
-# Module de synthèse
+# === 5. COMMUNICATION ET COLLABORATION ===
+# Module email
 try:
-    from modules.synthesis import show_page as show_synthesis_page
-    modules_disponibles['synthesis'] = True
-except ImportError:
-    modules_disponibles['synthesis'] = False
-
-# === 5. EXPORT ET COMMUNICATION ===
-# Module unifié d'export (REMPLACE export_juridique)
-try:
-    from modules.export_manager import export_manager, ExportConfig
-    modules_disponibles['export_manager'] = True
-    print("✅ Module export_manager chargé")
-except ImportError as e:
-    modules_disponibles['export_manager'] = False
-    print(f"❌ Module export_manager non disponible: {e}")
-
-# Module Email
-try:
-    from modules.email import (
-        process_email_request, 
-        show_email_interface,
-        prepare_and_send_document
-    )
+    from modules.email import show_email_page
     modules_disponibles['email'] = True
-    print("✅ Module email chargé")
-    
-    def show_email_page():
-        """Page principale du module email"""
-        show_email_interface()
-        
 except ImportError:
     modules_disponibles['email'] = False
-    def show_email_page():
-        st.error("Module email non disponible")
 
-# === 6. PRÉPARATION ET SUPPORT CLIENT ===
-# Module de préparation client
+# Module preparation client
 try:
     from modules.preparation_client import (
-        show_page as show_preparation_page,
+        show_preparation_page,
         process_preparation_client_request
     )
     modules_disponibles['preparation_client'] = True
@@ -400,489 +303,156 @@ try:
 except ImportError:
     modules_disponibles['plaidoirie'] = False
 
-# === 7. CONFIGURATION ===
-# Module de configuration
-try:
-    from modules.configuration import show_page as show_configuration_page
-    modules_disponibles['configuration'] = True
-    print("✅ Module configuration chargé")
-except ImportError:
-    modules_disponibles['configuration'] = False
+print(f"\n📊 Modules chargés : {sum(1 for v in modules_disponibles.values() if v)}/{len(modules_disponibles)}")
 
-# ========== SECTION 2: STYLES CSS MODERNES ==========
+# ========== SECTION 4: STYLES CSS ==========
 
-st.markdown("""
-<style>
-    /* === DESIGN MODERNE ET ÉPURÉ === */
-    .main {
-        padding: 0;
-        max-width: 100%;
+def load_custom_css():
+    """Charge les styles CSS personnalisés"""
+    st.markdown("""
+    <style>
+    /* Navigation moderne */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 10px;
     }
     
-    /* Navigation principale moderne */
-    .main-nav {
-        background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%);
-        padding: 1rem 2rem;
-        margin: 0 -1rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        position: sticky;
-        top: 0;
-        z-index: 100;
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        padding: 0 20px;
+        background-color: white;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        font-weight: 500;
     }
     
-    /* Conteneur principal avec sidebar */
-    .app-container {
-        display: flex;
-        min-height: calc(100vh - 80px);
-        gap: 0;
+    .stTabs [data-baseweb="tab"][data-selected="true"] {
+        background-color: #1e40af;
+        color: white;
+        border-color: #1e40af;
+    }
+    
+    /* Boutons modernes */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    /* Cards et containers */
+    div[data-testid="stExpander"] {
+        background-color: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+    }
+    
+    /* Métriques améliorées */
+    div[data-testid="metric-container"] {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
     }
     
     /* Sidebar moderne */
-    .modern-sidebar {
-        width: 280px;
-        background: #f8f9fa;
-        border-right: 1px solid #e0e0e0;
-        padding: 1.5rem 1rem;
-        overflow-y: auto;
-        transition: all 0.3s ease;
+    .css-1d391kg {
+        background-color: #1e293b;
     }
     
-    .modern-sidebar.collapsed {
-        width: 60px;
-    }
-    
-    /* Menu items */
-    .menu-section {
-        margin-bottom: 2rem;
-    }
-    
-    .menu-section-title {
-        font-size: 0.85rem;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.5rem;
-        padding-left: 0.5rem;
-    }
-    
-    .menu-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 0.75rem 1rem;
-        margin: 0.25rem 0;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        color: #333;
-        text-decoration: none;
-    }
-    
-    .menu-item:hover {
-        background: #e3f2fd;
-        color: #1976d2;
-        transform: translateX(4px);
-    }
-    
-    .menu-item.active {
-        background: #1976d2;
-        color: white;
-    }
-    
-    .menu-item .icon {
-        font-size: 1.2rem;
-        width: 24px;
-        text-align: center;
-    }
-    
-    /* Contenu principal */
-    .main-content {
-        flex: 1;
-        padding: 2rem;
-        background: #ffffff;
-        overflow-y: auto;
-    }
-    
-    /* Recherche universelle prominente */
-    .universal-search-hero {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 3rem 2rem;
-        border-radius: 20px;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .universal-search-hero::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-        animation: pulse 3s ease-in-out infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); opacity: 0.5; }
-        50% { transform: scale(1.1); opacity: 0.3; }
-    }
-    
-    /* Cards modernes */
-    .module-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: all 0.3s ease;
-        border: 1px solid #f0f0f0;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .module-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        border-color: #667eea;
-    }
-    
-    .module-card-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 1rem;
-    }
-    
-    .module-card-icon {
-        font-size: 2rem;
-        width: 48px;
-        height: 48px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    .module-card-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #1a1f3a;
-        margin: 0;
-    }
-    
-    .module-card-description {
-        color: #666;
-        font-size: 0.9rem;
-        flex-grow: 1;
-        margin-bottom: 1rem;
-    }
-    
-    /* Quick access grid */
-    .quick-access-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
-    }
-    
-    /* Workflow cards */
-    .workflow-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        padding: 2rem;
-        border-radius: 16px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .workflow-card::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
+    .css-1d391kg .stButton > button {
         width: 100%;
-        height: 4px;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        transform: scaleX(0);
-        transition: transform 0.3s ease;
-    }
-    
-    .workflow-card:hover {
-        transform: translateY(-8px);
-        box-shadow: 0 12px 32px rgba(0,0,0,0.15);
-    }
-    
-    .workflow-card:hover::after {
-        transform: scaleX(1);
-    }
-    
-    /* Status indicators */
-    .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 6px;
-    }
-    
-    .status-dot.online { background: #4caf50; }
-    .status-dot.offline { background: #f44336; }
-    .status-dot.warning { background: #ff9800; }
-    
-    /* Progress steps */
-    .progress-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 2rem;
-        margin: 2rem 0;
-    }
-    
-    .progress-step {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        position: relative;
-    }
-    
-    .progress-step-circle {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        background: #e0e0e0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        color: #666;
-        transition: all 0.3s ease;
-    }
-    
-    .progress-step.active .progress-step-circle {
-        background: #667eea;
-        color: white;
-        transform: scale(1.1);
-    }
-    
-    .progress-step.completed .progress-step-circle {
-        background: #4caf50;
+        background-color: transparent;
+        border: 1px solid #475569;
         color: white;
     }
     
-    .progress-step-label {
-        margin-top: 0.5rem;
-        font-size: 0.85rem;
-        color: #666;
+    .css-1d391kg .stButton > button:hover {
+        background-color: #334155;
     }
-    
-    .progress-line {
-        position: absolute;
-        top: 20px;
-        left: 40px;
-        width: calc(100% + 2rem);
-        height: 2px;
-        background: #e0e0e0;
-        z-index: -1;
-    }
-    
-    .progress-line.completed {
-        background: #4caf50;
-    }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-        .modern-sidebar {
-            position: fixed;
-            left: -280px;
-            height: 100vh;
-            z-index: 200;
-        }
-        
-        .modern-sidebar.open {
-            left: 0;
-        }
-        
-        .main-content {
-            padding: 1rem;
-        }
-        
-        .universal-search-hero {
-            padding: 2rem 1rem;
-        }
-    }
-    
-    /* Animations fluides */
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .fade-in {
-        animation: fadeIn 0.5s ease-out;
-    }
-    
-    /* Tooltips modernes */
-    .tooltip-modern {
-        position: relative;
-    }
-    
-    .tooltip-modern::after {
-        content: attr(data-tooltip);
-        position: absolute;
-        bottom: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #333;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        white-space: nowrap;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.3s ease;
-    }
-    
-    .tooltip-modern:hover::after {
-        opacity: 1;
-    }
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """, unsafe_allow_html=True)
 
-# ========== SECTION 3: GESTIONNAIRES AZURE ==========
-
-def init_azure_managers():
-    """Initialise les gestionnaires Azure avec logs détaillés"""
-    
-    if not AZURE_AVAILABLE:
-        print(f"⚠️ Azure non disponible: {AZURE_ERROR}")
-        st.session_state.azure_blob_manager = None
-        st.session_state.azure_search_manager = None
-        st.session_state.azure_error = AZURE_ERROR
-        return
-    
-    # Azure Blob Manager
-    if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
-        try:
-            if not os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
-                st.session_state.azure_blob_manager = None
-                st.session_state.azure_blob_error = "Connection string non définie"
-            else:
-                from managers.azure_blob_manager import AzureBlobManager
-                manager = AzureBlobManager()
-                st.session_state.azure_blob_manager = manager
-                print("✅ Azure Blob connecté")
-        except Exception as e:
-            print(f"❌ Erreur Azure Blob: {e}")
-            st.session_state.azure_blob_manager = None
-            st.session_state.azure_blob_error = str(e)
-    
-    # Azure Search Manager  
-    if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
-        try:
-            if not os.getenv('AZURE_SEARCH_ENDPOINT') or not os.getenv('AZURE_SEARCH_KEY'):
-                st.session_state.azure_search_manager = None
-                st.session_state.azure_search_error = "Endpoint ou clé non définis"
-            else:
-                from managers.azure_search_manager import AzureSearchManager
-                manager = AzureSearchManager()
-                st.session_state.azure_search_manager = manager
-                print("✅ Azure Search connecté")
-        except Exception as e:
-            print(f"❌ Erreur Azure Search: {e}")
-            st.session_state.azure_search_manager = None
-            st.session_state.azure_search_error = str(e)
-
-# ========== SECTION 4: NAVIGATION MODERNE ==========
+# ========== SECTION 5: NAVIGATION ==========
 
 def show_modern_navigation():
     """Affiche la navigation principale moderne"""
-    st.markdown('<div class="main-nav">', unsafe_allow_html=True)
     
-    col1, col2, col3, col4 = st.columns([3, 4, 2, 1])
+    # Header avec logo et infos
+    col1, col2, col3 = st.columns([1, 6, 1])
     
     with col1:
-        st.markdown("# ⚖️ Assistant Juridique IA")
+        st.markdown("⚖️", unsafe_allow_html=True)
     
     with col2:
-        # Barre de recherche rapide dans la nav
-        search_query = st.text_input(
-            "Recherche rapide",
-            placeholder="Tapez votre recherche...",
-            key="nav_search",
-            label_visibility="collapsed"
-        )
+        st.markdown("""
+        <h1 style='text-align: center; margin: 0; font-size: 2rem;'>
+        Assistant Pénal des Affaires IA
+        </h1>
+        """, unsafe_allow_html=True)
     
     with col3:
-        # Indicateurs de statut
-        azure_connected = bool(st.session_state.get('azure_blob_manager') or st.session_state.get('azure_search_manager'))
-        multi_ia = st.session_state.get('multi_ia_active', True)
-        export_manager_ok = modules_disponibles.get('export_manager', False)
-        recherche_unifiee_ok = modules_disponibles.get('recherche_analyse_unifiee', False)
+        # Menu utilisateur
+        if st.button("👤", help="Profil utilisateur"):
+            st.session_state.show_profile = not st.session_state.get('show_profile', False)
+    
+    # Barre de recherche universelle
+    search_container = st.container()
+    with search_container:
+        col1, col2 = st.columns([10, 1])
         
-        status_html = f"""
-        <div style="display: flex; align-items: center; gap: 1rem; margin-top: 8px;">
-            <span><span class="status-dot {'online' if azure_connected else 'offline'}"></span>Azure</span>
-            <span><span class="status-dot {'online' if multi_ia else 'offline'}"></span>Multi-IA</span>
-            <span><span class="status-dot {'online' if recherche_unifiee_ok else 'offline'}"></span>Recherche IA</span>
-        </div>
-        """
-        st.markdown(status_html, unsafe_allow_html=True)
-    
-    with col4:
-        if st.button("⚙️", help="Paramètres"):
-            st.session_state.current_module = 'configuration'
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Traiter la recherche rapide
-    if search_query and st.session_state.get('nav_search') != st.session_state.get('last_nav_search'):
-        st.session_state.last_nav_search = search_query
-        st.session_state.universal_search_query = search_query
-        st.session_state.current_view = 'recherche_analyse'
+        with col1:
+            query = st.text_input(
+                "",
+                placeholder="🔍 Recherchez une jurisprudence, analysez un document, créez un acte...",
+                key="universal_search",
+                label_visibility="collapsed"
+            )
+        
+        with col2:
+            if st.button("🚀", type="primary", help="Lancer la recherche"):
+                if query:
+                    process_universal_query(query)
 
 def show_modern_sidebar():
-    """Affiche la sidebar moderne avec menu organisé et optimisé"""
+    """Affiche la sidebar moderne avec navigation par catégories"""
+    
     with st.sidebar:
-        # Logo/Titre
-        st.markdown("### 📚 Menu Principal")
+        st.markdown("### 🧭 Navigation")
         
-        # Accueil
-        if st.button("🏠 Accueil", use_container_width=True, 
-                    type="primary" if st.session_state.get('current_view') == 'accueil' else "secondary"):
+        # Bouton retour accueil
+        if st.button("🏠 Accueil", use_container_width=True):
             st.session_state.current_view = 'accueil'
             st.session_state.current_module = None
         
-        # Section Recherche & Analyse IA
+        st.markdown("---")
+        
+        # Section Recherche & Analyse
         st.markdown("#### 🔍 Recherche & Analyse")
         
-        if st.button("🤖 Recherche & Analyse IA", use_container_width=True,
-                    type="primary" if st.session_state.get('current_module') == 'recherche_analyse_unifiee' else "secondary"):
-            st.session_state.current_view = 'recherche_analyse'
-            st.session_state.current_module = 'recherche_analyse_unifiee'
+        if modules_disponibles.get('recherche_analyse_unifiee'):
+            if st.button("🤖 Recherche IA", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'recherche_analyse_unifiee' else "secondary"):
+                st.session_state.current_view = 'recherche_analyse'
+                st.session_state.current_module = 'recherche_analyse_unifiee'
         
-        if st.button("⚖️ Jurisprudence", use_container_width=True,
-                    type="primary" if st.session_state.get('current_module') == 'jurisprudence' else "secondary"):
-            st.session_state.current_view = 'jurisprudence'
-            st.session_state.current_module = 'jurisprudence'
+        if modules_disponibles.get('jurisprudence'):
+            if st.button("⚖️ Jurisprudence", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'jurisprudence' else "secondary"):
+                st.session_state.current_view = 'jurisprudence'
+                st.session_state.current_module = 'jurisprudence'
         
-        if modules_disponibles.get('risques'):
-            if st.button("⚠️ Analyse des risques", use_container_width=True,
-                        type="primary" if st.session_state.get('current_module') == 'risques' else "secondary"):
-                st.session_state.current_view = 'risques'
-                st.session_state.current_module = 'risques'
+        if st.button("⚠️ Analyse des risques", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'risques' else "secondary"):
+            st.session_state.current_view = 'risques'
+            st.session_state.current_module = 'risques'
         
         # Section Gestion documentaire
         st.markdown("#### 📁 Documents & Pièces")
@@ -933,21 +503,21 @@ def show_modern_sidebar():
         st.markdown("#### 📊 Visualisation")
         
         tools = [
-            ("📅 Timeline", "timeline", "timeline"),
-            ("🔄 Comparaison", "comparison", "comparison"),
-            ("🗺️ Cartographie", "mapping", "mapping"),
-            ("📊 Synthèse", "synthesis", "synthesis"),
+            ("📅 Timeline", "timeline"),
+            ("🔄 Comparaison", "comparison"),
+            ("📊 Synthèse", "synthesis"),
+            ("🗺️ Cartographie", "mapping")
         ]
         
-        for label, view, module in tools:
+        for label, module in tools:
             if modules_disponibles.get(module):
                 if st.button(label, use_container_width=True,
                             type="primary" if st.session_state.get('current_module') == module else "secondary"):
-                    st.session_state.current_view = view
+                    st.session_state.current_view = module
                     st.session_state.current_module = module
         
-        # Section Communication & Support
-        st.markdown("#### 📧 Communication")
+        # Section Communication
+        st.markdown("#### 💬 Communication")
         
         if modules_disponibles.get('email'):
             if st.button("📧 Emails", use_container_width=True,
@@ -961,206 +531,130 @@ def show_modern_sidebar():
                 st.session_state.current_view = 'preparation_client'
                 st.session_state.current_module = 'preparation_client'
         
-        if modules_disponibles.get('plaidoirie'):
-            if st.button("🎤 Plaidoirie", use_container_width=True,
-                        type="primary" if st.session_state.get('current_module') == 'plaidoirie' else "secondary"):
-                st.session_state.current_view = 'plaidoirie'
-                st.session_state.current_module = 'plaidoirie'
-        
-        # Section Configuration
-        st.markdown("#### ⚙️ Configuration")
-        
-        if modules_disponibles.get('template'):
-            if st.button("📋 Templates", use_container_width=True,
-                        type="primary" if st.session_state.get('current_module') == 'template' else "secondary"):
-                st.session_state.current_module = 'template'
-        
-        if st.button("🔧 Paramètres", use_container_width=True,
-                    type="primary" if st.session_state.get('current_module') == 'configuration' else "secondary"):
+        # Configuration
+        st.markdown("---")
+        if st.button("⚙️ Configuration", use_container_width=True):
+            st.session_state.current_view = 'configuration'
             st.session_state.current_module = 'configuration'
 
-# ========== SECTION 5: PAGE D'ACCUEIL ==========
+# ========== SECTION 6: PAGE D'ACCUEIL ==========
 
 def show_home_page():
-    """Page d'accueil moderne avec recherche universelle et accès rapide"""
+    """Affiche la page d'accueil avec tableau de bord"""
     
-    # Hero section avec recherche universelle
-    st.markdown('<div class="universal-search-hero fade-in">', unsafe_allow_html=True)
-    st.markdown("## 🔍 Recherche Intelligente Universelle avec IA")
-    st.markdown("Décrivez ce que vous voulez faire en langage naturel")
+    # Message de bienvenue
+    st.markdown("""
+    ### 👋 Bienvenue dans votre Assistant Juridique IA
     
-    query = st.text_area(
-        "Votre requête",
-        placeholder="Ex: J'ai besoin de préparer l'audience de demain pour l'affaire Martin...\n"
-                   "Ou: Rédige une plainte pour abus de biens sociaux contre la société XYZ...\n"
-                   "Ou: Analyse tous les documents concernant la corruption...\n"
-                   "Ou: Créer une liste de pièces pour communiquer au tribunal...",
-        height=100,
-        key="universal_search",
-        label_visibility="collapsed"
-    )
+    Explorez les fonctionnalités via la **barre de recherche** ci-dessus ou utilisez le **menu latéral**.
+    """)
     
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Cartes de démarrage rapide
+    st.markdown("#### 🚀 Démarrage rapide")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        with st.container():
+            st.markdown("""
+            <div style='background: #f0f9ff; padding: 1.5rem; border-radius: 10px; height: 180px;'>
+                <h4>🔍 Rechercher</h4>
+                <p>Jurisprudence, documents, analyses IA</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Commencer", key="start_search", use_container_width=True):
+                st.session_state.current_module = 'recherche_analyse_unifiee'
+                st.rerun()
+    
     with col2:
-        if st.button("🔍 Rechercher", type="primary", use_container_width=True):
-            if query:
-                handle_universal_search(query)
+        with st.container():
+            st.markdown("""
+            <div style='background: #fef3c7; padding: 1.5rem; border-radius: 10px; height: 180px;'>
+                <h4>✍️ Rédiger</h4>
+                <p>Actes, conclusions, assignations</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Commencer", key="start_write", use_container_width=True):
+                st.session_state.current_module = 'redaction_unified'
+                st.rerun()
     
     with col3:
-        if st.button("🎲 Exemple", use_container_width=True):
-            examples = [
-                "Rédige une plainte avec constitution de partie civile pour abus de biens sociaux de 50 pages",
-                "Explore tous les documents du dossier VINCI",
-                "Analyse les risques juridiques dans le dossier @VINCI2024",
-                "Trouve la jurisprudence sur la corruption dans le secteur public",
-                "Prépare une liste des pièces pour l'audience du 15 janvier",
-                "Compare les témoignages de Martin et Dupont dans l'affaire ABC",
-                "Import tous les documents PDF du dossier Dupont",
-                "Créer une timeline des événements financiers",
-                "Prépare mon client pour son audition de demain",
-                "Créer une liste de communication des pièces pour le tribunal"
-            ]
-            import random
-            st.session_state.universal_search = random.choice(examples)
-            st.rerun()
+        with st.container():
+            st.markdown("""
+            <div style='background: #ede9fe; padding: 1.5rem; border-radius: 10px; height: 180px;'>
+                <h4>📎 Gérer</h4>
+                <p>Pièces, dossiers, documents</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Commencer", key="start_manage", use_container_width=True):
+                st.session_state.current_module = 'pieces_manager'
+                st.rerun()
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    with col4:
+        with st.container():
+            st.markdown("""
+            <div style='background: #dcfce7; padding: 1.5rem; border-radius: 10px; height: 180px;'>
+                <h4>📊 Analyser</h4>
+                <p>Risques, timeline, synthèses</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("Commencer", key="start_analyze", use_container_width=True):
+                st.session_state.current_module = 'risques'
+                st.rerun()
     
-    # Workflows principaux réorganisés
-    st.markdown("### 🎯 Workflows principaux")
+    # Statistiques et activité récente
+    st.markdown("---")
     
-    workflows = [
-        {
-            'icon': '🔍',
-            'title': 'Recherche & Analyse',
-            'description': 'Recherche IA, jurisprudence et analyse des risques',
-            'modules': ['recherche_analyse_unifiee', 'jurisprudence', 'risques'],
-            'primary': 'recherche_analyse_unifiee'
-        },
-        {
-            'icon': '📁',
-            'title': 'Gestion documentaire',
-            'description': 'Import, organisation et liste des pièces',
-            'modules': ['pieces_manager', 'import_export', 'dossier_penal'],
-            'primary': 'pieces_manager'
-        },
-        {
-            'icon': '✍️',
-            'title': 'Rédaction & Production',
-            'description': 'Rédaction d\'actes et documents longs',
-            'modules': ['redaction_unified', 'generation_longue'],
-            'primary': 'redaction_unified'
-        },
-        {
-            'icon': '📊',
-            'title': 'Visualisation & Export',
-            'description': 'Timeline, comparaisons et exports',
-            'modules': ['timeline', 'comparison', 'export_manager'],
-            'primary': 'timeline'
-        }
-    ]
+    col1, col2 = st.columns([2, 1])
     
-    cols = st.columns(4)
-    for idx, workflow in enumerate(workflows):
-        with cols[idx]:
-            with st.container():
-                st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
-                st.markdown(f"#### {workflow['icon']} {workflow['title']}")
-                st.markdown(workflow['description'])
-                
-                # Vérifier la disponibilité des modules
-                available = sum(1 for m in workflow['modules'] if modules_disponibles.get(m, False))
-                total = len(workflow['modules'])
-                
-                if available > 0:
-                    st.caption(f"✅ {available}/{total} modules actifs")
-                    if st.button("Commencer", key=f"start_{workflow['primary']}", use_container_width=True):
-                        st.session_state.current_module = workflow['primary']
-                        st.rerun()
-                else:
-                    st.caption(f"❌ Modules non disponibles")
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Accès rapide aux modules (réorganisé et simplifié)
-    st.markdown("### ⚡ Accès rapide aux fonctionnalités")
-    
-    # Nouvelle organisation par catégories optimisées
-    categories = {
-        "Intelligence Artificielle": [
-            ("🤖", "Recherche & Analyse IA", "Recherche et analyse unifiées par IA", "recherche_analyse_unifiee"),
-            ("⚖️", "Jurisprudence", "Base de jurisprudence avec vérification", "jurisprudence"),
-            ("⚠️", "Risques", "Analyse des risques juridiques", "risques"),
-            ("📊", "Synthèse", "Synthèse automatique", "synthesis"),
-        ],
-        "Documents & Dossiers": [
-            ("📎", "Gestion des pièces", "Organisez vos pièces et créez des listes", "pieces_manager"),
-            ("📥", "Import/Export", "Import/Export unifié de documents", "import_export"),
-            ("📂", "Dossiers pénaux", "Gestion des dossiers", "dossier_penal"),
-            ("🗂️", "Explorateur", "Explorez vos fichiers", "explorer"),
-        ],
-        "Production": [
-            ("✍️", "Rédaction", "Rédaction d'actes juridiques avec IA", "redaction_unified"),
-            ("📜", "Documents longs", "Documents de 25-50+ pages", "generation_longue"),
-            ("📋", "Templates", "Gestion des modèles", "template"),
-        ],
-        "Analyse & Communication": [
-            ("📅", "Timeline", "Chronologies visuelles", "timeline"),
-            ("🔄", "Comparaison", "Comparez des documents", "comparison"),
-            ("📧", "Emails", "Gestion des emails", "email"),
-            ("👥", "Préparation client", "Préparez vos clients (audition, interrogatoire)", "preparation_client"),
-        ]
-    }
-    
-    for cat_name, modules in categories.items():
-        st.markdown(f"#### {cat_name}")
-        cols = st.columns(4)
+    with col1:
+        st.markdown("#### 📈 Statistiques")
         
-        for idx, (icon, title, desc, module) in enumerate(modules):
-            if modules_disponibles.get(module):
-                with cols[idx % 4]:
-                    with st.container():
-                        st.markdown('<div class="module-card">', unsafe_allow_html=True)
-                        st.markdown(f'<div class="module-card-header">', unsafe_allow_html=True)
-                        st.markdown(f'<div class="module-card-icon">{icon}</div>', unsafe_allow_html=True)
-                        st.markdown(f'<h3 class="module-card-title">{title}</h3>', unsafe_allow_html=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        st.markdown(f'<p class="module-card-description">{desc}</p>', unsafe_allow_html=True)
-                        if st.button("Ouvrir", key=f"quick_{module}", use_container_width=True):
-                            st.session_state.current_module = module
-                            st.rerun()
-                        st.markdown('</div>', unsafe_allow_html=True)
+        col_a, col_b, col_c, col_d = st.columns(4)
+        
+        with col_a:
+            nb_docs = len(st.session_state.get('imported_documents', {}))
+            st.metric("Documents", nb_docs)
+        
+        with col_b:
+            nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
+            st.metric("Pièces", nb_pieces)
+        
+        with col_c:
+            nb_analyses = len(st.session_state.get('search_history', []))
+            st.metric("Analyses", nb_analyses)
+        
+        with col_d:
+            nb_modules = sum(1 for v in modules_disponibles.values() if v)
+            st.metric("Modules actifs", f"{nb_modules}/{len(modules_disponibles)}")
+    
+    with col2:
+        st.markdown("#### 🕐 Activité récente")
+        
+        history = st.session_state.get('search_history', [])
+        if history:
+            for item in history[-5:]:
+                st.caption(f"• {item}")
+        else:
+            st.info("Aucune activité récente")
 
-# ========== SECTION 6: GESTION DE LA RECHERCHE UNIVERSELLE ==========
+# ========== SECTION 7: TRAITEMENT DES REQUÊTES ==========
 
-def handle_universal_search(query: str):
-    """Traite la recherche universelle et redirige vers le bon module"""
+def process_universal_query(query: str):
+    """Traite une requête universelle et route vers le bon module"""
+    
+    # Analyser la requête
     query_lower = query.lower()
     
-    # Si le module recherche unifié est disponible, l'utiliser directement
-    if modules_disponibles.get('recherche_analyse_unifiee'):
-        st.session_state.current_view = 'recherche_analyse'
-        st.session_state.current_module = 'recherche_analyse_unifiee'
-        st.session_state.universal_search_query = query
-        st.session_state.pending_query = query
-        st.rerun()
-        return
-    
-    # Sinon, utiliser l'analyse de patterns comme fallback
+    # Patterns de détection avec priorités
     patterns = {
-        'import': {
-            'keywords': ['import', 'importer', 'charger', 'upload', 'télécharger', 'ajouter des documents', 'pdf', 'xlsx', 'csv'],
-            'module': 'import_export',
-            'view': 'import_export'
-        },
-        'export': {
-            'keywords': ['export', 'exporter', 'télécharger', 'sauvegarder', 'extraire', 'download', 'word', 'excel'],
-            'module': 'import_export',
-            'view': 'import_export',
-            'context': 'export'
+        'recherche': {
+            'keywords': ['rechercher', 'recherche', 'chercher', 'trouver', 'analyser', 'analyse'],
+            'module': 'recherche_analyse_unifiee',
+            'view': 'recherche_analyse'
         },
         'timeline': {
-            'keywords': ['timeline', 'chronologie', 'calendrier', 'événements', 'dates', 'temporel', 'historique'],
+            'keywords': ['timeline', 'chronologie', 'dates', 'événements', 'temporel', 'calendrier'],
             'module': 'timeline',
             'view': 'timeline'
         },
@@ -1241,7 +735,7 @@ def handle_universal_search(query: str):
     
     st.rerun()
 
-# ========== SECTION 7: AFFICHAGE DES MODULES ==========
+# ========== SECTION 8: AFFICHAGE DES MODULES ==========
 
 def show_module_content():
     """Affiche le contenu du module actuel"""
@@ -1393,7 +887,7 @@ def show_module_content():
         if 'show_liste_pieces_view' in st.session_state:
             del st.session_state.show_liste_pieces_view
 
-# ========== SECTION 8: FONCTION PRINCIPALE ==========
+# ========== SECTION 9: FONCTION PRINCIPALE ==========
 
 def main():
     """Fonction principale avec interface moderne et navigation intuitive"""
