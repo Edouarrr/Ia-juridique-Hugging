@@ -24,6 +24,39 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ========== DIAGNOSTIC DES MODULES ==========
+def show_modules_diagnostic():
+    """Affiche le diagnostic des modules"""
+    import modules
+    
+    try:
+        status = modules.get_modules_status()
+        
+        st.markdown("### 📊 Diagnostic des Modules")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total modules", status['total_modules'])
+        with col2:
+            st.metric("Modules chargés", status['loaded_count'], 
+                     delta=f"+{status['loaded_count']}" if status['loaded_count'] > 0 else None)
+        with col3:
+            st.metric("Modules en erreur", status['failed_count'],
+                     delta=f"-{status['failed_count']}" if status['failed_count'] > 0 else None)
+        
+        if status['loaded_count'] > 0:
+            with st.expander(f"✅ Modules chargés ({status['loaded_count']})", expanded=False):
+                for module in sorted(status['loaded']):
+                    st.success(f"• {module}")
+        
+        if status['failed_count'] > 0:
+            with st.expander(f"❌ Modules en erreur ({status['failed_count']})", expanded=True):
+                for module, error in status['failed'].items():
+                    st.error(f"**{module}**: {error}")
+                    
+    except Exception as e:
+        st.error(f"Erreur lors du diagnostic: {e}")
+
 # ========== CSS PROFESSIONNEL TONS BLEUS ==========
 st.markdown("""
 <style>
@@ -1519,10 +1552,15 @@ def show_sidebar():
             else:
                 st.info("Aucun dossier disponible")
         
-        # Configuration
+        # Configuration et diagnostic
         st.markdown("---")
         if st.button("⚙️ Configuration", key="nav_config", use_container_width=True):
             st.session_state.current_view = "config"
+            st.rerun()
+        
+        # NOUVEAU : Bouton diagnostic des modules
+        if st.button("🔍 Diagnostic Modules", key="nav_modules_diag", use_container_width=True):
+            st.session_state.current_view = "modules_diagnostic"
             st.rerun()
 
 def show_compare_module():
@@ -2218,7 +2256,8 @@ def main():
         'strategy': show_strategy_module,
         'report': show_report_module,
         'config': show_config,
-        'help': show_help
+        'help': show_help,
+        'modules_diagnostic': show_modules_diagnostic  # NOUVEAU : Vue diagnostic modules
     }
     
     current_view = st.session_state.get('current_view', 'dashboard')
