@@ -1,291 +1,235 @@
 # managers/template_manager.py
-"""
-Gestionnaire de templates pour documents juridiques
-"""
+"""Gestionnaire des templates de documents juridiques"""
 
+import streamlit as st
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, field
+from datetime import datetime
 import json
-import os
-from typing import Dict, Optional, List
-from pathlib import Path
-import logging
+import uuid
 
-logger = logging.getLogger(__name__)
+from modules.dataclasses import (
+    DocumentTemplate, 
+    TemplateDocument,
+    TypeDocument,
+    StyleRedaction
+)
+from config.app_config import DOCUMENT_TEMPLATES, LEGAL_PHRASES
 
 class TemplateManager:
-    """Gestionnaire centralisé des templates de documents juridiques"""
+    """Gestionnaire centralisé des templates de documents"""
     
-    def __init__(self, templates_dir: str = "templates"):
-        self.templates_dir = Path(templates_dir)
-        self.templates = self._load_default_templates()
-        self._load_custom_templates()
+    def __init__(self):
+        # Templates par défaut depuis la config
+        self.default_templates = DOCUMENT_TEMPLATES
+        self.legal_phrases = LEGAL_PHRASES
+        
+        # Initialiser le session state
+        if 'custom_templates' not in st.session_state:
+            st.session_state.custom_templates = {}
+        
+        if 'template_history' not in st.session_state:
+            st.session_state.template_history = []
     
-    def _load_default_templates(self) -> Dict[str, str]:
-        """Charge les templates par défaut"""
+    def get_template(self, document_type: str) -> Dict[str, Any]:
+        """Récupère un template par type de document"""
+        # Chercher d'abord dans les templates personnalisés
+        if document_type in st.session_state.custom_templates:
+            return st.session_state.custom_templates[document_type]
+        
+        # Sinon utiliser le template par défaut
+        return self.default_templates.get(document_type, self._get_generic_template())
+    
+    def _get_generic_template(self) -> Dict[str, Any]:
+        """Template générique si aucun n'est défini"""
         return {
-            "plainte": """
-PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
-
-Monsieur le Doyen des Juges d'Instruction
-Tribunal Judiciaire de {juridiction}
-
-Le {date_jour}
-
-POUR : {plaignant_nom}
-       {plaignant_adresse}
-       {plaignant_qualite}
-
-CONTRE : {defendeur_nom}
-         {defendeur_qualite}
-
-OBJET : Plainte avec constitution de partie civile
-
-Monsieur le Doyen,
-
-J'ai l'honneur de porter plainte avec constitution de partie civile entre vos mains pour les faits suivants :
-
-I. EXPOSÉ DES FAITS
-
-{expose_faits}
-
-II. QUALIFICATION JURIDIQUE
-
-Les faits exposés ci-dessus sont constitutifs de :
-{qualifications_juridiques}
-
-III. PRÉJUDICE SUBI
-
-{description_prejudice}
-
-IV. DEMANDES
-
-Par ces motifs, je vous prie de bien vouloir :
-- Recevoir ma plainte avec constitution de partie civile
-- Ordonner l'ouverture d'une information judiciaire
-- Procéder à tous actes d'instruction utiles
-
-Je verse la consignation fixée par vos soins.
-
-Vous trouverez ci-joint les pièces justificatives.
-
-Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma haute considération.
-
-{signature}
-
-Pièces jointes :
-{liste_pieces}
-""",
-
-            "conclusions": """
-CONCLUSIONS
-
-POUR : {client_nom}
-       {client_qualite}
-       {client_adresse}
-
-CONTRE : {adversaire_nom}
-         {adversaire_qualite}
-
-DEVANT : {juridiction}
-RG N° : {numero_rg}
-
-Plaise au Tribunal,
-
-I. RAPPEL DES FAITS ET DE LA PROCÉDURE
-
-{rappel_faits}
-
-{rappel_procedure}
-
-II. DISCUSSION
-
-{discussion_juridique}
-
-III. SUR LES DEMANDES ADVERSES
-
-{reponse_demandes_adverses}
-
-IV. DISPOSITIF
-
-PAR CES MOTIFS,
-
-Il est demandé au Tribunal de :
-
-{demandes}
-
-Sous toutes réserves
-Bordereau de pièces communiquées en annexe
-
-{signature_avocat}
-""",
-
-            "assignation": """
-ASSIGNATION DEVANT LE {type_tribunal}
-
-L'AN {annee} ET LE {date_complete}
-
-À LA REQUÊTE DE :
-{demandeur_identite}
-
-AYANT POUR AVOCAT :
-{avocat_identite}
-
-J'AI, HUISSIER DE JUSTICE SOUSSIGNÉ,
-
-DONNÉ ASSIGNATION À :
-{defendeur_identite}
-
-À COMPARAÎTRE :
-Devant le {tribunal_competent}
-Siégeant : {adresse_tribunal}
-À l'audience du : {date_audience}
-À {heure_audience} heures
-
-OBJET DE LA DEMANDE :
-{objet_demande}
-
-EXPOSÉ DES MOTIFS :
-{expose_motifs}
-
-DISCUSSION JURIDIQUE :
-{discussion_juridique}
-
-DISPOSITIF :
-{dispositif}
-
-PIÈCES COMMUNIQUÉES :
-{liste_pieces}
-
-Sous toutes réserves
-""",
-
-            "requete": """
-REQUÊTE
-
-À Monsieur le Président du {juridiction}
-
-POUR : {requerant_identite}
-
-OBJET : {objet_requete}
-
-Monsieur le Président,
-
-J'ai l'honneur de solliciter de votre bienveillance {demande_principale}.
-
-I. EXPOSÉ DES FAITS
-{expose_faits}
-
-II. FONDEMENTS JURIDIQUES
-{fondements_juridiques}
-
-III. PIÈCES JUSTIFICATIVES
-{pieces_justificatives}
-
-PAR CES MOTIFS,
-
-Je vous prie de bien vouloir :
-{demandes}
-
-Je vous prie d'agréer, Monsieur le Président, l'expression de ma haute considération.
-
-{signature}
-""",
-
-            "courrier": """
-{expediteur_nom}
-{expediteur_adresse}
-{expediteur_telephone}
-{expediteur_email}
-
-{destinataire_nom}
-{destinataire_adresse}
-
-{lieu}, le {date}
-
-Objet : {objet_courrier}
-
-{formule_appel},
-
-{corps_courrier}
-
-{formule_politesse}
-
-{signature}
-
-P.J. : {pieces_jointes}
-"""
+            "structure": [
+                "INTRODUCTION",
+                "DÉVELOPPEMENT",
+                "CONCLUSION"
+            ],
+            "required_sections": ["INTRODUCTION", "CONCLUSION"]
         }
     
-    def _load_custom_templates(self):
-        """Charge les templates personnalisés depuis le dossier templates"""
-        if not self.templates_dir.exists():
-            return
-        
-        for template_file in self.templates_dir.glob("*.json"):
-            try:
-                with open(template_file, 'r', encoding='utf-8') as f:
-                    custom_templates = json.load(f)
-                    self.templates.update(custom_templates)
-                    logger.info(f"Templates personnalisés chargés depuis {template_file}")
-            except Exception as e:
-                logger.error(f"Erreur chargement template {template_file}: {e}")
-    
-    def get_template(self, template_name: str) -> Optional[str]:
-        """Récupère un template par son nom"""
-        return self.templates.get(template_name)
-    
-    def list_templates(self) -> List[str]:
+    def list_available_templates(self) -> List[str]:
         """Liste tous les templates disponibles"""
-        return list(self.templates.keys())
+        default_types = list(self.default_templates.keys())
+        custom_types = list(st.session_state.custom_templates.keys())
+        return list(set(default_types + custom_types))
     
-    def add_template(self, name: str, content: str):
-        """Ajoute un nouveau template"""
-        self.templates[name] = content
+    def create_custom_template(self, name: str, template_data: Dict[str, Any]) -> bool:
+        """Crée un nouveau template personnalisé"""
+        try:
+            template_id = f"custom_{name}_{uuid.uuid4().hex[:8]}"
+            
+            template = DocumentTemplate(
+                id=template_id,
+                name=name,
+                type_document=template_data.get('type_document', 'autre'),
+                structure=template_data.get('structure', []),
+                required_sections=template_data.get('required_sections', []),
+                variables=template_data.get('variables', {}),
+                style_defaut=template_data.get('style_defaut', StyleRedaction.PROFESSIONNEL),
+                metadata={
+                    'created_at': datetime.now().isoformat(),
+                    'created_by': 'user',
+                    'custom': True
+                }
+            )
+            
+            st.session_state.custom_templates[name] = {
+                "structure": template.structure,
+                "required_sections": template.required_sections,
+                "variables": template.variables,
+                "metadata": template.metadata
+            }
+            
+            # Ajouter à l'historique
+            st.session_state.template_history.append({
+                'action': 'create',
+                'template_name': name,
+                'timestamp': datetime.now(),
+                'data': template_data
+            })
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"Erreur lors de la création du template : {e}")
+            return False
     
-    def save_template(self, name: str, content: str, filename: Optional[str] = None):
-        """Sauvegarde un template dans un fichier"""
-        if not filename:
-            filename = f"{name}_template.json"
-        
-        filepath = self.templates_dir / filename
-        filepath.parent.mkdir(exist_ok=True)
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump({name: content}, f, ensure_ascii=False, indent=2)
-    
-    def get_template_variables(self, template_name: str) -> List[str]:
-        """Extrait les variables d'un template (format {variable})"""
-        template = self.get_template(template_name)
-        if not template:
-            return []
-        
-        import re
-        # Trouve toutes les variables entre accolades
-        variables = re.findall(r'\{([^}]+)\}', template)
-        return list(set(variables))  # Retirer les doublons
-    
-    def fill_template(self, template_name: str, context: Dict[str, str]) -> Optional[str]:
-        """Remplit un template avec les valeurs du contexte"""
-        template = self.get_template(template_name)
-        if not template:
-            return None
+    def update_template(self, name: str, updates: Dict[str, Any]) -> bool:
+        """Met à jour un template existant"""
+        if name not in st.session_state.custom_templates:
+            st.error(f"Template '{name}' non trouvé")
+            return False
         
         try:
-            return template.format(**context)
-        except KeyError as e:
-            logger.error(f"Variable manquante dans le contexte: {e}")
-            # Retourner le template avec les variables manquantes non remplacées
-            for key, value in context.items():
-                template = template.replace(f"{{{key}}}", str(value))
-            return template
+            template = st.session_state.custom_templates[name]
+            template.update(updates)
+            template['metadata']['updated_at'] = datetime.now().isoformat()
+            
+            # Ajouter à l'historique
+            st.session_state.template_history.append({
+                'action': 'update',
+                'template_name': name,
+                'timestamp': datetime.now(),
+                'updates': updates
+            })
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"Erreur lors de la mise à jour : {e}")
+            return False
     
-    def create_template_from_document(self, document: str, variables: List[str]) -> str:
-        """
-        Crée un template à partir d'un document en remplaçant 
-        certaines parties par des variables
-        """
-        template = document
-        for var in variables:
-            # Ici on pourrait implémenter une logique plus sophistiquée
-            # pour identifier et remplacer les parties du document
-            pass
-        return template
+    def delete_template(self, name: str) -> bool:
+        """Supprime un template personnalisé"""
+        if name not in st.session_state.custom_templates:
+            return False
+        
+        del st.session_state.custom_templates[name]
+        
+        # Ajouter à l'historique
+        st.session_state.template_history.append({
+            'action': 'delete',
+            'template_name': name,
+            'timestamp': datetime.now()
+        })
+        
+        return True
+    
+    def get_template_variables(self, document_type: str) -> Dict[str, str]:
+        """Récupère les variables disponibles pour un type de document"""
+        template = self.get_template(document_type)
+        
+        # Variables par défaut
+        default_vars = {
+            'date': datetime.now().strftime('%d/%m/%Y'),
+            'tribunal': '[TRIBUNAL]',
+            'numero_rg': '[N° RG]',
+            'demandeur': '[DEMANDEUR]',
+            'defendeur': '[DÉFENDEUR]',
+            'avocat': '[AVOCAT]'
+        }
+        
+        # Ajouter les variables spécifiques du template
+        if 'variables' in template:
+            default_vars.update(template['variables'])
+        
+        return default_vars
+    
+    def apply_template(self, document_type: str, content_data: Dict[str, Any]) -> str:
+        """Applique un template pour générer le contenu structuré"""
+        template = self.get_template(document_type)
+        structure = template.get('structure', [])
+        
+        # Construire le document section par section
+        document_parts = []
+        
+        for section in structure:
+            if section in content_data:
+                document_parts.append(f"\n{section}\n")
+                document_parts.append("=" * len(section))
+                document_parts.append(f"\n{content_data[section]}\n")
+        
+        return "\n".join(document_parts)
+    
+    def get_legal_phrases(self, category: str, document_type: Optional[str] = None) -> List[str]:
+        """Récupère les phrases juridiques types"""
+        if document_type and category in self.legal_phrases:
+            if document_type in self.legal_phrases[category]:
+                return self.legal_phrases[category][document_type]
+        
+        # Retourner toutes les phrases de la catégorie si pas de type spécifique
+        if category in self.legal_phrases:
+            if isinstance(self.legal_phrases[category], dict):
+                all_phrases = []
+                for phrases in self.legal_phrases[category].values():
+                    all_phrases.extend(phrases)
+                return all_phrases
+            else:
+                return self.legal_phrases[category]
+        
+        return []
+    
+    def export_templates(self) -> Dict[str, Any]:
+        """Exporte tous les templates personnalisés"""
+        return {
+            'custom_templates': st.session_state.custom_templates,
+            'export_date': datetime.now().isoformat(),
+            'template_count': len(st.session_state.custom_templates)
+        }
+    
+    def import_templates(self, import_data: Dict[str, Any]) -> bool:
+        """Importe des templates depuis un export"""
+        try:
+            if 'custom_templates' in import_data:
+                for name, template in import_data['custom_templates'].items():
+                    # Éviter d'écraser les templates existants
+                    if name not in st.session_state.custom_templates:
+                        st.session_state.custom_templates[name] = template
+                    else:
+                        # Renommer si conflit
+                        new_name = f"{name}_imported_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        st.session_state.custom_templates[new_name] = template
+                
+                return True
+                
+        except Exception as e:
+            st.error(f"Erreur lors de l'import : {e}")
+            return False
+    
+    def get_template_preview(self, document_type: str) -> str:
+        """Génère un aperçu du template"""
+        template = self.get_template(document_type)
+        structure = template.get('structure', [])
+        
+        preview_lines = [f"Template : {document_type.upper()}", "=" * 40, ""]
+        preview_lines.append("Structure :")
+        
+        for i, section in enumerate(structure, 1):
+            required = " (obligatoire)" if section in template.get('required_sections', []) else ""
+            preview_lines.append(f"{i}. {section}{required}")
+        
+        return "\n".join(preview_lines)
