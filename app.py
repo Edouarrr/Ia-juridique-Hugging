@@ -166,15 +166,26 @@ except ImportError:
     modules_disponibles['risques'] = False
 
 # === 2. GESTION DOCUMENTAIRE ===
-# Module unifié de gestion des pièces (PRIORITAIRE)
+# Module unifié de gestion des pièces (REMPLACE pieces_manager ET bordereau)
 try:
-    from modules.pieces_manager import display_pieces_interface, init_pieces_manager
+    from modules.pieces_manager import (
+        display_pieces_interface, 
+        init_pieces_manager,
+        process_pieces_request,
+        process_liste_pieces_request,
+        GestionnairePiecesUnifie
+    )
     modules_disponibles['pieces_manager'] = True
     if 'gestionnaire_pieces' not in st.session_state:
         init_pieces_manager()
-    print("✅ Module pieces_manager chargé")
-except ImportError:
+    print("✅ Module pieces_manager unifié chargé (inclut liste des pièces)")
+except ImportError as e:
     modules_disponibles['pieces_manager'] = False
+    print(f"❌ Module pieces_manager non disponible: {e}")
+
+# Note: Le module bordereau est maintenant intégré dans pieces_manager
+# On garde une compatibilité pour les références existantes
+modules_disponibles['bordereau'] = modules_disponibles['pieces_manager']
 
 # Module unifié d'import/export
 try:
@@ -237,18 +248,6 @@ except ImportError:
     modules_disponibles['template'] = False
 
 # === 4. PRODUCTION ET VISUALISATION ===
-# Module de bordereau
-try:
-    from modules.bordereau import (
-        display_bordereau_interface,
-        process_bordereau_request,
-        show_page as show_bordereau_page
-    )
-    modules_disponibles['bordereau'] = True
-    print("✅ Module bordereau chargé")
-except ImportError:
-    modules_disponibles['bordereau'] = False
-
 # Module Timeline
 try:
     from modules.timeline import process_timeline_request
@@ -893,6 +892,12 @@ def show_modern_sidebar():
             st.session_state.current_view = 'pieces'
             st.session_state.current_module = 'pieces_manager'
         
+        if st.button("📋 Liste des pièces", use_container_width=True,
+                    type="primary" if st.session_state.get('current_view') == 'liste_pieces' else "secondary"):
+            st.session_state.current_view = 'liste_pieces'
+            st.session_state.current_module = 'pieces_manager'
+            st.session_state.show_liste_pieces_view = True
+        
         if st.button("📥 Import/Export", use_container_width=True,
                     type="primary" if st.session_state.get('current_module') == 'import_export' else "secondary"):
             st.session_state.current_view = 'import_export'
@@ -923,11 +928,6 @@ def show_modern_sidebar():
                         type="primary" if st.session_state.get('current_module') == 'generation_longue' else "secondary"):
                 st.session_state.current_view = 'generation_longue'
                 st.session_state.current_module = 'generation_longue'
-        
-        if st.button("📋 Bordereau", use_container_width=True,
-                    type="primary" if st.session_state.get('current_module') == 'bordereau' else "secondary"):
-            st.session_state.current_view = 'bordereau'
-            st.session_state.current_module = 'bordereau'
         
         # Section Visualisation & Analyse
         st.markdown("#### 📊 Visualisation")
@@ -993,7 +993,8 @@ def show_home_page():
         "Votre requête",
         placeholder="Ex: J'ai besoin de préparer l'audience de demain pour l'affaire Martin...\n"
                    "Ou: Rédige une plainte pour abus de biens sociaux contre la société XYZ...\n"
-                   "Ou: Analyse tous les documents concernant la corruption...",
+                   "Ou: Analyse tous les documents concernant la corruption...\n"
+                   "Ou: Créer une liste de pièces pour communiquer au tribunal...",
         height=100,
         key="universal_search",
         label_visibility="collapsed"
@@ -1012,11 +1013,12 @@ def show_home_page():
                 "Explore tous les documents du dossier VINCI",
                 "Analyse les risques juridiques dans le dossier @VINCI2024",
                 "Trouve la jurisprudence sur la corruption dans le secteur public",
-                "Prépare un bordereau de communication pour l'audience du 15 janvier",
+                "Prépare une liste des pièces pour l'audience du 15 janvier",
                 "Compare les témoignages de Martin et Dupont dans l'affaire ABC",
                 "Import tous les documents PDF du dossier Dupont",
                 "Créer une timeline des événements financiers",
-                "Prépare mon client pour son audition de demain"
+                "Prépare mon client pour son audition de demain",
+                "Créer une liste de communication des pièces pour le tribunal"
             ]
             import random
             st.session_state.universal_search = random.choice(examples)
@@ -1038,7 +1040,7 @@ def show_home_page():
         {
             'icon': '📁',
             'title': 'Gestion documentaire',
-            'description': 'Import, organisation et gestion des pièces',
+            'description': 'Import, organisation et liste des pièces',
             'modules': ['pieces_manager', 'import_export', 'dossier_penal'],
             'primary': 'pieces_manager'
         },
@@ -1046,7 +1048,7 @@ def show_home_page():
             'icon': '✍️',
             'title': 'Rédaction & Production',
             'description': 'Rédaction d\'actes et documents longs',
-            'modules': ['redaction_unified', 'generation_longue', 'bordereau'],
+            'modules': ['redaction_unified', 'generation_longue'],
             'primary': 'redaction_unified'
         },
         {
@@ -1092,7 +1094,7 @@ def show_home_page():
             ("📊", "Synthèse", "Synthèse automatique", "synthesis"),
         ],
         "Documents & Dossiers": [
-            ("📎", "Gestion des pièces", "Organisez vos pièces et documents", "pieces_manager"),
+            ("📎", "Gestion des pièces", "Organisez vos pièces et créez des listes", "pieces_manager"),
             ("📥", "Import/Export", "Import/Export unifié de documents", "import_export"),
             ("📂", "Dossiers pénaux", "Gestion des dossiers", "dossier_penal"),
             ("🗂️", "Explorateur", "Explorez vos fichiers", "explorer"),
@@ -1100,7 +1102,6 @@ def show_home_page():
         "Production": [
             ("✍️", "Rédaction", "Rédaction d'actes juridiques avec IA", "redaction_unified"),
             ("📜", "Documents longs", "Documents de 25-50+ pages", "generation_longue"),
-            ("📋", "Bordereau", "Création de bordereaux", "bordereau"),
             ("📋", "Templates", "Gestion des modèles", "template"),
         ],
         "Analyse & Communication": [
@@ -1178,6 +1179,12 @@ def handle_universal_search(query: str):
             'module': 'pieces_manager',
             'view': 'pieces'
         },
+        'liste_pieces': {
+            'keywords': ['liste des pièces', 'bordereau', 'communication des pièces', 'inventaire', 'liste de pièces'],
+            'module': 'pieces_manager',
+            'view': 'liste_pieces',
+            'context': 'liste'
+        },
         'redaction': {
             'keywords': ['rédiger', 'rédige', 'créer', 'générer', 'préparer', 'établir', 'plainte', 'conclusions', 'assignation'],
             'module': 'redaction_unified',
@@ -1192,11 +1199,6 @@ def handle_universal_search(query: str):
             'keywords': ['jurisprudence', 'arrêt', 'décision', 'cour de cassation', 'juridique', 'judilibre', 'légifrance'],
             'module': 'jurisprudence',
             'view': 'jurisprudence'
-        },
-        'bordereau': {
-            'keywords': ['bordereau', 'communication de pièces', 'liste des pièces'],
-            'module': 'bordereau',
-            'view': 'bordereau'
         },
         'risques': {
             'keywords': ['risque', 'danger', 'menace', 'vulnérabilité', 'évaluation des risques'],
@@ -1259,7 +1261,6 @@ def show_module_content():
         'explorer': "🗂️ Explorateur de documents",
         'redaction_unified': "✍️ Rédaction d'actes juridiques",
         'generation_longue': "📜 Génération de documents longs",
-        'bordereau': "📋 Création de bordereau",
         'template': "📋 Gestion des templates",
         'timeline': "📅 Timeline des événements",
         'comparison': "🔄 Comparaison de documents",
@@ -1270,6 +1271,10 @@ def show_module_content():
         'mapping': "🗺️ Cartographie",
         'configuration': "⚙️ Configuration"
     }
+    
+    # Gérer les cas spéciaux pour pieces_manager
+    if module == 'pieces_manager' and st.session_state.get('current_view') == 'liste_pieces':
+        module_titles['pieces_manager'] = "📋 Liste des pièces"
     
     if module in module_titles:
         col1, col2 = st.columns([10, 1])
@@ -1297,7 +1302,19 @@ def show_module_content():
             
         # === Modules de gestion documentaire ===
         elif module == 'pieces_manager' and modules_disponibles.get('pieces_manager'):
-            display_pieces_interface()
+            # Vérifier si on doit afficher la vue liste des pièces
+            if st.session_state.get('current_view') == 'liste_pieces' or st.session_state.get('show_liste_pieces_view'):
+                # Créer une analyse factice si nécessaire
+                analysis = st.session_state.get('current_analysis', {
+                    'reference': '',
+                    'client': '',
+                    'adversaire': '',
+                    'juridiction': '',
+                    'action_type': 'liste_pieces'
+                })
+                process_liste_pieces_request("Créer une liste des pièces", analysis)
+            else:
+                display_pieces_interface()
             
         elif module == 'import_export' and modules_disponibles.get('import_export'):
             if 'show_import_export_tabs' in globals():
@@ -1319,20 +1336,6 @@ def show_module_content():
             
         elif module == 'generation_longue' and modules_disponibles.get('generation_longue'):
             show_generation_longue_interface()
-            
-        elif module == 'bordereau' and modules_disponibles.get('bordereau'):
-            if st.session_state.get('current_bordereau'):
-                display_bordereau_interface(
-                    st.session_state['current_bordereau'], 
-                    st.session_state.get('selected_pieces', [])
-                )
-            elif 'show_bordereau_page' in globals():
-                show_bordereau_page()
-            else:
-                st.info("Aucun bordereau actif. Sélectionnez des pièces d'abord.")
-                if st.button("📎 Aller à la gestion des pièces"):
-                    st.session_state.current_module = 'pieces_manager'
-                    st.rerun()
             
         elif module == 'template' and modules_disponibles.get('template'):
             show_template_manager()
@@ -1385,6 +1388,10 @@ def show_module_content():
         st.error(f"Erreur lors du chargement du module : {str(e)}")
         if app_config.debug:
             st.code(traceback.format_exc())
+    finally:
+        # Nettoyer les états temporaires
+        if 'show_liste_pieces_view' in st.session_state:
+            del st.session_state.show_liste_pieces_view
 
 # ========== SECTION 8: FONCTION PRINCIPALE ==========
 
@@ -1448,9 +1455,21 @@ def main():
                 ✅ recherche_analyse_unifiee remplace recherche + analyse_ia
                 ✅ redaction_unified remplace generation_juridique  
                 ✅ import_export unifie import et export
-                ✅ pieces_manager centralise la gestion des pièces
+                ✅ pieces_manager intègre maintenant la gestion ET les listes de pièces (ex-bordereau)
                 ✅ jurisprudence avec API Judilibre/Légifrance
                 ✅ preparation_client avec plans de séances détaillés
+                """)
+                
+                # Signaler les redondances
+                st.write("\n**🔍 Redondances détectées et résolues:**")
+                st.info("""
+                • **Bordereau + Pieces Manager** → Fusionnés dans pieces_manager
+                  - La création de listes de pièces est maintenant intégrée
+                  - Accès via "Gestion des pièces" ou "Liste des pièces"
+                  
+                • **Export dispersé** → Centralisé dans export_manager
+                  - Tous les exports passent par le module unifié
+                  - Formats: Word, PDF, Excel, JSON
                 """)
 
 # Point d'entrée
