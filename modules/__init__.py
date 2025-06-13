@@ -1,11 +1,9 @@
-# modules/__init__.py
 """
 Package modules - Contient tous les modules fonctionnels de l'application juridique
 """
 
 import os
 import sys
-import importlib.util
 from pathlib import Path
 
 # Import des dataclasses depuis ce module pour faciliter l'accès
@@ -17,18 +15,15 @@ except ImportError as e:
 # Liste des modules disponibles
 __all__ = ['dataclasses']
 
-# Liste des modules à importer
+# Liste des modules RÉELLEMENT présents (basée sur votre capture d'écran)
 modules_list = [
-    'analyse_ia',
-    'bordereau',
     'comparison',
-    'configuration',
+    'configuration', 
     'dossier_penal',
     'email',
     'explorer',
-    'export_juridique',
-    'generation_juridique',
-    'generation-longue',  # Module avec tiret
+    'export_manager',  # Corrigé (pas export_juridique)
+    'generation_longue',  # Corrigé (pas generation-longue)
     'import_export',
     'integration_juridique',
     'jurisprudence',
@@ -36,11 +31,10 @@ modules_list = [
     'pieces_manager',
     'plaidoirie',
     'preparation_client',
-    'recherche',
+    'recherche_analyse_unifiee',  # Ajouté
     'redaction',
     'redaction_unified',
     'risques',
-    'selection_pieces',
     'synthesis',
     'template',
     'timeline'
@@ -52,38 +46,11 @@ loaded_modules = []
 # Import conditionnel de chaque module
 for module_name in modules_list:
     try:
-        # Gérer les modules avec tirets
-        if '-' in module_name:
-            # Pour les modules avec tirets, on doit utiliser importlib
-            import_name = module_name.replace('-', '_')
-            current_dir = Path(__file__).parent
-            module_file = current_dir / f"{module_name}.py"
-            
-            if module_file.exists():
-                # Charger le module manuellement
-                spec = importlib.util.spec_from_file_location(import_name, module_file)
-                if spec and spec.loader:
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[f"modules.{import_name}"] = module
-                    spec.loader.exec_module(module)
-                    
-                    # Ajouter le module au namespace local
-                    globals()[import_name] = module
-                    setattr(sys.modules[__name__], import_name, module)
-                    
-                    __all__.append(import_name)
-                    loaded_modules.append(import_name)
-                    print(f"✓ Module {import_name} (depuis {module_name}.py) importé avec succès")
-                else:
-                    print(f"⚠️ Impossible de créer la spec pour {module_name}")
-            else:
-                print(f"⚠️ Fichier {module_name}.py non trouvé")
-        else:
-            # Import normal pour les modules sans tirets
-            exec(f"from . import {module_name}")
-            __all__.append(module_name)
-            loaded_modules.append(module_name)
-            print(f"✓ Module {module_name} importé avec succès")
+        # Import normal pour tous les modules
+        exec(f"from . import {module_name}")
+        __all__.append(module_name)
+        loaded_modules.append(module_name)
+        print(f"✓ Module {module_name} importé avec succès")
             
     except ImportError as e:
         # Module non disponible, continuer
@@ -105,9 +72,7 @@ def debug_modules_status(output_to_streamlit=False):
     output.append("")
     
     for module in modules_list:
-        # Vérifier avec le nom importé (tirets remplacés par underscores)
-        import_name = module.replace('-', '_')
-        if import_name in loaded_modules:
+        if module in loaded_modules:
             output.append(f"✓ {module}")
         else:
             output.append(f"✗ {module}")
