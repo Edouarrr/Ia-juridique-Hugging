@@ -10,7 +10,7 @@ import uuid
 
 # Import des modèles avec gestion d'erreur
 try:
-    from models.dataclasses import DossierPenal, PieceProcedure, EvenementTimeline
+    from modules.dataclasses import DossierPenal, PieceProcedure, EvenementTimeline
 except ImportError:
     # Définitions de secours si l'import échoue
     from dataclasses import dataclass, field
