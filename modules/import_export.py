@@ -11,7 +11,7 @@ from pathlib import Path
 from collections import defaultdict
 
 # Imports des dépendances
-from models.dataclasses import Document
+from modules.dataclasses import Document
 from utils.helpers import clean_key
 from modules.export_manager import export_manager, ExportConfig
 
