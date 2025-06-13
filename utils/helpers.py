@@ -1,23 +1,34 @@
-# utils/helpers.py
-"""Fonctions utilitaires pour l'application juridique"""
-
 import streamlit as st
 import re
-import json
-import hashlib
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple, Union
-from pathlib import Path
 import unicodedata
+import hashlib
+from datetime import datetime
+from typing import Dict, List, Any, Optional, Union
 
-from modules.dataclasses import QueryAnalysis, Document, Entity
+# Import depuis modules.dataclasses (source principale)
+from modules.dataclasses import (
+    Document, SearchResult, Piece, QueryAnalysis, TimelineEvent,
+    LegalEntity, EmailConfig, EmailCredentials, PlaidoirieResult,
+    JurisprudenceCase, Template, GenerationParams, AnalysisResult,
+    ComparisonResult, RiskAssessment, BordereauItem, ExportConfig,
+    UserPreferences, ProcessingStatus, DocumentType, PartyType,
+    TimelineType, MappingType, ExportFormat, PieceSelectionnee,
+    Partie, InformationEntreprise, PhaseProcedure, TypePartie,
+    InfractionIdentifiee, DossierPenal, ElementProcedure
+)
 
-def initialize_session_state():
-    """Initialise l'état de la session Streamlit"""
+def init_session_state():
+    """Initialise les variables de session Streamlit"""
     
-    # État principal
+    # Configuration générale
+    if 'initialized' not in st.session_state:
+        st.session_state.initialized = False
+    
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = 'recherche'
+        st.session_state.current_page = 'Accueil'
+    
+    if 'search_mode' not in st.session_state:
+        st.session_state.search_mode = 'simple'
     
     # Documents et données
     if 'azure_documents' not in st.session_state:
