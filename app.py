@@ -18,121 +18,174 @@ st.set_page_config(
 
 # Configuration des IA disponibles
 AVAILABLE_AIS = {
-    "GPT-3.5": {"icon": "🤖", "description": "Analyse rapide et réponses structurées"},
-    "GPT-4": {"icon": "🧠", "description": "Analyse approfondie et raisonnement complexe"},
-    "Azure OpenAI": {"icon": "☁️", "description": "IA sécurisée pour données sensibles"},
-    "Claude Opus 4": {"icon": "🎭", "description": "Argumentation nuancée et créative"},
-    "Gemini": {"icon": "✨", "description": "Recherche exhaustive multimodale"},
-    "Mistral": {"icon": "🌟", "description": "Spécialiste droit français et européen"}
+    "GPT-3.5": {"icon": "🤖", "description": "Analyse rapide des pièces procédurales"},
+    "GPT-4": {"icon": "🧠", "description": "Analyse approfondie et contradictions dans les pièces"},
+    "Azure OpenAI": {"icon": "☁️", "description": "IA sécurisée pour pièces confidentielles"},
+    "Claude Opus 4": {"icon": "🎭", "description": "Argumentation basée sur les pièces du dossier"},
+    "Gemini": {"icon": "✨", "description": "Recherche exhaustive dans toutes les pièces"},
+    "Mistral": {"icon": "🌟", "description": "Analyse juridique des pièces françaises"}
 }
 
-# Base de clients pour la préparation
-CLIENTS_DB = {
+# Base de données enrichie avec les pièces du dossier
+DOSSIERS_CLIENTS = {
     "lesueur": {
-        "nom": "M. Lesueur",
-        "affaire": "ABS SAS TechFinance",
-        "qualification": "Abus de biens sociaux",
-        "statut": "Mis en examen",
-        "audience": "15/02/2024 - Tribunal correctionnel"
+        "info": {
+            "nom": "M. Lesueur",
+            "affaire": "ABS SAS TechFinance", 
+            "qualification": "Abus de biens sociaux - Art. 314-1",
+            "statut": "Mis en examen",
+            "audience": "15/02/2024 - Tribunal correctionnel",
+            "montant": "450 000 €"
+        },
+        "pieces": {
+            "PV": [
+                {"ref": "PV-001", "titre": "PV audition garde à vue Lesueur", "date": "10/01/2024", "pages": 45},
+                {"ref": "PV-002", "titre": "PV perquisition siège social", "date": "08/01/2024", "pages": 23},
+                {"ref": "PV-003", "titre": "PV audition comptable société", "date": "12/01/2024", "pages": 18}
+            ],
+            "Expertises": [
+                {"ref": "EXP-001", "titre": "Rapport expertise comptable", "date": "20/01/2024", "pages": 156},
+                {"ref": "EXP-002", "titre": "Analyse flux financiers 2022-2023", "date": "22/01/2024", "pages": 89}
+            ],
+            "Documents_saisis": [
+                {"ref": "SCEL-001", "titre": "Relevés bancaires SAS TechFinance", "periode": "2022-2023", "pages": 234},
+                {"ref": "SCEL-002", "titre": "Factures litigieuses", "nombre": 47, "pages": 94},
+                {"ref": "SCEL-003", "titre": "Contrats prestations fictives", "nombre": 12, "pages": 156},
+                {"ref": "SCEL-004", "titre": "Emails direction", "nombre": 1247, "pages": 890}
+            ],
+            "Procedures": [
+                {"ref": "PROC-001", "titre": "Ordonnance de mise en examen", "date": "15/01/2024", "pages": 8},
+                {"ref": "PROC-002", "titre": "Réquisitoire supplétif", "date": "25/01/2024", "pages": 12}
+            ]
+        }
     },
     "martin": {
-        "nom": "Mme Martin",
-        "affaire": "Blanchiment réseau international",
-        "qualification": "Blanchiment aggravé",
-        "statut": "Témoin assisté",
-        "audience": "20/02/2024 - Juge d'instruction"
+        "info": {
+            "nom": "Mme Martin",
+            "affaire": "Blanchiment réseau crypto",
+            "qualification": "Blanchiment aggravé - Art. 324-1",
+            "statut": "Témoin assisté", 
+            "audience": "20/02/2024 - Juge d'instruction",
+            "montant": "2.3 M€"
+        },
+        "pieces": {
+            "PV": [
+                {"ref": "PV-101", "titre": "PV audition libre Martin", "date": "05/01/2024", "pages": 28},
+                {"ref": "PV-102", "titre": "PV exploitation données blockchain", "date": "15/01/2024", "pages": 167}
+            ],
+            "Expertises": [
+                {"ref": "EXP-101", "titre": "Rapport TRACFIN", "date": "01/12/2023", "pages": 43},
+                {"ref": "EXP-102", "titre": "Expertise crypto-actifs", "date": "18/01/2024", "pages": 78}
+            ],
+            "Documents_saisis": [
+                {"ref": "SCEL-101", "titre": "Wallets crypto identifiés", "nombre": 23, "pages": 145},
+                {"ref": "SCEL-102", "titre": "Virements SEPA suspects", "nombre": 156, "pages": 312}
+            ],
+            "Procedures": [
+                {"ref": "PROC-101", "titre": "Convocation témoin assisté", "date": "10/01/2024", "pages": 3}
+            ]
+        }
     },
     "dupont": {
-        "nom": "M. Dupont",
-        "affaire": "Corruption marché public",
-        "qualification": "Corruption active",
-        "statut": "Mis en examen",
-        "audience": "25/02/2024 - Chambre de l'instruction"
+        "info": {
+            "nom": "M. Dupont", 
+            "affaire": "Corruption marché public BTP",
+            "qualification": "Corruption active agent public",
+            "statut": "Mis en examen",
+            "audience": "25/02/2024 - Chambre de l'instruction",
+            "montant": "1.8 M€"
+        },
+        "pieces": {
+            "PV": [
+                {"ref": "PV-201", "titre": "PV interpellation Dupont", "date": "03/01/2024", "pages": 15},
+                {"ref": "PV-202", "titre": "PV écoutes téléphoniques", "date": "Déc 2023", "pages": 456}
+            ],
+            "Expertises": [
+                {"ref": "EXP-201", "titre": "Analyse marchés publics truqués", "date": "20/01/2024", "pages": 234}
+            ],
+            "Documents_saisis": [
+                {"ref": "SCEL-201", "titre": "Cahiers des charges modifiés", "nombre": 8, "pages": 89},
+                {"ref": "SCEL-202", "titre": "Versements occultes", "nombre": 34, "pages": 67}
+            ],
+            "Procedures": [
+                {"ref": "PROC-201", "titre": "Commission rogatoire internationale", "date": "15/01/2024", "pages": 23}
+            ]
+        }
     }
 }
 
-# Modules de préparation client
-PREPARATION_MODULES = {
-    "questions_tribunal": {
-        "titre": "Questions du tribunal",
-        "themes": [
-            "Questions sur les faits",
-            "Questions sur l'organisation de la société",
-            "Questions sur votre rôle et responsabilités",
-            "Questions sur les flux financiers",
-            "Questions sur votre connaissance des faits"
-        ]
-    },
-    "questions_procureur": {
-        "titre": "Questions du procureur",
-        "themes": [
-            "Questions pièges sur l'intentionnalité",
-            "Questions sur les contradictions",
-            "Questions sur les documents",
-            "Questions sur les témoignages",
-            "Questions sur les antécédents"
-        ]
-    },
-    "comportement": {
-        "titre": "Comportement à l'audience",
-        "themes": [
-            "Attitude générale et présentation",
-            "Gestion du stress et des émotions",
-            "Communication non-verbale",
-            "Formules de politesse",
-            "Réactions aux provocations"
-        ]
-    },
-    "strategie": {
-        "titre": "Stratégie de défense",
-        "themes": [
-            "Points forts à mettre en avant",
-            "Points faibles à minimiser",
-            "Éléments de contexte favorables",
-            "Arguments juridiques clés",
-            "Ligne de défense cohérente"
-        ]
-    }
-}
+# Suggestions de prompts basées sur les pièces
+def generate_piece_based_prompts(client_key, pieces):
+    """Génère des prompts basés sur les pièces du dossier"""
+    prompts = []
+    
+    # Prompts basés sur les PV
+    if pieces.get("PV"):
+        for pv in pieces["PV"][:2]:
+            prompts.append(f"Analyser contradictions dans {pv['titre']} (Ref: {pv['ref']})")
+            prompts.append(f"Identifier points faibles {pv['ref']} pages clés")
+    
+    # Prompts basés sur les expertises
+    if pieces.get("Expertises"):
+        for exp in pieces["Expertises"][:2]:
+            prompts.append(f"Contester conclusions {exp['titre']} (Ref: {exp['ref']})")
+            prompts.append(f"Extraire éléments favorables {exp['ref']}")
+    
+    # Prompts basés sur les documents saisis
+    if pieces.get("Documents_saisis"):
+        for doc in pieces["Documents_saisis"][:2]:
+            prompts.append(f"Analyser {doc['titre']} pour éléments à décharge")
+            prompts.append(f"Vérifier authenticité pièces {doc['ref']}")
+    
+    # Prompts croisés
+    if pieces.get("PV") and pieces.get("Expertises"):
+        prompts.append(f"Comparer {pieces['PV'][0]['ref']} avec {pieces['Expertises'][0]['ref']} - incohérences")
+    
+    return prompts
 
-# Suggestions de prompts enrichies avec modules
-PROMPT_SUGGESTIONS = {
-    "prépar": [
-        "préparer client audience correctionnelle",
-        "préparer interrogatoire juge instruction",
-        "préparer questions procureur ABS",
-        "préparer confrontation témoins",
-        "préparer plaidoirie partie civile"
-    ],
-    "rédac": [
-        "rédiger conclusions ABS défense",
-        "rédiger plainte constitution partie civile",
-        "rédiger mémoire cassation pénal",
-        "rédiger observations expertise comptable",
-        "rédiger requête nullité procédure"
-    ],
-    "analys": [
-        "analyser PV audition garde à vue",
-        "analyser rapport expertise financière",
-        "analyser scellés documents comptables",
-        "analyser contradictions témoignages",
-        "analyser risques mise en examen"
-    ],
-    "recherch": [
-        "rechercher jurisprudence ABS prescription",
-        "rechercher jurisprudence blanchiment auto-blanchiment",
-        "rechercher arrêts corruption élément moral",
-        "rechercher doctrine nullités procédure",
-        "rechercher CEDH délai raisonnable"
-    ],
-    "calcul": [
-        "calculer délai appel correctionnel",
-        "calculer prescription ABS dissimulé",
-        "calculer intérêts civils préjudice",
-        "calculer honoraires complexité dossier",
-        "calculer délai cassation pénal"
-    ]
-}
+# Questions basées sur les pièces pour la préparation
+def generate_piece_based_questions(module_theme, pieces, client_info):
+    """Génère des questions basées sur les pièces spécifiques du dossier"""
+    questions = []
+    
+    if "faits" in module_theme.lower() or "intentionnel" in module_theme.lower():
+        if pieces.get("PV"):
+            pv = pieces["PV"][0]
+            questions.extend([
+                f"❓ Dans votre audition du {pv['date']} ({pv['ref']} p.12-15), vous déclarez ne pas connaître ces virements. Comment l'expliquez-vous ?",
+                f"❓ Le {pv['ref']} mentionne votre signature sur 23 ordres de virement. Vous souvenez-vous de ces documents ?",
+                f"❓ Page 34 du {pv['ref']}, vous reconnaissez avoir rencontré M. X. Dans quel contexte ?"
+            ])
+        
+        if pieces.get("Documents_saisis"):
+            doc = pieces["Documents_saisis"][0]
+            questions.extend([
+                f"❓ Les {doc['titre']} ({doc['ref']}) montrent {doc.get('nombre', 'plusieurs')} opérations suspectes. Quelle était leur finalité ?",
+                f"❓ Comment justifiez-vous l'absence de contrepartie dans les pièces {doc['ref']} ?"
+            ])
+    
+    elif "financ" in module_theme.lower() or "flux" in module_theme.lower():
+        if pieces.get("Expertises"):
+            exp = pieces["Expertises"][0]
+            questions.extend([
+                f"❓ Le {exp['titre']} ({exp['ref']} p.45-67) identifie {client_info['montant']} de flux suspects. D'où provenaient ces fonds ?",
+                f"❓ L'expert relève page 89 du {exp['ref']} des virements vers des paradis fiscaux. Quelle en était la raison ?",
+                f"❓ Comment expliquez-vous les conclusions de l'expertise {exp['ref']} sur les surfacturations ?"
+            ])
+    
+    elif "société" in module_theme.lower() or "organisation" in module_theme.lower():
+        if pieces.get("Documents_saisis"):
+            for doc in pieces["Documents_saisis"]:
+                if "email" in doc['titre'].lower():
+                    questions.append(f"❓ Les {doc['nombre']} emails saisis ({doc['ref']}) montrent que vous étiez informé. Qu'en dites-vous ?")
+                if "contrat" in doc['titre'].lower():
+                    questions.append(f"❓ Les {doc.get('nombre', '')} contrats ({doc['ref']}) étaient-ils tous réels ?")
+    
+    # Questions sur les contradictions entre pièces
+    if len(pieces.get("PV", [])) > 1:
+        questions.append(f"❓ Vos déclarations dans {pieces['PV'][0]['ref']} contredisent celles du {pieces['PV'][1]['ref']}. Comment l'expliquez-vous ?")
+    
+    return questions
 
 # Fonction CSS optimisée
 def load_custom_css():
@@ -155,14 +208,126 @@ def load_custom_css():
         --ai-hover: #c0392b;
         --penal-bg: #fef5f5;
         --client-bg: #e8f5e9;
+        --piece-bg: #fff3cd;
     }
     
-    /* Typography ultra-compacte */
-    h1 { font-size: 1.5rem !important; margin-bottom: 0.3rem !important; }
-    h2 { font-size: 1.25rem !important; margin-bottom: 0.3rem !important; }
-    h3 { font-size: 1.1rem !important; margin-bottom: 0.3rem !important; }
-    h4 { font-size: 1rem !important; margin-bottom: 0.3rem !important; }
-    h5 { font-size: 0.9rem !important; margin-bottom: 0.3rem !important; }
+    /* Pièces du dossier */
+    .piece-card {
+        background: var(--piece-bg);
+        border: 1px solid #ffc107;
+        border-radius: 6px;
+        padding: 10px;
+        margin: 5px 0;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .piece-card:hover {
+        background: #ffe69c;
+        transform: translateX(3px);
+        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
+    }
+    
+    .piece-ref {
+        font-weight: 700;
+        color: var(--danger-color);
+        margin-right: 8px;
+    }
+    
+    .piece-pages {
+        float: right;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+    }
+    
+    /* Container pièces */
+    .pieces-container {
+        background: white;
+        border: 2px solid #ffc107;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .pieces-category {
+        font-weight: 600;
+        color: var(--accent-color);
+        margin: 10px 0 5px 0;
+        font-size: 0.9rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 3px;
+    }
+    
+    /* Prompts basés sur pièces */
+    .piece-prompt {
+        background: white;
+        border: 1px solid var(--border-color);
+        border-left: 3px solid #ffc107;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 5px 0;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+    
+    .piece-prompt:hover {
+        background: var(--piece-bg);
+        transform: translateX(5px);
+    }
+    
+    .piece-prompt .piece-ref {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #ffc107;
+        color: #000;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    
+    /* Questions avec références */
+    .question-with-piece {
+        background: var(--background-light);
+        border-left: 4px solid var(--accent-color);
+        padding: 12px;
+        margin: 8px 0;
+        position: relative;
+    }
+    
+    .question-with-piece .piece-citation {
+        font-weight: 600;
+        color: #d35400;
+        text-decoration: underline;
+    }
+    
+    /* Client mode avec pièces */
+    .search-container.client-mode {
+        border-color: #ffc107;
+        background: linear-gradient(to right, #fff3cd 0%, white 100%);
+    }
+    
+    /* Stats pièces */
+    .pieces-stats {
+        display: flex;
+        gap: 10px;
+        margin: 10px 0;
+    }
+    
+    .piece-stat {
+        background: var(--piece-bg);
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        border: 1px solid #ffc107;
+    }
     
     /* Layout ultra-compact */
     .block-container {
@@ -170,154 +335,12 @@ def load_custom_css():
         max-width: 1600px !important;
     }
     
-    /* Préparation client card */
-    .preparation-card {
-        background: var(--client-bg);
-        border: 2px solid #4caf50;
-        border-radius: 8px;
-        padding: 15px;
-        margin: 10px 0;
-    }
-    
-    .preparation-theme {
-        background: white;
-        border: 1px solid #4caf50;
-        border-radius: 6px;
-        padding: 12px;
-        margin: 8px 0;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .preparation-theme:hover {
-        background: #f1f8e9;
-        transform: translateX(5px);
-        box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
-    }
-    
-    .client-info-badge {
-        background: #4caf50;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 15px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        display: inline-block;
-        margin: 2px;
-    }
-    
-    /* Suggestion de prompts améliorée */
-    .prompt-suggestion {
-        background: white;
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-        padding: 8px 12px;
-        margin: 3px 0;
-        cursor: pointer;
-        font-size: 0.85rem;
-        transition: all 0.2s ease;
-        position: relative;
-    }
-    
-    .prompt-suggestion:hover {
-        background: var(--penal-bg);
-        border-color: var(--accent-color);
-        transform: translateX(5px);
-    }
-    
-    .prompt-module-tag {
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: var(--accent-color);
-        color: white;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 0.7rem;
-    }
-    
-    /* AI Selector optimisé */
-    .ai-selector-mini {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px;
-        background: white;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        margin: 4px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .ai-selector-mini:hover {
-        border-color: var(--ai-hover);
-        background: var(--hover-color);
-    }
-    
-    .ai-selector-mini.selected {
-        border-color: var(--ai-selected);
-        background: var(--penal-bg);
-        font-weight: 600;
-    }
-    
-    /* Module Cards ultra-compactes */
-    .module-card {
-        background: white;
-        border-radius: 8px;
-        padding: 12px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        transition: all 0.3s ease;
-        border: 1px solid var(--border-color);
-        height: 100%;
-        min-height: 120px;
-    }
-    
-    .module-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-        border-color: var(--accent-color);
-    }
-    
-    /* Search container avec détection client */
-    .search-container {
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        padding: 20px;
-        margin: 15px 0;
-        border: 1px solid var(--border-color);
-        position: relative;
-    }
-    
-    .search-container.client-mode {
-        border-color: #4caf50;
-        background: #f1f8e9;
-    }
-    
-    /* Questions preview */
-    .question-preview {
-        background: var(--background-light);
-        border-left: 3px solid var(--accent-color);
-        padding: 10px;
-        margin: 5px 0;
-        font-size: 0.85rem;
-    }
-    
-    .question-category {
-        font-weight: 600;
-        color: var(--accent-color);
-        margin-bottom: 5px;
-    }
-    
-    /* Responsive optimisé */
-    @media (max-width: 768px) {
-        .module-card {
-            min-height: 100px;
-            padding: 10px;
-        }
-    }
+    /* Typography compacte */
+    h1 { font-size: 1.4rem !important; margin-bottom: 0.3rem !important; }
+    h2 { font-size: 1.2rem !important; margin-bottom: 0.3rem !important; }
+    h3 { font-size: 1.05rem !important; margin-bottom: 0.3rem !important; }
+    h4 { font-size: 0.95rem !important; margin-bottom: 0.3rem !important; }
+    h5 { font-size: 0.85rem !important; margin-bottom: 0.3rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -332,82 +355,73 @@ def init_session_state():
         st.session_state.current_view = 'dashboard'
     if 'search_query' not in st.session_state:
         st.session_state.search_query = ""
-    if 'client_mode' not in st.session_state:
-        st.session_state.client_mode = None
-    if 'preparation_themes' not in st.session_state:
-        st.session_state.preparation_themes = []
+    if 'current_client' not in st.session_state:
+        st.session_state.current_client = None
+    if 'selected_pieces' not in st.session_state:
+        st.session_state.selected_pieces = []
 
-# Fonction pour détecter et traiter les commandes client
-def process_client_command(query):
-    """Détecte et traite les commandes @client"""
-    if query.startswith("@"):
-        parts = query[1:].split(",", 1)
-        client_name = parts[0].strip().lower()
-        
-        if client_name in CLIENTS_DB:
-            client = CLIENTS_DB[client_name]
-            command = parts[1].strip() if len(parts) > 1 else ""
+# Affichage des pièces du dossier
+def display_dossier_pieces(client_key):
+    """Affiche les pièces disponibles dans le dossier"""
+    if client_key not in DOSSIERS_CLIENTS:
+        return
+    
+    pieces = DOSSIERS_CLIENTS[client_key]["pieces"]
+    client_info = DOSSIERS_CLIENTS[client_key]["info"]
+    
+    # Stats des pièces
+    total_pieces = sum(len(pieces[cat]) for cat in pieces)
+    total_pages = sum(p.get('pages', 0) for cat in pieces for p in pieces[cat])
+    
+    st.markdown(f"""
+    <div class="pieces-stats">
+        <span class="piece-stat">📁 {total_pieces} pièces</span>
+        <span class="piece-stat">📄 {total_pages} pages</span>
+        <span class="piece-stat">💰 {client_info['montant']}</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Container des pièces
+    st.markdown('<div class="pieces-container">', unsafe_allow_html=True)
+    
+    # Affichage par catégorie
+    for category, items in pieces.items():
+        if items:
+            st.markdown(f'<div class="pieces-category">📂 {category.replace("_", " ").title()}</div>', unsafe_allow_html=True)
             
-            return {
-                "is_client_command": True,
-                "client": client,
-                "client_key": client_name,
-                "command": command
-            }
+            for piece in items:
+                piece_id = f"{client_key}_{piece['ref']}"
+                selected = piece_id in st.session_state.selected_pieces
+                
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.markdown(f"""
+                    <div class="piece-card">
+                        <span class="piece-ref">{piece['ref']}</span>
+                        {piece['titre']}
+                        <span class="piece-pages">{piece.get('pages', 'N/A')} pages</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col2:
+                    if st.checkbox("", key=f"select_{piece_id}", value=selected):
+                        if piece_id not in st.session_state.selected_pieces:
+                            st.session_state.selected_pieces.append(piece_id)
+                    else:
+                        if piece_id in st.session_state.selected_pieces:
+                            st.session_state.selected_pieces.remove(piece_id)
     
-    return {"is_client_command": False}
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# Générateur de prompts intelligent avec modules
-def get_smart_suggestions(query, client_context=None):
-    """Génère des suggestions basées sur les modules et le contexte"""
-    suggestions = {}
-    query_lower = query.lower()
+# Barre de recherche avec contexte pièces
+def create_smart_search_with_pieces():
+    """Barre de recherche intégrant les pièces du dossier"""
     
-    # Si contexte client, prioriser la préparation
-    if client_context:
-        suggestions["préparation_audience"] = [
-            f"Préparer {client_context['nom']} - Questions sur {client_context['qualification']}",
-            f"Simuler interrogatoire {client_context['statut']} - {client_context['affaire']}",
-            f"Stratégie défense {client_context['audience']}",
-            f"Points faibles à travailler avec {client_context['nom']}",
-            f"Documents à préparer pour {client_context['nom']}"
-        ]
-    
-    # Suggestions basées sur les mots-clés
-    for keyword, prompts in PROMPT_SUGGESTIONS.items():
-        if keyword in query_lower:
-            # Ajouter le module associé
-            module_map = {
-                "prépar": "👔 Préparation",
-                "rédac": "✍️ Rédaction",
-                "analys": "🔍 Analyse",
-                "recherch": "⚖️ Recherche",
-                "calcul": "🧮 Calculs"
-            }
-            module = module_map.get(keyword, "")
-            suggestions[keyword] = [(p, module) for p in prompts[:4]]
-    
-    # Suggestions contextuelles si pas de match
-    if not suggestions and len(query) > 3:
-        suggestions["suggestions_modules"] = [
-            (f"✍️ Rédiger {query}", "✍️ Rédaction"),
-            (f"🔍 Analyser {query}", "🔍 Analyse"),
-            (f"⚖️ Rechercher jurisprudence {query}", "⚖️ Recherche"),
-            (f"👔 Préparer client pour {query}", "👔 Préparation")
-        ]
-    
-    return suggestions
-
-# Barre de recherche intelligente avec détection client
-def create_smart_search_bar():
-    """Barre de recherche avec IA et détection @client"""
-    
-    # JavaScript amélioré
+    # JavaScript pour détection @client
     search_js = """
     <script>
-    function setupEnhancedSearch() {
+    function setupPieceAwareSearch() {
         const checkTextarea = setInterval(function() {
-            const textarea = document.querySelector('textarea[aria-label="main_search"]');
+            const textarea = document.querySelector('textarea[aria-label="main_search_pieces"]');
             if (textarea) {
                 clearInterval(checkTextarea);
                 
@@ -417,16 +431,10 @@ def create_smart_search_bar():
                     clearTimeout(debounceTimer);
                     const value = textarea.value;
                     
-                    // Style différent pour @client
                     if (value.startsWith('@')) {
-                        textarea.style.borderColor = '#4caf50';
-                        textarea.style.backgroundColor = '#f1f8e9';
-                        
-                        // Extraire le nom du client
-                        const clientPart = value.substring(1).split(',')[0];
-                        if (clientPart.length > 2) {
-                            textarea.style.borderWidth = '2px';
-                        }
+                        textarea.style.borderColor = '#ffc107';
+                        textarea.style.backgroundColor = '#fff3cd';
+                        textarea.style.borderWidth = '2px';
                     } else {
                         textarea.style.borderColor = '';
                         textarea.style.backgroundColor = '';
@@ -460,42 +468,51 @@ def create_smart_search_bar():
         }, 100);
     }
     
-    setupEnhancedSearch();
-    const observer = new MutationObserver(setupEnhancedSearch);
+    setupPieceAwareSearch();
+    const observer = new MutationObserver(setupPieceAwareSearch);
     observer.observe(document.body, { childList: true, subtree: true });
     </script>
     """
     
-    # Container principal
-    client_context = process_client_command(st.session_state.get('search_query', ''))
-    container_class = "search-container client-mode" if client_context['is_client_command'] else "search-container"
+    # Détection du client
+    query = st.session_state.get('search_query', '')
+    client_detected = False
+    client_key = None
     
+    if query.startswith("@"):
+        parts = query[1:].split(",", 1)
+        potential_client = parts[0].strip().lower()
+        if potential_client in DOSSIERS_CLIENTS:
+            client_detected = True
+            client_key = potential_client
+            st.session_state.current_client = client_key
+    
+    # Container avec style adaptatif
+    container_class = "search-container client-mode" if client_detected else "search-container"
     st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
     
-    # Titre adaptatif
-    if client_context['is_client_command']:
-        st.markdown(f"### 👔 Préparation de {client_context['client']['nom']}")
-        st.markdown(f"""
-        <div>
-            <span class="client-info-badge">📁 {client_context['client']['affaire']}</span>
-            <span class="client-info-badge">⚖️ {client_context['client']['qualification']}</span>
-            <span class="client-info-badge">📅 {client_context['client']['audience']}</span>
-        </div>
-        """, unsafe_allow_html=True)
+    # Affichage selon le mode
+    if client_detected:
+        client_info = DOSSIERS_CLIENTS[client_key]["info"]
+        st.markdown(f"### 📁 Dossier {client_info['nom']} - {client_info['affaire']}")
+        
+        # Affichage des pièces
+        with st.expander("📂 Pièces du dossier", expanded=True):
+            display_dossier_pieces(client_key)
     else:
-        st.markdown("### 🔍 Recherche intelligente IA - Droit Pénal des Affaires")
+        st.markdown("### 🔍 Recherche intelligente avec analyse des pièces")
     
+    # Zone de recherche
     col1, col2 = st.columns([4, 1])
     
     with col1:
         query = st.text_area(
-            "main_search",
+            "main_search_pieces",
             placeholder=(
-                "Exemples :\n"
-                "• @Lesueur, préparer pour l'audience\n"
-                "• @Martin, questions du procureur sur blanchiment\n"
-                "• Analyser PV garde à vue\n"
-                "• Rédiger conclusions ABS"
+                "Exemples avec pièces :\n"
+                "• @Lesueur, analyser contradictions PV-001 vs EXP-001\n"
+                "• @Martin, préparer défense sur SCEL-101 (wallets crypto)\n"
+                "• @Dupont, contester écoutes PV-202"
             ),
             height=80,
             key="search_query",
@@ -503,70 +520,45 @@ def create_smart_search_bar():
         )
     
     with col2:
-        st.write("")  # Alignement
+        st.write("")
         if st.button("🤖 Analyser", type="primary", use_container_width=True):
             if query:
-                st.session_state.current_view = "process_query"
+                st.session_state.current_view = "analyze_with_pieces"
                 st.rerun()
     
-    # Traitement des suggestions
-    if query:
-        client_cmd = process_client_command(query)
+    # Suggestions basées sur les pièces
+    if client_detected and client_key:
+        pieces = DOSSIERS_CLIENTS[client_key]["pieces"]
         
-        if client_cmd['is_client_command']:
-            # Mode préparation client
-            st.markdown("#### 📋 Modules de préparation disponibles")
-            
-            for module_key, module_info in PREPARATION_MODULES.items():
-                st.markdown(f"""
-                <div class="preparation-theme">
-                    <h5>{module_info['titre']}</h5>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                        {len(module_info['themes'])} thèmes • Durée estimée : {len(module_info['themes']) * 30} min
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if st.button(f"Préparer {module_info['titre']}", key=f"prep_{module_key}", use_container_width=True):
-                    st.session_state.preparation_module = module_key
-                    st.session_state.current_client = client_cmd['client_key']
-                    st.session_state.current_view = "preparation_detail"
+        st.markdown("#### 💡 Analyses suggérées basées sur les pièces")
+        
+        # Générer des prompts basés sur les pièces
+        piece_prompts = generate_piece_based_prompts(client_key, pieces)
+        
+        for prompt in piece_prompts[:5]:
+            if st.button(f"→ {prompt}", key=f"pp_{prompt[:30]}", use_container_width=True):
+                st.session_state.search_query = f"@{client_key}, {prompt}"
+                st.rerun()
+        
+        # Actions rapides sur pièces sélectionnées
+        if st.session_state.selected_pieces:
+            st.markdown("#### ⚡ Actions sur pièces sélectionnées")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("🔍 Analyser contradictions", use_container_width=True):
+                    st.session_state.search_query = f"@{client_key}, analyser contradictions dans {', '.join(st.session_state.selected_pieces)}"
+                    st.session_state.current_view = "analyze_with_pieces"
                     st.rerun()
-            
-            # Suggestions de séances thématiques
-            st.markdown("#### 🎯 Séances thématiques suggérées")
-            themes = [
-                "📌 Questions sur l'élément intentionnel (crucial en ABS)",
-                "📌 Chronologie des faits et cohérence du récit",
-                "📌 Documents comptables et justificatifs",
-                "📌 Relations avec les co-mis en examen",
-                "📌 Stratégie face aux parties civiles"
-            ]
-            for theme in themes[:3]:
-                st.info(theme)
-        
-        else:
-            # Mode recherche normale avec suggestions
-            suggestions = get_smart_suggestions(query)
-            
-            if suggestions:
-                st.markdown("#### 💡 Suggestions IA basées sur les modules")
-                
-                for category, items in suggestions.items():
-                    for item in items:
-                        if isinstance(item, tuple):
-                            prompt, module = item
-                            col1, col2 = st.columns([5, 1])
-                            with col1:
-                                if st.button(f"→ {prompt}", key=f"sug_{prompt[:30]}", use_container_width=True):
-                                    st.session_state.search_query = prompt
-                                    st.rerun()
-                            with col2:
-                                st.markdown(f'<span class="prompt-module-tag">{module}</span>', unsafe_allow_html=True)
-                        else:
-                            if st.button(f"→ {item}", key=f"sug_{item[:30]}", use_container_width=True):
-                                st.session_state.search_query = item
-                                st.rerun()
+            with col2:
+                if st.button("📋 Synthétiser", use_container_width=True):
+                    st.session_state.search_query = f"@{client_key}, synthétiser {', '.join(st.session_state.selected_pieces)}"
+                    st.session_state.current_view = "analyze_with_pieces"
+                    st.rerun()
+            with col3:
+                if st.button("⚖️ Stratégie défense", use_container_width=True):
+                    st.session_state.search_query = f"@{client_key}, stratégie défense basée sur {', '.join(st.session_state.selected_pieces)}"
+                    st.session_state.current_view = "analyze_with_pieces"
+                    st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -575,12 +567,217 @@ def create_smart_search_bar():
     
     return query
 
-# Sélecteur d'IA compact optimisé
-def create_ai_selector_mini():
-    """Sélecteur d'IA version ultra-compacte"""
-    st.markdown("### 🤖 IA disponibles")
+# Module de préparation avec pièces
+def show_preparation_with_pieces():
+    """Préparation client basée sur les pièces du dossier"""
+    if not st.session_state.current_client:
+        st.warning("Aucun client sélectionné")
+        return
     
-    # Affichage en grille 2x3
+    client_key = st.session_state.current_client
+    client = DOSSIERS_CLIENTS[client_key]["info"]
+    pieces = DOSSIERS_CLIENTS[client_key]["pieces"]
+    
+    st.markdown(f"## 👔 Préparation de {client['nom']} - Basée sur les pièces")
+    
+    # Rappel du dossier
+    st.markdown(f"""
+    <div class="preparation-card">
+        <strong>📁 Affaire :</strong> {client['affaire']}<br>
+        <strong>⚖️ Qualification :</strong> {client['qualification']}<br>
+        <strong>📅 Audience :</strong> {client['audience']}<br>
+        <strong>💰 Enjeu :</strong> {client['montant']}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Sélection IA
+    create_ai_selector_mini()
+    
+    st.markdown("---")
+    
+    # Modules de préparation
+    modules = {
+        "questions_pieces": "Questions sur les pièces du dossier",
+        "contradictions": "Contradictions entre pièces", 
+        "elements_defense": "Éléments favorables dans les pièces",
+        "strategie_pieces": "Stratégie basée sur les pièces"
+    }
+    
+    for module_key, module_title in modules.items():
+        with st.expander(f"📋 {module_title}", expanded=module_key=="questions_pieces"):
+            
+            if st.button(f"🤖 Générer avec IA", key=f"gen_{module_key}"):
+                if not st.session_state.selected_ais:
+                    st.warning("Sélectionnez au moins une IA")
+                else:
+                    with st.spinner(f"Analyse des pièces par {len(st.session_state.selected_ais)} IA..."):
+                        time.sleep(1.5)
+                    
+                    if module_key == "questions_pieces":
+                        # Questions basées sur les vraies pièces
+                        questions = generate_piece_based_questions("questions sur pièces", pieces, client)
+                        
+                        for q in questions[:6]:
+                            st.markdown(f"""
+                            <div class="question-with-piece">
+                                {q}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Conseils spécifiques
+                        st.success("""
+                        💡 **Conseils pour répondre sur les pièces :**
+                        • Relisez les passages cités avant l'audience
+                        • Préparez des explications cohérentes avec l'ensemble du dossier
+                        • N'hésitez pas à demander à consulter la pièce pendant l'audience
+                        • Restez cohérent avec vos déclarations antérieures (PV-001)
+                        """)
+                    
+                    elif module_key == "contradictions":
+                        st.markdown("""
+                        <div class="ai-response-container">
+                            <h4>⚠️ Contradictions identifiées</h4>
+                            <ul>
+                                <li><strong>PV-001 vs EXP-001 :</strong> Vos déclarations sur les dates contredisent l'expertise</li>
+                                <li><strong>SCEL-002 vs SCEL-003 :</strong> Les factures ne correspondent pas aux contrats</li>
+                                <li><strong>PV-001 p.23 vs PV-003 p.45 :</strong> Versions différentes sur les signatures</li>
+                            </ul>
+                            <p><strong>Stratégie :</strong> Préparer des explications cohérentes pour chaque contradiction</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    elif module_key == "elements_defense":
+                        st.markdown(f"""
+                        <div class="ai-response-container">
+                            <h4>✅ Éléments favorables identifiés</h4>
+                            <ul>
+                                <li><strong>EXP-001 p.89 :</strong> L'expert reconnaît l'absence de dissimulation</li>
+                                <li><strong>SCEL-004 :</strong> Emails montrant votre bonne foi</li>
+                                <li><strong>PV-003 :</strong> Le comptable confirme votre version sur 3 points</li>
+                            </ul>
+                            <p><strong>À exploiter :</strong> Insister sur ces éléments pendant l'audience</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            
+            # Notes sur les pièces
+            notes = st.text_area(
+                f"Notes sur les pièces ({module_key})",
+                key=f"notes_{module_key}",
+                placeholder="Points clés des pièces à retenir...",
+                height=80
+            )
+    
+    # Actions
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📄 Générer mémo pièces", type="primary", use_container_width=True):
+            st.success("Mémo des pièces clés généré")
+    
+    with col2:
+        if st.button("🎯 Simulation avec pièces", use_container_width=True):
+            st.info("Simulation basée sur les pièces...")
+    
+    with col3:
+        if st.button("⬅️ Retour", use_container_width=True):
+            st.session_state.current_view = 'dashboard'
+            st.rerun()
+
+# Analyse avec pièces
+def analyze_query_with_pieces():
+    """Analyse une requête en se basant sur les pièces du dossier"""
+    query = st.session_state.search_query
+    
+    if not st.session_state.selected_ais:
+        st.warning("Sélectionnez au moins une IA")
+        return
+    
+    # Extraire le client et la commande
+    client_key = st.session_state.current_client
+    if not client_key and query.startswith("@"):
+        parts = query[1:].split(",", 1)
+        potential_client = parts[0].strip().lower()
+        if potential_client in DOSSIERS_CLIENTS:
+            client_key = potential_client
+    
+    if not client_key:
+        st.error("Client non identifié")
+        return
+    
+    client = DOSSIERS_CLIENTS[client_key]["info"]
+    pieces = DOSSIERS_CLIENTS[client_key]["pieces"]
+    
+    st.markdown(f"### 🤖 Analyse pour {client['nom']}")
+    st.markdown(f"**Requête :** {query}")
+    st.markdown(f"**IA actives :** {', '.join(st.session_state.selected_ais)}")
+    
+    with st.spinner(f"Analyse des pièces du dossier par {len(st.session_state.selected_ais)} IA..."):
+        time.sleep(2)
+    
+    # Réponse basée sur les pièces
+    if st.session_state.response_mode == "fusion":
+        st.markdown(f"""
+        <div class="ai-response-container">
+            <h4>🔄 Analyse fusionnée multi-IA basée sur les pièces</h4>
+            
+            <h5>📁 Pièces analysées :</h5>
+            <ul>
+                <li>PV-001 : PV audition garde à vue (45 pages)</li>
+                <li>EXP-001 : Rapport expertise comptable (156 pages)</li>
+                <li>SCEL-002 : Factures litigieuses (94 pages)</li>
+            </ul>
+            
+            <h5>🔍 Analyse détaillée :</h5>
+            
+            <h6>1. Sur les contradictions identifiées (GPT-4 + Claude Opus 4)</h6>
+            <p>L'analyse croisée du <span class="piece-citation">PV-001 pages 12-15</span> avec le 
+            <span class="piece-citation">rapport d'expertise EXP-001 pages 45-67</span> révèle 3 contradictions majeures...</p>
+            
+            <h6>2. Sur l'élément intentionnel (Azure OpenAI + Mistral)</h6>
+            <p>Les <span class="piece-citation">emails SCEL-004</span> démontrent l'absence d'intention frauduleuse. 
+            Notamment l'email du 15/03/2023 où vous alertez sur les irrégularités...</p>
+            
+            <h6>3. Sur la prescription (Gemini + GPT-3.5)</h6>
+            <p>Selon les <span class="piece-citation">relevés bancaires SCEL-001</span>, les premiers faits 
+            remontent à plus de 6 ans (prescription acquise pour 45% des montants)...</p>
+            
+            <h5>⚖️ Stratégie recommandée :</h5>
+            <ol>
+                <li>Exploiter les contradictions entre PV-001 et EXP-001</li>
+                <li>S'appuyer sur SCEL-004 pour démontrer la bonne foi</li>
+                <li>Invoquer la prescription partielle basée sur SCEL-001</li>
+            </ol>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Actions post-analyse
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📑 Tableau contradictions", use_container_width=True):
+            st.info("Génération tableau...")
+    
+    with col2:
+        if st.button("📊 Graphique timeline", use_container_width=True):
+            st.info("Création timeline...")
+    
+    with col3:
+        if st.button("✍️ Rédiger conclusions", use_container_width=True):
+            st.session_state.current_view = "redaction"
+            st.rerun()
+    
+    with col4:
+        if st.button("⬅️ Nouvelle analyse", use_container_width=True):
+            st.session_state.current_view = "dashboard"
+            st.rerun()
+
+# Sélecteur IA compact
+def create_ai_selector_mini():
+    """Sélecteur d'IA compact"""
+    st.markdown("#### 🤖 Sélection des IA")
+    
     cols = st.columns(3)
     for idx, (ai_name, ai_info) in enumerate(AVAILABLE_AIS.items()):
         with cols[idx % 3]:
@@ -598,7 +795,7 @@ def create_ai_selector_mini():
                 if ai_name in st.session_state.selected_ais:
                     st.session_state.selected_ais.remove(ai_name)
     
-    # Mode de fusion
+    # Mode
     if st.session_state.selected_ais:
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -614,199 +811,76 @@ def create_ai_selector_mini():
                         type="primary" if st.session_state.response_mode == "synthèse" else "secondary"):
                 st.session_state.response_mode = "synthèse"
 
-# Page de préparation détaillée
-def show_preparation_detail():
-    """Affiche le détail de préparation client avec questions"""
-    if 'preparation_module' not in st.session_state:
-        st.session_state.current_view = 'dashboard'
-        st.rerun()
-        return
-    
-    module = PREPARATION_MODULES[st.session_state.preparation_module]
-    client = CLIENTS_DB[st.session_state.current_client]
-    
-    # Header
-    st.markdown(f"""
-    <h2>👔 Préparation de {client['nom']}</h2>
-    <h3>{module['titre']}</h3>
-    """, unsafe_allow_html=True)
-    
-    # Info client
-    st.markdown(f"""
-    <div class="preparation-card">
-        <strong>Affaire :</strong> {client['affaire']}<br>
-        <strong>Qualification :</strong> {client['qualification']}<br>
-        <strong>Audience :</strong> {client['audience']}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Sélection IA pour génération
-    create_ai_selector_mini()
-    
-    st.markdown("---")
-    
-    # Thèmes et questions
-    st.markdown("### 📋 Séances thématiques")
-    
-    for idx, theme in enumerate(module['themes']):
-        with st.expander(f"**Séance {idx+1} : {theme}**", expanded=idx==0):
-            
-            # Générer des questions avec IA
-            if st.button(f"🤖 Générer questions IA", key=f"gen_{idx}"):
-                if not st.session_state.selected_ais:
-                    st.warning("Sélectionnez au moins une IA")
-                else:
-                    with st.spinner(f"Génération par {len(st.session_state.selected_ais)} IA..."):
-                        time.sleep(1.5)
-                    
-                    # Questions générées selon le thème
-                    if "intentionnel" in theme.lower() or "faits" in theme.lower():
-                        questions = [
-                            "❓ Pouvez-vous m'expliquer précisément votre rôle dans la société au moment des faits ?",
-                            "❓ Aviez-vous connaissance du caractère irrégulier de ces opérations ?",
-                            "❓ Qui a donné l'ordre de procéder à ces virements ?",
-                            "❓ Quel bénéfice personnel en avez-vous retiré ?",
-                            "❓ Comment expliquez-vous ces mouvements de fonds ?"
-                        ]
-                    elif "organisation" in theme.lower() or "société" in theme.lower():
-                        questions = [
-                            "❓ Décrivez l'organigramme de la société",
-                            "❓ Qui avait le pouvoir de signature sur les comptes ?",
-                            "❓ Comment étaient prises les décisions importantes ?",
-                            "❓ Y avait-il des procédures de contrôle interne ?",
-                            "❓ Qui validait les dépenses exceptionnelles ?"
-                        ]
-                    elif "flux" in theme.lower() or "financ" in theme.lower():
-                        questions = [
-                            "❓ Expliquez la destination de ces fonds",
-                            "❓ Pourquoi ces virements vers des comptes personnels ?",
-                            "❓ Comment justifiez-vous ces montants ?",
-                            "❓ Y avait-il des contreparties à ces paiements ?",
-                            "❓ Qui bénéficiait in fine de ces sommes ?"
-                        ]
-                    else:
-                        questions = [
-                            "❓ Question générale adaptée au thème",
-                            "❓ Question de suivi pour approfondir",
-                            "❓ Question piège potentielle",
-                            "❓ Question de cohérence avec les pièces",
-                            "❓ Question finale de synthèse"
-                        ]
-                    
-                    # Affichage des questions
-                    for q in questions:
-                        st.markdown(f"""
-                        <div class="question-preview">
-                            <div class="question-category">{'Tribunal' if idx % 2 == 0 else 'Procureur'}</div>
-                            {q}
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Conseils de réponse
-                    st.markdown("#### 💡 Conseils pour répondre")
-                    st.success("""
-                    • Restez factuel et chronologique
-                    • Ne spéculez pas sur les intentions d'autrui
-                    • Référez-vous aux documents quand possible
-                    • Admettez ne pas savoir plutôt que d'inventer
-                    • Gardez votre calme face aux questions agressives
-                    """)
-            
-            # Zone de notes
-            notes = st.text_area(
-                "Notes de préparation",
-                key=f"notes_{idx}",
-                placeholder="Points clés à retenir, réponses à préparer...",
-                height=100
-            )
-            
-            # Durée estimée
-            st.info(f"⏱️ Durée estimée : 30-45 minutes")
-    
-    # Actions finales
-    st.markdown("---")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("📄 Générer fiche complète", type="primary", use_container_width=True):
-            st.success("Fiche de préparation générée")
-    
-    with col2:
-        if st.button("🎯 Simulation d'audience", use_container_width=True):
-            st.info("Module simulation en développement")
-    
-    with col3:
-        if st.button("📧 Envoyer au client", use_container_width=True):
-            st.info("Envoi par email...")
-    
-    with col4:
-        if st.button("⬅️ Retour", use_container_width=True):
-            st.session_state.current_view = 'dashboard'
-            st.rerun()
-
-# Sidebar optimisée
+# Sidebar avec pièces
 def create_sidebar():
-    """Sidebar avec navigation et stats"""
+    """Sidebar avec accès rapide aux dossiers"""
     with st.sidebar:
         # Header
         st.markdown("""
         <div style="text-align: center; padding: 10px; background: linear-gradient(135deg, #1a1a2e, #e94560); 
                     margin: -35px -35px 15px -35px; border-radius: 0 0 10px 10px;">
-            <h3 style="color: white; margin: 0; font-size: 1.1rem;">⚖️ IA Pénal des Affaires</h3>
+            <h3 style="color: white; margin: 0; font-size: 1.1rem;">⚖️ IA Pénal - Pièces</h3>
         </div>
         """, unsafe_allow_html=True)
         
-        # IA sélectionnées
+        # IA actives
         if st.session_state.selected_ais:
             st.markdown("#### 🤖 IA actives")
             ia_list = " • ".join([AVAILABLE_AIS[ai]['icon'] for ai in st.session_state.selected_ais])
             st.markdown(f"<div style='text-align: center; font-size: 1.2rem;'>{ia_list}</div>", unsafe_allow_html=True)
-            st.markdown("---")
         
-        # Navigation principale
+        # Dossiers clients avec stats pièces
+        st.markdown("---")
+        st.markdown("#### 📁 Dossiers actifs")
+        
+        for client_key, client_data in DOSSIERS_CLIENTS.items():
+            client = client_data["info"]
+            pieces = client_data["pieces"]
+            total_pieces = sum(len(pieces[cat]) for cat in pieces)
+            
+            if st.button(
+                f"→ {client['nom']} ({total_pieces} pièces)",
+                key=f"sidebar_{client_key}",
+                use_container_width=True,
+                type="primary" if st.session_state.current_client == client_key else "secondary"
+            ):
+                st.session_state.search_query = f"@{client_key}, analyser dossier"
+                st.session_state.current_client = client_key
+                st.session_state.current_view = "dashboard"
+                st.rerun()
+        
+        # Navigation
+        st.markdown("---")
         st.markdown("#### 📊 Modules")
         
         modules = [
-            ("🏠 Tableau de bord", "dashboard"),
-            ("👔 Préparation client", "preparation"),
-            ("✍️ Rédaction pénale", "redaction"),
-            ("⚖️ Recherche juridique", "recherche"),
-            ("🔍 Analyse dossiers", "analyse"),
-            ("⏱️ Suivi temps", "temps"),
-            ("📁 Documents", "documents"),
+            ("🏠 Accueil", "dashboard"),
+            ("👔 Préparation", "preparation"),
+            ("🔍 Analyse pièces", "analyze_pieces"),
+            ("✍️ Rédaction", "redaction"),
             ("📊 Statistiques", "stats")
         ]
         
-        for label, key in modules:
-            if st.button(label, key=f"nav_{key}", use_container_width=True,
-                        type="primary" if st.session_state.current_view == key else "secondary"):
-                st.session_state.current_view = key
+        for label, view in modules:
+            if st.button(label, key=f"nav_{view}", use_container_width=True):
+                st.session_state.current_view = view
                 st.rerun()
         
-        # Stats rapides
+        # Alertes pièces manquantes
         st.markdown("---")
-        st.markdown("#### 🚨 Urgences")
-        st.error("⏰ Délai appel : 3j", icon="🚨")
-        st.warning("📅 Audience demain", icon="⚠️")
-        
-        # Clients en préparation
-        st.markdown("---")
-        st.markdown("#### 👥 Clients actifs")
-        for client_key, client in list(CLIENTS_DB.items())[:3]:
-            if st.button(f"→ {client['nom']}", key=f"quick_client_{client_key}", use_container_width=True):
-                st.session_state.search_query = f"@{client_key}, préparer audience"
-                st.session_state.current_view = "dashboard"
-                st.rerun()
+        st.markdown("#### ⚠️ Alertes")
+        st.warning("📄 PV confrontation manquant (Lesueur)", icon="⚠️")
+        st.error("⏰ Délai communication pièces : 5j", icon="🚨")
 
-# Page Tableau de bord principal
+# Dashboard principal
 def show_dashboard():
-    """Dashboard avec toutes les fonctionnalités"""
+    """Dashboard avec focus sur les pièces"""
     
-    # Header minimal
+    # Header
     st.markdown("""
-    <h1 style="text-align: center; margin: 5px 0;">⚖️ IA Juridique - Droit Pénal des Affaires</h1>
-    <p style="text-align: center; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 10px;">
-        6 IA spécialisées • Préparation client intelligente • Modules interconnectés
+    <h1 style="text-align: center; margin: 5px 0;">⚖️ IA Juridique - Analyse des Pièces</h1>
+    <p style="text-align: center; color: var(--text-secondary); font-size: 0.85rem;">
+        Analyse intelligente basée sur les pièces du dossier • 6 IA spécialisées
     </p>
     """, unsafe_allow_html=True)
     
@@ -815,140 +889,58 @@ def show_dashboard():
     
     st.markdown("---")
     
-    # Barre de recherche intelligente
-    query = create_smart_search_bar()
+    # Barre de recherche avec pièces
+    query = create_smart_search_with_pieces()
     
-    # Si une requête est en cours de traitement
-    if st.session_state.current_view == "process_query" and query:
-        process_main_query(query)
-        return
-    
-    # Modules principaux en grille compacte
-    st.markdown("### 🎯 Modules spécialisés")
-    
-    # Ligne 1 : Modules métier
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    module_configs = [
-        ("👔", "Préparation Client", "Questions tribunal • Simulation • Comportement", "preparation"),
-        ("✍️", "Rédaction IA", "Conclusions • Plaintes • Mémoires", "redaction"),
-        ("⚖️", "Recherche", "Jurisprudence • Doctrine • CEDH", "recherche"),
-        ("🔍", "Analyse", "PV • Expertises • Stratégie", "analyse"),
-        ("⏱️", "Temps", "Timer • Facturation • Stats", "temps"),
-        ("📊", "Stats", "Taux succès • Délais • KPI", "stats")
-    ]
-    
-    for idx, (icon, title, desc, view) in enumerate(module_configs):
-        with [col1, col2, col3, col4, col5, col6][idx]:
-            st.markdown(f"""
-            <div class="module-card">
-                <div style="text-align: center;">
-                    <div style="font-size: 2rem;">{icon}</div>
-                    <div style="font-weight: 600; font-size: 0.85rem; margin: 5px 0;">{title}</div>
-                    <div style="font-size: 0.7rem; color: var(--text-secondary);">{desc}</div>
+    # Stats globales des pièces
+    if not st.session_state.current_client:
+        st.markdown("### 📊 Vue d'ensemble des dossiers")
+        
+        cols = st.columns(len(DOSSIERS_CLIENTS))
+        for idx, (client_key, client_data) in enumerate(DOSSIERS_CLIENTS.items()):
+            with cols[idx]:
+                client = client_data["info"]
+                pieces = client_data["pieces"]
+                total_pieces = sum(len(pieces[cat]) for cat in pieces)
+                total_pages = sum(p.get('pages', 0) for cat in pieces for p in pieces[cat])
+                
+                st.markdown(f"""
+                <div class="module-card">
+                    <h4>{client['nom']}</h4>
+                    <p style="font-size: 0.8rem; margin: 5px 0;">{client['affaire']}</p>
+                    <div class="pieces-stats" style="justify-content: center;">
+                        <span class="piece-stat" style="font-size: 0.7rem;">📁 {total_pieces}</span>
+                        <span class="piece-stat" style="font-size: 0.7rem;">📄 {total_pages}p</span>
+                    </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Ouvrir", key=f"btn_{view}", use_container_width=True):
-                st.session_state.current_view = view
-                st.rerun()
+                """, unsafe_allow_html=True)
+                
+                if st.button(f"Analyser", key=f"analyze_{client_key}", use_container_width=True):
+                    st.session_state.search_query = f"@{client_key}, vue d'ensemble"
+                    st.session_state.current_client = client_key
+                    st.rerun()
     
-    # Ligne 2 : Infractions
-    st.markdown("### 🚨 Infractions pénales")
-    
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    infractions = [
-        ("💰", "ABS", "Abus biens sociaux"),
-        ("🔄", "Blanchiment", "TRACFIN • Aggravé"),
-        ("🎭", "Corruption", "Active • Passive"),
-        ("📈", "Boursier", "Initié • AMF"),
-        ("🔗", "Escroquerie", "Faux • Crypto"),
-        ("🏦", "Banqueroute", "Frauduleuse")
-    ]
-    
-    for idx, (icon, title, desc) in enumerate(infractions):
-        with [col1, col2, col3, col4, col5, col6][idx]:
-            st.markdown(f"""
-            <div class="module-card" style="min-height: 90px;">
-                <div style="text-align: center;">
-                    <div style="font-size: 1.5rem;">{icon}</div>
-                    <div style="font-weight: 600; font-size: 0.8rem;">{title}</div>
-                    <div style="font-size: 0.65rem; color: var(--text-secondary);">{desc}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Actions rapides
-    st.markdown("### ⚡ Actions rapides")
-    
-    quick_cols = st.columns(10)
-    quick_actions = [
-        ("🚨", "Plainte"),
-        ("📄", "Constit. PC"),
-        ("⏰", "Délais"),
-        ("💰", "Honoraires"),
-        ("📊", "Rapport"),
-        ("🔍", "Analyse PV"),
-        ("📅", "Audience"),
-        ("💳", "TRACFIN"),
-        ("📝", "Nullité"),
-        ("⚖️", "QPC")
-    ]
-    
-    for idx, (icon, label) in enumerate(quick_actions):
-        with quick_cols[idx]:
-            if st.button(f"{icon}\n{label}", key=f"quick_{label}", use_container_width=True):
-                st.info(f"Module {label} en développement")
+    # Actions rapides basées sur les pièces
+    if st.session_state.current_client:
+        st.markdown("### ⚡ Actions rapides sur les pièces")
+        
+        quick_cols = st.columns(5)
+        actions = [
+            ("🔍 Contradictions", "identifier contradictions entre pièces"),
+            ("📊 Timeline", "créer timeline avec pièces"),
+            ("✅ Éléments favorables", "extraire éléments favorables"),
+            ("⚠️ Points faibles", "identifier risques dans pièces"),
+            ("📑 Synthèse", "synthétiser toutes les pièces")
+        ]
+        
+        for idx, (label, action) in enumerate(actions):
+            with quick_cols[idx]:
+                if st.button(label, key=f"quick_{action[:10]}", use_container_width=True):
+                    st.session_state.search_query = f"@{st.session_state.current_client}, {action}"
+                    st.session_state.current_view = "analyze_with_pieces"
+                    st.rerun()
 
-# Traitement des requêtes principales
-def process_main_query(query):
-    """Traite les requêtes avec IA"""
-    
-    # Vérifier si c'est une commande client
-    client_cmd = process_client_command(query)
-    
-    if client_cmd['is_client_command']:
-        # Rediriger vers la préparation
-        st.session_state.current_view = 'preparation_detail'
-        st.session_state.current_client = client_cmd['client_key']
-        st.session_state.preparation_module = 'questions_tribunal'
-        st.rerun()
-    else:
-        # Traitement normal avec IA
-        if not st.session_state.selected_ais:
-            st.warning("⚠️ Sélectionnez au moins une IA pour analyser votre requête")
-            if st.button("⬅️ Retour"):
-                st.session_state.current_view = 'dashboard'
-                st.rerun()
-            return
-        
-        st.markdown(f"### 🤖 Analyse : *{query}*")
-        st.markdown(f"**IA actives :** {', '.join(st.session_state.selected_ais)}")
-        st.markdown(f"**Mode :** {st.session_state.response_mode}")
-        
-        with st.spinner(f"Interrogation de {len(st.session_state.selected_ais)} IA..."):
-            time.sleep(2)
-        
-        # Résultats selon le mode
-        if st.session_state.response_mode == "fusion":
-            st.markdown("""
-            <div class="ai-response-container">
-                <h4>🔄 Réponse fusionnée multi-IA</h4>
-                <p>Analyse croisée pour une réponse complète et nuancée...</p>
-                <ul>
-                    <li>Point 1 enrichi par GPT-4 et Claude Opus 4</li>
-                    <li>Point 2 complété par Azure OpenAI</li>
-                    <li>Point 3 vérifié par Gemini et Mistral</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        if st.button("⬅️ Nouvelle recherche", type="primary"):
-            st.session_state.current_view = 'dashboard'
-            st.rerun()
-
-# Fonction principale
+# Router principal
 def main():
     """Point d'entrée principal"""
     
@@ -962,15 +954,11 @@ def main():
     # Router
     views = {
         "dashboard": show_dashboard,
-        "preparation": lambda: st.info("👔 Module Préparation client - Utilisez @NomClient dans la recherche"),
-        "preparation_detail": show_preparation_detail,
-        "process_query": lambda: process_main_query(st.session_state.search_query),
-        "redaction": lambda: st.info("✍️ Module Rédaction en développement"),
-        "recherche": lambda: st.info("⚖️ Module Recherche en développement"),
-        "analyse": lambda: st.info("🔍 Module Analyse en développement"),
-        "temps": lambda: st.info("⏱️ Module Temps en développement"),
-        "documents": lambda: st.info("📁 Module Documents en développement"),
-        "stats": lambda: st.info("📊 Module Statistiques en développement")
+        "preparation": show_preparation_with_pieces,
+        "analyze_with_pieces": analyze_query_with_pieces,
+        "analyze_pieces": lambda: st.info("🔍 Module d'analyse approfondie des pièces en développement"),
+        "redaction": lambda: st.info("✍️ Module de rédaction basée sur les pièces en développement"),
+        "stats": lambda: st.info("📊 Module de statistiques des pièces en développement")
     }
     
     # Affichage
@@ -980,11 +968,11 @@ def main():
     else:
         show_dashboard()
     
-    # Footer minimal
+    # Footer
     st.markdown("---")
     st.markdown(
         """<p style='text-align: center; color: #95a5a6; font-size: 0.7rem;'>
-        ⚖️ IA Juridique Pénal des Affaires | 6 IA | RGPD
+        ⚖️ IA Juridique Pénal • Analyse basée sur les pièces • RGPD
         </p>""",
         unsafe_allow_html=True
     )
