@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from typing import Dict, Any, Optional
+import importlib
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +36,8 @@ _import_status = {
 # Import dynamique des managers
 for module_name, class_name in AVAILABLE_MANAGERS.items():
     try:
-        # Obtenir le chemin du module actuel
-        current_module = sys.modules[__name__]
-        
-        # Importer le module de manière relative sans l'argument package
-        if hasattr(current_module, '__package__'):
-            # Utiliser importlib pour un import plus robuste
-            import importlib
-            full_module_name = f"{current_module.__package__}.{module_name}"
-            module = importlib.import_module(f".{module_name}", current_module.__package__)
-        else:
-            # Fallback pour les anciennes versions
-            module = __import__(f'{__name__}.{module_name}', fromlist=[class_name])
+        # Utiliser importlib pour un import robuste
+        module = importlib.import_module(f".{module_name}", package=__package__)
         
         # Extraire la classe et l'ajouter au namespace
         if hasattr(module, class_name):
@@ -64,19 +55,19 @@ for module_name, class_name in AVAILABLE_MANAGERS.items():
         logger.warning(f"⚠️ {class_name} - {error_msg}")
         
         # Créer une classe placeholder
-        class_code = f"""
+        exec(f"""
 class {class_name}:
     '''Placeholder pour {class_name} non disponible'''
     def __init__(self, *args, **kwargs):
         self.connected = False
         self.error = "{error_msg}"
+        self.available = False
         logger.warning("Utilisation du placeholder pour {class_name}")
     
     def __getattr__(self, name):
         logger.warning(f"Tentative d'accès à {{name}} sur {class_name} non disponible")
         return lambda *args, **kwargs: None
-"""
-        exec(class_code, globals())
+""", globals())
         
     except Exception as e:
         error_msg = f"Erreur inattendue : {str(e)}"
@@ -84,14 +75,14 @@ class {class_name}:
         logger.error(f"❌ {class_name} - {error_msg}")
         
         # Créer une classe placeholder pour l'erreur
-        class_code = f"""
+        exec(f"""
 class {class_name}:
     '''Placeholder pour {class_name} avec erreur'''
     def __init__(self, *args, **kwargs):
         self.connected = False
         self.error = "{error_msg}"
-"""
-        exec(class_code, globals())
+        self.available = False
+""", globals())
 
 def get_managers_status() -> Dict[str, Any]:
     """Retourne le statut des managers"""
@@ -100,7 +91,8 @@ def get_managers_status() -> Dict[str, Any]:
         'loaded_count': len(_import_status['loaded']),
         'failed_count': len(_import_status['failed']),
         'loaded': _import_status['loaded'],
-        'failed': _import_status['failed']
+        'failed': _import_status['failed'],
+        'available_managers': AVAILABLE_MANAGERS
     }
 
 def test_managers():
