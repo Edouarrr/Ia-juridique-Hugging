@@ -1,7 +1,25 @@
 # modules/__init__.py
 """
 Package modules - Contient tous les modules fonctionnels de l'application juridique
+Détection automatique des fonctions disponibles dans chaque module
+
+Ce fichier détecte automatiquement toutes les fonctions publiques de chaque module
+et crée MODULE_FUNCTIONS dynamiquement si nécessaire.
+
+Pour activer le mode debug : 
+- Définir la variable d'environnement DEBUG_MODULES=true
+- Ou appeler debug_modules_status() après l'import
 """
+
+import inspect
+import importlib
+import sys
+import os
+from typing import Dict, Any, List, Tuple, Callable
+from datetime import datetime
+
+# Mode debug (activé via variable d'environnement ou streamlit)
+DEBUG_MODE = os.environ.get('DEBUG_MODULES', 'false').lower() == 'true'
 
 # Import des dataclasses depuis ce module
 try:
@@ -9,545 +27,575 @@ try:
 except ImportError:
     pass
 
-# Configuration MODULE_FUNCTIONS pour TOUS les modules
-
-# Pour pieces_manager
-try:
-    from . import pieces_manager
-    if not hasattr(pieces_manager, 'MODULE_FUNCTIONS'):
-        pieces_manager.MODULE_FUNCTIONS = {
-            'display_add_piece': 'Interface pour ajouter une nouvelle pièce',
-            'display_piece_detail': 'Afficher les détails d\'une pièce',
-            'display_pieces_interface': 'Interface principale de gestion des pièces',
-            'display_pieces_list': 'Afficher la liste des pièces',
-            'display_pieces_statistics': 'Afficher les statistiques des pièces',
-            'display_search_pieces': 'Interface de recherche de pièces'
-        }
-except ImportError:
-    pass
-
-# Pour redaction
-try:
-    from . import redaction
-    if not hasattr(redaction, 'MODULE_FUNCTIONS'):
-        redaction.MODULE_FUNCTIONS = {
-            'clean_key': 'Nettoyer une clé pour l\'utiliser comme identifiant',
-            'create_formatted_docx': 'Créer un document Word formaté',
-            'create_letterhead_from_template': 'Créer un en-tête de lettre à partir d\'un template',
-            'extract_legal_references': 'Extraire les références juridiques d\'un texte',
-            'format_legal_date': 'Formater une date au format juridique français',
-            'generate_dynamic_templates': 'Générer des templates dynamiques'
-        }
-except ImportError:
-    pass
-
-# Pour timeline
-try:
-    from . import timeline
-    if not hasattr(timeline, 'MODULE_FUNCTIONS'):
-        timeline.MODULE_FUNCTIONS = {
-            'analyze_timeline': 'Analyser la chronologie des événements',
-            'calculate_event_density': 'Calculer la densité des événements',
-            'calculate_event_importance': 'Calculer l\'importance d\'un événement',
-            'clean_event_description': 'Nettoyer la description d\'un événement',
-            'collect_documents_for_timeline': 'Collecter les documents pour la timeline',
-            'create_event_from_context': 'Créer un événement à partir du contexte',
-            'create_grouped_timeline': 'Créer une timeline groupée',
-            'create_linear_timeline': 'Créer une timeline linéaire',
-            'create_timeline_visualization': 'Créer une visualisation de la timeline',
-            'detect_timeline_patterns': 'Détecter des patterns dans la timeline',
-            'determine_event_category': 'Déterminer la catégorie d\'un événement',
-            'display_events_list': 'Afficher la liste des événements',
-            'display_timeline_analysis': 'Afficher l\'analyse de la timeline',
-            'display_timeline_config_interface': 'Interface de configuration de la timeline',
-            'display_timeline_results': 'Afficher les résultats de la timeline',
-            'enrich_timeline_with_ai': 'Enrichir la timeline avec l\'IA',
-            'export_timeline_to_docx': 'Exporter la timeline en document Word',
-            'export_timeline_to_excel': 'Exporter la timeline vers Excel',
-            'export_timeline_to_text': 'Exporter la timeline en texte',
-            'extract_dates': 'Extraire les dates d\'un texte',
-            'extract_entities': 'Extraire les entités d\'un texte',
-            'extract_event_keywords': 'Extraire les mots-clés d\'un événement',
-            'extract_temporal_events': 'Extraire les événements temporels',
-            'extract_timeline_events': 'Extraire les événements de la timeline',
-            'filter_timeline_events': 'Filtrer les événements de la timeline',
-            'find_activity_peaks': 'Trouver les pics d\'activité',
-            'find_recurring_events': 'Trouver les événements récurrents',
-            'format_legal_date': 'Formater une date au format juridique',
-            'generate_timeline': 'Générer une timeline',
-            'make_subplots': 'Créer des sous-graphiques',
-            'parse_ai_timeline_response': 'Parser la réponse IA de la timeline',
-            'prepare_timeline_data': 'Préparer les données de la timeline',
-            'process_timeline_request': 'Traiter une requête de timeline',
-            'show_timeline_statistics': 'Afficher les statistiques de la timeline'
-        }
-except ImportError:
-    pass
-
-# Pour recherche
-try:
-    from . import recherche
-    if not hasattr(recherche, 'MODULE_FUNCTIONS'):
-        recherche.MODULE_FUNCTIONS = {
-            'process_jurisprudence_request': 'Traiter une requête de recherche de jurisprudence',
-            'show_jurisprudence_search_interface': 'Afficher l\'interface de recherche de jurisprudence',
-            'show_jurisprudence_interface': 'Afficher l\'interface principale de jurisprudence',
-            'get_jurisprudence_for_document': 'Obtenir la jurisprudence pour un document',
-            'format_jurisprudence_citation': 'Formater une citation de jurisprudence',
-            'verify_and_update_citations': 'Vérifier et mettre à jour les citations',
-            'search_jurisprudence': 'Rechercher dans la jurisprudence'
-        }
-except ImportError:
-    pass
-
-# Pour dossier_penal
-try:
-    from . import dossier_penal
-    if not hasattr(dossier_penal, 'MODULE_FUNCTIONS'):
-        dossier_penal.MODULE_FUNCTIONS = {
-            'display_analyse': 'Afficher l\'analyse du dossier pénal',
-            'display_chronologie': 'Afficher la chronologie du dossier',
-            'display_dashboard': 'Afficher le tableau de bord',
-            'display_dossier_detail': 'Afficher les détails du dossier',
-            'display_dossier_penal_interface': 'Interface principale du dossier pénal',
-            'display_general_info': 'Afficher les informations générales',
-            'display_new_dossier_form': 'Formulaire de nouveau dossier',
-            'display_parties': 'Afficher les parties du dossier',
-            'display_pieces': 'Afficher les pièces du dossier'
-        }
-except ImportError:
-    pass
-
-# Pour bordereau
-try:
-    from . import bordereau
-    if not hasattr(bordereau, 'MODULE_FUNCTIONS'):
-        bordereau.MODULE_FUNCTIONS = {
-            'create_bordereau': 'Créer un nouveau bordereau',
-            'create_bordereau_docx': 'Créer un bordereau au format Word',
-            'create_bordereau_txt': 'Créer un bordereau au format texte',
-            'create_bordereau_xlsx': 'Créer un bordereau au format Excel',
-            'display_bordereau_interface': 'Interface principale des bordereaux',
-            'display_pieces_table': 'Afficher le tableau des pièces',
-            'generate_bordereau_summary': 'Générer un résumé du bordereau',
-            'process_bordereau_request': 'Traiter une requête de bordereau',
-            'validate_bordereau': 'Valider un bordereau'
-        }
-except ImportError:
-    pass
-
-# Pour plaidoirie.py (basé sur votre vrai fichier)
-try:
-    from . import plaidoirie
-    if not hasattr(plaidoirie, 'MODULE_FUNCTIONS'):
-        plaidoirie.MODULE_FUNCTIONS = {
-            'process_plaidoirie_request': 'Traite une demande de génération de plaidoirie',
-            'display_plaidoirie_config_interface': 'Interface de configuration pour la plaidoirie',
-            'generate_plaidoirie': 'Génère une plaidoirie complète',
-            'build_plaidoirie_prompt': 'Construit le prompt pour générer la plaidoirie',
-            'build_plaidoirie_system_prompt': 'Construit le prompt système pour la plaidoirie',
-            'get_available_documents_for_plaidoirie': 'Récupère les documents disponibles pour la plaidoirie',
-            'detect_document_type': 'Détecte le type d\'un document pour la plaidoirie',
-            'extract_key_points': 'Extrait les points clés de la plaidoirie',
-            'extract_plaidoirie_structure': 'Extrait la structure hiérarchique de la plaidoirie',
-            'extract_oral_markers': 'Extrait les marqueurs pour l\'oral',
-            'display_plaidoirie_results': 'Affiche les résultats de la plaidoirie',
-            'display_plaidoirie_text': 'Affiche le texte de la plaidoirie avec mise en forme',
-            'show_rehearsal_mode': 'Mode répétition pour la plaidoirie',
-            'create_speaker_version': 'Crée une version annotée pour l\'orateur',
-            'export_plaidoirie_to_pdf': 'Exporte la plaidoirie en PDF',
-            'show_plaidoirie_statistics': 'Affiche les statistiques de la plaidoirie',
-            'create_plaidoirie_mindmap': 'Crée une carte mentale de la plaidoirie'
-        }
-except ImportError:
-    pass
-
-# Pour mapping.py (basé sur votre vrai fichier)
-try:
-    from . import mapping
-    if not hasattr(mapping, 'MODULE_FUNCTIONS'):
-        mapping.MODULE_FUNCTIONS = {
-            'process_mapping_request': 'Traite une demande de cartographie des relations',
-            'collect_documents_for_mapping': 'Collecte les documents pour la cartographie',
-            'display_mapping_config_interface': 'Interface de configuration pour la cartographie',
-            'generate_relationship_mapping': 'Génère la cartographie des relations',
-            'extract_entities_and_relationships': 'Extrait les entités et relations des documents',
-            'extract_document_entities': 'Extrait les entités d\'un document',
-            'extract_document_relationships': 'Extrait les relations d\'un document',
-            'get_relation_patterns': 'Retourne les patterns de relations selon le type de mapping',
-            'extract_entities_from_match': 'Extrait les entités source et cible d\'un match de pattern',
-            'extract_proximity_relationships': 'Extrait les relations basées sur la proximité dans le texte',
-            'calculate_relationship_strength': 'Calcule la force d\'une relation',
-            'consolidate_relationships': 'Consolide les relations dupliquées',
-            'enrich_with_ai_analysis': 'Enrichit l\'analyse avec l\'IA',
-            'parse_ai_mapping_response': 'Parse la réponse de l\'IA pour extraire entités et relations',
-            'merge_entities': 'Fusionne les listes d\'entités',
-            'filter_mapping_data': 'Filtre les données selon la configuration',
-            'analyze_network': 'Analyse le réseau avec NetworkX',
-            'basic_network_analysis': 'Analyse basique du réseau sans NetworkX',
-            'create_network_visualization': 'Crée la visualisation du réseau avec Plotly',
-            'calculate_node_positions': 'Calcule les positions des nœuds selon le layout',
-            'create_edge_trace': 'Crée le trace des arêtes pour Plotly',
-            'create_node_trace': 'Crée le trace des nœuds pour Plotly',
-            'display_mapping_results': 'Affiche les résultats de la cartographie',
-            'display_network_analysis': 'Affiche l\'analyse du réseau',
-            'display_entities_list': 'Affiche la liste des entités',
-            'display_relationships_list': 'Affiche la liste des relations',
-            'display_mapping_statistics': 'Affiche les statistiques détaillées de la cartographie',
-            'generate_mapping_report': 'Génère un rapport textuel de la cartographie',
-            'export_mapping_to_excel': 'Exporte la cartographie vers Excel',
-            'show_advanced_network_analysis': 'Affiche l\'analyse réseau avancée'
-        }
-except ImportError:
-    pass
-
-# Pour email.py (basé sur votre vrai fichier)
-try:
-    from . import email
-    if not hasattr(email, 'MODULE_FUNCTIONS'):
-        email.MODULE_FUNCTIONS = {
-            'process_email_request': 'Traite une demande d\'envoi par email',
-            'extract_email_recipients': 'Extrait les destinataires depuis la requête',
-            'create_email_config': 'Crée la configuration de l\'email',
-            'determine_email_subject': 'Détermine l\'objet de l\'email selon le contexte',
-            'generate_email_body': 'Génère le corps de l\'email selon le contexte',
-            'show_email_configuration': 'Interface de configuration de l\'email',
-            'prepare_email_content_and_attachments': 'Prépare le contenu et les pièces jointes',
-            'get_available_attachments': 'Récupère les documents disponibles pour attachement',
-            'prepare_attachment': 'Prépare une pièce jointe dans le format demandé',
-            'create_pdf_attachment': 'Crée une pièce jointe PDF',
-            'create_docx_attachment': 'Crée une pièce jointe DOCX',
-            'show_email_preview': 'Affiche un aperçu de l\'email',
-            'send_email_with_progress': 'Envoie l\'email avec barre de progression',
-            'get_smtp_configuration': 'Récupère la configuration SMTP',
-            'create_mime_message': 'Crée le message MIME complet',
-            'show_smtp_configuration_help': 'Affiche l\'aide pour la configuration SMTP',
-            'save_email_draft': 'Sauvegarde un brouillon d\'email',
-            'save_email_history': 'Sauvegarde l\'historique des emails envoyés',
-            'log_email_sent': 'Enregistre l\'envoi dans les logs',
-            'show_email_interface': 'Interface principale de gestion des emails',
-            'show_email_drafts': 'Affiche les brouillons d\'emails',
-            'show_email_history': 'Affiche l\'historique des emails envoyés',
-            'export_email_history': 'Exporte l\'historique des emails',
-            'show_email_configuration_interface': 'Interface de configuration des emails',
-            'test_smtp_connection': 'Teste la connexion SMTP',
-            'get_default_email_templates': 'Retourne les templates d\'emails par défaut',
-            'get_default_signatures': 'Retourne les signatures par défaut',
-            'prepare_and_send_document': 'Prépare et envoie un document par email'
-        }
-except ImportError:
-    pass
-
-# Pour preparation_client.py (basé sur votre vrai fichier)
-try:
-    from . import preparation_client
-    if not hasattr(preparation_client, 'MODULE_FUNCTIONS'):
-        preparation_client.MODULE_FUNCTIONS = {
-            'process_preparation_client_request': 'Traite une demande de préparation client',
-            'display_preparation_config_interface': 'Interface de configuration pour la préparation',
-            'generate_client_preparation': 'Génère une préparation complète pour le client',
-            'build_preparation_prompt': 'Construit le prompt pour la préparation',
-            'build_preparation_system_prompt': 'Construit le prompt système pour la préparation',
-            'extract_key_qa': 'Extrait les questions-réponses clés',
-            'extract_never_say': 'Extrait les choses à ne jamais dire',
-            'extract_preparation_exercises': 'Extrait les exercices de préparation',
-            'detect_exercise_type': 'Détecte le type d\'exercice',
-            'estimate_preparation_duration': 'Estime la durée de préparation nécessaire',
-            'display_preparation_results': 'Affiche les résultats de la préparation',
-            'display_full_preparation': 'Affiche le document complet de préparation',
-            'display_qa_section': 'Affiche la section questions/réponses',
-            'display_never_say_section': 'Affiche la section des choses à ne jamais dire',
-            'categorize_never_say': 'Catégorise les phrases à éviter',
-            'get_danger_explanation': 'Explique pourquoi une phrase est dangereuse',
-            'display_exercises_section': 'Affiche la section des exercices',
-            'display_preparation_summary': 'Affiche une fiche résumé de la préparation',
-            'create_preparation_summary': 'Crée une fiche résumé de la préparation',
-            'create_print_friendly_summary': 'Crée une version imprimable de la fiche résumé',
-            'highlight_search_terms': 'Surligne les termes recherchés dans le contenu',
-            'show_interrogation_simulation': 'Mode simulation d\'interrogatoire',
-            'display_simulation_results': 'Affiche les résultats de la simulation',
-            'create_simulation_report': 'Crée un rapport détaillé de la simulation',
-            'show_exercise_timer': 'Timer pour les exercices de préparation',
-            'show_exercise_practice': 'Interface de pratique pour un exercice',
-            'create_mobile_version': 'Crée une version mobile de la préparation',
-            'export_preparation_to_pdf': 'Exporte la préparation en PDF'
-        }
-except ImportError:
-    pass
-
-# Pour synthesis.py (basé sur votre vrai fichier)
-try:
-    from . import synthesis
-    if not hasattr(synthesis, 'MODULE_FUNCTIONS'):
-        synthesis.MODULE_FUNCTIONS = {
-            'process_synthesis_request': 'Traite une demande de synthèse',
-            'synthesize_selected_pieces': 'Synthétise les pièces sélectionnées',
-            'synthesize_documents': 'Synthétise une liste de documents',
-            'synthesize_search_results': 'Synthétise des résultats de recherche',
-            'construct_synthesis_context': 'Construit le contexte pour la synthèse',
-            'display_synthesis_interface': 'Affiche l\'interface de synthèse',
-            'extract_sections_from_synthesis': 'Extrait les sections d\'une synthèse',
-            'extract_key_points_from_synthesis': 'Extrait les points clés d\'une synthèse',
-            'export_synthesis_to_docx': 'Exporte la synthèse en format Word',
-            'show_synthesis_statistics': 'Affiche les statistiques de la synthèse',
-            'determine_document_category': 'Détermine la catégorie d\'un document',
-            'search_documents_by_reference': 'Recherche des documents par référence'
-        }
-except ImportError:
-    pass
-
-# Pour templates.py (basé sur votre vrai fichier)
-try:
-    from . import templates
-    if not hasattr(templates, 'MODULE_FUNCTIONS'):
-        templates.MODULE_FUNCTIONS = {
-            'process_template_request': 'Traite une demande liée aux templates',
-            'detect_template_action': 'Détecte l\'action demandée sur les templates',
-            'show_templates_interface': 'Interface principale des templates',
-            'show_templates_library': 'Affiche la bibliothèque de templates',
-            'get_all_templates': 'Récupère tous les templates disponibles',
-            'get_template_categories': 'Récupère les catégories uniques',
-            'get_template_types': 'Récupère les types uniques',
-            'filter_templates': 'Filtre les templates',
-            'show_template_card': 'Affiche une carte de template',
-            'show_template_preview': 'Affiche un aperçu du template',
-            'show_create_template_interface': 'Interface de création de template',
-            'show_template_creation_preview': 'Aperçu du template en création',
-            'create_new_template': 'Crée un nouveau template',
-            'show_edit_template_interface': 'Interface d\'édition de template',
-            'update_template': 'Met à jour un template existant',
-            'show_apply_template_interface': 'Interface d\'application de template',
-            'get_variable_default_value': 'Obtient une valeur par défaut pour une variable',
-            'generate_document_from_template': 'Génère un document depuis un template',
-            'enrich_with_ai': 'Enrichit le contenu avec l\'IA',
-            'add_relevant_jurisprudence': 'Ajoute la jurisprudence pertinente au document',
-            'extract_legal_keywords': 'Extrait les mots-clés juridiques d\'un contenu',
-            'show_templates_configuration': 'Configuration des templates',
-            'confirm_delete_template': 'Demande confirmation pour supprimer un template',
-            'delete_template': 'Supprime un template',
-            'save_templates_to_storage': 'Sauvegarde les templates',
-            'load_templates_from_storage': 'Charge les templates depuis le stockage',
-            'export_all_templates': 'Exporte tous les templates',
-            'import_templates': 'Importe des templates depuis un fichier',
-            'apply_template': 'Applique un template sélectionné',
-            'get_template_by_type': 'Récupère un template par type de document',
-            'get_template_structure': 'Récupère la structure d\'un template par nom',
-            'create_template_from_document': 'Crée un template à partir d\'un document existant'
-        }
-except ImportError:
-    pass
-
-# Pour les autres modules (définitions de base)
-# comparison
-try:
-    from . import comparison
-    if not hasattr(comparison, 'MODULE_FUNCTIONS'):
-        comparison.MODULE_FUNCTIONS = {
-            'display_comparison_interface': 'Interface de comparaison',
-            'compare_documents': 'Comparer des documents',
-            'highlight_differences': 'Mettre en évidence les différences',
-            'generate_comparison_report': 'Générer un rapport de comparaison'
-        }
-except ImportError:
-    pass
-
-# configuration
-try:
-    from . import configuration
-    if not hasattr(configuration, 'MODULE_FUNCTIONS'):
-        configuration.MODULE_FUNCTIONS = {
-            'display_configuration_interface': 'Interface de configuration',
-            'save_configuration': 'Sauvegarder la configuration',
-            'load_configuration': 'Charger la configuration',
-            'reset_to_defaults': 'Réinitialiser aux valeurs par défaut'
-        }
-except ImportError:
-    pass
-
-# documents_longs
-try:
-    from . import documents_longs
-    if not hasattr(documents_longs, 'MODULE_FUNCTIONS'):
-        documents_longs.MODULE_FUNCTIONS = {
-            'display_documents_longs_interface': 'Interface des documents longs',
-            'generate_long_document': 'Générer un document long',
-            'analyze_document_structure': 'Analyser la structure du document',
-            'create_document_outline': 'Créer le plan du document',
-            'export_long_document': 'Exporter le document long'
-        }
-except ImportError:
-    pass
-
-# explorer
-try:
-    from . import explorer
-    if not hasattr(explorer, 'MODULE_FUNCTIONS'):
-        explorer.MODULE_FUNCTIONS = {
-            'display_explorer_interface': 'Interface d\'exploration',
-            'browse_dossier_structure': 'Parcourir la structure du dossier',
-            'search_in_dossier': 'Rechercher dans le dossier',
-            'preview_document': 'Prévisualiser un document'
-        }
-except ImportError:
-    pass
-
-# import_export
-try:
-    from . import import_export
-    if not hasattr(import_export, 'MODULE_FUNCTIONS'):
-        import_export.MODULE_FUNCTIONS = {
-            'display_import_export_interface': 'Interface d\'import/export',
-            'import_documents': 'Importer des documents',
-            'export_dossier': 'Exporter un dossier',
-            'validate_import_format': 'Valider le format d\'import'
-        }
-except ImportError:
-    pass
-
-# jurisprudence
-try:
-    from . import jurisprudence
-    if not hasattr(jurisprudence, 'MODULE_FUNCTIONS'):
-        jurisprudence.MODULE_FUNCTIONS = {
-            'display_jurisprudence_interface': 'Interface de jurisprudence',
-            'search_jurisprudence_database': 'Rechercher dans la base de jurisprudence',
-            'analyze_jurisprudence_trends': 'Analyser les tendances jurisprudentielles',
-            'export_jurisprudence_report': 'Exporter un rapport de jurisprudence'
-        }
-except ImportError:
-    pass
-
-# selection_pieces
-try:
-    from . import selection_pieces
-    if not hasattr(selection_pieces, 'MODULE_FUNCTIONS'):
-        selection_pieces.MODULE_FUNCTIONS = {
-            'display_selection_pieces_interface': 'Interface de sélection des pièces',
-            'filter_pieces_by_criteria': 'Filtrer les pièces par critères',
-            'create_piece_selection': 'Créer une sélection de pièces',
-            'export_selected_pieces': 'Exporter les pièces sélectionnées'
-        }
-except ImportError:
-    pass
-
-# redaction_unified
-try:
-    from . import redaction_unified
-    if not hasattr(redaction_unified, 'MODULE_FUNCTIONS'):
-        redaction_unified.MODULE_FUNCTIONS = {
-            'display_unified_redaction_interface': 'Interface de rédaction unifiée',
-            'create_unified_document': 'Créer un document unifié',
-            'merge_document_sections': 'Fusionner les sections de documents',
-            'apply_unified_formatting': 'Appliquer un formatage unifié'
-        }
-except ImportError:
-    pass
-
-# risques
-try:
-    from . import risques
-    if not hasattr(risques, 'MODULE_FUNCTIONS'):
-        risques.MODULE_FUNCTIONS = {
-            'display_risques_interface': 'Interface de gestion des risques',
-            'analyze_case_risks': 'Analyser les risques du dossier',
-            'create_risk_matrix': 'Créer une matrice des risques',
-            'generate_risk_report': 'Générer un rapport de risques'
-        }
-except ImportError:
-    pass
-
-# analyse_ia
-try:
-    from . import analyse_ia
-    if not hasattr(analyse_ia, 'MODULE_FUNCTIONS'):
-        analyse_ia.MODULE_FUNCTIONS = {
-            'display_analyse_ia_interface': 'Interface d\'analyse IA',
-            'analyze_with_ai': 'Analyser avec l\'IA',
-            'generate_ai_insights': 'Générer des insights IA',
-            'export_ai_analysis': 'Exporter l\'analyse IA'
-        }
-except ImportError:
-    pass
-
-# export_juridique
-try:
-    from . import export_juridique
-    if not hasattr(export_juridique, 'MODULE_FUNCTIONS'):
-        export_juridique.MODULE_FUNCTIONS = {
-            'display_export_juridique_interface': 'Interface d\'export juridique',
-            'export_legal_format': 'Exporter au format juridique',
-            'create_legal_bundle': 'Créer un bundle juridique',
-            'validate_legal_export': 'Valider l\'export juridique'
-        }
-except ImportError:
-    pass
-
-# generation_juridique
-try:
-    from . import generation_juridique
-    if not hasattr(generation_juridique, 'MODULE_FUNCTIONS'):
-        generation_juridique.MODULE_FUNCTIONS = {
-            'display_generation_juridique_interface': 'Interface de génération juridique',
-            'generate_legal_document': 'Générer un document juridique',
-            'apply_legal_templates': 'Appliquer des templates juridiques',
-            'validate_generated_content': 'Valider le contenu généré'
-        }
-except ImportError:
-    pass
-
-# generation_longue
-try:
-    from . import generation_longue
-    if not hasattr(generation_longue, 'MODULE_FUNCTIONS'):
-        generation_longue.MODULE_FUNCTIONS = {
-            'display_generation_longue_interface': 'Interface de génération longue',
-            'generate_extended_document': 'Générer un document étendu',
-            'manage_long_generation': 'Gérer la génération longue',
-            'monitor_generation_progress': 'Surveiller la progression'
-        }
-except ImportError:
-    pass
-
-# integration_juridique
-try:
-    from . import integration_juridique
-    if not hasattr(integration_juridique, 'MODULE_FUNCTIONS'):
-        integration_juridique.MODULE_FUNCTIONS = {
-            'display_integration_juridique_interface': 'Interface d\'intégration juridique',
-            'integrate_legal_sources': 'Intégrer les sources juridiques',
-            'sync_legal_databases': 'Synchroniser les bases juridiques',
-            'validate_integrations': 'Valider les intégrations'
-        }
-except ImportError:
-    pass
-
-# Export de tous les modules disponibles
-__all__ = [
-    'dataclasses',
-    'pieces_manager',
-    'redaction',
-    'timeline',
-    'recherche',
-    'dossier_penal',
-    'bordereau',
-    'plaidoirie',
-    'mapping',
-    'email',
-    'preparation_client',
-    'synthesis',
-    'templates',
-    'comparison',
-    'configuration',
-    'documents_longs',
-    'explorer',
-    'import_export',
-    'jurisprudence',
-    'selection_pieces',
-    'redaction_unified',
-    'risques',
-    'analyse_ia',
-    'export_juridique',
-    'generation_juridique',
-    'generation_longue',
-    'integration_juridique'
+# Liste de tous les modules possibles
+MODULES_LIST = [
+    'pieces_manager', 'redaction', 'timeline', 'recherche', 'dossier_penal',
+    'bordereau', 'plaidoirie', 'mapping', 'email', 'preparation_client',
+    'synthesis', 'templates', 'comparison', 'configuration', 'documents_longs',
+    'explorer', 'import_export', 'jurisprudence', 'selection_pieces',
+    'redaction_unified', 'risques', 'analyse_ia', 'export_juridique',
+    'generation_juridique', 'generation_longue', 'integration_juridique'
 ]
+
+# Dictionnaire pour stocker les erreurs d'import
+_import_errors = {}
+_function_detection_errors = {}
+
+def get_module_functions(module) -> Dict[str, str]:
+    """
+    Détecte automatiquement toutes les fonctions d'un module
+    et retourne un dictionnaire {nom_fonction: description}
+    """
+    functions = {}
+    
+    try:
+        # Parcourir tous les membres du module
+        for name, obj in inspect.getmembers(module):
+            # Vérifier que c'est une fonction définie dans ce module
+            if (inspect.isfunction(obj) and 
+                obj.__module__ == module.__name__ and
+                not name.startswith('_')):  # Ignorer les fonctions privées
+                
+                # Obtenir la docstring ou créer une description par défaut
+                doc = inspect.getdoc(obj)
+                if doc:
+                    # Prendre la première ligne de la docstring
+                    description = doc.split('\n')[0].strip()
+                    # Limiter la longueur et enlever les guillemets finaux
+                    if len(description) > 100:
+                        description = description[:97] + "..."
+                    description = description.rstrip('"\'')
+                else:
+                    # Créer une description basée sur le nom
+                    description = name.replace('_', ' ').title()
+                    # Améliorer certains patterns courants
+                    replacements = {
+                        'Display ': 'Afficher ',
+                        'Create ': 'Créer ',
+                        'Process ': 'Traiter ',
+                        'Generate ': 'Générer ',
+                        'Export ': 'Exporter ',
+                        'Import ': 'Importer ',
+                        'Show ': 'Afficher ',
+                        'Get ': 'Obtenir ',
+                        'Set ': 'Définir ',
+                        'Update ': 'Mettre à jour ',
+                        'Delete ': 'Supprimer ',
+                        'Validate ': 'Valider ',
+                        'Search ': 'Rechercher ',
+                        'Load ': 'Charger ',
+                        'Save ': 'Sauvegarder ',
+                        'Init ': 'Initialiser ',
+                        'Check ': 'Vérifier ',
+                        'Analyze ': 'Analyser ',
+                        'Render ': 'Afficher ',
+                        'Handle ': 'Gérer ',
+                        'Manager': 'Gestionnaire'
+                    }
+                    for eng, fr in replacements.items():
+                        description = description.replace(eng, fr)
+                
+                functions[name] = description
+                
+    except Exception as e:
+        _function_detection_errors[module.__name__] = str(e)
+    
+    return functions
+
+def create_stub_module(module_name: str):
+    """
+    Crée un module stub (vide) pour éviter les erreurs d'import
+    """
+    import types
+    stub_module = types.ModuleType(module_name)
+    stub_module.__file__ = f"<stub for {module_name}>"
+    stub_module.MODULE_FUNCTIONS = {}
+    
+    # Fonction par défaut pour les modules stub
+    def not_implemented(*args, **kwargs):
+        return f"Module {module_name} non implémenté"
+    
+    stub_module.not_implemented = not_implemented
+    return stub_module
+
+# Compteurs pour le suivi
+_modules_loaded = 0
+_modules_failed = 0
+_modules_stubbed = 0
+_total_functions = 0
+
+# Import dynamique de tous les modules et configuration automatique
+for module_name in MODULES_LIST:
+    try:
+        # Tenter d'importer le module
+        module = importlib.import_module(f'.{module_name}', package='modules')
+        
+        # Rendre le module disponible globalement
+        globals()[module_name] = module
+        _modules_loaded += 1
+        
+        # Si MODULE_FUNCTIONS n'existe pas, le créer automatiquement
+        if not hasattr(module, 'MODULE_FUNCTIONS'):
+            detected_functions = get_module_functions(module)
+            
+            # Si des fonctions ont été détectées, les assigner
+            if detected_functions:
+                setattr(module, 'MODULE_FUNCTIONS', detected_functions)
+                _total_functions += len(detected_functions)
+                if DEBUG_MODE:
+                    print(f"✅ Module {module_name}: {len(detected_functions)} fonctions détectées")
+            else:
+                # Module sans fonctions ou avec uniquement des classes
+                setattr(module, 'MODULE_FUNCTIONS', {})
+                if DEBUG_MODE:
+                    print(f"ℹ️ Module {module_name}: aucune fonction publique détectée")
+        else:
+            # MODULE_FUNCTIONS existe déjà
+            _total_functions += len(getattr(module, 'MODULE_FUNCTIONS', {}))
+            if DEBUG_MODE:
+                print(f"✅ Module {module_name}: MODULE_FUNCTIONS existant conservé")
+            
+    except ImportError as e:
+        # Module non trouvé - créer un stub pour éviter les erreurs
+        _import_errors[module_name] = str(e)
+        _modules_failed += 1
+        
+        # Créer un module stub
+        try:
+            stub = create_stub_module(module_name)
+            globals()[module_name] = stub
+            _modules_stubbed += 1
+            if DEBUG_MODE:
+                print(f"⚠️ Module {module_name} non trouvé - stub créé: {e}")
+        except Exception as stub_error:
+            if DEBUG_MODE:
+                print(f"❌ Impossible de créer un stub pour {module_name}: {stub_error}")
+        continue
+        
+    except Exception as e:
+        # Autre erreur - enregistrer et continuer
+        _import_errors[module_name] = str(e)
+        _modules_failed += 1
+        if DEBUG_MODE:
+            print(f"❌ Erreur avec module {module_name}: {e}")
+        continue
+
+# Fonction utilitaire pour obtenir tous les modules chargés
+def get_loaded_modules() -> Dict[str, Any]:
+    """Retourne un dictionnaire de tous les modules chargés avec succès"""
+    loaded = {}
+    for module_name in MODULES_LIST:
+        if module_name in globals():
+            loaded[module_name] = globals()[module_name]
+    return loaded
+
+# Fonction pour obtenir MODULE_FUNCTIONS d'un module spécifique
+def get_module_functions_by_name(module_name: str) -> Dict[str, str]:
+    """
+    Retourne MODULE_FUNCTIONS pour un module donné
+    Retourne un dict vide si le module n'existe pas
+    """
+    if module_name in globals():
+        module = globals()[module_name]
+        return getattr(module, 'MODULE_FUNCTIONS', {})
+    return {}
+
+# Fonction pour lister tous les modules avec leurs fonctions
+def list_all_modules_and_functions() -> Dict[str, Dict[str, str]]:
+    """Retourne un dictionnaire de tous les modules et leurs fonctions"""
+    result = {}
+    for module_name, module in get_loaded_modules().items():
+        result[module_name] = getattr(module, 'MODULE_FUNCTIONS', {})
+    return result
+
+# Fonction pour forcer la recréation de MODULE_FUNCTIONS
+def refresh_module_functions(module_name: str, force: bool = False) -> bool:
+    """
+    Rafraîchit MODULE_FUNCTIONS pour un module spécifique
+    
+    Args:
+        module_name: Nom du module à rafraîchir
+        force: Si True, écrase MODULE_FUNCTIONS même s'il existe
+        
+    Returns:
+        True si le rafraîchissement a réussi, False sinon
+    """
+    if module_name not in globals():
+        return False
+    
+    module = globals()[module_name]
+    
+    # Si MODULE_FUNCTIONS existe et force=False, ne rien faire
+    if hasattr(module, 'MODULE_FUNCTIONS') and not force:
+        return True
+    
+    # Détecter les fonctions
+    detected_functions = get_module_functions(module)
+    setattr(module, 'MODULE_FUNCTIONS', detected_functions)
+    
+    return True
+
+# Fonction pour obtenir l'état d'un module spécifique
+def get_module_status(module_name: str) -> Dict[str, Any]:
+    """
+    Retourne le statut détaillé d'un module
+    
+    Returns:
+        Dict avec 'loaded', 'functions_count', 'functions', 'error', 'is_stub'
+    """
+    status = {
+        'loaded': False,
+        'functions_count': 0,
+        'functions': {},
+        'error': None,
+        'is_stub': False
+    }
+    
+    if module_name in globals():
+        module = globals()[module_name]
+        status['loaded'] = True
+        status['functions'] = getattr(module, 'MODULE_FUNCTIONS', {})
+        status['functions_count'] = len(status['functions'])
+        
+        # Vérifier si c'est un stub
+        if hasattr(module, '__file__') and module.__file__.startswith('<stub'):
+            status['is_stub'] = True
+            
+        # Ajouter l'erreur d'import si elle existe
+        if module_name in _import_errors:
+            status['error'] = _import_errors[module_name]
+    else:
+        status['error'] = f"Module '{module_name}' non chargé"
+    
+    return status
+
+# Fonction de debug pour afficher l'état des modules
+def debug_modules_status(detailed: bool = False, output_to_streamlit: bool = False):
+    """
+    Affiche le statut de tous les modules (pour debug)
+    
+    Args:
+        detailed: Si True, affiche le détail des fonctions
+        output_to_streamlit: Si True, retourne le texte pour Streamlit au lieu de print
+    """
+    loaded = get_loaded_modules()
+    
+    output_lines = []
+    output_lines.append(f"\n{'='*60}")
+    output_lines.append(f"📦 ÉTAT DES MODULES - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    output_lines.append(f"{'='*60}")
+    output_lines.append(f"Modules chargés: {_modules_loaded}/{len(MODULES_LIST)}")
+    output_lines.append(f"Modules en erreur: {_modules_failed}")
+    output_lines.append(f"Modules stub: {_modules_stubbed}")
+    output_lines.append(f"Total fonctions: {_total_functions}")
+    output_lines.append(f"\n📋 Détail par module:")
+    output_lines.append(f"{'-'*60}")
+    
+    # Organiser par statut
+    modules_ok = []
+    modules_stub = []
+    modules_error = []
+    
+    for module_name in MODULES_LIST:
+        status = get_module_status(module_name)
+        if status['loaded'] and not status['is_stub']:
+            modules_ok.append((module_name, status))
+        elif status['is_stub']:
+            modules_stub.append((module_name, status))
+        else:
+            modules_error.append((module_name, status))
+    
+    # Afficher les modules OK
+    if modules_ok:
+        output_lines.append("\n🟢 Modules chargés avec succès:")
+        for module_name, status in sorted(modules_ok):
+            output_lines.append(f"  ✅ {module_name:<25} : {status['functions_count']} fonctions")
+            if detailed and status['functions']:
+                for func_name, desc in sorted(status['functions'].items()):
+                    output_lines.append(f"      - {func_name}: {desc[:50]}...")
+    
+    # Afficher les modules stub
+    if modules_stub:
+        output_lines.append("\n🟡 Modules stub (fichiers manquants):")
+        for module_name, status in sorted(modules_stub):
+            output_lines.append(f"  ⚠️  {module_name:<25} : stub créé")
+            if status['error']:
+                output_lines.append(f"      Erreur: {status['error']}")
+    
+    # Afficher les modules en erreur
+    if modules_error:
+        output_lines.append("\n🔴 Modules en erreur:")
+        for module_name, status in sorted(modules_error):
+            output_lines.append(f"  ❌ {module_name:<25} : non chargé")
+            if status['error']:
+                output_lines.append(f"      Erreur: {status['error']}")
+    
+    # Afficher les erreurs de détection de fonctions
+    if _function_detection_errors:
+        output_lines.append(f"\n⚠️  Erreurs de détection de fonctions:")
+        for module_name, error in _function_detection_errors.items():
+            output_lines.append(f"  - {module_name}: {error}")
+    
+    output_lines.append(f"{'-'*60}")
+    output_lines.append(f"{'='*60}\n")
+    
+    output_text = '\n'.join(output_lines)
+    
+    if output_to_streamlit:
+        return output_text
+    else:
+        print(output_text)
+
+# Fonction pour générer un rapport HTML
+def generate_debug_report_html() -> str:
+    """Génère un rapport HTML détaillé de l'état des modules"""
+    loaded = get_loaded_modules()
+    
+    html = f"""
+    <html>
+    <head>
+        <title>Rapport Debug Modules - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            .summary {{ background: #f0f0f0; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+            .module-ok {{ background: #d4edda; padding: 10px; margin: 5px 0; border-radius: 3px; }}
+            .module-stub {{ background: #fff3cd; padding: 10px; margin: 5px 0; border-radius: 3px; }}
+            .module-error {{ background: #f8d7da; padding: 10px; margin: 5px 0; border-radius: 3px; }}
+            .function-list {{ margin-left: 20px; font-size: 0.9em; }}
+            h1, h2, h3 {{ color: #333; }}
+        </style>
+    </head>
+    <body>
+        <h1>📦 Rapport Debug Modules</h1>
+        <div class="summary">
+            <h2>Résumé</h2>
+            <p>Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Modules chargés: {_modules_loaded}/{len(MODULES_LIST)}</p>
+            <p>Modules en erreur: {_modules_failed}</p>
+            <p>Modules stub: {_modules_stubbed}</p>
+            <p>Total fonctions: {_total_functions}</p>
+        </div>
+    """
+    
+    # Modules OK
+    modules_ok = [(name, get_module_status(name)) for name in MODULES_LIST 
+                  if get_module_status(name)['loaded'] and not get_module_status(name)['is_stub']]
+    
+    if modules_ok:
+        html += "<h2>🟢 Modules chargés avec succès</h2>"
+        for module_name, status in sorted(modules_ok):
+            html += f"""
+            <div class="module-ok">
+                <strong>{module_name}</strong> - {status['functions_count']} fonctions
+                <div class="function-list">
+            """
+            for func_name, desc in sorted(status['functions'].items()):
+                html += f"<br>• {func_name}: {desc}"
+            html += "</div></div>"
+    
+    # Modules stub
+    modules_stub = [(name, get_module_status(name)) for name in MODULES_LIST 
+                    if get_module_status(name)['is_stub']]
+    
+    if modules_stub:
+        html += "<h2>🟡 Modules stub (fichiers manquants)</h2>"
+        for module_name, status in sorted(modules_stub):
+            html += f"""
+            <div class="module-stub">
+                <strong>{module_name}</strong> - stub créé
+                {f"<br>Erreur: {status['error']}" if status['error'] else ""}
+            </div>
+            """
+    
+    # Modules en erreur
+    modules_error = [(name, get_module_status(name)) for name in MODULES_LIST 
+                     if not get_module_status(name)['loaded']]
+    
+    if modules_error:
+        html += "<h2>🔴 Modules en erreur</h2>"
+        for module_name, status in sorted(modules_error):
+            html += f"""
+            <div class="module-error">
+                <strong>{module_name}</strong> - non chargé
+                {f"<br>Erreur: {status['error']}" if status['error'] else ""}
+            </div>
+            """
+    
+    html += "</body></html>"
+    return html
+
+# Fonction pour tester l'import d'un module spécifique
+def test_module_import(module_name: str, verbose: bool = True) -> Tuple[bool, str]:
+    """
+    Teste l'import d'un module spécifique et retourne le résultat
+    
+    Returns:
+        Tuple (succès: bool, message: str)
+    """
+    try:
+        # Réimporter le module
+        module = importlib.import_module(f'.{module_name}', package='modules')
+        
+        # Détecter les fonctions
+        functions = get_module_functions(module)
+        
+        if verbose:
+            message = f"✅ Module {module_name} importé avec succès\n"
+            message += f"   Fonctions détectées: {len(functions)}\n"
+            if functions:
+                message += "   Liste des fonctions:\n"
+                for func_name, desc in functions.items():
+                    message += f"     - {func_name}: {desc}\n"
+        else:
+            message = f"Module {module_name}: OK ({len(functions)} fonctions)"
+        
+        return True, message
+        
+    except Exception as e:
+        message = f"❌ Erreur avec {module_name}: {str(e)}"
+        return False, message
+
+# Export de tous les modules disponibles et fonctions utilitaires
+__all__ = [
+    'dataclasses', 
+    'get_loaded_modules', 
+    'get_module_functions_by_name',
+    'list_all_modules_and_functions', 
+    'debug_modules_status',
+    'refresh_module_functions', 
+    'get_module_status',
+    'generate_debug_report_html',
+    'test_module_import',
+    'get_module_functions',
+    'create_stub_module'
+] + MODULES_LIST
+
+# Fonction pour créer une page de debug dans Streamlit
+def create_streamlit_debug_page():
+    """
+    Crée une page de debug complète pour Streamlit
+    À utiliser dans votre app.py
+    """
+    import streamlit as st
+    
+    st.title("🔧 Debug des Modules")
+    
+    # Résumé
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Modules chargés", f"{_modules_loaded}/{len(MODULES_LIST)}")
+    with col2:
+        st.metric("Modules en erreur", _modules_failed)
+    with col3:
+        st.metric("Modules stub", _modules_stubbed)
+    with col4:
+        st.metric("Total fonctions", _total_functions)
+    
+    # Tabs pour différentes vues
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Vue d'ensemble", "🔍 Détails", "🧪 Tests", "📄 Rapport"])
+    
+    with tab1:
+        st.subheader("État des modules")
+        
+        # Utiliser des expanders pour chaque catégorie
+        with st.expander(f"✅ Modules OK ({_modules_loaded - _modules_stubbed})", expanded=True):
+            for module_name in sorted(MODULES_LIST):
+                status = get_module_status(module_name)
+                if status['loaded'] and not status['is_stub']:
+                    st.success(f"{module_name}: {status['functions_count']} fonctions")
+        
+        with st.expander(f"⚠️ Modules Stub ({_modules_stubbed})"):
+            for module_name in sorted(MODULES_LIST):
+                status = get_module_status(module_name)
+                if status['is_stub']:
+                    st.warning(f"{module_name}: {status['error'] or 'Fichier manquant'}")
+        
+        with st.expander(f"❌ Modules en erreur ({_modules_failed - _modules_stubbed})"):
+            for module_name in sorted(MODULES_LIST):
+                status = get_module_status(module_name)
+                if not status['loaded']:
+                    st.error(f"{module_name}: {status['error'] or 'Erreur inconnue'}")
+    
+    with tab2:
+        st.subheader("Détails des modules")
+        
+        # Sélecteur de module
+        selected_module = st.selectbox(
+            "Sélectionner un module",
+            options=MODULES_LIST,
+            format_func=lambda x: f"{x} {'✅' if get_module_status(x)['loaded'] else '❌'}"
+        )
+        
+        if selected_module:
+            status = get_module_status(selected_module)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**État:** {'Chargé' if status['loaded'] else 'Non chargé'}")
+                st.write(f"**Type:** {'Stub' if status['is_stub'] else 'Normal'}")
+                st.write(f"**Fonctions:** {status['functions_count']}")
+            
+            with col2:
+                if status['error']:
+                    st.error(f"**Erreur:** {status['error']}")
+            
+            if status['functions']:
+                st.write("**Liste des fonctions:**")
+                for func_name, desc in sorted(status['functions'].items()):
+                    st.write(f"- `{func_name}`: {desc}")
+    
+    with tab3:
+        st.subheader("Tests d'import")
+        
+        test_module = st.selectbox(
+            "Module à tester",
+            options=MODULES_LIST,
+            key="test_module"
+        )
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🧪 Tester l'import"):
+                success, message = test_module_import(test_module)
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
+        
+        with col2:
+            if st.button("🔄 Rafraîchir les fonctions"):
+                if refresh_module_functions(test_module, force=True):
+                    st.success(f"Fonctions rafraîchies pour {test_module}")
+                else:
+                    st.error(f"Impossible de rafraîchir {test_module}")
+    
+    with tab4:
+        st.subheader("Rapport complet")
+        
+        if st.button("📊 Générer le rapport texte"):
+            report = debug_modules_status(detailed=True, output_to_streamlit=True)
+            st.code(report, language="text")
+        
+        if st.button("📄 Générer le rapport HTML"):
+            html_report = generate_debug_report_html()
+            st.download_button(
+                label="💾 Télécharger le rapport HTML",
+                data=html_report,
+                file_name=f"debug_modules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                mime="text/html"
+            )
+
+# Afficher le debug au chargement si activé
+if DEBUG_MODE and __name__ != '__main__':
+    debug_modules_status()
+
+# Exemple de test pour vérifier l'import
+if __name__ == '__main__':
+    print("Test du système de modules...")
+    debug_modules_status(detailed=True)
+    
+    # Tester l'accès à un module spécifique
+    print("\n" + "="*60)
+    print("Test d'import du module redaction:")
+    success, message = test_module_import('redaction')
+    print(message)
