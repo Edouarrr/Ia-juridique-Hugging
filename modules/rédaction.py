@@ -18,7 +18,7 @@ from config.app_config import (
 from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
 from managers.dynamic_generators import generate_dynamic_templates
-from models.dataclasses import (
+from modules.dataclasses import (
     RedactionResult, 
     JurisprudenceCase, 
     StylePattern,
