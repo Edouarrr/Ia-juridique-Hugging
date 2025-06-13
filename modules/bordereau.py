@@ -7,7 +7,12 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 
 from models.dataclasses import PieceSelectionnee
-from modules.export_manager import export_manager, ExportConfig
+try:
+    from modules.export_manager import ExportManager, ExportConfig
+except ImportError:
+    # Fallback si le module n'est pas disponible
+    ExportManager = None
+    ExportConfig = None
 
 def process_bordereau_request(query: str, analysis: dict):
     """Traite une demande de création de bordereau"""
