@@ -4,6 +4,7 @@ Modules de l'application IA Juridique - Initialisation
 
 import logging
 import sys
+import importlib
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -36,18 +37,8 @@ _import_status = {
 # Import dynamique des modules
 for module_name, class_name in AVAILABLE_MODULES.items():
     try:
-        # Obtenir le module actuel
-        current_module = sys.modules[__name__]
-        
         # Utiliser importlib pour un import robuste
-        import importlib
-        
-        if hasattr(current_module, '__package__'):
-            # Import relatif avec importlib
-            module = importlib.import_module(f".{module_name}", current_module.__package__)
-        else:
-            # Fallback
-            module = __import__(f'{__name__}.{module_name}', fromlist=[class_name])
+        module = importlib.import_module(f".{module_name}", package=__package__)
         
         # Extraire la classe et l'ajouter au namespace
         if hasattr(module, class_name):
@@ -65,20 +56,26 @@ for module_name, class_name in AVAILABLE_MODULES.items():
         logger.warning(f"⚠️ {class_name} - {error_msg}")
         
         # Créer une classe placeholder
-        class_code = f"""
+        exec(f"""
 class {class_name}:
     '''Placeholder pour {class_name} non disponible'''
     def __init__(self, *args, **kwargs):
-        self.name = "{class_name}"
+        self.name = "{class_name.replace('Module', '')}"
         self.available = False
         self.error = "{error_msg}"
+        self.icon = "❌"
+        self.description = "Module non disponible"
         logger.warning("Utilisation du placeholder pour {class_name}")
     
     def render(self):
         import streamlit as st
-        st.error(f"Module {{self.name}} non disponible : {{self.error}}")
-"""
-        exec(class_code, globals())
+        st.error(f"Module {{self.name}} non disponible")
+        st.info(f"Erreur : {{self.error}}")
+        st.markdown("### 🛠️ Actions suggérées")
+        st.markdown("1. Vérifiez que le fichier `modules/{module_name}.py` existe")
+        st.markdown("2. Vérifiez les imports dans le fichier")
+        st.markdown("3. Consultez les logs pour plus de détails")
+""", globals())
         
     except Exception as e:
         error_msg = f"Erreur inattendue : {str(e)}"
@@ -86,19 +83,21 @@ class {class_name}:
         logger.error(f"❌ {class_name} - {error_msg}")
         
         # Créer une classe placeholder pour l'erreur
-        class_code = f"""
+        exec(f"""
 class {class_name}:
     '''Placeholder pour {class_name} avec erreur'''
     def __init__(self, *args, **kwargs):
-        self.name = "{class_name}"
+        self.name = "{class_name.replace('Module', '')}"
         self.available = False
         self.error = "{error_msg}"
+        self.icon = "❌"
+        self.description = "Erreur lors du chargement"
     
     def render(self):
         import streamlit as st
-        st.error(f"Erreur dans le module {{self.name}} : {{self.error}}")
-"""
-        exec(class_code, globals())
+        st.error(f"Erreur dans le module {{self.name}}")
+        st.code(f"{{self.error}}")
+""", globals())
 
 def get_modules_status() -> Dict[str, Any]:
     """Retourne le statut des modules"""
@@ -107,7 +106,8 @@ def get_modules_status() -> Dict[str, Any]:
         'loaded_count': len(_import_status['loaded']),
         'failed_count': len(_import_status['failed']),
         'loaded': _import_status['loaded'],
-        'failed': _import_status['failed']
+        'failed': _import_status['failed'],
+        'available_modules': AVAILABLE_MODULES
     }
 
 def test_modules():
