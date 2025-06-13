@@ -3,7 +3,7 @@
 
 import streamlit as st
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Union, Tuple, Callable
+from typing import Dict, Any, List, Optional, Union, Tuple
 from dataclasses import dataclass
 import io
 import base64
@@ -44,12 +44,19 @@ except ImportError:
     PDF_AVAILABLE = False
     st.warning("⚠️ reportlab non disponible - Export PDF désactivé")
 
-# Configuration centralisée
-try:
-    from config.cahier_des_charges import STYLE_DOCUMENT, HIERARCHIE_NUMEROTATION
-except ImportError:
-    STYLE_DOCUMENT = {}
-    HIERARCHIE_NUMEROTATION = {}
+# Configuration par défaut si le module config n'existe pas
+STYLE_DOCUMENT = {
+    'font': 'Times New Roman',
+    'font_size': 12,
+    'line_spacing': '1.5',
+    'margins': 'Normales'
+}
+
+HIERARCHIE_NUMEROTATION = {
+    'sections': 'ROMAINS',
+    'sous_sections': 'LETTRES',
+    'paragraphes': 'CHIFFRES'
+}
 
 # ========================= TYPES ET CONFIGURATIONS =========================
 
@@ -58,7 +65,7 @@ class ExportConfig:
     """Configuration unifiée pour tous les exports"""
     format: str  # 'docx', 'pdf', 'xlsx', 'txt', 'json', 'html', 'csv', 'rtf'
     title: str
-    content: Union[str, Dict, List, pd.DataFrame]
+    content: Union[str, Dict, List, Any]
     metadata: Optional[Dict] = None
     style_options: Optional[Dict] = None
     include_metadata: bool = True
@@ -126,6 +133,12 @@ class ExportManager:
     """Gestionnaire central pour tous les types d'export"""
     
     def __init__(self):
+        self.exporters = {}
+        self._init_exporters()
+        self._init_styles()
+    
+    def _init_exporters(self):
+        """Initialise les exporters disponibles"""
         self.exporters = {
             'docx': WordExporter(),
             'pdf': PDFExporter(),
@@ -136,8 +149,6 @@ class ExportManager:
             'csv': CSVExporter(),
             'rtf': RTFExporter()
         }
-        
-        self._init_styles()
     
     def _init_styles(self):
         """Initialise les styles et configurations"""
@@ -254,7 +265,9 @@ class ExportManager:
         # Options avancées
         with st.expander("⚙️ Options avancées", expanded=False):
             config = self._show_advanced_options(selected_format, key_prefix)
-        else:
+        
+        # Configuration par défaut si pas d'options avancées
+        if 'config' not in locals():
             config = ExportConfig(
                 format=selected_format,
                 title=title,
@@ -332,51 +345,58 @@ class ExportManager:
         
         # Options spécifiques au format
         if format == 'docx':
-            st.markdown("**Options Word**")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                config.style_options['font'] = st.selectbox(
-                    "Police",
-                    ["Times New Roman", "Arial", "Calibri", "Garamond"],
-                    key=f"{key_prefix}_font"
-                )
-                
-                config.style_options['font_size'] = st.number_input(
-                    "Taille (pt)",
-                    8, 20, 12,
-                    key=f"{key_prefix}_font_size"
-                )
-            
-            with col2:
-                config.style_options['line_spacing'] = st.selectbox(
-                    "Interligne",
-                    ["1.0", "1.15", "1.5", "2.0"],
-                    index=2,
-                    key=f"{key_prefix}_spacing"
-                )
-                
-                config.style_options['paper_size'] = st.selectbox(
-                    "Format papier",
-                    ["A4", "Letter", "Legal"],
-                    key=f"{key_prefix}_paper"
-                )
-        
+            self._show_word_options(config, key_prefix)
         elif format == 'xlsx':
-            st.markdown("**Options Excel**")
-            config.style_options['include_charts'] = st.checkbox(
-                "Générer des graphiques",
-                value=False,
-                key=f"{key_prefix}_charts"
-            )
-            
-            config.style_options['conditional_formatting'] = st.checkbox(
-                "Mise en forme conditionnelle",
-                value=False,
-                key=f"{key_prefix}_conditional"
-            )
+            self._show_excel_options(config, key_prefix)
         
         return config
+    
+    def _show_word_options(self, config: ExportConfig, key_prefix: str):
+        """Options spécifiques pour Word"""
+        st.markdown("**Options Word**")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            config.style_options['font'] = st.selectbox(
+                "Police",
+                ["Times New Roman", "Arial", "Calibri", "Garamond"],
+                key=f"{key_prefix}_font"
+            )
+            
+            config.style_options['font_size'] = st.number_input(
+                "Taille (pt)",
+                8, 20, 12,
+                key=f"{key_prefix}_font_size"
+            )
+        
+        with col2:
+            config.style_options['line_spacing'] = st.selectbox(
+                "Interligne",
+                ["1.0", "1.15", "1.5", "2.0"],
+                index=2,
+                key=f"{key_prefix}_spacing"
+            )
+            
+            config.style_options['paper_size'] = st.selectbox(
+                "Format papier",
+                ["A4", "Letter", "Legal"],
+                key=f"{key_prefix}_paper"
+            )
+    
+    def _show_excel_options(self, config: ExportConfig, key_prefix: str):
+        """Options spécifiques pour Excel"""
+        st.markdown("**Options Excel**")
+        config.style_options['include_charts'] = st.checkbox(
+            "Générer des graphiques",
+            value=False,
+            key=f"{key_prefix}_charts"
+        )
+        
+        config.style_options['conditional_formatting'] = st.checkbox(
+            "Mise en forme conditionnelle",
+            value=False,
+            key=f"{key_prefix}_conditional"
+        )
     
     def _get_format_display_name(self, format: str) -> str:
         """Nom d'affichage pour chaque format"""
@@ -482,6 +502,9 @@ class WordExporter(BaseExporter):
     def export(self, config: ExportConfig) -> bytes:
         """Export vers Word avec mise en forme avancée"""
         
+        if not DOCX_AVAILABLE:
+            raise ImportError("python-docx n'est pas installé")
+        
         doc = docx.Document()
         
         # Configuration du document
@@ -490,7 +513,7 @@ class WordExporter(BaseExporter):
         # Ajouter le contenu selon le type
         if isinstance(config.content, str):
             self._add_text_content(doc, config)
-        elif isinstance(config.content, pd.DataFrame):
+        elif PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
             self._add_dataframe_content(doc, config)
         elif isinstance(config.content, list):
             self._add_list_content(doc, config)
@@ -561,7 +584,8 @@ class WordExporter(BaseExporter):
         styles = doc.styles
         
         # Style pour sections principales
-        if 'JuridiqueSection' not in [s.name for s in styles]:
+        style_names = [s.name for s in styles]
+        if 'JuridiqueSection' not in style_names:
             section_style = styles.add_style('JuridiqueSection', WD_STYLE_TYPE.PARAGRAPH)
             section_style.font.name = config.style_options.get('font', 'Times New Roman')
             section_style.font.size = Pt(14)
@@ -613,7 +637,8 @@ class WordExporter(BaseExporter):
             # Détection de structure
             if re.match(r'^[IVX]+\.\s+', line):
                 # Section principale
-                para = doc.add_paragraph(line, style='JuridiqueSection' if 'JuridiqueSection' in [s.name for s in doc.styles] else 'Heading 1')
+                style_name = 'JuridiqueSection' if 'JuridiqueSection' in [s.name for s in doc.styles] else 'Heading 1'
+                para = doc.add_paragraph(line, style=style_name)
             elif re.match(r'^[A-Z]\.\s+', line):
                 # Sous-section
                 para = doc.add_paragraph(line, style='Heading 2')
@@ -633,6 +658,10 @@ class WordExporter(BaseExporter):
     
     def _add_dataframe_content(self, doc, config: ExportConfig):
         """Ajoute un DataFrame comme tableau"""
+        
+        if not PANDAS_AVAILABLE:
+            doc.add_paragraph("Pandas non disponible - Impossible d'afficher le tableau")
+            return
         
         df = config.content
         
@@ -727,7 +756,7 @@ class WordExporter(BaseExporter):
         footer_para = footer.paragraphs[0]
         footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Ajouter le champ de numéro de page (complexe en python-docx)
+        # Ajouter le champ de numéro de page
         footer_para.text = "Page "
 
 class PDFExporter(BaseExporter):
@@ -741,6 +770,9 @@ class PDFExporter(BaseExporter):
     
     def export(self, config: ExportConfig) -> bytes:
         """Export vers PDF"""
+        
+        if not PDF_AVAILABLE:
+            raise ImportError("reportlab n'est pas installé")
         
         buffer = io.BytesIO()
         
@@ -773,8 +805,10 @@ class PDFExporter(BaseExporter):
         # Contenu principal
         if isinstance(config.content, str):
             story.extend(self._process_text_pdf(config.content, styles))
-        elif isinstance(config.content, pd.DataFrame):
+        elif PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
             story.extend(self._add_dataframe_pdf(config.content, styles))
+        else:
+            story.append(Paragraph(str(config.content), styles['Normal']))
         
         # Générer le PDF
         doc.build(story)
@@ -806,7 +840,7 @@ class PDFExporter(BaseExporter):
         
         for line in text.split('\n'):
             if line.strip():
-                elements.append(Paragraph(line, styles['CustomNormal']))
+                elements.append(Paragraph(line, styles.get('CustomNormal', styles['Normal'])))
             else:
                 elements.append(Spacer(1, 12))
         
@@ -864,6 +898,9 @@ class ExcelExporter(BaseExporter):
     def export(self, config: ExportConfig) -> bytes:
         """Export vers Excel"""
         
+        if not PANDAS_AVAILABLE:
+            raise ImportError("pandas n'est pas installé")
+        
         buffer = io.BytesIO()
         
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -899,10 +936,10 @@ class ExcelExporter(BaseExporter):
         df.to_excel(writer, sheet_name=sheet_name, index=False)
         
         # Options de formatage
-        if config.style_options.get('freeze_headers', True):
+        if config.style_options.get('freeze_headers', True) and sheet_name in writer.sheets:
             writer.sheets[sheet_name].freeze_panes = 'A2'
         
-        if config.style_options.get('autofilter', True):
+        if config.style_options.get('autofilter', True) and sheet_name in writer.sheets:
             writer.sheets[sheet_name].auto_filter.ref = writer.sheets[sheet_name].dimensions
     
     def _export_list(self, writer, config: ExportConfig):
@@ -954,7 +991,7 @@ class ExcelExporter(BaseExporter):
                     
                     for cell in column:
                         try:
-                            if len(str(cell.value)) > max_length:
+                            if cell.value and len(str(cell.value)) > max_length:
                                 max_length = len(str(cell.value))
                         except:
                             pass
@@ -1024,7 +1061,7 @@ class JSONExporter(BaseExporter):
         }
         
         # Conversion du contenu
-        if isinstance(config.content, pd.DataFrame):
+        if PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
             data['content'] = config.content.to_dict('records')
         elif isinstance(config.content, (dict, list)):
             data['content'] = config.content
@@ -1072,7 +1109,7 @@ class HTMLExporter(BaseExporter):
         
         if isinstance(config.content, str):
             html += self._process_text_html(config.content)
-        elif isinstance(config.content, pd.DataFrame):
+        elif PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
             html += config.content.to_html(classes='table table-striped', index=False)
         else:
             html += f"<pre>{json.dumps(config.content, indent=2, default=str)}</pre>"
@@ -1178,6 +1215,14 @@ class CSVExporter(BaseExporter):
     
     def export(self, config: ExportConfig) -> bytes:
         """Export vers CSV"""
+        
+        if not PANDAS_AVAILABLE:
+            # Fallback simple
+            if isinstance(config.content, list):
+                content = '\n'.join(str(item) for item in config.content)
+            else:
+                content = str(config.content)
+            return content.encode('utf-8')
         
         if isinstance(config.content, pd.DataFrame):
             return config.content.to_csv(index=False).encode('utf-8')
