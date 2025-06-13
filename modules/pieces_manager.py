@@ -1,1698 +1,1483 @@
-"""
-Module unifié de gestion des pièces juridiques et création de listes de pièces
-Fusion optimisée avec amélioration de l'expérience utilisateur
-"""
+"""Application principale avec interface optimisée et navigation intelligente"""
 
 import streamlit as st
 from datetime import datetime
-import json
-from typing import Dict, List, Optional, Any, Tuple, Set
-import uuid
-import hashlib
-import mimetypes
-from pathlib import Path
-from collections import Counter, defaultdict
-import pandas as pd
-import io
+import asyncio
+from typing import Dict, List, Optional
 import re
-from dataclasses import dataclass, field
-from enum import Enum
+import sys
+import os
+import traceback
 
-# ========================= MODÈLES DE DONNÉES =========================
+print("=== DÉMARRAGE APPLICATION ===")
 
-class DocumentType(Enum):
-    PIECE_PROCEDURE = "piece_procedure"
-    PIECE_JURIDIQUE = "piece_juridique"
-    AUTRE = "autre"
+# Configuration de la page
+st.set_page_config(
+    page_title="Assistant Pénal des Affaires IA",
+    page_icon="⚖️",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-class StatutPiece(Enum):
-    ACTIF = "actif"
-    ARCHIVE = "archivé"
-    EN_REVISION = "en_revision"
-    CONFIDENTIEL = "confidentiel"
-    SUPPRIME = "supprimé"
-    SELECTIONNE = "sélectionné"
+# ========== SECTION 1: IMPORTS CENTRALISÉS ==========
 
-@dataclass
-class PieceJuridique:
-    """Modèle unifié pour une pièce juridique/procédure"""
-    # Identifiants
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    document_id: Optional[str] = None
-    
-    # Informations principales
-    nom: str = ""
-    titre: str = ""  # Alias pour compatibilité
-    type_piece: str = "Document"
-    categorie: str = "Autre"
-    numero_ordre: int = 1
-    cote: Optional[str] = None  # Ajout pour la liste des pièces
-    
-    # Description et contenu
-    description: Optional[str] = None
-    contenu_extrait: Optional[str] = None
-    
-    # Dates
-    date_ajout: datetime = field(default_factory=datetime.now)
-    date_modification: Optional[datetime] = None
-    date_document: Optional[datetime] = None
-    date_selection: Optional[datetime] = None
-    
-    # Fichier
-    chemin_fichier: Optional[str] = None
-    taille: Optional[int] = None
-    hash_fichier: Optional[str] = None
-    mime_type: Optional[str] = None
-    pages: Optional[int] = None  # Ajout pour la liste des pièces
-    format: Optional[str] = None  # Ajout pour la liste des pièces
-    
-    # Métadonnées
-    source: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    tags: List[str] = field(default_factory=list)
-    
-    # État et importance
-    statut: str = "actif"
-    importance: int = 5
-    pertinence: float = 0.5
-    pertinence_manuelle: Optional[int] = None
-    
-    # Gestion et suivi
-    notes: str = ""
-    modifie_par: Optional[str] = None
-    version: int = 1
-    versions_precedentes: List[Dict] = field(default_factory=list)
-    
-    # Relations
-    pieces_liees: List[str] = field(default_factory=list)
-    dossier_id: Optional[str] = None
-    
-    @property
-    def numero(self):
-        """Alias pour compatibilité"""
-        return self.numero_ordre
-    
-    @property
-    def date(self):
-        """Date principale du document"""
-        return self.date_document or self.date_ajout
+# Import des gestionnaires Azure
+AZURE_AVAILABLE = False
+AZURE_ERROR = None
 
-# ========================= GESTIONNAIRE PRINCIPAL =========================
+try:
+    import azure.search.documents
+    import azure.storage.blob
+    import azure.core
+    AZURE_AVAILABLE = True
+    print("✅ Modules Azure disponibles")
+except ImportError as e:
+    AZURE_ERROR = str(e)
+    print(f"⚠️ Modules Azure non disponibles: {AZURE_ERROR}")
 
-class GestionnairePiecesUnifie:
-    """Gestionnaire unifié pour toutes les pièces avec gestion de liste des pièces intégrée"""
+# Import de la configuration
+try:
+    from config.app_config import app_config, api_config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    print("⚠️ config.app_config non trouvé")
+    CONFIG_AVAILABLE = False
+    class DefaultConfig:
+        version = "2.0.0"
+        debug = False
+        max_file_size_mb = 10
+        max_files_per_upload = 5
+        enable_azure_storage = False
+        enable_azure_search = False
+        enable_multi_llm = True
+        enable_email = False
     
-    # Catégories avec patterns de détection et style
-    CATEGORIES_CONFIG = {
-        'Procédure': {
-            'patterns': ['plainte', 'procès-verbal', 'audition', 'perquisition', 'garde à vue', 
-                        'réquisitoire', 'assignation', 'citation', 'conclusions', 'requête', 'mémoire'],
-            'types': ['Assignation', 'Citation directe', 'Conclusions', 'Requête', 'Mémoire', 
-                     'Plainte', 'Procès-verbal', 'Audition'],
-            'icon': '📋',
-            'color': '#3498db'
-        },
-        'Décision': {
-            'patterns': ['jugement', 'arrêt', 'ordonnance', 'décision', 'verdict'],
-            'types': ['Jugement', 'Arrêt', 'Ordonnance', 'Décision'],
-            'icon': '⚖️',
-            'color': '#e74c3c'
-        },
-        'Expertise': {
-            'patterns': ['expertise', 'expert', 'rapport technique', 'analyse', 'évaluation technique'],
-            'types': ['Expertise', 'Rapport d\'expert', 'Analyse technique'],
-            'icon': '🔬',
-            'color': '#2ecc71'
-        },
-        'Contrat': {
-            'patterns': ['contrat', 'convention', 'accord', 'avenant', 'protocole', 'engagement'],
-            'types': ['Contrat', 'Avenant', 'Convention', 'Protocole', 'Accord'],
-            'icon': '📄',
-            'color': '#f39c12'
-        },
-        'Correspondance': {
-            'patterns': ['courrier', 'email', 'lettre', 'mail', 'courriel', 'message', 'notification'],
-            'types': ['Courrier', 'Email', 'Notification', 'Mise en demeure'],
-            'icon': '📧',
-            'color': '#9b59b6'
-        },
-        'Preuve': {
-            'patterns': ['attestation', 'procès-verbal', 'constat', 'témoignage', 'preuve'],
-            'types': ['Pièce justificative', 'Attestation', 'Procès-verbal', 'Constat', 'Témoignage'],
-            'icon': '🔍',
-            'color': '#e67e22'
-        },
-        'Financier': {
-            'patterns': ['bilan', 'compte', 'comptable', 'facture', 'devis', 'relevé', 'virement'],
-            'types': ['Facture', 'Devis', 'Relevé bancaire', 'Bilan', 'Grand livre'],
-            'icon': '💰',
-            'color': '#1abc9c'
-        },
-        'Identité': {
-            'patterns': ['carte identité', 'passeport', 'kbis', 'statuts', 'extrait', 'immatriculation'],
-            'types': ['Carte d\'identité', 'Passeport', 'KBIS', 'Statuts', 'RIB'],
-            'icon': '🆔',
-            'color': '#34495e'
-        },
-        'Média': {
-            'patterns': ['photo', 'vidéo', 'audio', 'enregistrement', 'image'],
-            'types': ['Photo', 'Vidéo', 'Audio', 'Plan', 'Schéma'],
-            'icon': '📸',
-            'color': '#95a5a6'
-        },
-        'Autre': {
-            'patterns': [],
-            'types': ['Document', 'Note', 'Rapport', 'Autre'],
-            'icon': '📎',
-            'color': '#7f8c8d'
-        }
-    }
-    
-    # Statuts avec configuration visuelle
-    STATUTS_CONFIG = {
-        'actif': {'label': 'Actif', 'icon': '✅', 'color': '#2ecc71'},
-        'sélectionné': {'label': 'Sélectionné', 'icon': '☑️', 'color': '#3498db'},
-        'archivé': {'label': 'Archivé', 'icon': '📦', 'color': '#95a5a6'},
-        'en_revision': {'label': 'En révision', 'icon': '🔄', 'color': '#f39c12'},
-        'confidentiel': {'label': 'Confidentiel', 'icon': '🔒', 'color': '#e74c3c'},
-        'supprimé': {'label': 'Supprimé', 'icon': '🗑️', 'color': '#c0392b'}
-    }
-    
-    def __init__(self):
-        """Initialise le gestionnaire unifié"""
-        # Collections principales
-        if 'pieces' not in st.session_state:
-            st.session_state.pieces = {}
-        if 'pieces_selectionnees' not in st.session_state:
+    app_config = DefaultConfig()
+    api_config = {}
+
+# Import des configurations de documents
+try:
+    from models.configurations import DocumentConfigurations
+    DOCUMENT_CONFIG_AVAILABLE = True
+    print("✅ Configurations de documents chargées")
+except ImportError:
+    DOCUMENT_CONFIG_AVAILABLE = False
+    print("⚠️ models.configurations non disponible")
+
+# Import des utilitaires de base
+try:
+    from utils.helpers import initialize_session_state, truncate_text
+    UTILS_AVAILABLE = True
+except ImportError:
+    UTILS_AVAILABLE = False
+    def initialize_session_state():
+        """Initialisation basique de session_state"""
+        if 'initialized' not in st.session_state:
+            st.session_state.initialized = True
+            st.session_state.search_history = []
+            st.session_state.azure_documents = {}
+            st.session_state.imported_documents = {}
             st.session_state.pieces_selectionnees = {}
-        if 'pieces_par_dossier' not in st.session_state:
-            st.session_state.pieces_par_dossier = defaultdict(list)
-        
-        # Métadonnées globales
-        if 'pieces_metadata' not in st.session_state:
-            st.session_state.pieces_metadata = {
-                'total_size': 0,
-                'last_modified': datetime.now(),
-                'tags': set(),
-                'categories_count': defaultdict(int),
-                'types_count': defaultdict(int)
-            }
-        
-        # Historique et favoris
-        if 'pieces_history' not in st.session_state:
-            st.session_state.pieces_history = []
-        if 'pieces_favoris' not in st.session_state:
-            st.session_state.pieces_favoris = set()
-        
-        # État UI
-        if 'selected_pieces' not in st.session_state:
-            st.session_state.selected_pieces = []
-        
-        # Import/Export manager
-        try:
-            from modules.export_manager import ExportManager
-            self.export_manager = ExportManager()
-        except ImportError:
-            self.export_manager = None
-    
-    # ==================== GESTION DES PIÈCES ====================
-    
-    def ajouter_piece(self, piece: PieceJuridique, dossier_id: Optional[str] = None, 
-                     auto_select: bool = False) -> str:
-        """Ajoute une pièce au système"""
-        # Validation
-        if not piece.nom and not piece.titre:
-            raise ValueError("Le nom de la pièce est obligatoire")
-        
-        # Normaliser le nom
-        if not piece.nom:
-            piece.nom = piece.titre
-        if not piece.titre:
-            piece.titre = piece.nom
-        
-        # Déterminer la catégorie si non définie
-        if piece.categorie == "Autre" or not piece.categorie:
-            piece.categorie = self._determiner_categorie(piece)
-        
-        # Générer une cote automatique si non définie
-        if not piece.cote:
-            piece.cote = self._generer_cote(piece)
-        
-        # Vérifier l'unicité du hash si fichier
-        if piece.hash_fichier:
-            for existing_piece in st.session_state.pieces.values():
-                if existing_piece.hash_fichier == piece.hash_fichier:
-                    if not st.checkbox(f"Le fichier '{piece.nom}' existe déjà. Continuer ?"):
-                        return existing_piece.id
-        
-        # Calculer la pertinence initiale
-        if hasattr(st.session_state, 'current_analysis'):
-            piece.pertinence = self._calculer_pertinence(piece, st.session_state.current_analysis)
-        
-        # Ajouter la pièce
-        st.session_state.pieces[piece.id] = piece
-        
-        # Associer au dossier
-        if dossier_id:
-            piece.dossier_id = dossier_id
-            st.session_state.pieces_par_dossier[dossier_id].append(piece.id)
-        
-        # Sélectionner automatiquement si demandé
-        if auto_select:
-            self.selectionner_piece(piece.id)
-        
-        # Mettre à jour les métadonnées
-        self._update_global_metadata(piece, 'add')
-        
-        # Historique
-        self._add_to_history('add', piece.id, {
-            'nom': piece.nom,
-            'type': piece.type_piece,
-            'categorie': piece.categorie
-        })
-        
-        return piece.id
-    
-    def selectionner_piece(self, piece_id: str, notes: str = ""):
-        """Sélectionne une pièce pour la communication"""
-        if piece_id not in st.session_state.pieces:
-            return
-        
-        piece = st.session_state.pieces[piece_id]
-        
-        # Marquer comme sélectionnée
-        piece.statut = 'sélectionné'
-        piece.date_selection = datetime.now()
-        if notes:
-            piece.notes = notes
-        
-        # Ajouter aux pièces sélectionnées
-        st.session_state.pieces_selectionnees[piece_id] = piece
-        
-        # Renumeroter
-        self._renumeroter_pieces_selectionnees()
-        
-        # Historique
-        self._add_to_history('select', piece_id, {'nom': piece.nom})
-    
-    # ==================== LISTE DES PIÈCES (ANCIEN BORDEREAU) ====================
-    
-    def creer_liste_pieces(self, pieces: List[PieceJuridique], analysis: dict) -> dict:
-        """Crée une liste des pièces structurée"""
-        
-        # Déterminer les parties si disponibles
-        pour = analysis.get('client', '[À compléter]')
-        contre = analysis.get('adversaire', '[À compléter]')
-        juridiction = analysis.get('juridiction', '[Tribunal]')
-        
-        liste = {
-            'header': f"""LISTE DES PIÈCES COMMUNIQUÉES
-AFFAIRE : {analysis.get('reference', 'N/A').upper()}
-DATE : {datetime.now().strftime('%d/%m/%Y')}
-NOMBRE DE PIÈCES : {len(pieces)}
-POUR : {pour}
-CONTRE : {contre}
-DEVANT : {juridiction}
+            st.session_state.azure_blob_manager = None
+            st.session_state.azure_search_manager = None
+            st.session_state.current_view = "accueil"
+            st.session_state.current_module = None
+            st.session_state.workflow_active = None
+            st.session_state.multi_ia_active = True
 
-INVENTAIRE DES PIÈCES :""",
-            'pieces': pieces,
-            'footer': f"""
-Total : {len(pieces)} pièces communiquées
+try:
+    from utils.styles import load_custom_css
+except ImportError:
+    def load_custom_css():
+        pass
 
-Je certifie que les pièces communiquées sont conformes aux originaux en ma possession.
+# Import du service de recherche universelle
+try:
+    from managers.universal_search_service import UniversalSearchService
+    SEARCH_SERVICE_AVAILABLE = True
+except ImportError:
+    SEARCH_SERVICE_AVAILABLE = False
+    class UniversalSearchService:
+        async def search(self, query: str, filters: Optional[Dict] = None):
+            from types import SimpleNamespace
+            return SimpleNamespace(
+                total_count=0,
+                documents=[],
+                suggestions=[],
+                facets={}
+            )
 
-Fait à [Ville], le {datetime.now().strftime('%d/%m/%Y')}
+# Import des managers principaux
+try:
+    from managers.multi_llm_manager import MultiLLMManager
+    MULTI_LLM_AVAILABLE = True
+except ImportError:
+    MULTI_LLM_AVAILABLE = False
 
-[Signature]""",
-            'metadata': {
-                'created_at': datetime.now(),
-                'piece_count': len(pieces),
-                'categories': list(set(p.categorie for p in pieces)),
-                'reference': analysis.get('reference'),
-                'pour': pour,
-                'contre': contre,
-                'juridiction': juridiction
-            }
-        }
-        
-        return liste
+# Import des dataclasses
+try:
+    from models.dataclasses import (
+        Document, PieceSelectionnee, PieceProcedure,
+        EmailConfig, Relationship, PlaidoirieResult, 
+        PreparationClientResult
+    )
+    DATACLASSES_AVAILABLE = True
+except ImportError:
+    DATACLASSES_AVAILABLE = False
+    print("⚠️ models.dataclasses non disponible")
+
+# ========== IMPORTS DES MODULES MÉTIER (RÉORGANISÉS PAR CATÉGORIE) ==========
+
+modules_disponibles = {}
+
+# === 1. RECHERCHE ET ANALYSE ===
+# Module unifié de recherche et analyse (PRIORITAIRE)
+try:
+    from modules.recherche_analyse_unifiee import (
+        show_page as show_recherche_analyse_page,
+        UnifiedSearchAnalysisInterface,
+        NaturalLanguageAnalyzer
+    )
+    modules_disponibles['recherche_analyse_unifiee'] = True
+    print("✅ Module recherche_analyse_unifiee chargé")
+except ImportError as e:
+    modules_disponibles['recherche_analyse_unifiee'] = False
+    print(f"❌ Module recherche_analyse_unifiee non disponible: {e}")
+
+# Module de jurisprudence
+try:
+    from modules.jurisprudence import (
+        show_page as show_jurisprudence_page,
+        show_jurisprudence_interface,
+        get_jurisprudence_for_document,
+        format_jurisprudence_citation,
+        verify_and_update_citations
+    )
+    modules_disponibles['jurisprudence'] = True
+    print("✅ Module jurisprudence chargé")
+except ImportError:
+    modules_disponibles['jurisprudence'] = False
+
+# Module d'analyse des risques
+try:
+    from modules.risques import display_risques_interface
+    modules_disponibles['risques'] = True
+except ImportError:
+    modules_disponibles['risques'] = False
+
+# === 2. GESTION DOCUMENTAIRE ===
+# Module unifié de gestion des pièces (REMPLACE pieces_manager ET bordereau)
+try:
+    from modules.pieces_manager import (
+        display_pieces_interface, 
+        init_pieces_manager,
+        process_pieces_request,
+        process_liste_pieces_request,
+        GestionnairePiecesUnifie
+    )
+    modules_disponibles['pieces_manager'] = True
+    if 'gestionnaire_pieces' not in st.session_state:
+        init_pieces_manager()
+    print("✅ Module pieces_manager unifié chargé (inclut liste des pièces)")
+except ImportError as e:
+    modules_disponibles['pieces_manager'] = False
+    print(f"❌ Module pieces_manager non disponible: {e}")
+
+# Note: Le module bordereau est maintenant intégré dans pieces_manager
+# On garde une compatibilité pour les références existantes
+modules_disponibles['bordereau'] = modules_disponibles['pieces_manager']
+
+# Module unifié d'import/export
+try:
+    from modules.import_export import (
+        show_import_interface, 
+        show_import_export_tabs,
+        process_import_request,
+        process_export_request,
+        show_import_export_interface
+    )
+    modules_disponibles['import_export'] = True
+    print("✅ Module import_export chargé")
+except ImportError:
+    modules_disponibles['import_export'] = False
+
+# Module explorateur de documents
+try:
+    from modules.explorer import show_explorer_interface
+    modules_disponibles['explorer'] = True
+    print("✅ Module explorer chargé")
+except ImportError:
+    modules_disponibles['explorer'] = False
+
+# Module de dossiers pénaux
+try:
+    from modules.dossier_penal import display_dossier_penal_interface
+    modules_disponibles['dossier_penal'] = True
+    print("✅ Module dossier_penal chargé")
+except ImportError:
+    modules_disponibles['dossier_penal'] = False
+
+# === 3. RÉDACTION ET GÉNÉRATION ===
+# Module unifié de rédaction (REMPLACE generation_juridique)
+try:
+    from modules.redaction_unified import (
+        show_page as show_redaction_unified,
+        GenerateurActesJuridiques,
+        TypeActe,
+        StyleRedaction,
+        PhaseProcedurale
+    )
+    modules_disponibles['redaction_unified'] = True
+    print("✅ Module redaction_unified chargé")
+except ImportError:
+    modules_disponibles['redaction_unified'] = False
+
+# Module de génération longue
+try:
+    from modules.generation_longue import show_generation_longue_interface
+    modules_disponibles['generation_longue'] = True
+    print("✅ Module generation_longue chargé")
+except ImportError:
+    modules_disponibles['generation_longue'] = False
+
+# Module de gestion des templates
+try:
+    from modules.template import show_template_manager
+    modules_disponibles['template'] = True
+except ImportError:
+    modules_disponibles['template'] = False
+
+# === 4. PRODUCTION ET VISUALISATION ===
+# Module Timeline
+try:
+    from modules.timeline import process_timeline_request
+    modules_disponibles['timeline'] = True
+    print("✅ Module timeline chargé")
     
-    def afficher_interface_liste_pieces(self, liste: dict, pieces: List[PieceJuridique]):
-        """Affiche l'interface de la liste des pièces avec options améliorées"""
+    def show_timeline_page():
+        """Page principale du module timeline"""
+        st.markdown("## 📅 Timeline des événements")
         
-        st.markdown("### 📋 Liste des pièces communiquées")
-        
-        # Barre d'outils
-        col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+        col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.info(f"📄 {liste['metadata']['piece_count']} pièces • {len(liste['metadata']['categories'])} catégories")
+            query = st.text_area(
+                "Décrivez la chronologie souhaitée",
+                placeholder="Ex: Créer une timeline des événements financiers dans le dossier VINCI\n"
+                           "Ou: Chronologie des auditions et témoignages\n"
+                           "Ou: Timeline procédurale de l'affaire",
+                height=100,
+                key="timeline_query"
+            )
         
         with col2:
-            format_affichage = st.selectbox(
-                "Format d'affichage",
-                ["Tableau détaillé", "Liste simple", "Par catégorie"],
-                key="format_liste_pieces"
-            )
+            st.markdown("#### Options rapides")
+            if st.button("📅 Timeline complète", use_container_width=True):
+                st.session_state.timeline_query = "Créer une timeline complète de tous les événements"
+            if st.button("⚖️ Timeline procédurale", use_container_width=True):
+                st.session_state.timeline_query = "Timeline des événements procéduraux"
+            if st.button("💰 Timeline financière", use_container_width=True):
+                st.session_state.timeline_query = "Timeline des transactions financiers"
         
-        with col3:
-            tri_option = st.selectbox(
-                "Trier par",
-                ["Numéro", "Catégorie", "Date", "Importance"],
-                key="tri_liste_pieces"
-            )
+        if query and st.button("🚀 Générer la timeline", type="primary", use_container_width=True):
+            process_timeline_request(query, {'reference': query})
         
-        with col4:
-            edit_mode = st.checkbox("✏️ Éditer", key="edit_liste_pieces")
+        if st.session_state.get('timeline_result'):
+            st.markdown("---")
+            st.markdown("### 📊 Timeline générée")
+            from modules.timeline import display_timeline_results
+            display_timeline_results(st.session_state.timeline_result)
+            
+except ImportError:
+    modules_disponibles['timeline'] = False
+    def show_timeline_page():
+        st.error("Module timeline non disponible")
+
+# Module Comparison
+try:
+    from modules.comparison import process_comparison_request
+    modules_disponibles['comparison'] = True
+    print("✅ Module comparison chargé")
+    
+    def show_comparison_page():
+        """Page principale du module comparison"""
+        st.markdown("## 🔄 Comparaison de documents")
         
-        # En-tête éditable
-        if edit_mode:
-            liste['header'] = st.text_area(
-                "En-tête de la liste",
-                value=liste['header'],
-                height=200,
-                key="liste_header_edit"
-            )
-        else:
-            with st.container():
-                st.markdown("""
-                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                    <pre style="margin: 0; white-space: pre-wrap;">{}</pre>
-                </div>
-                """.format(liste['header']), unsafe_allow_html=True)
-        
-        st.divider()
-        
-        # Affichage des pièces selon le format choisi
-        if format_affichage == "Tableau détaillé":
-            self._afficher_tableau_detaille(pieces, edit_mode, tri_option)
-        elif format_affichage == "Liste simple":
-            self._afficher_liste_simple(pieces, edit_mode, tri_option)
-        else:  # Par catégorie
-            self._afficher_par_categorie(pieces, edit_mode, tri_option)
-        
-        st.divider()
-        
-        # Pied de page éditable
-        if edit_mode:
-            liste['footer'] = st.text_area(
-                "Pied de page",
-                value=liste['footer'],
-                height=150,
-                key="liste_footer_edit"
-            )
-        else:
-            with st.container():
-                st.markdown("""
-                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;">
-                    <pre style="margin: 0; white-space: pre-wrap;">{}</pre>
-                </div>
-                """.format(liste['footer']), unsafe_allow_html=True)
-        
-        # Export et actions
-        st.markdown("### 📤 Export et partage")
-        
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2 = st.columns([2, 1])
         
         with col1:
-            # Export PDF (simulé)
-            if st.button("📄 PDF", key="export_liste_pdf", use_container_width=True):
-                st.info("💡 Utilisez l'export Word puis convertissez en PDF")
+            query = st.text_area(
+                "Décrivez la comparaison souhaitée",
+                placeholder="Ex: Comparer les témoignages de Martin et Dupont\n"
+                           "Ou: Analyser les divergences entre les expertises\n"
+                           "Ou: Comparer les versions du contrat",
+                height=100,
+                key="comparison_query"
+            )
         
         with col2:
-            # Export Word
-            if st.button("📝 Word", key="export_liste_word", use_container_width=True):
-                contenu = self.preparer_liste_pour_export(liste)
-                self._exporter_word(contenu, liste['metadata'])
+            st.markdown("#### Comparaisons types")
+            if st.button("📋 Auditions", use_container_width=True):
+                st.session_state.comparison_query = "Comparer toutes les auditions"
+            if st.button("🔬 Expertises", use_container_width=True):
+                st.session_state.comparison_query = "Comparer les rapports d'expertise"
+            if st.button("📄 Versions", use_container_width=True):
+                st.session_state.comparison_query = "Comparer les versions des documents"
         
-        with col3:
-            # Export Excel
-            if st.button("📊 Excel", key="export_liste_excel", use_container_width=True):
-                self._exporter_excel(pieces, liste['metadata'])
+        if query and st.button("🚀 Lancer la comparaison", type="primary", use_container_width=True):
+            process_comparison_request(query, {'reference': query})
         
-        with col4:
-            # Copier
-            if st.button("📋 Copier", key="copy_liste", use_container_width=True):
-                text_content = self.preparer_liste_pour_export(liste)['text']
-                st.code(text_content, language=None)
-                st.info("💡 Sélectionnez et copiez le texte")
-        
-        # Actions supplémentaires
-        with st.expander("⚙️ Actions avancées"):
-            col1, col2 = st.columns(2)
+        if st.session_state.get('comparison_result'):
+            st.markdown("---")
+            st.markdown("### 📊 Résultats de la comparaison")
+            from modules.comparison import display_comparison_results
+            display_comparison_results(st.session_state.comparison_result)
             
-            with col1:
-                if st.button("📧 Préparer pour envoi", key="prepare_email_liste"):
-                    st.session_state.pending_email = {
-                        'type': 'liste_pieces',
-                        'content': liste,
-                        'subject': f"Liste des pièces - {liste['metadata']['reference']}"
-                    }
-                    st.success("📧 Liste prête pour envoi")
-                
-                if st.button("🔄 Actualiser la numérotation", key="renumeroter_liste"):
-                    self._renumeroter_pieces_selectionnees()
-                    st.rerun()
-            
-            with col2:
-                if st.button("📋 Générer les cotes automatiquement", key="generer_cotes"):
-                    for piece in pieces:
-                        if not piece.cote:
-                            piece.cote = self._generer_cote(piece)
-                    st.success("✅ Cotes générées")
-                    st.rerun()
-                
-                if st.button("✅ Valider la liste", key="valider_liste"):
-                    erreurs = self.valider_liste_pieces(liste)
-                    if erreurs:
-                        for erreur in erreurs:
-                            st.error(f"❌ {erreur}")
-                    else:
-                        st.success("✅ Liste validée et prête")
-        
-        # Stocker la liste
-        st.session_state.current_liste_pieces = liste
-    
-    def _afficher_tableau_detaille(self, pieces: List[PieceJuridique], edit_mode: bool, tri: str):
-        """Affiche un tableau détaillé des pièces"""
-        
-        # Trier les pièces
-        pieces_triees = self._trier_pieces(pieces, tri)
-        
-        # Créer le DataFrame
-        df_data = []
-        for piece in pieces_triees:
-            df_data.append({
-                'N°': piece.numero,
-                'Cote': piece.cote or f"P-{piece.numero:03d}",
-                'Titre': piece.titre,
-                'Description': piece.description or '',
-                'Catégorie': piece.categorie,
-                'Type': piece.type_piece,
-                'Date': piece.date.strftime('%d/%m/%Y') if piece.date else 'N/A',
-                'Pages': piece.pages or '-',
-                'Format': piece.format or '-',
-                'Importance': piece.importance,
-                'Notes': piece.notes or ''
-            })
-        
-        df = pd.DataFrame(df_data)
-        
-        if edit_mode:
-            # Mode édition avec data_editor
-            edited_df = st.data_editor(
-                df,
-                use_container_width=True,
-                num_rows="fixed",
-                key="liste_pieces_editor",
-                column_config={
-                    'N°': st.column_config.NumberColumn(width='small'),
-                    'Importance': st.column_config.NumberColumn(min_value=1, max_value=10, width='small'),
-                    'Pages': st.column_config.TextColumn(width='small'),
-                    'Description': st.column_config.TextColumn(width='large'),
-                    'Notes': st.column_config.TextColumn(width='medium')
-                }
-            )
-            
-            # Bouton pour sauvegarder les modifications
-            if st.button("💾 Sauvegarder les modifications", key="save_liste_edits"):
-                # Appliquer les modifications
-                for i, row in edited_df.iterrows():
-                    piece = pieces_triees[i]
-                    piece.cote = row['Cote']
-                    piece.description = row['Description']
-                    piece.notes = row['Notes']
-                    if isinstance(row['Pages'], (int, str)) and str(row['Pages']).isdigit():
-                        piece.pages = int(row['Pages'])
-                
-                st.success("✅ Modifications enregistrées")
-                st.rerun()
-        else:
-            # Affichage simple avec style amélioré
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'N°': st.column_config.NumberColumn(width='small'),
-                    'Importance': st.column_config.ProgressColumn(
-                        min_value=1,
-                        max_value=10,
-                        format="⭐ %d",
-                        width='small'
-                    ),
-                    'Description': st.column_config.TextColumn(width='large'),
-                    'Notes': st.column_config.TextColumn(width='medium')
-                }
-            )
-        
-        # Statistiques rapides
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            total_pages = sum(p.pages for p in pieces if p.pages and isinstance(p.pages, int))
-            st.metric("Pages totales", total_pages if total_pages > 0 else "N/A")
-        with col2:
-            imp_moyenne = sum(p.importance for p in pieces) / len(pieces) if pieces else 0
-            st.metric("Importance moyenne", f"{imp_moyenne:.1f}/10")
-        with col3:
-            nb_avec_notes = sum(1 for p in pieces if p.notes)
-            st.metric("Pièces annotées", f"{nb_avec_notes}/{len(pieces)}")
-        with col4:
-            nb_categories = len(set(p.categorie for p in pieces))
-            st.metric("Catégories", nb_categories)
-    
-    def _afficher_liste_simple(self, pieces: List[PieceJuridique], edit_mode: bool, tri: str):
-        """Affiche une liste simple des pièces"""
-        
-        pieces_triees = self._trier_pieces(pieces, tri)
-        
-        # Format de liste simple
-        for piece in pieces_triees:
-            cote = piece.cote or f"P-{piece.numero:03d}"
-            cat_config = self.CATEGORIES_CONFIG[piece.categorie]
-            
-            with st.container():
-                if edit_mode:
-                    col1, col2, col3 = st.columns([1, 3, 1])
-                    with col1:
-                        st.write(f"**{piece.numero}. {cote}**")
-                    with col2:
-                        nouveau_titre = st.text_input(
-                            "Titre",
-                            value=piece.titre,
-                            key=f"edit_titre_{piece.id}",
-                            label_visibility="collapsed"
-                        )
-                        if nouveau_titre != piece.titre:
-                            piece.titre = nouveau_titre
-                            piece.nom = nouveau_titre
-                    with col3:
-                        st.write(f"{cat_config['icon']} {piece.categorie}")
-                else:
-                    st.write(f"**{piece.numero}. {cote}** - {piece.titre} ({cat_config['icon']} {piece.categorie})")
-                
-                if piece.description:
-                    st.caption(f"   → {piece.description}")
-                
-                if piece.date_document:
-                    st.caption(f"   📅 Date : {piece.date_document.strftime('%d/%m/%Y')}")
-                
-                if piece.pages:
-                    st.caption(f"   📄 {piece.pages} pages")
-    
-    def _afficher_par_categorie(self, pieces: List[PieceJuridique], edit_mode: bool, tri: str):
-        """Affiche les pièces groupées par catégorie"""
-        
-        pieces_par_cat = defaultdict(list)
-        for piece in pieces:
-            pieces_par_cat[piece.categorie].append(piece)
-        
-        # Trier les catégories
-        categories_triees = sorted(pieces_par_cat.keys())
-        
-        for categorie in categories_triees:
-            cat_pieces = pieces_par_cat[categorie]
-            cat_pieces = self._trier_pieces(cat_pieces, tri)
-            cat_config = self.CATEGORIES_CONFIG[categorie]
-            
-            # En-tête de catégorie avec style
-            st.markdown(f"""
-            <div style="background-color: {cat_config['color']}20; 
-                        padding: 10px; border-radius: 5px; 
-                        margin: 10px 0; border-left: 4px solid {cat_config['color']};">
-                <h4 style="margin: 0;">{cat_config['icon']} {categorie.upper()} ({len(cat_pieces)} pièces)</h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Liste des pièces de la catégorie
-            for piece in cat_pieces:
-                cote = piece.cote or f"P-{piece.numero:03d}"
-                
-                with st.container():
-                    col1, col2, col3 = st.columns([1, 6, 2])
-                    
-                    with col1:
-                        st.write(f"**{piece.numero}.**")
-                    
-                    with col2:
-                        st.write(f"**{cote}** - {piece.titre}")
-                        if piece.description:
-                            st.caption(piece.description)
-                    
-                    with col3:
-                        if piece.date_document:
-                            st.caption(piece.date_document.strftime('%d/%m/%Y'))
-                        if piece.pages:
-                            st.caption(f"{piece.pages} p.")
-                
-                if edit_mode:
-                    with st.expander("✏️ Modifier", expanded=False):
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            piece.cote = st.text_input(
-                                "Cote",
-                                value=piece.cote or '',
-                                key=f"edit_cote_{piece.id}"
-                            )
-                        with col2:
-                            piece.pages = st.number_input(
-                                "Pages",
-                                value=piece.pages or 0,
-                                min_value=0,
-                                key=f"edit_pages_{piece.id}"
-                            )
-                        
-                        piece.notes = st.text_area(
-                            "Notes",
-                            value=piece.notes,
-                            key=f"edit_notes_cat_{piece.id}",
-                            height=50
-                        )
-    
-    def preparer_liste_pour_export(self, liste: dict) -> dict:
-        """Prépare la liste des pièces pour l'export unifié"""
-        
-        # Version texte complète avec mise en forme améliorée
-        text_lines = [liste['header'], '']
-        
-        # Largeurs de colonnes pour alignement
-        col_widths = {
-            'numero': 6,
-            'cote': 12,
-            'titre': 50,
-            'categorie': 20,
-            'date': 12,
-            'pages': 8
-        }
-        
-        # En-tête du tableau
-        header = (
-            f"{'N°'.ljust(col_widths['numero'])}"
-            f"{'COTE'.ljust(col_widths['cote'])}"
-            f"{'INTITULÉ'.ljust(col_widths['titre'])}"
-            f"{'CATÉGORIE'.ljust(col_widths['categorie'])}"
-            f"{'DATE'.ljust(col_widths['date'])}"
-            f"{'PAGES'.ljust(col_widths['pages'])}"
-        )
-        
-        separator = '=' * len(header)
-        
-        text_lines.append(header)
-        text_lines.append(separator)
-        
-        # Grouper par catégorie pour l'export texte
-        pieces_par_cat = defaultdict(list)
-        for piece in liste['pieces']:
-            pieces_par_cat[piece.categorie].append(piece)
-        
-        # Parcourir chaque catégorie
-        for categorie in sorted(pieces_par_cat.keys()):
-            cat_config = self.CATEGORIES_CONFIG[categorie]
-            pieces_cat = sorted(pieces_par_cat[categorie], key=lambda p: p.numero_ordre)
-            
-            # Titre de catégorie
-            text_lines.append('')
-            text_lines.append(f"{cat_config['icon']} {categorie.upper()} ({len(pieces_cat)} pièces)")
-            text_lines.append('-' * 40)
-            
-            # Pièces de la catégorie
-            for piece in pieces_cat:
-                cote = piece.cote or f"P-{piece.numero:03d}"
-                titre = self._tronquer_texte(piece.titre, col_widths['titre'])
-                categorie_short = self._tronquer_texte(piece.categorie, col_widths['categorie'])
-                date_str = piece.date.strftime('%d/%m/%Y') if piece.date else 'N/A'
-                pages_str = str(piece.pages) if piece.pages else '-'
-                
-                line = (
-                    f"{str(piece.numero).ljust(col_widths['numero'])}"
-                    f"{cote.ljust(col_widths['cote'])}"
-                    f"{titre.ljust(col_widths['titre'])}"
-                    f"{categorie_short.ljust(col_widths['categorie'])}"
-                    f"{date_str.ljust(col_widths['date'])}"
-                    f"{pages_str.ljust(col_widths['pages'])}"
-                )
-                
-                text_lines.append(line)
-                
-                # Description en retrait si présente
-                if piece.description:
-                    desc_lines = self._wrapper_texte(piece.description, 80, 10)
-                    for desc_line in desc_lines[:2]:  # Max 2 lignes
-                        text_lines.append(f"          {desc_line}")
-                
-                # Notes en italique si présentes
-                if piece.notes:
-                    text_lines.append(f"          Note: {piece.notes}")
-        
-        text_lines.extend(['', separator, liste['footer']])
-        
-        # DataFrame pour export Excel
-        df_pieces = pd.DataFrame([{
-            'N°': p.numero,
-            'Cote': p.cote or f"P-{p.numero:03d}",
-            'Intitulé': p.titre,
-            'Description': p.description or '',
-            'Catégorie': p.categorie,
-            'Type': p.type_piece,
-            'Date': p.date.strftime('%d/%m/%Y') if p.date else 'N/A',
-            'Pages': p.pages or '',
-            'Format': p.format or '',
-            'Importance': p.importance,
-            'Notes': p.notes or ''
-        } for p in liste['pieces']])
-        
-        # Résumé pour l'export
-        resume = self.generer_resume_liste(liste)
-        
-        return {
-            'text': '\n'.join(text_lines),
-            'dataframe': df_pieces,
-            'metadata': liste['metadata'],
-            'structured': liste,
-            'resume': resume
-        }
-    
-    def valider_liste_pieces(self, liste: dict) -> List[str]:
-        """Valide une liste de pièces et retourne les erreurs"""
-        
-        erreurs = []
-        
-        if not liste.get('pieces'):
-            erreurs.append("Aucune pièce dans la liste")
-            return erreurs
-        
-        # Vérifier les numéros de pièces
-        numeros = [p.numero for p in liste.get('pieces', [])]
-        if len(numeros) != len(set(numeros)):
-            erreurs.append("Numéros de pièces en double détectés")
-        
-        # Vérifier la séquence des numéros
-        numeros_sorted = sorted(numeros)
-        if numeros_sorted != list(range(1, len(numeros) + 1)):
-            erreurs.append("La numérotation des pièces n'est pas continue")
-        
-        # Vérifier les cotes
-        cotes = [p.cote for p in liste.get('pieces', []) if p.cote]
-        if len(cotes) != len(set(cotes)):
-            erreurs.append("Cotes en double détectées")
-        
-        # Vérifier les informations obligatoires
-        for piece in liste['pieces']:
-            if not piece.titre:
-                erreurs.append(f"Pièce n°{piece.numero} : titre manquant")
-            if not piece.categorie:
-                erreurs.append(f"Pièce n°{piece.numero} : catégorie manquante")
-        
-        # Vérifier l'en-tête
-        if '[À compléter]' in liste.get('header', ''):
-            erreurs.append("Informations manquantes dans l'en-tête (parties, juridiction...)")
-        
-        # Vérifier la cohérence des dates
-        for piece in liste['pieces']:
-            if piece.date_document and piece.date_document > datetime.now():
-                erreurs.append(f"Pièce n°{piece.numero} : date future détectée")
-        
-        return erreurs
-    
-    def generer_resume_liste(self, liste: dict) -> str:
-        """Génère un résumé de la liste des pièces"""
-        
-        pieces = liste.get('pieces', [])
-        
-        resume_lines = [
-            "RÉSUMÉ DE LA LISTE DES PIÈCES",
-            "=" * 40,
-            f"Référence : {liste['metadata'].get('reference', 'N/A')}",
-            f"Date : {liste['metadata']['created_at'].strftime('%d/%m/%Y')}",
-            f"Nombre total de pièces : {len(pieces)}",
-            "",
-            "PARTIES :",
-            f"  • Pour : {liste['metadata'].get('pour', 'N/A')}",
-            f"  • Contre : {liste['metadata'].get('contre', 'N/A')}",
-            f"  • Juridiction : {liste['metadata'].get('juridiction', 'N/A')}",
-            "",
-            "RÉPARTITION PAR CATÉGORIE :"
-        ]
-        
-        # Compter par catégorie
-        categories = Counter(p.categorie for p in pieces)
-        
-        for cat, count in categories.most_common():
-            cat_config = self.CATEGORIES_CONFIG[cat]
-            resume_lines.append(f"  {cat_config['icon']} {cat} : {count} pièce(s)")
-        
-        # Statistiques supplémentaires
-        resume_lines.extend([
-            "",
-            "STATISTIQUES :"
-        ])
-        
-        # Pages totales
-        total_pages = sum(p.pages for p in pieces if p.pages and isinstance(p.pages, int))
-        if total_pages:
-            resume_lines.append(f"  • Nombre total de pages : {total_pages}")
-        
-        # Importance moyenne
-        imp_moy = sum(p.importance for p in pieces) / len(pieces) if pieces else 0
-        resume_lines.append(f"  • Importance moyenne : {imp_moy:.1f}/10")
-        
-        # Pièces avec notes
-        nb_notes = sum(1 for p in pieces if p.notes)
-        if nb_notes:
-            resume_lines.append(f"  • Pièces annotées : {nb_notes}")
-        
-        # Types de documents
-        types_uniques = set(p.type_piece for p in pieces)
-        resume_lines.extend([
-            "",
-            f"TYPES DE DOCUMENTS ({len(types_uniques)}) :",
-        ])
-        for type_doc in sorted(types_uniques):
-            count = sum(1 for p in pieces if p.type_piece == type_doc)
-            resume_lines.append(f"  • {type_doc} : {count}")
-        
-        return '\n'.join(resume_lines)
-    
-    # ==================== MÉTHODES D'EXPORT AMÉLIORÉES ====================
-    
-    def _exporter_word(self, contenu: dict, metadata: dict):
-        """Export vers Word avec mise en forme"""
-        try:
-            # Créer un document Word simulé en HTML
-            html_content = f"""
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <style>
-                    body {{ font-family: Arial, sans-serif; }}
-                    .header {{ text-align: center; margin-bottom: 30px; }}
-                    .footer {{ margin-top: 50px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-                    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                    th {{ background-color: #f2f2f2; font-weight: bold; }}
-                    .category-header {{ background-color: #e8e8e8; font-weight: bold; }}
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2>LISTE DES PIÈCES COMMUNIQUÉES</h2>
-                    <p>Affaire : {metadata.get('reference', 'N/A')}</p>
-                    <p>Date : {datetime.now().strftime('%d/%m/%Y')}</p>
-                </div>
-                {self._generer_table_html(contenu['dataframe'])}
-                <div class="footer">
-                    <p>{contenu['structured']['footer']}</p>
-                </div>
-            </body>
-            </html>
-            """
-            
-            # Proposer le téléchargement
-            st.download_button(
-                "📥 Télécharger en Word/HTML",
-                html_content,
-                f"liste_pieces_{metadata.get('reference', 'doc')}_{datetime.now().strftime('%Y%m%d')}.html",
-                "text/html"
-            )
-            
-        except Exception as e:
-            st.error(f"Erreur lors de l'export Word : {str(e)}")
-    
-    def _exporter_excel(self, pieces: List[PieceJuridique], metadata: dict):
-        """Export Excel multi-feuilles avec mise en forme"""
-        try:
-            output = io.BytesIO()
-            
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Feuille principale - Liste détaillée
-                df_main = pd.DataFrame([{
-                    'N°': p.numero,
-                    'Cote': p.cote or f"P-{p.numero:03d}",
-                    'Intitulé': p.titre,
-                    'Description': p.description or '',
-                    'Catégorie': p.categorie,
-                    'Type': p.type_piece,
-                    'Date': p.date,
-                    'Pages': p.pages or '',
-                    'Format': p.format or '',
-                    'Importance': p.importance,
-                    'Notes': p.notes or ''
-                } for p in pieces])
-                
-                df_main.to_excel(writer, sheet_name='Liste des pièces', index=False)
-                
-                # Feuille résumé par catégorie
-                summary_data = []
-                for cat, pieces_cat in self.get_pieces_par_categorie(selected_only=True).items():
-                    summary_data.append({
-                        'Catégorie': cat,
-                        'Nombre de pièces': len(pieces_cat),
-                        'Pages totales': sum(p.pages for p in pieces_cat if p.pages),
-                        'Importance moyenne': sum(p.importance for p in pieces_cat) / len(pieces_cat) if pieces_cat else 0
-                    })
-                
-                df_summary = pd.DataFrame(summary_data)
-                df_summary.to_excel(writer, sheet_name='Résumé', index=False)
-                
-                # Feuille métadonnées
-                meta_data = {
-                    'Propriété': ['Référence', 'Date création', 'Nombre total de pièces', 
-                                 'Pour', 'Contre', 'Juridiction'],
-                    'Valeur': [
-                        metadata.get('reference', 'N/A'),
-                        metadata.get('created_at', datetime.now()).strftime('%d/%m/%Y %H:%M'),
-                        metadata.get('piece_count', len(pieces)),
-                        metadata.get('pour', 'N/A'),
-                        metadata.get('contre', 'N/A'),
-                        metadata.get('juridiction', 'N/A')
-                    ]
-                }
-                df_meta = pd.DataFrame(meta_data)
-                df_meta.to_excel(writer, sheet_name='Informations', index=False)
-                
-                # Mise en forme
-                workbook = writer.book
-                
-                # Format pour l'en-tête
-                header_format = workbook.add_format({
-                    'bold': True,
-                    'bg_color': '#D9E1F2',
-                    'border': 1
-                })
-                
-                # Appliquer le format aux en-têtes
-                for worksheet in writer.sheets.values():
-                    worksheet.set_row(0, None, header_format)
-                    
-                    # Ajuster les largeurs de colonnes
-                    worksheet.set_column('A:A', 8)   # N°
-                    worksheet.set_column('B:B', 12)  # Cote
-                    worksheet.set_column('C:C', 50)  # Intitulé
-                    worksheet.set_column('D:D', 40)  # Description
-                    worksheet.set_column('E:F', 15)  # Catégorie, Type
-                    worksheet.set_column('G:G', 12)  # Date
-                    worksheet.set_column('H:I', 10)  # Pages, Format
-                    worksheet.set_column('J:J', 12)  # Importance
-                    worksheet.set_column('K:K', 30)  # Notes
-            
-            output.seek(0)
-            
-            # Télécharger
-            st.download_button(
-                "📥 Télécharger Excel",
-                output.getvalue(),
-                f"liste_pieces_{metadata.get('reference', 'doc')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            
-        except Exception as e:
-            st.error(f"Erreur lors de l'export Excel : {str(e)}")
-    
-    def _generer_table_html(self, df: pd.DataFrame) -> str:
-        """Génère une table HTML formatée"""
-        html = '<table>'
-        
-        # En-tête
-        html += '<thead><tr>'
-        for col in df.columns:
-            html += f'<th>{col}</th>'
-        html += '</tr></thead>'
-        
-        # Corps
-        html += '<tbody>'
-        current_cat = None
-        
-        for _, row in df.iterrows():
-            # Insérer une ligne de catégorie si changement
-            if row['Catégorie'] != current_cat:
-                current_cat = row['Catégorie']
-                html += f'<tr class="category-header"><td colspan="{len(df.columns)}">{current_cat}</td></tr>'
-            
-            html += '<tr>'
-            for val in row:
-                html += f'<td>{val if pd.notna(val) else ""}</td>'
-            html += '</tr>'
-        
-        html += '</tbody></table>'
-        return html
-    
-    # ==================== MÉTHODES UTILITAIRES AMÉLIORÉES ====================
-    
-    def _generer_cote(self, piece: PieceJuridique) -> str:
-        """Génère une cote automatique pour une pièce"""
-        # Format : [Catégorie abrégée]-[Numéro]-[Année]
-        cat_abbrev = {
-            'Procédure': 'PROC',
-            'Décision': 'DEC',
-            'Expertise': 'EXP',
-            'Contrat': 'CTR',
-            'Correspondance': 'CORR',
-            'Preuve': 'PRV',
-            'Financier': 'FIN',
-            'Identité': 'ID',
-            'Média': 'MED',
-            'Autre': 'DIV'
-        }
-        
-        abbrev = cat_abbrev.get(piece.categorie, 'DOC')
-        annee = piece.date.year if piece.date else datetime.now().year
-        
-        return f"{abbrev}-{piece.numero:03d}-{annee}"
-    
-    def _trier_pieces(self, pieces: List[PieceJuridique], critere: str) -> List[PieceJuridique]:
-        """Trie les pièces selon le critère donné"""
-        if critere == "Numéro":
-            return sorted(pieces, key=lambda p: p.numero_ordre)
-        elif critere == "Catégorie":
-            return sorted(pieces, key=lambda p: (p.categorie, p.numero_ordre))
-        elif critere == "Date":
-            return sorted(pieces, key=lambda p: (p.date if p.date else datetime.min, p.numero_ordre))
-        elif critere == "Importance":
-            return sorted(pieces, key=lambda p: (p.importance, p.numero_ordre), reverse=True)
-        else:
-            return pieces
-    
-    def _tronquer_texte(self, texte: str, longueur_max: int) -> str:
-        """Tronque un texte à une longueur maximale"""
-        if len(texte) <= longueur_max:
-            return texte
-        return texte[:longueur_max-3] + '...'
-    
-    def _wrapper_texte(self, texte: str, largeur: int, indentation: int = 0) -> List[str]:
-        """Découpe un texte en lignes de largeur fixe"""
-        import textwrap
-        wrapper = textwrap.TextWrapper(
-            width=largeur,
-            initial_indent=' ' * indentation,
-            subsequent_indent=' ' * indentation
-        )
-        return wrapper.wrap(texte)
-    
-    def _determiner_categorie(self, piece: PieceJuridique) -> str:
-        """Détermine automatiquement la catégorie d'une pièce"""
-        text_lower = (piece.nom + ' ' + piece.type_piece + ' ' + 
-                     (piece.description or '') + ' ' + (piece.contenu_extrait or '')).lower()
-        
-        # Score pour chaque catégorie
-        scores = {}
-        
-        for categorie, config in self.CATEGORIES_CONFIG.items():
-            score = 0
-            if config['patterns']:
-                for pattern in config['patterns']:
-                    if pattern in text_lower:
-                        score += text_lower.count(pattern)
-                
-                # Bonus si le type correspond
-                if piece.type_piece in config['types']:
-                    score += 5
-                
-                scores[categorie] = score
-        
-        # Retourner la catégorie avec le meilleur score
-        if scores:
-            best_cat = max(scores.items(), key=lambda x: x[1])
-            if best_cat[1] > 0:
-                return best_cat[0]
-        
-        return 'Autre'
-    
-    def _calculer_pertinence(self, piece: PieceJuridique, analysis: Dict[str, Any]) -> float:
-        """Calcule la pertinence d'une pièce par rapport à une analyse"""
-        score = 0.3  # Score de base
-        
-        # Analyse du contenu
-        if analysis.get('subject_matter'):
-            subject_words = set(analysis['subject_matter'].lower().split())
-            piece_text = (piece.nom + ' ' + (piece.description or '') + ' ' + 
-                         (piece.contenu_extrait or '')).lower()
-            piece_words = set(piece_text.split())
-            
-            common_words = subject_words.intersection(piece_words)
-            if subject_words:
-                score += (len(common_words) / len(subject_words)) * 0.4
-        
-        # Référence exacte
-        if analysis.get('reference'):
-            ref_lower = analysis['reference'].lower()
-            if ref_lower in piece.nom.lower():
-                score += 0.3
-            elif piece.description and ref_lower in piece.description.lower():
-                score += 0.2
-        
-        # Fraîcheur
-        if piece.date_document:
-            age_days = (datetime.now() - piece.date_document).days
-            if age_days < 30:
-                score += 0.15
-            elif age_days < 90:
-                score += 0.1
-            elif age_days < 365:
-                score += 0.05
-        
-        # Importance
-        score += (piece.importance / 10) * 0.15
-        
-        # Catégorie pertinente
-        if analysis.get('legal_domains'):
-            if piece.categorie in ['Procédure', 'Décision', 'Expertise']:
-                score += 0.1
-        
-        return min(score, 1.0)
-    
-    def _renumeroter_pieces_selectionnees(self):
-        """Renumérotation intelligente des pièces sélectionnées"""
-        pieces = sorted(st.session_state.pieces_selectionnees.values(), 
-                       key=lambda p: (p.categorie, p.importance, p.date_ajout), reverse=True)
-        
-        # Renumeroter en gardant une logique
-        numero = 1
-        for piece in pieces:
-            piece.numero_ordre = numero
-            numero += 1
-            
-            # Mettre à jour la cote si elle contient le numéro
-            if piece.cote and '-' in piece.cote:
-                parts = piece.cote.split('-')
-                if len(parts) >= 2 and parts[1].isdigit():
-                    parts[1] = f"{piece.numero_ordre:03d}"
-                    piece.cote = '-'.join(parts)
-    
-    def _update_global_metadata(self, piece: PieceJuridique, action: str):
-        """Met à jour les métadonnées globales"""
-        metadata = st.session_state.pieces_metadata
-        
-        if action == 'add':
-            if piece.taille:
-                metadata['total_size'] += piece.taille
-            metadata['categories_count'][piece.categorie] += 1
-            metadata['types_count'][piece.type_piece] += 1
-            if piece.tags:
-                metadata['tags'].update(piece.tags)
-        
-        elif action == 'remove':
-            if piece.taille:
-                metadata['total_size'] = max(0, metadata['total_size'] - piece.taille)
-            metadata['categories_count'][piece.categorie] -= 1
-            metadata['types_count'][piece.type_piece] -= 1
-        
-        metadata['last_modified'] = datetime.now()
-    
-    def _add_to_history(self, action: str, piece_id: str, details: Dict[str, Any]):
-        """Ajoute une action à l'historique"""
-        entry = {
-            'timestamp': datetime.now(),
-            'action': action,
-            'piece_id': piece_id,
-            'details': details,
-            'user': st.session_state.get('current_user', 'Utilisateur')
-        }
-        
-        st.session_state.pieces_history.append(entry)
-        
-        # Limiter la taille
-        if len(st.session_state.pieces_history) > 1000:
-            st.session_state.pieces_history = st.session_state.pieces_history[-500:]
+except ImportError:
+    modules_disponibles['comparison'] = False
+    def show_comparison_page():
+        st.error("Module comparison non disponible")
 
-# ========================= FONCTIONS D'INTERFACE POUR LISTE DES PIÈCES =========================
+# Module de cartographie (mapping)
+try:
+    from modules.mapping import process_mapping_request
+    modules_disponibles['mapping'] = True
+except ImportError:
+    modules_disponibles['mapping'] = False
 
-def process_liste_pieces_request(query: str, analysis: dict):
-    """Traite une demande de création de liste des pièces"""
-    
-    pieces = st.session_state.get('pieces_selectionnees', {})
-    
-    if not pieces:
-        st.warning("⚠️ Aucune pièce sélectionnée pour la liste")
-        return
-    
-    # Initialiser le gestionnaire
-    gestionnaire = GestionnairePiecesUnifie()
-    
-    # Créer la liste
-    pieces_list = list(pieces.values())
-    liste = gestionnaire.creer_liste_pieces(pieces_list, analysis)
-    
-    # Afficher l'interface améliorée
-    gestionnaire.afficher_interface_liste_pieces(liste, pieces_list)
+# Module de synthèse
+try:
+    from modules.synthesis import show_page as show_synthesis_page
+    modules_disponibles['synthesis'] = True
+except ImportError:
+    modules_disponibles['synthesis'] = False
 
-# ========================= EXPORT DIRECT POUR COMPATIBILITÉ =========================
+# === 5. EXPORT ET COMMUNICATION ===
+# Module unifié d'export (REMPLACE export_juridique)
+try:
+    from modules.export_manager import export_manager, ExportConfig
+    modules_disponibles['export_manager'] = True
+    print("✅ Module export_manager chargé")
+except ImportError as e:
+    modules_disponibles['export_manager'] = False
+    print(f"❌ Module export_manager non disponible: {e}")
 
-def export_liste_pieces_to_format(liste: dict, format: str) -> bytes:
-    """Export direct de la liste des pièces dans un format spécifique"""
+# Module Email
+try:
+    from modules.email import (
+        process_email_request, 
+        show_email_interface,
+        prepare_and_send_document
+    )
+    modules_disponibles['email'] = True
+    print("✅ Module email chargé")
     
-    gestionnaire = GestionnairePiecesUnifie()
-    content = gestionnaire.preparer_liste_pour_export(liste)
-    
-    if format == 'txt':
-        return content['text'].encode('utf-8')
-    elif format == 'json':
-        return json.dumps(content['structured'], ensure_ascii=False, indent=2).encode('utf-8')
-    elif format in ['xlsx', 'csv']:
-        # Utiliser pandas pour l'export
-        df = content['dataframe']
-        if format == 'xlsx':
-            output = io.BytesIO()
-            df.to_excel(output, index=False)
-            return output.getvalue()
-        else:
-            return df.to_csv(index=False).encode('utf-8')
-    else:
-        return content['text'].encode('utf-8')
+    def show_email_page():
+        """Page principale du module email"""
+        show_email_interface()
+        
+except ImportError:
+    modules_disponibles['email'] = False
+    def show_email_page():
+        st.error("Module email non disponible")
 
-# ========================= INTÉGRATION PRINCIPALE =========================
+# === 6. PRÉPARATION ET SUPPORT CLIENT ===
+# Module de préparation client
+try:
+    from modules.preparation_client import (
+        show_page as show_preparation_page,
+        process_preparation_client_request
+    )
+    modules_disponibles['preparation_client'] = True
+    print("✅ Module preparation_client chargé")
+except ImportError:
+    modules_disponibles['preparation_client'] = False
 
-# Conserver toutes les méthodes de gestion des pièces du module original
-def display_pieces_interface():
-    """Interface principale de gestion des pièces"""
+# Module plaidoirie
+try:
+    from modules.plaidoirie import process_plaidoirie_request
+    modules_disponibles['plaidoirie'] = True
+except ImportError:
+    modules_disponibles['plaidoirie'] = False
+
+# === 7. CONFIGURATION ===
+# Module de configuration
+try:
+    from modules.configuration import show_page as show_configuration_page
+    modules_disponibles['configuration'] = True
+    print("✅ Module configuration chargé")
+except ImportError:
+    modules_disponibles['configuration'] = False
+
+# ========== SECTION 2: STYLES CSS MODERNES ==========
+
+st.markdown("""
+<style>
+    /* === DESIGN MODERNE ET ÉPURÉ === */
+    .main {
+        padding: 0;
+        max-width: 100%;
+    }
     
-    # CSS personnalisé amélioré
-    st.markdown("""
-    <style>
-    .piece-card {
-        background: white;
-        border-radius: 10px;
-        padding: 1rem;
-        margin-bottom: 0.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    /* Navigation principale moderne */
+    .main-nav {
+        background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%);
+        padding: 1rem 2rem;
+        margin: 0 -1rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+    
+    /* Conteneur principal avec sidebar */
+    .app-container {
+        display: flex;
+        min-height: calc(100vh - 80px);
+        gap: 0;
+    }
+    
+    /* Sidebar moderne */
+    .modern-sidebar {
+        width: 280px;
+        background: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+        padding: 1.5rem 1rem;
+        overflow-y: auto;
         transition: all 0.3s ease;
     }
-    .piece-card:hover {
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        transform: translateY(-2px);
+    
+    .modern-sidebar.collapsed {
+        width: 60px;
     }
-    .tag-badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        margin: 0.25rem;
-        border-radius: 15px;
-        font-size: 0.85rem;
-        background: #e3f2fd;
-        color: #1976d2;
-    }
-    .importance-bar {
-        height: 4px;
-        border-radius: 2px;
-        margin-top: 0.5rem;
-    }
-    .category-header {
-        font-weight: bold;
-        margin: 1rem 0 0.5rem 0;
-        padding: 0.5rem;
-        background: #f5f5f5;
-        border-radius: 5px;
-    }
-    .liste-pieces-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 2rem;
-        border-radius: 10px;
+    
+    /* Menu items */
+    .menu-section {
         margin-bottom: 2rem;
     }
-    </style>
-    """, unsafe_allow_html=True)
     
-    st.title("📎 Gestion Unifiée des Pièces")
+    .menu-section-title {
+        font-size: 0.85rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+        padding-left: 0.5rem;
+    }
     
-    gestionnaire = GestionnairePiecesUnifie()
+    .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0.75rem 1rem;
+        margin: 0.25rem 0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: #333;
+        text-decoration: none;
+    }
     
-    # Barre d'outils principale améliorée
-    col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 2, 2, 1, 1, 1, 1])
+    .menu-item:hover {
+        background: #e3f2fd;
+        color: #1976d2;
+        transform: translateX(4px);
+    }
+    
+    .menu-item.active {
+        background: #1976d2;
+        color: white;
+    }
+    
+    .menu-item .icon {
+        font-size: 1.2rem;
+        width: 24px;
+        text-align: center;
+    }
+    
+    /* Contenu principal */
+    .main-content {
+        flex: 1;
+        padding: 2rem;
+        background: #ffffff;
+        overflow-y: auto;
+    }
+    
+    /* Recherche universelle prominente */
+    .universal-search-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 3rem 2rem;
+        border-radius: 20px;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .universal-search-hero::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        animation: pulse 3s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.5; }
+        50% { transform: scale(1.1); opacity: 0.3; }
+    }
+    
+    /* Cards modernes */
+    .module-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border: 1px solid #f0f0f0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .module-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        border-color: #667eea;
+    }
+    
+    .module-card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 1rem;
+    }
+    
+    .module-card-icon {
+        font-size: 2rem;
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .module-card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1f3a;
+        margin: 0;
+    }
+    
+    .module-card-description {
+        color: #666;
+        font-size: 0.9rem;
+        flex-grow: 1;
+        margin-bottom: 1rem;
+    }
+    
+    /* Quick access grid */
+    .quick-access-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    /* Workflow cards */
+    .workflow-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 2rem;
+        border-radius: 16px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .workflow-card::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transform: scaleX(0);
+        transition: transform 0.3s ease;
+    }
+    
+    .workflow-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+    }
+    
+    .workflow-card:hover::after {
+        transform: scaleX(1);
+    }
+    
+    /* Status indicators */
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+    
+    .status-dot.online { background: #4caf50; }
+    .status-dot.offline { background: #f44336; }
+    .status-dot.warning { background: #ff9800; }
+    
+    /* Progress steps */
+    .progress-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        margin: 2rem 0;
+    }
+    
+    .progress-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+    
+    .progress-step-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #666;
+        transition: all 0.3s ease;
+    }
+    
+    .progress-step.active .progress-step-circle {
+        background: #667eea;
+        color: white;
+        transform: scale(1.1);
+    }
+    
+    .progress-step.completed .progress-step-circle {
+        background: #4caf50;
+        color: white;
+    }
+    
+    .progress-step-label {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+    }
+    
+    .progress-line {
+        position: absolute;
+        top: 20px;
+        left: 40px;
+        width: calc(100% + 2rem);
+        height: 2px;
+        background: #e0e0e0;
+        z-index: -1;
+    }
+    
+    .progress-line.completed {
+        background: #4caf50;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .modern-sidebar {
+            position: fixed;
+            left: -280px;
+            height: 100vh;
+            z-index: 200;
+        }
+        
+        .modern-sidebar.open {
+            left: 0;
+        }
+        
+        .main-content {
+            padding: 1rem;
+        }
+        
+        .universal-search-hero {
+            padding: 2rem 1rem;
+        }
+    }
+    
+    /* Animations fluides */
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Tooltips modernes */
+    .tooltip-modern {
+        position: relative;
+    }
+    
+    .tooltip-modern::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    
+    .tooltip-modern:hover::after {
+        opacity: 1;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ========== SECTION 3: GESTIONNAIRES AZURE ==========
+
+def init_azure_managers():
+    """Initialise les gestionnaires Azure avec logs détaillés"""
+    
+    if not AZURE_AVAILABLE:
+        print(f"⚠️ Azure non disponible: {AZURE_ERROR}")
+        st.session_state.azure_blob_manager = None
+        st.session_state.azure_search_manager = None
+        st.session_state.azure_error = AZURE_ERROR
+        return
+    
+    # Azure Blob Manager
+    if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
+        try:
+            if not os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
+                st.session_state.azure_blob_manager = None
+                st.session_state.azure_blob_error = "Connection string non définie"
+            else:
+                from managers.azure_blob_manager import AzureBlobManager
+                manager = AzureBlobManager()
+                st.session_state.azure_blob_manager = manager
+                print("✅ Azure Blob connecté")
+        except Exception as e:
+            print(f"❌ Erreur Azure Blob: {e}")
+            st.session_state.azure_blob_manager = None
+            st.session_state.azure_blob_error = str(e)
+    
+    # Azure Search Manager  
+    if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
+        try:
+            if not os.getenv('AZURE_SEARCH_ENDPOINT') or not os.getenv('AZURE_SEARCH_KEY'):
+                st.session_state.azure_search_manager = None
+                st.session_state.azure_search_error = "Endpoint ou clé non définis"
+            else:
+                from managers.azure_search_manager import AzureSearchManager
+                manager = AzureSearchManager()
+                st.session_state.azure_search_manager = manager
+                print("✅ Azure Search connecté")
+        except Exception as e:
+            print(f"❌ Erreur Azure Search: {e}")
+            st.session_state.azure_search_manager = None
+            st.session_state.azure_search_error = str(e)
+
+# ========== SECTION 4: NAVIGATION MODERNE ==========
+
+def show_modern_navigation():
+    """Affiche la navigation principale moderne"""
+    st.markdown('<div class="main-nav">', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns([3, 4, 2, 1])
     
     with col1:
-        if st.button("➕ Nouvelle pièce", key="new_piece_btn", type="primary", use_container_width=True):
-            st.session_state.show_add_piece_modal = True
+        st.markdown("# ⚖️ Assistant Juridique IA")
     
     with col2:
-        if st.button("📤 Import", key="import_btn", use_container_width=True):
-            st.session_state.show_import_modal = True
+        # Barre de recherche rapide dans la nav
+        search_query = st.text_input(
+            "Recherche rapide",
+            placeholder="Tapez votre recherche...",
+            key="nav_search",
+            label_visibility="collapsed"
+        )
     
     with col3:
-        if st.button("⚡ Actions groupées", key="bulk_actions_btn", use_container_width=True):
-            st.session_state.show_bulk_actions = True
+        # Indicateurs de statut
+        azure_connected = bool(st.session_state.get('azure_blob_manager') or st.session_state.get('azure_search_manager'))
+        multi_ia = st.session_state.get('multi_ia_active', True)
+        export_manager_ok = modules_disponibles.get('export_manager', False)
+        recherche_unifiee_ok = modules_disponibles.get('recherche_analyse_unifiee', False)
+        
+        status_html = f"""
+        <div style="display: flex; align-items: center; gap: 1rem; margin-top: 8px;">
+            <span><span class="status-dot {'online' if azure_connected else 'offline'}"></span>Azure</span>
+            <span><span class="status-dot {'online' if multi_ia else 'offline'}"></span>Multi-IA</span>
+            <span><span class="status-dot {'online' if recherche_unifiee_ok else 'offline'}"></span>Recherche IA</span>
+        </div>
+        """
+        st.markdown(status_html, unsafe_allow_html=True)
     
     with col4:
-        # Liste des pièces
-        if st.button("📋", key="gen_liste", help="Générer liste des pièces", use_container_width=True):
-            if st.session_state.pieces_selectionnees:
-                st.session_state.show_liste_pieces = True
-            else:
-                st.warning("Sélectionnez des pièces d'abord")
+        if st.button("⚙️", help="Paramètres"):
+            st.session_state.current_module = 'configuration'
     
-    with col5:
-        # Compteur de sélection UI
-        selected_count = len(st.session_state.get('selected_pieces', []))
-        if selected_count > 0:
-            st.metric("UI", selected_count)
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    with col6:
-        # Compteur de sélection pour communication
-        comm_count = len(st.session_state.pieces_selectionnees)
-        if comm_count > 0:
-            st.metric("Comm", comm_count)
-    
-    with col7:
-        if st.button("🔄", key="refresh_pieces", help="Actualiser"):
-            st.rerun()
-    
-    # Modales
-    if st.session_state.get('show_add_piece_modal'):
-        display_add_piece_modal(gestionnaire)
-    
-    if st.session_state.get('show_import_modal'):
-        display_import_modal(gestionnaire)
-    
-    if st.session_state.get('show_bulk_actions'):
-        display_bulk_actions_modal(gestionnaire)
-    
-    if st.session_state.get('show_liste_pieces'):
-        display_liste_pieces_modal(gestionnaire)
-    
-    # Onglets principaux avec icônes améliorées
-    tabs = st.tabs([
-        "📋 Vue d'ensemble",
-        "✅ Sélection communication",
-        "📋 Liste des pièces",
-        "🔍 Recherche avancée",
-        "⭐ Favoris",
-        "📊 Statistiques",
-        "📜 Historique",
-        "⚙️ Configuration"
-    ])
-    
-    with tabs[0]:
-        display_pieces_overview(gestionnaire)
-    
-    with tabs[1]:
-        display_selection_communication(gestionnaire)
-    
-    with tabs[2]:
-        display_liste_pieces_tab(gestionnaire)
-    
-    with tabs[3]:
-        display_advanced_search(gestionnaire)
-    
-    with tabs[4]:
-        display_favoris(gestionnaire)
-    
-    with tabs[5]:
-        display_statistics_dashboard(gestionnaire)
-    
-    with tabs[6]:
-        display_history(gestionnaire)
-    
-    with tabs[7]:
-        display_settings(gestionnaire)
+    # Traiter la recherche rapide
+    if search_query and st.session_state.get('nav_search') != st.session_state.get('last_nav_search'):
+        st.session_state.last_nav_search = search_query
+        st.session_state.universal_search_query = search_query
+        st.session_state.current_view = 'recherche_analyse'
 
-def display_liste_pieces_modal(gestionnaire: GestionnairePiecesUnifie):
-    """Modal pour générer une liste des pièces"""
+def show_modern_sidebar():
+    """Affiche la sidebar moderne avec menu organisé et optimisé"""
+    with st.sidebar:
+        # Logo/Titre
+        st.markdown("### 📚 Menu Principal")
+        
+        # Accueil
+        if st.button("🏠 Accueil", use_container_width=True, 
+                    type="primary" if st.session_state.get('current_view') == 'accueil' else "secondary"):
+            st.session_state.current_view = 'accueil'
+            st.session_state.current_module = None
+        
+        # Section Recherche & Analyse IA
+        st.markdown("#### 🔍 Recherche & Analyse")
+        
+        if st.button("🤖 Recherche & Analyse IA", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'recherche_analyse_unifiee' else "secondary"):
+            st.session_state.current_view = 'recherche_analyse'
+            st.session_state.current_module = 'recherche_analyse_unifiee'
+        
+        if st.button("⚖️ Jurisprudence", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'jurisprudence' else "secondary"):
+            st.session_state.current_view = 'jurisprudence'
+            st.session_state.current_module = 'jurisprudence'
+        
+        if modules_disponibles.get('risques'):
+            if st.button("⚠️ Analyse des risques", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'risques' else "secondary"):
+                st.session_state.current_view = 'risques'
+                st.session_state.current_module = 'risques'
+        
+        # Section Gestion documentaire
+        st.markdown("#### 📁 Documents & Pièces")
+        
+        if st.button("📎 Gestion des pièces", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'pieces_manager' else "secondary"):
+            st.session_state.current_view = 'pieces'
+            st.session_state.current_module = 'pieces_manager'
+        
+        if st.button("📋 Liste des pièces", use_container_width=True,
+                    type="primary" if st.session_state.get('current_view') == 'liste_pieces' else "secondary"):
+            st.session_state.current_view = 'liste_pieces'
+            st.session_state.current_module = 'pieces_manager'
+            st.session_state.show_liste_pieces_view = True
+        
+        if st.button("📥 Import/Export", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'import_export' else "secondary"):
+            st.session_state.current_view = 'import_export'
+            st.session_state.current_module = 'import_export'
+        
+        if modules_disponibles.get('dossier_penal'):
+            if st.button("📂 Dossiers pénaux", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'dossier_penal' else "secondary"):
+                st.session_state.current_view = 'dossiers'
+                st.session_state.current_module = 'dossier_penal'
+        
+        if modules_disponibles.get('explorer'):
+            if st.button("🗂️ Explorateur", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'explorer' else "secondary"):
+                st.session_state.current_view = 'explorer'
+                st.session_state.current_module = 'explorer'
+        
+        # Section Rédaction
+        st.markdown("#### ✍️ Rédaction & Production")
+        
+        if st.button("✍️ Rédaction d'actes", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'redaction_unified' else "secondary"):
+            st.session_state.current_view = 'redaction'
+            st.session_state.current_module = 'redaction_unified'
+        
+        if modules_disponibles.get('generation_longue'):
+            if st.button("📜 Documents longs", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'generation_longue' else "secondary"):
+                st.session_state.current_view = 'generation_longue'
+                st.session_state.current_module = 'generation_longue'
+        
+        # Section Visualisation & Analyse
+        st.markdown("#### 📊 Visualisation")
+        
+        tools = [
+            ("📅 Timeline", "timeline", "timeline"),
+            ("🔄 Comparaison", "comparison", "comparison"),
+            ("🗺️ Cartographie", "mapping", "mapping"),
+            ("📊 Synthèse", "synthesis", "synthesis"),
+        ]
+        
+        for label, view, module in tools:
+            if modules_disponibles.get(module):
+                if st.button(label, use_container_width=True,
+                            type="primary" if st.session_state.get('current_module') == module else "secondary"):
+                    st.session_state.current_view = view
+                    st.session_state.current_module = module
+        
+        # Section Communication & Support
+        st.markdown("#### 📧 Communication")
+        
+        if modules_disponibles.get('email'):
+            if st.button("📧 Emails", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'email' else "secondary"):
+                st.session_state.current_view = 'email'
+                st.session_state.current_module = 'email'
+        
+        if modules_disponibles.get('preparation_client'):
+            if st.button("👥 Préparation client", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'preparation_client' else "secondary"):
+                st.session_state.current_view = 'preparation_client'
+                st.session_state.current_module = 'preparation_client'
+        
+        if modules_disponibles.get('plaidoirie'):
+            if st.button("🎤 Plaidoirie", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'plaidoirie' else "secondary"):
+                st.session_state.current_view = 'plaidoirie'
+                st.session_state.current_module = 'plaidoirie'
+        
+        # Section Configuration
+        st.markdown("#### ⚙️ Configuration")
+        
+        if modules_disponibles.get('template'):
+            if st.button("📋 Templates", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'template' else "secondary"):
+                st.session_state.current_module = 'template'
+        
+        if st.button("🔧 Paramètres", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'configuration' else "secondary"):
+            st.session_state.current_module = 'configuration'
+
+# ========== SECTION 5: PAGE D'ACCUEIL ==========
+
+def show_home_page():
+    """Page d'accueil moderne avec recherche universelle et accès rapide"""
     
-    with st.container():
-        st.markdown("---")
-        
-        # En-tête stylisé
-        st.markdown("""
-        <div class="liste-pieces-header">
-            <h2>📋 Générer une Liste des Pièces</h2>
-            <p>Créez une liste formatée des pièces sélectionnées pour communication</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Fermer
-        if st.button("❌ Fermer", key="close_liste_modal"):
-            st.session_state.show_liste_pieces = False
+    # Hero section avec recherche universelle
+    st.markdown('<div class="universal-search-hero fade-in">', unsafe_allow_html=True)
+    st.markdown("## 🔍 Recherche Intelligente Universelle avec IA")
+    st.markdown("Décrivez ce que vous voulez faire en langage naturel")
+    
+    query = st.text_area(
+        "Votre requête",
+        placeholder="Ex: J'ai besoin de préparer l'audience de demain pour l'affaire Martin...\n"
+                   "Ou: Rédige une plainte pour abus de biens sociaux contre la société XYZ...\n"
+                   "Ou: Analyse tous les documents concernant la corruption...\n"
+                   "Ou: Créer une liste de pièces pour communiquer au tribunal...",
+        height=100,
+        key="universal_search",
+        label_visibility="collapsed"
+    )
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col2:
+        if st.button("🔍 Rechercher", type="primary", use_container_width=True):
+            if query:
+                handle_universal_search(query)
+    
+    with col3:
+        if st.button("🎲 Exemple", use_container_width=True):
+            examples = [
+                "Rédige une plainte avec constitution de partie civile pour abus de biens sociaux de 50 pages",
+                "Explore tous les documents du dossier VINCI",
+                "Analyse les risques juridiques dans le dossier @VINCI2024",
+                "Trouve la jurisprudence sur la corruption dans le secteur public",
+                "Prépare une liste des pièces pour l'audience du 15 janvier",
+                "Compare les témoignages de Martin et Dupont dans l'affaire ABC",
+                "Import tous les documents PDF du dossier Dupont",
+                "Créer une timeline des événements financiers",
+                "Prépare mon client pour son audition de demain",
+                "Créer une liste de communication des pièces pour le tribunal"
+            ]
+            import random
+            st.session_state.universal_search = random.choice(examples)
             st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Workflows principaux réorganisés
+    st.markdown("### 🎯 Workflows principaux")
+    
+    workflows = [
+        {
+            'icon': '🔍',
+            'title': 'Recherche & Analyse',
+            'description': 'Recherche IA, jurisprudence et analyse des risques',
+            'modules': ['recherche_analyse_unifiee', 'jurisprudence', 'risques'],
+            'primary': 'recherche_analyse_unifiee'
+        },
+        {
+            'icon': '📁',
+            'title': 'Gestion documentaire',
+            'description': 'Import, organisation et liste des pièces',
+            'modules': ['pieces_manager', 'import_export', 'dossier_penal'],
+            'primary': 'pieces_manager'
+        },
+        {
+            'icon': '✍️',
+            'title': 'Rédaction & Production',
+            'description': 'Rédaction d\'actes et documents longs',
+            'modules': ['redaction_unified', 'generation_longue'],
+            'primary': 'redaction_unified'
+        },
+        {
+            'icon': '📊',
+            'title': 'Visualisation & Export',
+            'description': 'Timeline, comparaisons et exports',
+            'modules': ['timeline', 'comparison', 'export_manager'],
+            'primary': 'timeline'
+        }
+    ]
+    
+    cols = st.columns(4)
+    for idx, workflow in enumerate(workflows):
+        with cols[idx]:
+            with st.container():
+                st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
+                st.markdown(f"#### {workflow['icon']} {workflow['title']}")
+                st.markdown(workflow['description'])
+                
+                # Vérifier la disponibilité des modules
+                available = sum(1 for m in workflow['modules'] if modules_disponibles.get(m, False))
+                total = len(workflow['modules'])
+                
+                if available > 0:
+                    st.caption(f"✅ {available}/{total} modules actifs")
+                    if st.button("Commencer", key=f"start_{workflow['primary']}", use_container_width=True):
+                        st.session_state.current_module = workflow['primary']
+                        st.rerun()
+                else:
+                    st.caption(f"❌ Modules non disponibles")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Accès rapide aux modules (réorganisé et simplifié)
+    st.markdown("### ⚡ Accès rapide aux fonctionnalités")
+    
+    # Nouvelle organisation par catégories optimisées
+    categories = {
+        "Intelligence Artificielle": [
+            ("🤖", "Recherche & Analyse IA", "Recherche et analyse unifiées par IA", "recherche_analyse_unifiee"),
+            ("⚖️", "Jurisprudence", "Base de jurisprudence avec vérification", "jurisprudence"),
+            ("⚠️", "Risques", "Analyse des risques juridiques", "risques"),
+            ("📊", "Synthèse", "Synthèse automatique", "synthesis"),
+        ],
+        "Documents & Dossiers": [
+            ("📎", "Gestion des pièces", "Organisez vos pièces et créez des listes", "pieces_manager"),
+            ("📥", "Import/Export", "Import/Export unifié de documents", "import_export"),
+            ("📂", "Dossiers pénaux", "Gestion des dossiers", "dossier_penal"),
+            ("🗂️", "Explorateur", "Explorez vos fichiers", "explorer"),
+        ],
+        "Production": [
+            ("✍️", "Rédaction", "Rédaction d'actes juridiques avec IA", "redaction_unified"),
+            ("📜", "Documents longs", "Documents de 25-50+ pages", "generation_longue"),
+            ("📋", "Templates", "Gestion des modèles", "template"),
+        ],
+        "Analyse & Communication": [
+            ("📅", "Timeline", "Chronologies visuelles", "timeline"),
+            ("🔄", "Comparaison", "Comparez des documents", "comparison"),
+            ("📧", "Emails", "Gestion des emails", "email"),
+            ("👥", "Préparation client", "Préparez vos clients (audition, interrogatoire)", "preparation_client"),
+        ]
+    }
+    
+    for cat_name, modules in categories.items():
+        st.markdown(f"#### {cat_name}")
+        cols = st.columns(4)
         
-        # Créer la liste
-        pieces = list(st.session_state.pieces_selectionnees.values())
-        
-        # Récupérer l'analyse si disponible
-        analysis = st.session_state.get('current_analysis', {})
-        
-        # Ajouter des champs éditables pour les informations manquantes
-        with st.expander("📝 Informations de l'affaire", expanded=True):
+        for idx, (icon, title, desc, module) in enumerate(modules):
+            if modules_disponibles.get(module):
+                with cols[idx % 4]:
+                    with st.container():
+                        st.markdown('<div class="module-card">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="module-card-header">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="module-card-icon">{icon}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<h3 class="module-card-title">{title}</h3>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="module-card-description">{desc}</p>', unsafe_allow_html=True)
+                        if st.button("Ouvrir", key=f"quick_{module}", use_container_width=True):
+                            st.session_state.current_module = module
+                            st.rerun()
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+# ========== SECTION 6: GESTION DE LA RECHERCHE UNIVERSELLE ==========
+
+def handle_universal_search(query: str):
+    """Traite la recherche universelle et redirige vers le bon module"""
+    query_lower = query.lower()
+    
+    # Si le module recherche unifié est disponible, l'utiliser directement
+    if modules_disponibles.get('recherche_analyse_unifiee'):
+        st.session_state.current_view = 'recherche_analyse'
+        st.session_state.current_module = 'recherche_analyse_unifiee'
+        st.session_state.universal_search_query = query
+        st.session_state.pending_query = query
+        st.rerun()
+        return
+    
+    # Sinon, utiliser l'analyse de patterns comme fallback
+    patterns = {
+        'import': {
+            'keywords': ['import', 'importer', 'charger', 'upload', 'télécharger', 'ajouter des documents', 'pdf', 'xlsx', 'csv'],
+            'module': 'import_export',
+            'view': 'import_export'
+        },
+        'export': {
+            'keywords': ['export', 'exporter', 'télécharger', 'sauvegarder', 'extraire', 'download', 'word', 'excel'],
+            'module': 'import_export',
+            'view': 'import_export',
+            'context': 'export'
+        },
+        'timeline': {
+            'keywords': ['timeline', 'chronologie', 'calendrier', 'événements', 'dates', 'temporel', 'historique'],
+            'module': 'timeline',
+            'view': 'timeline'
+        },
+        'comparison': {
+            'keywords': ['comparer', 'comparaison', 'différence', 'confronter', 'analyser les divergences', 'témoignages'],
+            'module': 'comparison',
+            'view': 'comparison'
+        },
+        'email': {
+            'keywords': ['email', 'mail', 'envoyer', 'courrier', 'correspondance', 'transmettre', 'destinataire'],
+            'module': 'email',
+            'view': 'email'
+        },
+        'pieces': {
+            'keywords': ['pièce', 'document', 'fichier', 'gérer les pièces', 'organiser', 'sélectionner', 'sélection', 'communication'],
+            'module': 'pieces_manager',
+            'view': 'pieces'
+        },
+        'liste_pieces': {
+            'keywords': ['liste des pièces', 'bordereau', 'communication des pièces', 'inventaire', 'liste de pièces'],
+            'module': 'pieces_manager',
+            'view': 'liste_pieces',
+            'context': 'liste'
+        },
+        'redaction': {
+            'keywords': ['rédiger', 'rédige', 'créer', 'générer', 'préparer', 'établir', 'plainte', 'conclusions', 'assignation'],
+            'module': 'redaction_unified',
+            'view': 'redaction'
+        },
+        'preparation': {
+            'keywords': ['préparer', 'préparation', 'client', 'audition', 'interrogatoire', 'audience', 'rendez-vous'],
+            'module': 'preparation_client',
+            'view': 'preparation_client'
+        },
+        'jurisprudence': {
+            'keywords': ['jurisprudence', 'arrêt', 'décision', 'cour de cassation', 'juridique', 'judilibre', 'légifrance'],
+            'module': 'jurisprudence',
+            'view': 'jurisprudence'
+        },
+        'risques': {
+            'keywords': ['risque', 'danger', 'menace', 'vulnérabilité', 'évaluation des risques'],
+            'module': 'risques',
+            'view': 'risques'
+        },
+        'dossier': {
+            'keywords': ['dossier', 'affaire', 'dossier pénal', 'organiser dossier'],
+            'module': 'dossier_penal',
+            'view': 'dossiers'
+        }
+    }
+    
+    # Détection du module approprié
+    best_match = None
+    best_score = 0
+    
+    for pattern_name, pattern_data in patterns.items():
+        score = sum(1 for keyword in pattern_data['keywords'] if keyword in query_lower)
+        if score > best_score:
+            best_score = score
+            best_match = pattern_data
+    
+    # Cas spécial : documents longs
+    if any(word in query_lower for word in ['50 pages', '40 pages', 'long', 'exhaustif']):
+        best_match = {'module': 'generation_longue', 'view': 'generation_longue'}
+        best_score = 10
+    
+    if best_match and best_score > 0:
+        st.session_state.current_view = best_match['view']
+        st.session_state.current_module = best_match['module']
+        st.session_state.search_context = query
+        if 'context' in best_match:
+            st.session_state.module_context = best_match['context']
+    else:
+        # Par défaut, utiliser le module de recherche unifié
+        st.session_state.current_view = 'recherche_analyse'
+        st.session_state.current_module = 'recherche_analyse_unifiee'
+        st.session_state.search_query = query
+    
+    st.rerun()
+
+# ========== SECTION 7: AFFICHAGE DES MODULES ==========
+
+def show_module_content():
+    """Affiche le contenu du module actuel"""
+    module = st.session_state.get('current_module')
+    
+    if not module:
+        return
+    
+    # Titre du module avec breadcrumb
+    module_titles = {
+        'recherche_analyse_unifiee': "🤖 Recherche & Analyse IA",
+        'jurisprudence': "⚖️ Recherche de jurisprudence",
+        'risques': "⚠️ Analyse des risques",
+        'pieces_manager': "📎 Gestion des pièces",
+        'import_export': "📥📤 Import/Export",
+        'dossier_penal': "📂 Dossiers pénaux",
+        'explorer': "🗂️ Explorateur de documents",
+        'redaction_unified': "✍️ Rédaction d'actes juridiques",
+        'generation_longue': "📜 Génération de documents longs",
+        'template': "📋 Gestion des templates",
+        'timeline': "📅 Timeline des événements",
+        'comparison': "🔄 Comparaison de documents",
+        'synthesis': "📊 Synthèse",
+        'email': "📧 Gestion des emails",
+        'preparation_client': "👥 Préparation client",
+        'plaidoirie': "🎤 Plaidoirie",
+        'mapping': "🗺️ Cartographie",
+        'configuration': "⚙️ Configuration"
+    }
+    
+    # Gérer les cas spéciaux pour pieces_manager
+    if module == 'pieces_manager' and st.session_state.get('current_view') == 'liste_pieces':
+        module_titles['pieces_manager'] = "📋 Liste des pièces"
+    
+    if module in module_titles:
+        col1, col2 = st.columns([10, 1])
+        with col1:
+            st.markdown(f"## {module_titles[module]}")
+        with col2:
+            if st.button("❌", help="Fermer"):
+                st.session_state.current_module = None
+                st.session_state.current_view = 'accueil'
+                st.rerun()
+    
+    # Afficher le module
+    try:
+        # === Modules de recherche et analyse ===
+        if module == 'recherche_analyse_unifiee' and modules_disponibles.get('recherche_analyse_unifiee'):
+            show_recherche_analyse_page()
+            
+        elif module == 'jurisprudence' and modules_disponibles.get('jurisprudence'):
+            # Passer la requête si elle existe
+            query = st.session_state.get('search_context', '')
+            show_jurisprudence_interface(query)
+            
+        elif module == 'risques' and modules_disponibles.get('risques'):
+            display_risques_interface()
+            
+        # === Modules de gestion documentaire ===
+        elif module == 'pieces_manager' and modules_disponibles.get('pieces_manager'):
+            # Vérifier si on doit afficher la vue liste des pièces
+            if st.session_state.get('current_view') == 'liste_pieces' or st.session_state.get('show_liste_pieces_view'):
+                # Créer une analyse factice si nécessaire
+                analysis = st.session_state.get('current_analysis', {
+                    'reference': '',
+                    'client': '',
+                    'adversaire': '',
+                    'juridiction': '',
+                    'action_type': 'liste_pieces'
+                })
+                process_liste_pieces_request("Créer une liste des pièces", analysis)
+            else:
+                display_pieces_interface()
+            
+        elif module == 'import_export' and modules_disponibles.get('import_export'):
+            if 'show_import_export_tabs' in globals():
+                show_import_export_tabs()
+            elif 'show_import_export_interface' in globals():
+                show_import_export_interface()
+            else:
+                show_import_interface()
+            
+        elif module == 'dossier_penal' and modules_disponibles.get('dossier_penal'):
+            display_dossier_penal_interface()
+            
+        elif module == 'explorer' and modules_disponibles.get('explorer'):
+            show_explorer_interface()
+            
+        # === Modules de rédaction ===
+        elif module == 'redaction_unified' and modules_disponibles.get('redaction_unified'):
+            show_redaction_unified()
+            
+        elif module == 'generation_longue' and modules_disponibles.get('generation_longue'):
+            show_generation_longue_interface()
+            
+        elif module == 'template' and modules_disponibles.get('template'):
+            show_template_manager()
+            
+        # === Modules de visualisation ===
+        elif module == 'timeline' and modules_disponibles.get('timeline'):
+            show_timeline_page()
+            
+        elif module == 'comparison' and modules_disponibles.get('comparison'):
+            show_comparison_page()
+            
+        elif module == 'synthesis' and modules_disponibles.get('synthesis'):
+            show_synthesis_page()
+            
+        elif module == 'mapping' and modules_disponibles.get('mapping'):
+            query = st.text_input("Décrivez la cartographie souhaitée")
+            if query:
+                process_mapping_request(query, {})
+                
+        # === Modules de communication ===
+        elif module == 'email' and modules_disponibles.get('email'):
+            show_email_page()
+            
+        elif module == 'preparation_client' and modules_disponibles.get('preparation_client'):
+            # Passer la requête si elle existe
+            query = st.session_state.get('search_context', '')
+            if query:
+                process_preparation_client_request(query, {'query': query})
+            else:
+                show_preparation_page()
+            
+        elif module == 'plaidoirie' and modules_disponibles.get('plaidoirie'):
+            st.markdown("## 🎤 Génération de plaidoirie")
+            query = st.text_area(
+                "Décrivez la plaidoirie souhaitée",
+                placeholder="Ex: Plaidoirie pour la défense dans l'affaire d'abus de biens sociaux...",
+                height=100
+            )
+            if query and st.button("🚀 Générer la plaidoirie", type="primary"):
+                process_plaidoirie_request(query, {})
+                
+        # === Configuration ===
+        elif module == 'configuration' and modules_disponibles.get('configuration'):
+            show_configuration_page()
+            
+        else:
+            st.error(f"Module {module} non disponible ou non reconnu")
+            
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du module : {str(e)}")
+        if app_config.debug:
+            st.code(traceback.format_exc())
+    finally:
+        # Nettoyer les états temporaires
+        if 'show_liste_pieces_view' in st.session_state:
+            del st.session_state.show_liste_pieces_view
+
+# ========== SECTION 8: FONCTION PRINCIPALE ==========
+
+def main():
+    """Fonction principale avec interface moderne et navigation intuitive"""
+    
+    # Initialisation
+    initialize_session_state()
+    load_custom_css()
+    init_azure_managers()
+    
+    # Navigation principale
+    show_modern_navigation()
+    
+    # Layout avec sidebar
+    show_modern_sidebar()
+    
+    # Contenu principal
+    if st.session_state.get('current_view') == 'accueil' and not st.session_state.get('current_module'):
+        show_home_page()
+    else:
+        show_module_content()
+    
+    # Footer minimal
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.caption(f"© 2024 Assistant Juridique IA v{app_config.version} - {datetime.now().strftime('%H:%M')}")
+    
+    # Mode développeur (caché par défaut)
+    if st.checkbox("🔧 Mode développeur", key="dev_mode", value=False):
+        with st.expander("Informations système"):
             col1, col2 = st.columns(2)
             
             with col1:
-                analysis['reference'] = st.text_input(
-                    "Référence de l'affaire",
-                    value=analysis.get('reference', ''),
-                    placeholder="Ex: RG 24/12345"
-                )
+                st.write("**Modules disponibles:**")
+                available = sum(1 for v in modules_disponibles.values() if v)
+                st.metric("Modules actifs", f"{available}/{len(modules_disponibles)}")
                 
-                analysis['client'] = st.text_input(
-                    "Pour (demandeur)",
-                    value=analysis.get('client', ''),
-                    placeholder="Nom du client"
-                )
+                # Liste détaillée
+                for module, status in sorted(modules_disponibles.items()):
+                    st.write(f"{'✅' if status else '❌'} {module}")
             
             with col2:
-                analysis['adversaire'] = st.text_input(
-                    "Contre (défendeur)",
-                    value=analysis.get('adversaire', ''),
-                    placeholder="Partie adverse"
-                )
+                st.write("**État système:**")
+                st.write(f"- Azure Blob: {'✅' if st.session_state.get('azure_blob_manager') else '❌'}")
+                st.write(f"- Azure Search: {'✅' if st.session_state.get('azure_search_manager') else '❌'}")
+                st.write(f"- Multi-IA: {'✅' if st.session_state.get('multi_ia_active') else '❌'}")
+                st.write(f"- Export Manager: {'✅' if modules_disponibles.get('export_manager') else '❌'}")
+                st.write(f"- Recherche IA unifiée: {'✅' if modules_disponibles.get('recherche_analyse_unifiee') else '❌'}")
+                st.write(f"- Jurisprudence: {'✅' if modules_disponibles.get('jurisprudence') else '❌'}")
+                st.write(f"- Préparation client: {'✅' if modules_disponibles.get('preparation_client') else '❌'}")
+                st.write(f"- Rédaction unifiée: {'✅' if modules_disponibles.get('redaction_unified') else '❌'}")
+                st.write(f"- Configurations: {'✅' if DOCUMENT_CONFIG_AVAILABLE else '❌'}")
+                st.write(f"- Vue actuelle: {st.session_state.get('current_view', 'N/A')}")
+                st.write(f"- Module actuel: {st.session_state.get('current_module', 'N/A')}")
                 
-                analysis['juridiction'] = st.text_input(
-                    "Juridiction",
-                    value=analysis.get('juridiction', ''),
-                    placeholder="Ex: Tribunal Judiciaire de Paris"
-                )
-        
-        # Créer et afficher la liste
-        liste = gestionnaire.creer_liste_pieces(pieces, analysis)
-        gestionnaire.afficher_interface_liste_pieces(liste, pieces)
+                # Notes d'optimisation
+                st.write("\n**Notes d'optimisation:**")
+                st.success("""
+                ✅ recherche_analyse_unifiee remplace recherche + analyse_ia
+                ✅ redaction_unified remplace generation_juridique  
+                ✅ import_export unifie import et export
+                ✅ pieces_manager intègre maintenant la gestion ET les listes de pièces (ex-bordereau)
+                ✅ jurisprudence avec API Judilibre/Légifrance
+                ✅ preparation_client avec plans de séances détaillés
+                """)
+                
+                # Signaler les redondances
+                st.write("\n**🔍 Redondances détectées et résolues:**")
+                st.info("""
+                • **Bordereau + Pieces Manager** → Fusionnés dans pieces_manager
+                  - La création de listes de pièces est maintenant intégrée
+                  - Accès via "Gestion des pièces" ou "Liste des pièces"
+                  
+                • **Export dispersé** → Centralisé dans export_manager
+                  - Tous les exports passent par le module unifié
+                  - Formats: Word, PDF, Excel, JSON
+                """)
 
-def display_liste_pieces_tab(gestionnaire: GestionnairePiecesUnifie):
-    """Onglet dédié à la gestion des listes de pièces"""
-    
-    st.markdown("### 📋 Gestion des Listes de Pièces")
-    
-    pieces_selectionnees = gestionnaire.get_pieces_selectionnees()
-    
-    if not pieces_selectionnees:
-        # Message d'aide stylisé
-        st.info("""
-        🎯 **Comment créer une liste de pièces :**
-        
-        1. Allez dans l'onglet "**Sélection communication**"
-        2. Sélectionnez les pièces à communiquer
-        3. Revenez ici pour générer la liste formatée
-        
-        Ou utilisez le bouton 📋 dans la barre d'outils principale.
-        """)
-        
-        if st.button("➡️ Aller à la sélection", key="go_to_selection"):
-            st.session_state.active_tab = 1
-            st.rerun()
-        
-        return
-    
-    # Informations sur la sélection actuelle
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Pièces sélectionnées", len(pieces_selectionnees))
-    
-    with col2:
-        categories = set(p.categorie for p in pieces_selectionnees)
-        st.metric("Catégories", len(categories))
-    
-    with col3:
-        total_pages = sum(p.pages for p in pieces_selectionnees if p.pages)
-        st.metric("Pages totales", total_pages if total_pages else "N/A")
-    
-    # Actions rapides
-    st.markdown("### 🚀 Actions rapides")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("📋 Créer une liste", key="create_liste_tab", use_container_width=True):
-            st.session_state.show_create_liste = True
-    
-    with col2:
-        if st.button("🔄 Réorganiser", key="reorg_liste_tab", use_container_width=True):
-            gestionnaire._renumeroter_pieces_selectionnees()
-            st.success("✅ Pièces réorganisées")
-            st.rerun()
-    
-    with col3:
-        if st.button("🏷️ Générer cotes", key="gen_cotes_tab", use_container_width=True):
-            for piece in pieces_selectionnees:
-                if not piece.cote:
-                    piece.cote = gestionnaire._generer_cote(piece)
-            st.success("✅ Cotes générées")
-            st.rerun()
-    
-    with col4:
-        if st.button("✅ Valider", key="validate_liste_tab", use_container_width=True):
-            # Créer une liste temporaire pour validation
-            analysis = st.session_state.get('current_analysis', {})
-            liste = gestionnaire.creer_liste_pieces(pieces_selectionnees, analysis)
-            erreurs = gestionnaire.valider_liste_pieces(liste)
-            
-            if erreurs:
-                for erreur in erreurs:
-                    st.error(f"❌ {erreur}")
-            else:
-                st.success("✅ Liste valide et prête pour communication")
-    
-    # Aperçu de la liste actuelle
-    if st.session_state.get('show_create_liste'):
-        analysis = st.session_state.get('current_analysis', {})
-        liste = gestionnaire.creer_liste_pieces(pieces_selectionnees, analysis)
-        gestionnaire.afficher_interface_liste_pieces(liste, pieces_selectionnees)
-    else:
-        # Aperçu rapide
-        st.markdown("### 👁️ Aperçu de la sélection")
-        
-        # Options d'affichage
-        view_option = st.radio(
-            "Format d'aperçu",
-            ["Compact", "Détaillé", "Par catégorie"],
-            horizontal=True,
-            key="preview_format"
-        )
-        
-        if view_option == "Compact":
-            for i, piece in enumerate(pieces_selectionnees[:10]):
-                st.write(f"{piece.numero}. {piece.cote or f'P-{piece.numero:03d}'} - {piece.titre}")
-            
-            if len(pieces_selectionnees) > 10:
-                st.info(f"... et {len(pieces_selectionnees) - 10} autres pièces")
-        
-        elif view_option == "Détaillé":
-            gestionnaire._afficher_tableau_detaille(pieces_selectionnees, False, "Numéro")
-        
-        else:  # Par catégorie
-            gestionnaire._afficher_par_categorie(pieces_selectionnees, False, "Numéro")
-    
-    # Historique des listes
-    with st.expander("📜 Historique des listes générées"):
-        st.info("Fonctionnalité à venir : historique des listes créées et exportées")
-
-# Importer toutes les autres fonctions du module original
-from typing import List, Dict, Any, Optional, Tuple, Set
-
-def display_pieces_overview(gestionnaire: GestionnairePiecesUnifie):
-    """Vue d'ensemble avec filtres rapides"""
-    
-    # Filtres en ligne
-    col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
-    
-    with col1:
-        search_query = st.text_input(
-            "🔍 Recherche",
-            placeholder="Nom, type, tag, description...",
-            key="quick_search"
-        )
-    
-    with col2:
-        categories = ["Toutes"] + list(gestionnaire.CATEGORIES_CONFIG.keys())
-        selected_categorie = st.selectbox("📁 Catégorie", categories, key="filter_cat")
-    
-    with col3:
-        statuts = ["Tous"] + [s['label'] for s in gestionnaire.STATUTS_CONFIG.values()]
-        selected_statut = st.selectbox("📌 Statut", statuts, key="filter_statut")
-    
-    with col4:
-        sort_options = ["Date récente", "Nom A-Z", "Importance", "Pertinence", "Numéro"]
-        sort_by = st.selectbox("🔀 Tri", sort_options, key="sort_by")
-    
-    with col5:
-        view_mode = st.radio("Vue", ["📋", "🎴", "📊"], horizontal=True, label_visibility="collapsed")
-    
-    # Préparer les filtres
-    filters = {}
-    if selected_categorie != "Toutes":
-        filters['categorie'] = selected_categorie
-    if selected_statut != "Tous":
-        statut_key = [k for k, v in gestionnaire.STATUTS_CONFIG.items() if v['label'] == selected_statut][0]
-        filters['statut'] = statut_key
-    
-    # Rechercher
-    pieces = gestionnaire.rechercher_pieces(search_query, filters)
-    
-    # Trier
-    if sort_by == "Date récente":
-        pieces.sort(key=lambda p: p.date_ajout, reverse=True)
-    elif sort_by == "Nom A-Z":
-        pieces.sort(key=lambda p: p.nom.lower())
-    elif sort_by == "Importance":
-        pieces.sort(key=lambda p: p.importance, reverse=True)
-    elif sort_by == "Pertinence":
-        pieces.sort(key=lambda p: p.pertinence, reverse=True)
-    elif sort_by == "Numéro":
-        pieces.sort(key=lambda p: p.numero_ordre)
-    
-    # Stats rapides
-    if pieces:
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total", len(pieces))
-        with col2:
-            selectionnees = len([p for p in pieces if p.statut == 'sélectionné'])
-            st.metric("Sélectionnées", selectionnees)
-        with col3:
-            avg_importance = sum(p.importance for p in pieces) / len(pieces)
-            st.metric("Importance moy.", f"{avg_importance:.1f}/10")
-        with col4:
-            favoris = len([p for p in pieces if p.id in st.session_state.pieces_favoris])
-            st.metric("Favoris", favoris)
-    
-    # Affichage selon le mode
-    if view_mode == "📋":
-        display_pieces_list_view(pieces, gestionnaire)
-    elif view_mode == "🎴":
-        display_pieces_cards_view(pieces, gestionnaire)
-    else:
-        display_pieces_table_view(pieces, gestionnaire)
-    
-    # Actions flottantes si sélection
-    if st.session_state.get('selected_pieces'):
-        display_floating_actions(gestionnaire)
-
-# Conserver toutes les autres fonctions d'affichage et de gestion...
-# [Les fonctions restantes du module original sont conservées telles quelles]
-
-# ========================= POINT D'ENTRÉE PRINCIPAL =========================
-
-def process_pieces_request(query: str, analysis: dict):
-    """Point d'entrée principal pour les requêtes de pièces"""
-    
-    # Déterminer le type de requête
-    if "liste" in query.lower() or "bordereau" in query.lower() or analysis.get('action_type') == 'liste_pieces':
-        process_liste_pieces_request(query, analysis)
-    else:
-        process_piece_selection_request(query, analysis)
-
-def process_piece_selection_request(query: str, analysis: dict):
-    """Point d'entrée pour la sélection de pièces depuis l'analyse juridique"""
-    
-    st.markdown("### 📋 Sélection de pièces pour communication")
-    
-    # Initialiser le gestionnaire
-    if 'gestionnaire_pieces' not in st.session_state:
-        st.session_state.gestionnaire_pieces = GestionnairePiecesUnifie()
-    
-    gestionnaire = st.session_state.gestionnaire_pieces
-    
-    # Stocker l'analyse courante pour le calcul de pertinence
-    st.session_state.current_analysis = analysis
-    
-    # Interface en deux colonnes
-    col_left, col_right = st.columns([1, 1])
-    
-    with col_left:
-        st.markdown("#### 📄 Documents disponibles")
-        _afficher_documents_disponibles_analyse(gestionnaire, analysis)
-    
-    with col_right:
-        st.markdown("#### ✅ Pièces sélectionnées")
-        _afficher_pieces_selectionnees_analyse(gestionnaire)
-    
-    # Barre d'actions
-    _afficher_barre_actions_analyse(gestionnaire)
-
-# Conserver toutes les autres fonctions helper...
-# [Toutes les fonctions restantes sont conservées]
+# Point d'entrée
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        st.error("❌ Erreur critique")
+        st.code(str(e))
+        with st.expander("Détails complets"):
+            st.code(traceback.format_exc())
