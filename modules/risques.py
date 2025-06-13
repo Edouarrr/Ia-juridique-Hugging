@@ -11,7 +11,7 @@ import pandas as pd
 
 # Import des modèles avec gestion d'erreur
 try:
-    from models.dataclasses import Risque, RiskLevel
+    from modules.dataclasses import Risque, RiskLevel
 except ImportError:
     # Définitions de secours si l'import échoue
     from dataclasses import dataclass, field
