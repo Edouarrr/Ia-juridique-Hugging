@@ -2,42 +2,123 @@
 """Module de préparation des clients pour auditions et interrogatoires"""
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 import re
 from collections import defaultdict
+import json
+from dataclasses import dataclass, asdict
+import plotly.graph_objects as go
+import plotly.express as px
 
 from config.app_config import LLMProvider
 from managers.multi_llm_manager import MultiLLMManager
 from models.dataclasses import PreparationClientResult
 from utils.helpers import extract_section
 
+@dataclass
+class PreparationSession:
+    """Classe pour une séance de préparation"""
+    session_number: int
+    title: str
+    theme: str
+    objectives: List[str]
+    duration_minutes: int
+    questions: List[Dict[str, str]]
+    exercises: List[Dict[str, Any]]
+    key_points: List[str]
+    homework: Optional[str] = None
+    completed: bool = False
+    completion_date: Optional[datetime] = None
+    score: Optional[float] = None
+    notes: str = ""
+
+@dataclass
+class PreparationPlan:
+    """Plan complet de préparation"""
+    total_sessions: int
+    sessions: List[PreparationSession]
+    prep_type: str
+    client_profile: str
+    strategy: str
+    created_date: datetime
+    target_date: Optional[datetime] = None
+    overall_progress: float = 0.0
+
 def process_preparation_client_request(query: str, analysis: dict):
     """Traite une demande de préparation client"""
     
     st.markdown("### 👥 Préparation du client")
     
-    # Configuration de la préparation
-    config = display_preparation_config_interface(analysis)
+    # Nouveau système de navigation par onglets
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🎯 Nouvelle préparation",
+        "📅 Plan de séances",
+        "📊 Suivi progression",
+        "📚 Bibliothèque",
+        "⚙️ Paramètres"
+    ])
     
-    if st.button("🚀 Générer la préparation", key="generate_preparation", type="primary"):
-        with st.spinner("📋 Génération de la préparation en cours..."):
-            result = generate_client_preparation(config, analysis)
-            
-            if result:
-                st.session_state.preparation_client_result = result
-                display_preparation_results(result)
+    with tab1:
+        # Configuration de la préparation
+        config = display_enhanced_preparation_config(analysis)
+        
+        if st.button("🚀 Générer le plan de préparation", key="generate_prep_plan", type="primary"):
+            with st.spinner("📋 Création du plan de préparation personnalisé..."):
+                # Générer d'abord le contenu complet
+                result = generate_client_preparation(config, analysis)
+                
+                if result:
+                    # Créer le plan de séances
+                    preparation_plan = create_preparation_sessions_plan(config, result, analysis)
+                    
+                    # Sauvegarder dans la session
+                    st.session_state.preparation_client_result = result
+                    st.session_state.preparation_plan = preparation_plan
+                    
+                    # Afficher le plan
+                    display_preparation_plan_overview(preparation_plan)
+    
+    with tab2:
+        if 'preparation_plan' in st.session_state:
+            display_sessions_management(st.session_state.preparation_plan)
+        else:
+            st.info("👆 Créez d'abord un plan de préparation dans l'onglet 'Nouvelle préparation'")
+    
+    with tab3:
+        if 'preparation_plan' in st.session_state:
+            display_progress_tracking(st.session_state.preparation_plan)
+        else:
+            st.info("👆 Aucun plan de préparation en cours")
+    
+    with tab4:
+        display_resources_library()
+    
+    with tab5:
+        display_preparation_settings()
 
-def display_preparation_config_interface(analysis: dict) -> dict:
-    """Interface de configuration pour la préparation"""
+def display_enhanced_preparation_config(analysis: dict) -> dict:
+    """Interface de configuration améliorée pour la préparation"""
     
     config = {}
     
-    # Configuration en colonnes
+    # En-tête avec informations contextuelles
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.info(f"📅 Date du jour : {datetime.now().strftime('%d/%m/%Y')}")
+    with col2:
+        target_date = st.date_input(
+            "📆 Date cible",
+            value=datetime.now() + timedelta(days=30),
+            key="target_date_input"
+        )
+        config['target_date'] = target_date
+    
+    # Configuration principale en colonnes
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Type de préparation
+        # Type de préparation avec description
         config['prep_type'] = st.selectbox(
             "📋 Type de préparation",
             ["audition", "interrogatoire", "comparution", "confrontation", "expertise"],
@@ -51,7 +132,18 @@ def display_preparation_config_interface(analysis: dict) -> dict:
             key="prep_type_select"
         )
         
-        # Profil du client
+        # Nombre de séances souhaité
+        config['nb_sessions'] = st.slider(
+            "📊 Nombre de séances",
+            min_value=5,
+            max_value=10,
+            value=7,
+            help="Nombre de séances de préparation à planifier",
+            key="nb_sessions_slider"
+        )
+    
+    with col2:
+        # Profil du client avec évaluation
         config['profil_client'] = st.selectbox(
             "👤 Profil psychologique",
             ["anxieux", "confiant", "agressif", "fragile", "technique"],
@@ -64,8 +156,16 @@ def display_preparation_config_interface(analysis: dict) -> dict:
             }.get(x, x.title()),
             key="profil_select"
         )
+        
+        # Niveau d'expérience judiciaire
+        config['experience_level'] = st.select_slider(
+            "⚖️ Expérience judiciaire",
+            options=["Novice", "Peu expérimenté", "Expérimenté", "Très expérimenté"],
+            value="Peu expérimenté",
+            key="experience_select"
+        )
     
-    with col2:
+    with col3:
         # Stratégie de défense
         config['strategie'] = st.selectbox(
             "🎯 Stratégie",
@@ -80,1248 +180,1950 @@ def display_preparation_config_interface(analysis: dict) -> dict:
             key="strategie_select"
         )
         
-        # Niveau de détail
-        config['niveau_detail'] = st.select_slider(
-            "📊 Niveau de détail",
-            options=["Essentiel", "Standard", "Approfondi", "Exhaustif"],
-            value="Approfondi",
-            key="niveau_detail_select"
+        # Durée des séances
+        config['session_duration'] = st.select_slider(
+            "⏱️ Durée par séance",
+            options=[60, 90, 120, 150, 180],
+            value=120,
+            format_func=lambda x: f"{x} minutes",
+            key="session_duration_select"
         )
     
-    with col3:
-        # Options supplémentaires
-        config['avec_simulation'] = st.checkbox(
-            "🎮 Inclure simulation Q/R",
-            value=True,
-            help="Questions probables et réponses suggérées",
-            key="avec_simulation_check"
-        )
+    # Section avancée
+    with st.expander("🔧 Options avancées", expanded=False):
+        col1, col2 = st.columns(2)
         
-        config['avec_pieges'] = st.checkbox(
-            "🚨 Identifier les pièges",
-            value=True,
-            help="Questions pièges et comment les éviter",
-            key="avec_pieges_check"
-        )
+        with col1:
+            config['focus_areas'] = st.multiselect(
+                "🎯 Domaines prioritaires",
+                [
+                    "Gestion du stress",
+                    "Cohérence du récit",
+                    "Questions techniques",
+                    "Langage corporel",
+                    "Gestion des silences",
+                    "Réponses aux pièges",
+                    "Maintien de la stratégie"
+                ],
+                default=["Gestion du stress", "Cohérence du récit", "Réponses aux pièges"],
+                key="focus_areas_select"
+            )
+            
+            config['difficulty_progression'] = st.radio(
+                "📈 Progression de difficulté",
+                ["Progressive", "Constante", "Intensive"],
+                index=0,
+                key="difficulty_radio"
+            )
         
-        config['avec_droits'] = st.checkbox(
-            "⚖️ Rappel des droits",
-            value=True,
-            help="Droits du client selon la procédure",
-            key="avec_droits_check"
+        with col2:
+            config['include_mock_sessions'] = st.checkbox(
+                "🎮 Inclure séances de simulation",
+                value=True,
+                key="mock_sessions_check"
+            )
+            
+            config['include_video_analysis'] = st.checkbox(
+                "📹 Prévoir analyse vidéo",
+                value=False,
+                help="Pour travailler le langage non-verbal",
+                key="video_analysis_check"
+            )
+            
+            config['include_stress_tests'] = st.checkbox(
+                "💪 Tests de résistance au stress",
+                value=True,
+                key="stress_tests_check"
+            )
+    
+    # Contexte de l'affaire amélioré
+    with st.expander("📂 Contexte détaillé de l'affaire", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            config['infractions'] = st.text_area(
+                "⚖️ Infractions reprochées",
+                value=analysis.get('infractions', ''),
+                placeholder="Ex: Abus de biens sociaux, faux et usage de faux...",
+                height=100,
+                key="infractions_textarea"
+            )
+            
+            config['complexity_level'] = st.select_slider(
+                "🔥 Complexité de l'affaire",
+                options=["Simple", "Modérée", "Complexe", "Très complexe"],
+                value="Modérée",
+                key="complexity_select"
+            )
+        
+        with col2:
+            config['elements_favorables'] = st.text_area(
+                "✅ Éléments favorables",
+                placeholder="- Absence de preuve directe\n- Témoignages favorables\n- Contexte atténuant",
+                height=100,
+                key="elements_favorables_textarea"
+            )
+            
+            config['media_attention'] = st.checkbox(
+                "📰 Affaire médiatisée",
+                value=False,
+                help="Nécessite une préparation spécifique",
+                key="media_attention_check"
+            )
+    
+    # Points sensibles avec catégorisation
+    st.markdown("#### 🎯 Points sensibles à préparer")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        config['factual_challenges'] = st.text_area(
+            "📊 Difficultés factuelles",
+            placeholder="- Incohérences dans les dates\n- Documents manquants\n- Témoignages contradictoires",
+            height=80,
+            key="factual_challenges_textarea"
         )
     
-    # Éléments du dossier
-    with st.expander("📂 Contexte de l'affaire", expanded=True):
-        config['infractions'] = st.text_area(
-            "⚖️ Infractions reprochées",
-            value=analysis.get('infractions', ''),
-            placeholder="Ex: Abus de biens sociaux, faux et usage de faux...",
-            height=100,
-            key="infractions_textarea"
+    with col2:
+        config['emotional_challenges'] = st.text_area(
+            "💭 Difficultés émotionnelles",
+            placeholder="- Gestion de la culpabilité\n- Peur du jugement\n- Anxiété de performance",
+            height=80,
+            key="emotional_challenges_textarea"
         )
-        
-        config['elements_favorables'] = st.text_area(
-            "✅ Éléments favorables",
-            placeholder="- Absence de preuve directe\n- Témoignages favorables\n- Contexte atténuant",
-            height=100,
-            key="elements_favorables_textarea"
-        )
-        
-        config['elements_defavorables'] = st.text_area(
-            "❌ Éléments défavorables",
-            placeholder="- Documents compromettants\n- Témoignages à charge\n- Aveux partiels",
-            height=100,
-            key="elements_defavorables_textarea"
-        )
-    
-    # Points spécifiques à préparer
-    config['points_sensibles'] = st.text_area(
-        "🎯 Points sensibles à préparer",
-        placeholder="- Explication des virements suspects\n- Justification des dépenses\n- Alibi pour certaines dates",
-        height=100,
-        key="points_sensibles_textarea"
-    )
     
     return config
 
-def generate_client_preparation(config: dict, analysis: dict) -> Optional[PreparationClientResult]:
-    """Génère une préparation complète pour le client"""
+def create_preparation_sessions_plan(config: dict, result: PreparationClientResult, analysis: dict) -> PreparationPlan:
+    """Crée un plan de séances détaillé"""
+    
+    nb_sessions = config.get('nb_sessions', 7)
+    
+    # Définir les thèmes selon le type de préparation
+    themes_by_type = {
+        "audition": [
+            "Introduction et cadre juridique",
+            "Travail sur le récit chronologique",
+            "Gestion des questions factuelles",
+            "Préparation aux questions pièges",
+            "Langage corporel et attitude",
+            "Simulation complète",
+            "Révision et ajustements finaux"
+        ],
+        "interrogatoire": [
+            "Droits et procédure d'instruction",
+            "Construction du récit défensif",
+            "Gestion des confrontations avec les preuves",
+            "Questions techniques et expertise",
+            "Stratégie face au magistrat",
+            "Simulation d'interrogatoire",
+            "Préparation psychologique finale"
+        ],
+        "comparution": [
+            "Protocole et déroulement d'audience",
+            "Présentation personnelle et parcours",
+            "Exposition des faits",
+            "Réponses aux questions du tribunal",
+            "Gestion de la partie civile",
+            "Plaidoirie personnelle",
+            "Répétition générale"
+        ],
+        "confrontation": [
+            "Cadre et enjeux de la confrontation",
+            "Maintien de sa version",
+            "Gestion des accusations",
+            "Techniques de déstabilisation",
+            "Communication non-violente",
+            "Jeux de rôle",
+            "Stratégies de sortie"
+        ],
+        "expertise": [
+            "Nature et objectifs de l'expertise",
+            "Préparation du discours",
+            "Questions psychologiques types",
+            "Cohérence avec le dossier",
+            "Gestion des tests",
+            "Simulation d'entretien",
+            "Consolidation finale"
+        ]
+    }
+    
+    base_themes = themes_by_type.get(config['prep_type'], themes_by_type['audition'])
+    
+    # Adapter le nombre de thèmes au nombre de séances
+    if nb_sessions > len(base_themes):
+        # Ajouter des séances supplémentaires
+        base_themes.extend([
+            "Approfondissement des points sensibles",
+            "Session de renforcement",
+            "Préparation complémentaire"
+        ])
+    
+    themes = base_themes[:nb_sessions]
+    
+    # Créer les séances
+    sessions = []
+    
+    for i in range(nb_sessions):
+        session_questions = generate_session_questions(
+            i + 1, 
+            themes[i], 
+            config, 
+            result,
+            15 if i < nb_sessions - 2 else 20  # Plus de questions pour les dernières séances
+        )
+        
+        session_exercises = generate_session_exercises(
+            themes[i],
+            config['profil_client'],
+            config.get('focus_areas', [])
+        )
+        
+        session = PreparationSession(
+            session_number=i + 1,
+            title=f"Séance {i + 1} : {themes[i]}",
+            theme=themes[i],
+            objectives=generate_session_objectives(themes[i], config),
+            duration_minutes=config.get('session_duration', 120),
+            questions=session_questions,
+            exercises=session_exercises,
+            key_points=extract_key_points_for_session(themes[i], result.content),
+            homework=generate_homework(i + 1, themes[i], config)
+        )
+        
+        sessions.append(session)
+    
+    # Créer le plan complet
+    plan = PreparationPlan(
+        total_sessions=nb_sessions,
+        sessions=sessions,
+        prep_type=config['prep_type'],
+        client_profile=config['profil_client'],
+        strategy=config['strategie'],
+        created_date=datetime.now(),
+        target_date=config.get('target_date')
+    )
+    
+    return plan
+
+def generate_session_questions(session_num: int, theme: str, config: dict, 
+                              result: PreparationClientResult, num_questions: int = 15) -> List[Dict[str, str]]:
+    """Génère des questions spécifiques pour une séance"""
     
     llm_manager = MultiLLMManager()
     
     if not llm_manager.clients:
-        st.error("❌ Aucune IA disponible")
-        return None
+        return []
     
-    # Construire le prompt
-    prompt = build_preparation_prompt(config, analysis)
-    system_prompt = build_preparation_system_prompt(config)
+    prompt = f"""Génère {num_questions} questions spécifiques pour la séance {session_num} de préparation.
+
+CONTEXTE:
+- Type de procédure : {config['prep_type']}
+- Thème de la séance : {theme}
+- Profil client : {config['profil_client']}
+- Stratégie : {config['strategie']}
+- Infractions : {config.get('infractions', 'Non précisées')}
+
+EXIGENCES:
+1. Questions progressives en difficulté
+2. Adaptées au thème de la séance
+3. Incluant des variantes et reformulations
+4. Avec des notes sur les pièges potentiels
+
+Format pour chaque question:
+- Question principale
+- Réponse suggérée (courte et précise)
+- Variantes possibles (2-3)
+- Points d'attention
+- Niveau de difficulté (1-5)
+"""
     
-    # Générer la préparation
     provider = list(llm_manager.clients.keys())[0]
     response = llm_manager.query_single_llm(
         provider,
         prompt,
-        system_prompt,
+        "Tu es un expert en préparation judiciaire. Génère des questions précises et pertinentes.",
         temperature=0.7,
-        max_tokens=6000
+        max_tokens=3000
     )
     
     if response['success']:
-        content = response['response']
-        
-        # Extraire les éléments
-        key_qa = extract_key_qa(content)
-        do_not_say = extract_never_say(content)
-        exercises = extract_preparation_exercises(content)
-        
-        # Estimer la durée
-        duration_estimate = estimate_preparation_duration(config['prep_type'], config['niveau_detail'])
-        
-        return PreparationClientResult(
-            content=content,
-            prep_type=config['prep_type'],
-            profile=config['profil_client'],
-            strategy=config['strategie'],
-            key_qa=key_qa,
-            do_not_say=do_not_say,
-            exercises=exercises,
-            duration_estimate=duration_estimate,
-            timestamp=datetime.now()
-        )
+        # Parser les questions
+        return parse_session_questions(response['response'])
     
-    return None
+    # Questions par défaut si échec
+    return generate_default_questions(theme, num_questions)
 
-def build_preparation_prompt(config: dict, analysis: dict) -> str:
-    """Construit le prompt pour la préparation"""
+def generate_session_objectives(theme: str, config: dict) -> List[str]:
+    """Génère les objectifs pour une séance"""
     
-    # Contexte selon le type
-    type_context = {
-        "audition": "audition libre en police/gendarmerie",
-        "interrogatoire": "interrogatoire devant le juge d'instruction",
-        "comparution": "comparution devant le tribunal",
-        "confrontation": "confrontation avec d'autres parties",
-        "expertise": "expertise psychiatrique ou psychologique"
+    objectives_templates = {
+        "Introduction et cadre juridique": [
+            "Comprendre le cadre légal de la procédure",
+            "Identifier ses droits et obligations",
+            "Maîtriser le vocabulaire juridique essentiel",
+            "Établir une relation de confiance avec l'avocat"
+        ],
+        "Travail sur le récit chronologique": [
+            "Construire un récit cohérent et structuré",
+            "Identifier les points de vigilance",
+            "Mémoriser les dates et faits clés",
+            "Éviter les contradictions"
+        ],
+        "Gestion des questions factuelles": [
+            "Répondre précisément aux questions sur les faits",
+            "Distinguer faits et interprétations",
+            "Gérer les questions sur les détails",
+            "Maintenir la cohérence"
+        ],
+        "Préparation aux questions pièges": [
+            "Identifier les questions à double sens",
+            "Éviter les admissions involontaires",
+            "Maîtriser les techniques de reformulation",
+            "Rester vigilant sur les présupposés"
+        ],
+        "Langage corporel et attitude": [
+            "Adopter une posture appropriée",
+            "Gérer les signes de stress",
+            "Maintenir un contact visuel adapté",
+            "Contrôler les gestes parasites"
+        ],
+        "Simulation complète": [
+            "Mettre en pratique tous les apprentissages",
+            "Identifier les derniers points d'amélioration",
+            "Gagner en confiance",
+            "Valider la stratégie globale"
+        ]
     }
     
-    prompt = f"""Crée une préparation complète pour un client qui va subir une {type_context.get(config['prep_type'], 'procédure')}.
-
-PROFIL DU CLIENT:
-- Type psychologique : {config['profil_client']}
-- Stratégie adoptée : {config['strategie']}
-- Niveau de détail souhaité : {config['niveau_detail']}
-
-CONTEXTE DE L'AFFAIRE:
-Infractions reprochées : {config.get('infractions', 'Non précisées')}
-
-Éléments favorables :
-{config.get('elements_favorables', 'À identifier')}
-
-Éléments défavorables :
-{config.get('elements_defavorables', 'À identifier')}
-
-Points sensibles :
-{config.get('points_sensibles', 'À préparer')}
-
-LA PRÉPARATION DOIT INCLURE:
-
-1. CONSEILS GÉNÉRAUX
-   - Attitude et comportement
-   - Tenue vestimentaire
-   - Gestion du stress
-   - Communication non-verbale
-
-2. STRATÉGIE DE DÉFENSE
-   - Ligne directrice
-   - Points à mettre en avant
-   - Points à éviter absolument
-   - Cohérence du discours
-
-3. QUESTIONS PROBABLES ET RÉPONSES
-   - Questions sur les faits
-   - Questions sur les intentions
-   - Questions techniques
-   - Questions pièges
-
-4. CE QU'IL NE FAUT JAMAIS DIRE
-   - Phrases à éviter
-   - Admissions dangereuses
-   - Contradictions à éviter
-   - Formulations risquées
-
-5. GESTION DES MOMENTS DIFFICILES
-   - Si déstabilisé
-   - Si confronté à une preuve
-   - Si contradiction détectée
-   - Si pression excessive
-"""
-    
-    # Adaptations selon le profil
-    profile_adaptations = {
-        "anxieux": """
-ADAPTATION CLIENT ANXIEUX:
-- Techniques de respiration
-- Phrases de recentrage
-- Pauses stratégiques
-- Reformulation pour gagner du temps
-""",
-        "confiant": """
-ADAPTATION CLIENT CONFIANT:
-- Éviter l'excès de confiance
-- Rester vigilant
-- Ne pas minimiser les enjeux
-- Contrôler les déclarations spontanées
-""",
-        "agressif": """
-ADAPTATION CLIENT AGRESSIF:
-- Canaliser l'agressivité
-- Éviter les confrontations
-- Réponses courtes et factuelles
-- Techniques de désamorçage
-""",
-        "fragile": """
-ADAPTATION CLIENT FRAGILE:
-- Renforcement positif
-- Préparation aux questions difficiles
-- Droit de demander des pauses
-- Soutien psychologique
-""",
-        "technique": """
-ADAPTATION CLIENT TECHNIQUE:
-- Approche factuelle
-- Précision des termes
-- Documentation à l'appui
-- Éviter sur-explication
-"""
-    }
-    
-    prompt += profile_adaptations.get(config['profil_client'], '')
-    
-    # Options spécifiques
-    if config.get('avec_simulation'):
-        prompt += """
-6. SIMULATION QUESTIONS/RÉPONSES
-   - 20-30 questions types avec réponses suggérées
-   - Variantes selon les réponses de l'enquêteur
-   - Points d'attention sur chaque réponse
-"""
-    
-    if config.get('avec_pieges'):
-        prompt += """
-7. QUESTIONS PIÈGES ET PARADES
-   - Questions à double sens
-   - Questions présupposant des faits
-   - Questions de déstabilisation
-   - Techniques de parade
-"""
-    
-    if config.get('avec_droits'):
-        prompt += f"""
-8. RAPPEL DES DROITS
-   - Droits spécifiques à la {config['prep_type']}
-   - Possibilités de refus
-   - Assistance de l'avocat
-   - Recours possibles
-"""
-    
-    # Niveau de détail
-    detail_instructions = {
-        "Essentiel": "Document concis avec l'essentiel (5-8 pages)",
-        "Standard": "Document standard équilibré (10-15 pages)",
-        "Approfondi": "Document détaillé avec exemples (15-25 pages)",
-        "Exhaustif": "Document exhaustif couvrant tous les cas (25+ pages)"
-    }
-    
-    prompt += f"\nNIVEAU DE DÉTAIL: {detail_instructions.get(config['niveau_detail'], 'Standard')}"
-    
-    return prompt
-
-def build_preparation_system_prompt(config: dict) -> str:
-    """Construit le prompt système pour la préparation"""
-    
-    base_prompt = "Tu es un avocat pénaliste expérimenté, expert en préparation de clients pour les procédures pénales."
-    
-    # Spécialisation selon le type
-    specializations = {
-        "audition": "Tu maîtrises parfaitement les auditions de police et sais préparer les clients à cet exercice.",
-        "interrogatoire": "Tu es spécialisé dans la préparation aux interrogatoires d'instruction.",
-        "comparution": "Tu excelles dans la préparation des clients pour leur comparution devant le tribunal.",
-        "confrontation": "Tu es expert en préparation aux confrontations, sachant gérer les dynamiques complexes.",
-        "expertise": "Tu connais parfaitement les expertises judiciaires et leur déroulement."
-    }
-    
-    base_prompt += f" {specializations.get(config['prep_type'], '')}"
-    
-    base_prompt += " Tu adoptes une approche pédagogique et bienveillante, tout en étant rigoureux sur la préparation."
-    
-    return base_prompt
-
-def extract_key_qa(content: str) -> List[Dict[str, str]]:
-    """Extrait les questions-réponses clés"""
-    qa_list = []
-    
-    # Pattern pour Q/R
-    qa_sections = re.split(r'(?=(?:Question|Q)\s*\d*\s*:)', content)
-    
-    for section in qa_sections[1:]:  # Skip le premier qui n'est pas une question
-        lines = section.strip().split('\n')
-        
-        if len(lines) >= 2:
-            # Extraire la question
-            question = re.sub(r'^(?:Question|Q)\s*\d*\s*:\s*', '', lines[0]).strip()
-            
-            # Chercher la réponse
-            answer = ""
-            for i, line in enumerate(lines[1:]):
-                if re.match(r'^(?:Réponse|R)\s*:', line):
-                    # Réponse explicite
-                    answer = re.sub(r'^(?:Réponse|R)\s*:\s*', '', line).strip()
-                    # Continuer pour les lignes suivantes
-                    for j in range(i+2, len(lines)):
-                        if lines[j].strip() and not re.match(r'^(?:Question|Q|Attention|Note)', lines[j]):
-                            answer += " " + lines[j].strip()
-                        else:
-                            break
-                    break
-                elif line.strip() and not re.match(r'^(?:Attention|Note|Point)', line):
-                    # Considérer comme partie de la réponse
-                    answer += line.strip() + " "
-            
-            if question and answer:
-                qa_list.append({
-                    'question': question,
-                    'answer': answer.strip()
-                })
-    
-    return qa_list
-
-def extract_never_say(content: str) -> List[str]:
-    """Extrait les choses à ne jamais dire"""
-    never_list = []
-    
-    # Chercher la section
-    sections = re.split(r'(?=\d+\.\s+[A-Z]|[IVX]+\.\s+[A-Z])', content)
-    
-    for section in sections:
-        if any(phrase in section.upper() for phrase in ['NE JAMAIS', 'ÉVITER', 'NE PAS DIRE']):
-            # Extraire les éléments
-            items = re.findall(r'[-•]\s*([^\n]+)', section)
-            never_list.extend(items)
-            
-            # Aussi chercher les phrases entre guillemets
-            quoted = re.findall(r'"([^"]+)"', section)
-            never_list.extend(quoted)
-    
-    # Dédupliquer et nettoyer
-    cleaned_list = []
-    seen = set()
-    
-    for item in never_list:
-        item = item.strip()
-        if item and item.lower() not in seen and len(item) > 10:
-            seen.add(item.lower())
-            cleaned_list.append(item)
-    
-    return cleaned_list[:20]  # Limiter à 20
-
-def extract_preparation_exercises(content: str) -> List[Dict[str, Any]]:
-    """Extrait les exercices de préparation"""
-    exercises = []
-    
-    # Patterns d'exercices
-    exercise_keywords = ['exercice', 'entraînement', 'simulation', 'pratique', 'répétition']
-    
-    sections = content.split('\n\n')
-    
-    for section in sections:
-        if any(keyword in section.lower() for keyword in exercise_keywords):
-            lines = section.strip().split('\n')
-            if lines:
-                title = lines[0].strip()
-                description = '\n'.join(lines[1:]).strip()
-                
-                if len(description) > 20:
-                    exercises.append({
-                        'title': title,
-                        'description': description,
-                        'type': detect_exercise_type(title + description)
-                    })
-    
-    return exercises
-
-def detect_exercise_type(text: str) -> str:
-    """Détecte le type d'exercice"""
-    text_lower = text.lower()
-    
-    if 'respiration' in text_lower or 'stress' in text_lower:
-        return 'relaxation'
-    elif 'question' in text_lower or 'réponse' in text_lower:
-        return 'qa_practice'
-    elif 'reformulation' in text_lower:
-        return 'reformulation'
-    elif 'silence' in text_lower:
-        return 'silence_management'
-    else:
-        return 'general'
-
-def estimate_preparation_duration(prep_type: str, niveau_detail: str) -> str:
-    """Estime la durée de préparation nécessaire"""
-    
-    # Durées de base par type
-    base_durations = {
-        "audition": 2,
-        "interrogatoire": 3,
-        "comparution": 4,
-        "confrontation": 3,
-        "expertise": 2
-    }
-    
-    # Multiplicateurs par niveau
-    detail_multipliers = {
-        "Essentiel": 0.7,
-        "Standard": 1.0,
-        "Approfondi": 1.5,
-        "Exhaustif": 2.0
-    }
-    
-    base_hours = base_durations.get(prep_type, 3)
-    multiplier = detail_multipliers.get(niveau_detail, 1.0)
-    
-    total_hours = int(base_hours * multiplier)
-    
-    if total_hours <= 2:
-        return f"{total_hours} heure{'s' if total_hours > 1 else ''}"
-    else:
-        sessions = (total_hours + 1) // 2  # Sessions de 2h max
-        return f"{total_hours} heures (en {sessions} sessions)"
-
-def display_preparation_results(result: PreparationClientResult):
-    """Affiche les résultats de la préparation"""
-    
-    st.success("✅ Préparation générée avec succès!")
-    
-    # Métadonnées
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        type_icons = {
-            "audition": "👮",
-            "interrogatoire": "👨‍⚖️",
-            "comparution": "⚖️",
-            "confrontation": "🤝",
-            "expertise": "🔬"
-        }
-        st.metric("Type", f"{type_icons.get(result.prep_type, '📋')} {result.prep_type.title()}")
-    
-    with col2:
-        st.metric("Profil client", result.profile.title())
-    
-    with col3:
-        st.metric("Stratégie", result.strategy.title())
-    
-    with col4:
-        st.metric("Durée préparation", result.duration_estimate)
-    
-    # Navigation
-    tabs = st.tabs([
-        "📝 Document complet",
-        "❓ Questions/Réponses",
-        "🚫 À ne jamais dire",
-        "🎯 Exercices",
-        "📋 Fiche résumé"
+    # Adapter selon le profil
+    base_objectives = objectives_templates.get(theme, [
+        f"Maîtriser les aspects liés à : {theme}",
+        "Progresser dans la préparation globale",
+        "Renforcer la confiance",
+        "Identifier et corriger les points faibles"
     ])
     
-    with tabs[0]:
-        # Document complet
-        display_full_preparation(result.content)
+    # Ajouter des objectifs spécifiques au profil
+    if config['profil_client'] == 'anxieux':
+        base_objectives.append("Pratiquer des techniques de gestion du stress")
+    elif config['profil_client'] == 'agressif':
+        base_objectives.append("Canaliser l'énergie et éviter les confrontations")
     
-    with tabs[1]:
-        # Questions/Réponses
-        display_qa_section(result.key_qa)
+    return base_objectives
+
+def generate_session_exercises(theme: str, profile: str, focus_areas: List[str]) -> List[Dict[str, Any]]:
+    """Génère des exercices adaptés pour une séance"""
     
-    with tabs[2]:
-        # À ne jamais dire
-        display_never_say_section(result.do_not_say)
+    exercises = []
     
-    with tabs[3]:
-        # Exercices
-        display_exercises_section(result.exercises)
+    # Exercices de base selon le thème
+    theme_exercises = {
+        "Gestion du stress": [
+            {
+                "title": "Respiration carrée",
+                "description": "Technique de respiration 4-4-4-4 pour calmer l'anxiété",
+                "duration": 5,
+                "type": "relaxation"
+            },
+            {
+                "title": "Ancrage sensoriel",
+                "description": "Se concentrer sur 5 choses visibles, 4 sons, 3 sensations...",
+                "duration": 10,
+                "type": "mindfulness"
+            }
+        ],
+        "Cohérence du récit": [
+            {
+                "title": "Timeline visuelle",
+                "description": "Créer une frise chronologique des événements",
+                "duration": 20,
+                "type": "organization"
+            },
+            {
+                "title": "Récit en 3 minutes",
+                "description": "Raconter les faits essentiels en temps limité",
+                "duration": 15,
+                "type": "practice"
+            }
+        ],
+        "Questions techniques": [
+            {
+                "title": "Glossaire personnel",
+                "description": "Créer des définitions simples des termes techniques",
+                "duration": 15,
+                "type": "study"
+            },
+            {
+                "title": "Vulgarisation",
+                "description": "Expliquer un concept technique simplement",
+                "duration": 10,
+                "type": "communication"
+            }
+        ]
+    }
     
-    with tabs[4]:
-        # Fiche résumé
-        display_preparation_summary(result)
+    # Ajouter les exercices pertinents
+    for area in focus_areas:
+        if area in theme_exercises:
+            exercises.extend(theme_exercises[area])
+    
+    # Exercices spécifiques au profil
+    profile_exercises = {
+        "anxieux": {
+            "title": "Journal des pensées",
+            "description": "Noter et restructurer les pensées anxiogènes",
+            "duration": 15,
+            "type": "cognitive"
+        },
+        "agressif": {
+            "title": "Pause réflexive",
+            "description": "S'entraîner à marquer des pauses avant de répondre",
+            "duration": 10,
+            "type": "control"
+        },
+        "fragile": {
+            "title": "Affirmations positives",
+            "description": "Répéter des phrases de renforcement",
+            "duration": 5,
+            "type": "confidence"
+        }
+    }
+    
+    if profile in profile_exercises:
+        exercises.append(profile_exercises[profile])
+    
+    return exercises[:5]  # Limiter à 5 exercices par séance
+
+def extract_key_points_for_session(theme: str, content: str) -> List[str]:
+    """Extrait les points clés pertinents pour une séance"""
+    
+    # Extraire la section pertinente du contenu
+    relevant_section = extract_section(content, theme)
+    
+    if not relevant_section:
+        # Points clés génériques
+        return [
+            f"Maîtriser les aspects essentiels de : {theme}",
+            "Rester cohérent avec la stratégie globale",
+            "Pratiquer les réponses types",
+            "Identifier ses points de vigilance personnels"
+        ]
+    
+    # Extraire les points clés
+    key_points = []
+    
+    # Chercher les éléments importants
+    lines = relevant_section.split('\n')
+    for line in lines:
+        line = line.strip()
+        if any(marker in line for marker in ['Important:', 'Essentiel:', 'Clé:', 'Retenir:']):
+            key_points.append(line)
+        elif line.startswith('•') or line.startswith('-'):
+            if len(line) > 10 and len(key_points) < 6:
+                key_points.append(line[1:].strip())
+    
+    return key_points[:5]
+
+def generate_homework(session_num: int, theme: str, config: dict) -> str:
+    """Génère les devoirs entre les séances"""
+    
+    homework_templates = {
+        1: "Relire ses droits et créer une fiche récapitulative personnelle",
+        2: "Établir une chronologie détaillée des événements sur papier",
+        3: "S'enregistrer en train de répondre aux questions principales",
+        4: "Identifier 5 questions pièges potentielles et préparer les parades",
+        5: "Pratiquer devant un miroir pendant 15 minutes",
+        6: "Faire une simulation complète avec un proche",
+        7: "Réviser tous les points clés et se reposer"
+    }
+    
+    base_homework = homework_templates.get(session_num, f"Réviser les points de la séance {session_num}")
+    
+    # Adapter selon le profil
+    if config['profil_client'] == 'anxieux':
+        base_homework += " + 10 minutes de relaxation quotidienne"
+    elif config['profil_client'] == 'technique':
+        base_homework += " + créer des fiches techniques"
+    
+    return base_homework
+
+def parse_session_questions(response_text: str) -> List[Dict[str, str]]:
+    """Parse les questions générées par l'IA"""
+    
+    questions = []
+    current_question = {}
+    
+    lines = response_text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        if re.match(r'^\d+\..*Question|^Question \d+', line):
+            # Nouvelle question
+            if current_question:
+                questions.append(current_question)
+            current_question = {
+                'question': re.sub(r'^\d+\.|^Question \d+:?\s*', '', line).strip(),
+                'answer': '',
+                'variants': [],
+                'attention_points': '',
+                'difficulty': 3
+            }
+        elif 'Réponse' in line or line.startswith('R:'):
+            current_question['answer'] = re.sub(r'^R:|Réponse:?\s*', '', line).strip()
+        elif 'Variante' in line:
+            variant = re.sub(r'Variante \d+:?\s*', '', line).strip()
+            current_question['variants'].append(variant)
+        elif 'Attention' in line or 'Point' in line:
+            current_question['attention_points'] = line
+        elif 'Difficulté' in line:
+            match = re.search(r'\d', line)
+            if match:
+                current_question['difficulty'] = int(match.group())
+    
+    if current_question:
+        questions.append(current_question)
+    
+    return questions
+
+def generate_default_questions(theme: str, num_questions: int) -> List[Dict[str, str]]:
+    """Génère des questions par défaut pour une séance"""
+    
+    default_questions = []
+    
+    base_questions = {
+        "Introduction et cadre juridique": [
+            "Pouvez-vous me confirmer votre identité complète ?",
+            "Comprenez-vous la nature de cette procédure ?",
+            "Souhaitez-vous la présence de votre avocat ?"
+        ],
+        "Travail sur le récit chronologique": [
+            "Pouvez-vous me raconter les faits dans l'ordre ?",
+            "Où étiez-vous le [date] ?",
+            "Qui était présent lors de ces événements ?"
+        ]
+    }
+    
+    # Utiliser les questions de base ou générer des génériques
+    if theme in base_questions:
+        questions = base_questions[theme]
+    else:
+        questions = [f"Question type {i+1} sur {theme}" for i in range(num_questions)]
+    
+    # Formatter
+    for i, q in enumerate(questions[:num_questions]):
+        default_questions.append({
+            'question': q,
+            'answer': "Réponse à préparer selon le cas spécifique",
+            'variants': [],
+            'attention_points': "Point d'attention à définir",
+            'difficulty': 3
+        })
+    
+    return default_questions
+
+def display_preparation_plan_overview(plan: PreparationPlan):
+    """Affiche un aperçu visuel du plan de préparation"""
+    
+    st.success("✅ Plan de préparation créé avec succès!")
+    
+    # Métriques générales
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("📅 Nombre de séances", plan.total_sessions)
+    
+    with col2:
+        total_hours = sum(s.duration_minutes for s in plan.sessions) / 60
+        st.metric("⏱️ Durée totale", f"{total_hours:.1f} heures")
+    
+    with col3:
+        if plan.target_date:
+            days_remaining = (plan.target_date - datetime.now().date()).days
+            st.metric("📆 Jours restants", days_remaining)
+    
+    with col4:
+        total_questions = sum(len(s.questions) for s in plan.sessions)
+        st.metric("❓ Questions totales", total_questions)
+    
+    # Visualisation du planning
+    st.markdown("### 📊 Vue d'ensemble du programme")
+    
+    # Créer un graphique Gantt simple
+    fig = create_preparation_gantt(plan)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Aperçu des séances
+    st.markdown("### 📋 Résumé des séances")
+    
+    for session in plan.sessions[:3]:  # Montrer les 3 premières
+        with st.expander(f"{session.title} ({session.duration_minutes} min)", expanded=False):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown("**Objectifs:**")
+                for obj in session.objectives[:3]:
+                    st.write(f"• {obj}")
+                
+                st.markdown(f"**Questions prévues:** {len(session.questions)}")
+                st.markdown(f"**Exercices:** {len(session.exercises)}")
+            
+            with col2:
+                if session.homework:
+                    st.info(f"📝 Devoir: {session.homework}")
+    
+    if plan.total_sessions > 3:
+        st.info(f"... et {plan.total_sessions - 3} autres séances")
     
     # Actions
-    st.markdown("### 💾 Actions")
+    st.markdown("### 🎯 Actions disponibles")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button("📄 Exporter PDF", key="export_prep_pdf"):
-            pdf_content = export_preparation_to_pdf(result)
+        if st.button("📄 Exporter le plan complet", key="export_full_plan"):
+            export_content = export_preparation_plan(plan)
             st.download_button(
-                "💾 Télécharger PDF",
-                pdf_content,
-                f"preparation_{result.prep_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                "💾 Télécharger plan PDF",
+                export_content,
+                f"plan_preparation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
                 "application/pdf",
-                key="download_prep_pdf"
+                key="download_plan"
             )
     
     with col2:
-        if st.button("🎮 Mode simulation", key="start_simulation"):
-            st.session_state.simulation_active = True
-            show_interrogation_simulation(result)
+        if st.button("📅 Ajouter au calendrier", key="add_to_calendar"):
+            calendar_data = create_calendar_entries(plan)
+            st.download_button(
+                "💾 Fichier calendrier (.ics)",
+                calendar_data,
+                f"seances_preparation_{datetime.now().strftime('%Y%m%d')}.ics",
+                "text/calendar",
+                key="download_calendar"
+            )
     
     with col3:
-        if st.button("⏱️ Chronomètre", key="show_timer"):
-            show_exercise_timer()
+        if st.button("📱 Version mobile", key="mobile_plan"):
+            mobile_content = create_mobile_plan(plan)
+            st.download_button(
+                "💾 Plan mobile",
+                mobile_content,
+                f"plan_mobile_{datetime.now().strftime('%Y%m%d')}.txt",
+                "text/plain",
+                key="download_mobile_plan"
+            )
     
     with col4:
-        if st.button("📱 Version mobile", key="mobile_version"):
-            mobile_content = create_mobile_version(result)
-            st.download_button(
-                "💾 Version mobile",
-                mobile_content.encode('utf-8'),
-                f"prep_mobile_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                "text/plain",
-                key="download_mobile"
-            )
+        if st.button("▶️ Commencer la séance 1", key="start_session_1"):
+            st.session_state.current_session = 1
+            st.rerun()
 
-def display_full_preparation(content: str):
-    """Affiche le document complet de préparation"""
+def create_preparation_gantt(plan: PreparationPlan) -> go.Figure:
+    """Crée un diagramme de Gantt pour le plan de préparation"""
     
-    # Options d'affichage
+    # Calculer les dates des séances
+    if plan.target_date:
+        days_available = (plan.target_date - datetime.now().date()).days
+        interval = days_available / (plan.total_sessions + 1)
+    else:
+        interval = 4  # 4 jours par défaut entre séances
+    
+    # Préparer les données
+    tasks = []
+    for i, session in enumerate(plan.sessions):
+        start_date = datetime.now() + timedelta(days=int(interval * i))
+        end_date = start_date + timedelta(hours=session.duration_minutes/60)
+        
+        tasks.append({
+            'Task': session.title,
+            'Start': start_date,
+            'Finish': end_date,
+            'Complete': 100 if session.completed else 0,
+            'Resource': f"Séance {i+1}"
+        })
+    
+    # Créer le graphique
+    fig = px.timeline(
+        tasks,
+        x_start="Start",
+        x_end="Finish",
+        y="Task",
+        color="Complete",
+        title="Planning des séances de préparation",
+        color_continuous_scale=["#ff9999", "#99ff99"]
+    )
+    
+    fig.update_layout(
+        height=400,
+        xaxis_title="Date",
+        yaxis_title="",
+        showlegend=False
+    )
+    
+    return fig
+
+def display_sessions_management(plan: PreparationPlan):
+    """Interface de gestion des séances"""
+    
+    st.markdown("### 📅 Gestion des séances")
+    
+    # Sélection de la séance
+    session_options = [f"{s.title}" for s in plan.sessions]
+    selected_session_idx = st.selectbox(
+        "Choisir une séance",
+        range(len(session_options)),
+        format_func=lambda x: session_options[x],
+        key="session_selector"
+    )
+    
+    session = plan.sessions[selected_session_idx]
+    
+    # Affichage détaillé de la séance
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        search_term = st.text_input(
-            "🔍 Rechercher dans le document",
-            placeholder="Ex: stress, questions, droits...",
-            key="search_prep_doc"
-        )
+        st.markdown(f"## {session.title}")
     
     with col2:
-        highlight = st.checkbox("🖍️ Surligner", value=True, key="highlight_prep")
+        if session.completed:
+            st.success(f"✅ Complétée le {session.completion_date.strftime('%d/%m')}")
+        else:
+            st.warning("⏳ En attente")
     
-    # Contenu avec recherche
-    display_content = content
+    # Onglets pour la séance
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 Vue d'ensemble",
+        "❓ Questions",
+        "🎯 Exercices",
+        "📝 Notes",
+        "📊 Évaluation"
+    ])
     
-    if search_term and highlight:
-        # Surligner les termes recherchés
-        display_content = highlight_search_terms(content, search_term)
-        
-        # Compter les occurrences
-        count = content.lower().count(search_term.lower())
-        if count > 0:
-            st.info(f"🔍 {count} occurrence(s) trouvée(s)")
+    with tab1:
+        display_session_overview(session)
     
-    # Afficher avec scroll
-    st.markdown(
-        f'<div style="height: 600px; overflow-y: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">{display_content}</div>',
-        unsafe_allow_html=True
-    )
+    with tab2:
+        display_session_questions(session)
+    
+    with tab3:
+        display_session_exercises(session)
+    
+    with tab4:
+        display_session_notes(session, selected_session_idx)
+    
+    with tab5:
+        if session.completed:
+            display_session_evaluation(session)
+        else:
+            complete_session_interface(session, selected_session_idx, plan)
 
-def display_qa_section(key_qa: List[Dict[str, str]]):
-    """Affiche la section questions/réponses"""
+def display_session_overview(session: PreparationSession):
+    """Affiche la vue d'ensemble d'une séance"""
     
-    if not key_qa:
-        st.info("Aucune question/réponse extraite")
-        return
+    # Informations générales
+    col1, col2, col3 = st.columns(3)
     
-    st.markdown(f"### 📋 {len(key_qa)} questions préparées")
+    with col1:
+        st.metric("⏱️ Durée", f"{session.duration_minutes} minutes")
     
-    # Filtres
+    with col2:
+        st.metric("❓ Questions", len(session.questions))
+    
+    with col3:
+        st.metric("🎯 Exercices", len(session.exercises))
+    
+    # Objectifs
+    st.markdown("### 🎯 Objectifs de la séance")
+    for obj in session.objectives:
+        st.write(f"✓ {obj}")
+    
+    # Points clés
+    if session.key_points:
+        st.markdown("### 📌 Points clés à retenir")
+        for point in session.key_points:
+            st.info(point)
+    
+    # Devoir
+    if session.homework:
+        st.markdown("### 📝 Travail personnel")
+        st.warning(f"À faire avant la prochaine séance : {session.homework}")
+
+def display_session_questions(session: PreparationSession):
+    """Affiche et gère les questions d'une séance"""
+    
+    st.markdown(f"### ❓ {len(session.questions)} questions pour cette séance")
+    
+    # Options de filtrage
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        search_qa = st.text_input(
-            "🔍 Filtrer les questions",
-            placeholder="Ex: intention, preuve, alibi...",
-            key="search_qa"
+        search_term = st.text_input(
+            "🔍 Rechercher une question",
+            placeholder="Ex: date, intention, preuve...",
+            key=f"search_q_session_{session.session_number}"
         )
     
     with col2:
-        sort_by = st.selectbox(
-            "Trier par",
-            ["Ordre original", "Longueur question", "Longueur réponse"],
-            key="sort_qa"
+        difficulty_filter = st.select_slider(
+            "Difficulté",
+            options=["Toutes", 1, 2, 3, 4, 5],
+            value="Toutes",
+            key=f"diff_filter_{session.session_number}"
         )
     
-    # Filtrer et trier
-    filtered_qa = key_qa
+    # Filtrer les questions
+    filtered_questions = session.questions
     
-    if search_qa:
-        filtered_qa = [
-            qa for qa in filtered_qa 
-            if search_qa.lower() in qa['question'].lower() or search_qa.lower() in qa['answer'].lower()
+    if search_term:
+        filtered_questions = [
+            q for q in filtered_questions
+            if search_term.lower() in q['question'].lower() 
+            or search_term.lower() in q.get('answer', '').lower()
         ]
     
-    if sort_by == "Longueur question":
-        filtered_qa.sort(key=lambda x: len(x['question']))
-    elif sort_by == "Longueur réponse":
-        filtered_qa.sort(key=lambda x: len(x['answer']))
+    if difficulty_filter != "Toutes":
+        filtered_questions = [
+            q for q in filtered_questions
+            if q.get('difficulty', 3) == difficulty_filter
+        ]
     
-    # Afficher
-    for i, qa in enumerate(filtered_qa, 1):
-        with st.expander(f"❓ Question {i}: {qa['question'][:60]}...", expanded=False):
-            st.markdown("**Question complète:**")
-            st.info(qa['question'])
+    # Mode d'affichage
+    display_mode = st.radio(
+        "Mode d'affichage",
+        ["Liste complète", "Mode pratique", "Flashcards"],
+        horizontal=True,
+        key=f"display_mode_{session.session_number}"
+    )
+    
+    if display_mode == "Liste complète":
+        # Affichage liste
+        for i, q in enumerate(filtered_questions, 1):
+            with st.expander(
+                f"Q{i}: {q['question'][:80]}... (Difficulté: {'⭐' * q.get('difficulty', 3)})",
+                expanded=False
+            ):
+                st.markdown("**Question complète:**")
+                st.info(q['question'])
+                
+                st.markdown("**Réponse suggérée:**")
+                st.success(q.get('answer', 'Réponse à définir'))
+                
+                if q.get('variants'):
+                    st.markdown("**Variantes possibles:**")
+                    for v in q['variants']:
+                        st.write(f"• {v}")
+                
+                if q.get('attention_points'):
+                    st.warning(f"⚠️ {q['attention_points']}")
+    
+    elif display_mode == "Mode pratique":
+        # Mode pratique interactif
+        if 'practice_index' not in st.session_state:
+            st.session_state.practice_index = 0
+        
+        if filtered_questions:
+            current_q = filtered_questions[st.session_state.practice_index % len(filtered_questions)]
             
-            st.markdown("**Réponse suggérée:**")
-            st.success(qa['answer'])
+            st.info(f"Question {st.session_state.practice_index + 1}/{len(filtered_questions)}")
+            st.subheader(current_q['question'])
             
-            # Actions
+            user_answer = st.text_area(
+                "Votre réponse:",
+                height=150,
+                key=f"practice_answer_{session.session_number}_{st.session_state.practice_index}"
+            )
+            
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                if st.button("📋 Copier", key=f"copy_qa_{i}"):
-                    st.code(f"Q: {qa['question']}\nR: {qa['answer']}")
+                if st.button("👁️ Voir la réponse", key=f"show_answer_{st.session_state.practice_index}"):
+                    st.success(current_q.get('answer', 'Pas de réponse suggérée'))
             
             with col2:
-                if st.button("✏️ Noter", key=f"note_qa_{i}"):
-                    note = st.text_area("Note personnelle", key=f"note_text_{i}")
-                    if note:
-                        if 'qa_notes' not in st.session_state:
-                            st.session_state.qa_notes = {}
-                        st.session_state.qa_notes[i] = note
+                if st.button("➡️ Question suivante", key=f"next_q_{st.session_state.practice_index}"):
+                    st.session_state.practice_index += 1
+                    st.rerun()
             
             with col3:
-                importance = st.select_slider(
-                    "Importance",
-                    options=["Faible", "Moyenne", "Haute", "Critique"],
-                    value="Moyenne",
-                    key=f"importance_qa_{i}"
-                )
+                if st.button("🔄 Recommencer", key=f"restart_practice_{session.session_number}"):
+                    st.session_state.practice_index = 0
+                    st.rerun()
+    
+    else:  # Flashcards
+        # Mode flashcards
+        if filtered_questions:
+            if 'flashcard_index' not in st.session_state:
+                st.session_state.flashcard_index = 0
+            
+            current_q = filtered_questions[st.session_state.flashcard_index % len(filtered_questions)]
+            
+            # Carte de question
+            st.markdown(
+                f"""
+                <div style="
+                    border: 2px solid #1f77b4;
+                    border-radius: 10px;
+                    padding: 30px;
+                    text-align: center;
+                    min-height: 200px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                ">
+                    <h3>{current_q['question']}</h3>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Contrôles
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("⬅️ Précédente", key="prev_flash"):
+                    st.session_state.flashcard_index -= 1
+                    st.rerun()
+            
+            with col2:
+                if st.button("🔄 Retourner", key="flip_flash"):
+                    with st.expander("Réponse", expanded=True):
+                        st.success(current_q.get('answer', 'Pas de réponse'))
+            
+            with col3:
+                if st.button("➡️ Suivante", key="next_flash"):
+                    st.session_state.flashcard_index += 1
+                    st.rerun()
 
-def display_never_say_section(never_say: List[str]):
-    """Affiche la section des choses à ne jamais dire"""
+def display_session_exercises(session: PreparationSession):
+    """Affiche et gère les exercices d'une séance"""
     
-    if not never_say:
-        st.info("Aucune phrase à éviter identifiée")
-        return
+    st.markdown(f"### 🎯 {len(session.exercises)} exercices")
     
-    st.markdown(f"### 🚫 {len(never_say)} phrases à éviter absolument")
-    
-    # Catégoriser les phrases
-    categories = categorize_never_say(never_say)
-    
-    for category, phrases in categories.items():
-        if phrases:
-            with st.expander(f"⚠️ {category} ({len(phrases)} phrases)", expanded=True):
-                for phrase in phrases:
-                    col1, col2 = st.columns([5, 1])
-                    
-                    with col1:
-                        st.error(f"❌ « {phrase} »")
-                    
-                    with col2:
-                        if st.button("💡", key=f"explain_{hash(phrase)}"):
-                            st.info(get_danger_explanation(phrase))
+    for i, exercise in enumerate(session.exercises, 1):
+        with st.expander(f"Exercice {i}: {exercise['title']}", expanded=True):
+            # Type d'exercice
+            exercise_icons = {
+                'relaxation': '😌',
+                'practice': '🎯',
+                'organization': '📊',
+                'communication': '💬',
+                'cognitive': '🧠',
+                'mindfulness': '🧘',
+                'study': '📚',
+                'control': '🎮',
+                'confidence': '💪'
+            }
+            
+            icon = exercise_icons.get(exercise.get('type', 'general'), '📝')
+            
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.markdown(f"{icon} **Type:** {exercise.get('type', 'général').title()}")
+                st.write(exercise['description'])
+            
+            with col2:
+                st.metric("⏱️ Durée", f"{exercise.get('duration', 10)} min")
+            
+            # Bouton pour commencer l'exercice
+            if st.button(f"▶️ Commencer", key=f"start_ex_{session.session_number}_{i}"):
+                start_exercise_session(exercise, session.session_number, i)
 
-def categorize_never_say(phrases: List[str]) -> Dict[str, List[str]]:
-    """Catégorise les phrases à éviter"""
+def display_session_notes(session: PreparationSession, session_idx: int):
+    """Gère les notes pour une séance"""
     
-    categories = {
-        "Aveux implicites": [],
-        "Contradictions": [],
-        "Spéculations": [],
-        "Accusations": [],
-        "Minimisations excessives": [],
-        "Autres": []
-    }
+    st.markdown("### 📝 Notes de séance")
     
-    for phrase in phrases:
-        phrase_lower = phrase.lower()
-        
-        if any(word in phrase_lower for word in ['avoue', 'reconnais', 'admets', 'coupable']):
-            categories["Aveux implicites"].append(phrase)
-        elif any(word in phrase_lower for word in ['mais', 'cependant', 'sauf', 'excepté']):
-            categories["Contradictions"].append(phrase)
-        elif any(word in phrase_lower for word in ['pense', 'crois', 'suppose', 'peut-être']):
-            categories["Spéculations"].append(phrase)
-        elif any(word in phrase_lower for word in ['lui', 'eux', 'elle', 'accusé']):
-            categories["Accusations"].append(phrase)
-        elif any(word in phrase_lower for word in ['peu', 'rien', 'jamais', 'insignifiant']):
-            categories["Minimisations excessives"].append(phrase)
-        else:
-            categories["Autres"].append(phrase)
+    # Récupérer les notes existantes
+    notes_key = f"session_notes_{session_idx}"
+    if notes_key not in st.session_state:
+        st.session_state[notes_key] = session.notes
     
-    return {k: v for k, v in categories.items() if v}
-
-def get_danger_explanation(phrase: str) -> str:
-    """Explique pourquoi une phrase est dangereuse"""
-    
-    phrase_lower = phrase.lower()
-    
-    if 'avoue' in phrase_lower or 'reconnais' in phrase_lower:
-        return "Cette formulation constitue un aveu, même partiel. Préférez des formulations neutres."
-    elif 'pense' in phrase_lower or 'crois' in phrase_lower:
-        return "Évitez les spéculations. Restez factuel : 'Je sais' ou 'Je ne sais pas'."
-    elif 'mais' in phrase_lower:
-        return "Le 'mais' introduit souvent une contradiction. Soyez cohérent dans vos déclarations."
-    else:
-        return "Cette formulation peut être interprétée défavorablement. Restez neutre et factuel."
-
-def display_exercises_section(exercises: List[Dict[str, Any]]):
-    """Affiche la section des exercices"""
-    
-    if not exercises:
-        st.info("Aucun exercice spécifique identifié")
-        return
-    
-    st.markdown(f"### 🎯 {len(exercises)} exercices de préparation")
-    
-    # Grouper par type
-    by_type = defaultdict(list)
-    for ex in exercises:
-        by_type[ex.get('type', 'general')].append(ex)
-    
-    type_names = {
-        'relaxation': '😌 Relaxation',
-        'qa_practice': '❓ Pratique Q/R',
-        'reformulation': '🔄 Reformulation',
-        'silence_management': '🤐 Gestion du silence',
-        'general': '📋 Général'
-    }
-    
-    for ex_type, type_exercises in by_type.items():
-        st.markdown(f"#### {type_names.get(ex_type, ex_type.title())}")
-        
-        for i, exercise in enumerate(type_exercises, 1):
-            with st.expander(f"🎯 {exercise['title']}", expanded=False):
-                st.markdown(exercise['description'])
-                
-                # Bouton pour pratiquer
-                if st.button(f"▶️ Pratiquer", key=f"practice_{ex_type}_{i}"):
-                    show_exercise_practice(exercise)
-
-def display_preparation_summary(result: PreparationClientResult):
-    """Affiche une fiche résumé de la préparation"""
-    
-    summary = create_preparation_summary(result)
-    
-    # Afficher la fiche
-    st.markdown("### 📋 Fiche résumé à imprimer")
-    
-    st.text_area(
-        "Résumé de la préparation",
-        value=summary,
-        height=600,
-        key="prep_summary_display"
+    # Éditeur de notes
+    new_notes = st.text_area(
+        "Vos notes personnelles",
+        value=st.session_state[notes_key],
+        height=300,
+        placeholder="Notez ici vos observations, difficultés rencontrées, points à revoir...",
+        key=f"notes_editor_{session_idx}"
     )
     
-    # Actions
+    # Sauvegarder
     col1, col2 = st.columns(2)
     
     with col1:
-        st.download_button(
-            "💾 Télécharger résumé",
-            summary.encode('utf-8'),
-            f"resume_preparation_{datetime.now().strftime('%Y%m%d')}.txt",
-            "text/plain",
-            key="download_prep_summary"
+        if st.button("💾 Sauvegarder les notes", key=f"save_notes_{session_idx}"):
+            st.session_state[notes_key] = new_notes
+            session.notes = new_notes
+            st.success("Notes sauvegardées!")
+    
+    with col2:
+        if st.button("📋 Modèle de notes", key=f"template_notes_{session_idx}"):
+            template = """## Points forts de la séance
+- 
+
+## Difficultés rencontrées
+- 
+
+## Questions à approfondir
+- 
+
+## Actions pour la prochaine fois
+- 
+
+## Remarques personnelles
+"""
+            st.session_state[notes_key] = template
+            st.rerun()
+
+def complete_session_interface(session: PreparationSession, session_idx: int, plan: PreparationPlan):
+    """Interface pour marquer une séance comme complétée"""
+    
+    st.markdown("### 📊 Compléter la séance")
+    
+    st.info("Évaluez votre performance pour cette séance")
+    
+    # Auto-évaluation
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        overall_score = st.select_slider(
+            "Score global",
+            options=[1, 2, 3, 4, 5],
+            value=3,
+            format_func=lambda x: f"{x}/5 ⭐",
+            key=f"overall_score_{session_idx}"
+        )
+        
+        confidence_level = st.select_slider(
+            "Niveau de confiance",
+            options=["Très faible", "Faible", "Moyen", "Bon", "Excellent"],
+            value="Moyen",
+            key=f"confidence_{session_idx}"
         )
     
     with col2:
-        if st.button("🖨️ Format impression", key="print_format"):
-            print_version = create_print_friendly_summary(result)
+        objectives_met = st.multiselect(
+            "Objectifs atteints",
+            session.objectives,
+            default=session.objectives[:2],
+            key=f"objectives_met_{session_idx}"
+        )
+        
+        needs_review = st.checkbox(
+            "Cette séance nécessite une révision",
+            key=f"needs_review_{session_idx}"
+        )
+    
+    # Commentaires
+    session_feedback = st.text_area(
+        "Commentaires sur la séance",
+        placeholder="Points positifs, difficultés, remarques...",
+        key=f"feedback_{session_idx}"
+    )
+    
+    # Valider la séance
+    if st.button("✅ Valider et terminer la séance", key=f"complete_{session_idx}", type="primary"):
+        # Mettre à jour la séance
+        session.completed = True
+        session.completion_date = datetime.now()
+        session.score = overall_score / 5.0
+        
+        # Mettre à jour la progression globale
+        completed_sessions = sum(1 for s in plan.sessions if s.completed)
+        plan.overall_progress = completed_sessions / plan.total_sessions
+        
+        # Sauvegarder le feedback
+        if 'session_feedback' not in st.session_state:
+            st.session_state.session_feedback = {}
+        
+        st.session_state.session_feedback[session_idx] = {
+            'score': overall_score,
+            'confidence': confidence_level,
+            'objectives_met': objectives_met,
+            'needs_review': needs_review,
+            'feedback': session_feedback
+        }
+        
+        st.success(f"✅ Séance {session.session_number} complétée!")
+        st.balloons()
+        
+        # Proposer la séance suivante
+        if session_idx < len(plan.sessions) - 1:
+            if st.button(f"➡️ Passer à la séance {session_idx + 2}", key="next_session"):
+                st.session_state.current_session = session_idx + 2
+                st.rerun()
+
+def display_session_evaluation(session: PreparationSession):
+    """Affiche l'évaluation d'une séance complétée"""
+    
+    st.markdown("### ✅ Séance complétée")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Score", f"{session.score*5:.1f}/5 ⭐" if session.score else "N/A")
+    
+    with col2:
+        st.metric("Date", session.completion_date.strftime("%d/%m/%Y") if session.completion_date else "N/A")
+    
+    with col3:
+        feedback_key = f"session_feedback.{session.session_number-1}"
+        if feedback_key in st.session_state:
+            feedback = st.session_state[feedback_key]
+            st.metric("Confiance", feedback.get('confidence', 'N/A'))
+    
+    # Détails de l'évaluation
+    if f"session_feedback.{session.session_number-1}" in st.session_state:
+        feedback = st.session_state[f"session_feedback.{session.session_number-1}"]
+        
+        with st.expander("📊 Détails de l'évaluation", expanded=True):
+            st.write(f"**Objectifs atteints:** {len(feedback.get('objectives_met', []))}/{len(session.objectives)}")
+            
+            if feedback.get('needs_review'):
+                st.warning("⚠️ Cette séance nécessite une révision")
+            
+            if feedback.get('feedback'):
+                st.info(f"**Commentaires:** {feedback['feedback']}")
+
+def display_progress_tracking(plan: PreparationPlan):
+    """Affiche le suivi de progression global"""
+    
+    st.markdown("### 📊 Suivi de progression")
+    
+    # Métriques globales
+    col1, col2, col3, col4 = st.columns(4)
+    
+    completed_sessions = sum(1 for s in plan.sessions if s.completed)
+    total_score = sum(s.score for s in plan.sessions if s.completed and s.score) or 0
+    avg_score = (total_score / completed_sessions * 5) if completed_sessions > 0 else 0
+    
+    with col1:
+        st.metric(
+            "Progression",
+            f"{plan.overall_progress*100:.0f}%",
+            f"{completed_sessions}/{plan.total_sessions} séances"
+        )
+    
+    with col2:
+        st.metric("Score moyen", f"{avg_score:.1f}/5 ⭐")
+    
+    with col3:
+        if plan.target_date:
+            days_left = (plan.target_date - datetime.now().date()).days
+            st.metric("Jours restants", days_left)
+    
+    with col4:
+        total_practice = sum(
+            len(s.questions) for s in plan.sessions if s.completed
+        )
+        st.metric("Questions pratiquées", total_practice)
+    
+    # Graphique de progression
+    st.markdown("### 📈 Évolution des performances")
+    
+    # Créer le graphique
+    fig = create_progress_chart(plan)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Analyse détaillée
+    st.markdown("### 🔍 Analyse détaillée")
+    
+    tab1, tab2, tab3 = st.tabs(["Par séance", "Par thème", "Recommandations"])
+    
+    with tab1:
+        display_progress_by_session(plan)
+    
+    with tab2:
+        display_progress_by_theme(plan)
+    
+    with tab3:
+        display_progress_recommendations(plan)
+
+def create_progress_chart(plan: PreparationPlan) -> go.Figure:
+    """Crée un graphique de progression"""
+    
+    # Préparer les données
+    sessions_data = []
+    for s in plan.sessions:
+        if s.completed and s.score:
+            sessions_data.append({
+                'Session': f"S{s.session_number}",
+                'Score': s.score * 5,
+                'Date': s.completion_date.strftime("%d/%m") if s.completion_date else ""
+            })
+    
+    if not sessions_data:
+        # Graphique vide
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Aucune séance complétée pour le moment",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False
+        )
+    else:
+        # Créer le graphique
+        fig = go.Figure()
+        
+        # Ligne de progression
+        fig.add_trace(go.Scatter(
+            x=[d['Session'] for d in sessions_data],
+            y=[d['Score'] for d in sessions_data],
+            mode='lines+markers',
+            name='Score',
+            line=dict(color='#1f77b4', width=3),
+            marker=dict(size=10)
+        ))
+        
+        # Ligne de référence
+        fig.add_hline(y=3, line_dash="dash", line_color="gray", 
+                      annotation_text="Objectif minimum")
+        
+        fig.update_layout(
+            title="Évolution des scores par séance",
+            xaxis_title="Séances",
+            yaxis_title="Score (/5)",
+            yaxis_range=[0, 5.5],
+            height=400
+        )
+    
+    return fig
+
+def display_progress_by_session(plan: PreparationPlan):
+    """Affiche la progression par séance"""
+    
+    for session in plan.sessions:
+        icon = "✅" if session.completed else "⏳"
+        
+        with st.expander(f"{icon} {session.title}", expanded=not session.completed):
+            if session.completed:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Score", f"{session.score*5:.1f}/5" if session.score else "N/A")
+                
+                with col2:
+                    st.metric("Date", session.completion_date.strftime("%d/%m/%Y"))
+                
+                with col3:
+                    st.metric("Durée", f"{session.duration_minutes} min")
+                
+                # Feedback
+                feedback_key = f"session_feedback.{session.session_number-1}"
+                if feedback_key in st.session_state:
+                    feedback = st.session_state[feedback_key]
+                    if feedback.get('feedback'):
+                        st.info(f"💭 {feedback['feedback']}")
+            else:
+                st.warning("Séance non complétée")
+                
+                # Estimation du temps nécessaire
+                if plan.target_date:
+                    days_left = (plan.target_date - datetime.now().date()).days
+                    sessions_left = sum(1 for s in plan.sessions if not s.completed)
+                    
+                    if sessions_left > 0:
+                        recommended_interval = days_left / sessions_left
+                        st.info(f"💡 Recommandation : compléter une séance tous les {recommended_interval:.0f} jours")
+
+def display_progress_by_theme(plan: PreparationPlan):
+    """Analyse la progression par thème"""
+    
+    # Grouper les performances par type d'exercice
+    theme_scores = defaultdict(list)
+    
+    for session in plan.sessions:
+        if session.completed and session.score:
+            # Analyser le thème principal
+            theme_key = categorize_session_theme(session.theme)
+            theme_scores[theme_key].append(session.score * 5)
+    
+    if theme_scores:
+        # Créer un graphique radar
+        categories = list(theme_scores.keys())
+        values = [sum(scores)/len(scores) for scores in theme_scores.values()]
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatterpolar(
+            r=values,
+            theta=categories,
+            fill='toself',
+            name='Performance'
+        ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 5]
+                )),
+            title="Performance par domaine",
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Analyse textuelle
+        st.markdown("### 💡 Points d'attention")
+        
+        for theme, scores in theme_scores.items():
+            avg_score = sum(scores) / len(scores)
+            if avg_score < 3:
+                st.error(f"❌ **{theme}** : Performance insuffisante ({avg_score:.1f}/5)")
+            elif avg_score < 4:
+                st.warning(f"⚠️ **{theme}** : À améliorer ({avg_score:.1f}/5)")
+            else:
+                st.success(f"✅ **{theme}** : Bonne maîtrise ({avg_score:.1f}/5)")
+
+def categorize_session_theme(theme: str) -> str:
+    """Catégorise le thème d'une séance"""
+    
+    theme_lower = theme.lower()
+    
+    if any(word in theme_lower for word in ['droit', 'juridique', 'procédure']):
+        return "Aspects juridiques"
+    elif any(word in theme_lower for word in ['récit', 'chronologie', 'faits']):
+        return "Construction du récit"
+    elif any(word in theme_lower for word in ['question', 'piège', 'réponse']):
+        return "Questions/Réponses"
+    elif any(word in theme_lower for word in ['stress', 'attitude', 'comportement']):
+        return "Gestion émotionnelle"
+    elif any(word in theme_lower for word in ['simulation', 'pratique', 'exercice']):
+        return "Mise en pratique"
+    else:
+        return "Autres aspects"
+
+def display_progress_recommendations(plan: PreparationPlan):
+    """Affiche des recommandations personnalisées"""
+    
+    st.markdown("### 🎯 Recommandations personnalisées")
+    
+    # Analyser la progression
+    completed = sum(1 for s in plan.sessions if s.completed)
+    total = plan.total_sessions
+    progress_ratio = completed / total if total > 0 else 0
+    
+    # Calculer le score moyen
+    scores = [s.score * 5 for s in plan.sessions if s.completed and s.score]
+    avg_score = sum(scores) / len(scores) if scores else 0
+    
+    # Recommandations selon la progression
+    if progress_ratio < 0.3:
+        st.info("""
+        **📅 Phase initiale**
+        - Établissez un rythme régulier de séances
+        - Concentrez-vous sur les fondamentaux
+        - Ne sautez pas les exercices de base
+        """)
+    elif progress_ratio < 0.7:
+        st.info("""
+        **🚀 Phase intermédiaire**
+        - Intensifiez les simulations
+        - Travaillez les points faibles identifiés
+        - Commencez à chronométrer vos réponses
+        """)
+    else:
+        st.info("""
+        **🏁 Phase finale**
+        - Focus sur la confiance et la fluidité
+        - Révisez les points clés
+        - Pratiquez la gestion du stress
+        """)
+    
+    # Recommandations selon les scores
+    if avg_score < 3:
+        st.error("""
+        **⚠️ Performance à améliorer**
+        - Reprenez les séances avec scores faibles
+        - Demandez un accompagnement renforcé
+        - Augmentez le temps de pratique personnel
+        """)
+    elif avg_score < 4:
+        st.warning("""
+        **📈 Progression encourageante**
+        - Continuez sur cette lancée
+        - Approfondissez les points moyens
+        - Variez les exercices
+        """)
+    else:
+        st.success("""
+        **🌟 Excellente progression**
+        - Maintenez ce niveau
+        - Aidez-vous des notes pour consolider
+        - Préparez-vous mentalement au jour J
+        """)
+    
+    # Prochaines actions
+    st.markdown("### 📋 Actions recommandées")
+    
+    uncompleted = [s for s in plan.sessions if not s.completed]
+    if uncompleted:
+        next_session = uncompleted[0]
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.info(f"**Prochaine séance :** {next_session.title}")
+            if next_session.homework:
+                st.warning(f"**N'oubliez pas :** {next_session.homework}")
+        
+        with col2:
+            if st.button("▶️ Commencer", key="start_next_recommended"):
+                st.session_state.current_session = next_session.session_number
+                st.rerun()
+
+def display_resources_library():
+    """Affiche la bibliothèque de ressources"""
+    
+    st.markdown("### 📚 Bibliothèque de ressources")
+    
+    # Catégories de ressources
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📖 Guides",
+        "🎥 Vidéos",
+        "📝 Modèles",
+        "🔗 Liens utiles"
+    ])
+    
+    with tab1:
+        st.markdown("#### 📖 Guides de préparation")
+        
+        guides = [
+            {
+                "title": "Guide complet de l'audition libre",
+                "description": "Tout savoir sur le déroulement d'une audition",
+                "pages": 15,
+                "difficulty": "Débutant"
+            },
+            {
+                "title": "Maîtriser l'interrogatoire d'instruction",
+                "description": "Techniques avancées face au juge",
+                "pages": 25,
+                "difficulty": "Avancé"
+            },
+            {
+                "title": "Gérer son stress en procédure",
+                "description": "Techniques de relaxation et préparation mentale",
+                "pages": 10,
+                "difficulty": "Tous niveaux"
+            }
+        ]
+        
+        for guide in guides:
+            with st.expander(guide["title"]):
+                st.write(guide["description"])
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"📄 {guide['pages']} pages")
+                with col2:
+                    st.info(f"🎯 {guide['difficulty']}")
+                
+                if st.button(f"📥 Télécharger", key=f"dl_{guide['title']}"):
+                    st.info("Guide disponible dans la version complète")
+    
+    with tab2:
+        st.markdown("#### 🎥 Vidéos de formation")
+        
+        videos = [
+            "Les erreurs à éviter en audition",
+            "Simulation d'interrogatoire commentée",
+            "Techniques de communication non-verbale",
+            "Gérer une confrontation difficile"
+        ]
+        
+        for video in videos:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"▶️ {video}")
+            with col2:
+                st.button("Regarder", key=f"watch_{video}")
+    
+    with tab3:
+        st.markdown("#### 📝 Modèles de documents")
+        
+        templates = [
+            "Chronologie type à compléter",
+            "Liste de vérification pré-audition",
+            "Journal de préparation",
+            "Fiche de révision rapide"
+        ]
+        
+        for template in templates:
+            if st.button(f"📄 {template}", key=f"template_{template}"):
+                st.info("Modèle disponible dans la version complète")
+    
+    with tab4:
+        st.markdown("#### 🔗 Liens et ressources utiles")
+        
+        links = {
+            "Code de procédure pénale": "Articles sur les droits en garde à vue",
+            "Ordre des avocats": "Trouver un avocat spécialisé",
+            "Association d'aide aux victimes": "Soutien psychologique",
+            "Guides officiels": "Publications du ministère de la Justice"
+        }
+        
+        for title, description in links.items():
+            st.write(f"• **{title}** : {description}")
+
+def display_preparation_settings():
+    """Paramètres de la préparation"""
+    
+    st.markdown("### ⚙️ Paramètres de préparation")
+    
+    # Notifications
+    st.markdown("#### 🔔 Notifications et rappels")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        reminder_enabled = st.checkbox(
+            "Activer les rappels de séance",
+            value=True,
+            key="reminder_enabled"
+        )
+        
+        if reminder_enabled:
+            reminder_time = st.time_input(
+                "Heure des rappels",
+                value=datetime.strptime("09:00", "%H:%M").time(),
+                key="reminder_time"
+            )
+    
+    with col2:
+        progress_reports = st.checkbox(
+            "Rapports de progression hebdomadaires",
+            value=True,
+            key="progress_reports"
+        )
+        
+        motivation_messages = st.checkbox(
+            "Messages de motivation",
+            value=True,
+            key="motivation_messages"
+        )
+    
+    # Personnalisation
+    st.markdown("#### 🎨 Personnalisation")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        default_session_duration = st.select_slider(
+            "Durée par défaut des séances",
+            options=[60, 90, 120, 150, 180],
+            value=120,
+            format_func=lambda x: f"{x} minutes",
+            key="default_duration"
+        )
+        
+        difficulty_preference = st.radio(
+            "Niveau de difficulté préféré",
+            ["Progressif", "Constant", "Intensif"],
+            key="difficulty_pref"
+        )
+    
+    with col2:
+        practice_mode = st.selectbox(
+            "Mode de pratique par défaut",
+            ["Questions écrites", "Simulation orale", "Mixte"],
+            key="practice_mode"
+        )
+        
+        feedback_detail = st.select_slider(
+            "Niveau de détail des feedbacks",
+            options=["Minimal", "Standard", "Détaillé", "Très détaillé"],
+            value="Détaillé",
+            key="feedback_detail"
+        )
+    
+    # Export et sauvegarde
+    st.markdown("#### 💾 Export et sauvegarde")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📤 Exporter toutes les données", key="export_all_data"):
+            export_data = export_all_preparation_data()
             st.download_button(
-                "💾 Version impression",
-                print_version.encode('utf-8'),
-                f"fiche_preparation_{datetime.now().strftime('%Y%m%d')}.txt",
-                "text/plain",
-                key="download_print_version"
+                "💾 Télécharger l'export",
+                export_data,
+                f"preparation_complete_{datetime.now().strftime('%Y%m%d')}.json",
+                "application/json",
+                key="download_export"
+            )
+    
+    with col2:
+        if st.button("🔄 Synchroniser", key="sync_data"):
+            st.success("✅ Données synchronisées")
+    
+    with col3:
+        if st.button("🗑️ Réinitialiser", key="reset_data"):
+            if st.checkbox("Confirmer la réinitialisation"):
+                st.session_state.clear()
+                st.success("✅ Données réinitialisées")
+                st.rerun()
+
+def start_exercise_session(exercise: Dict[str, Any], session_num: int, exercise_num: int):
+    """Démarre une session d'exercice"""
+    
+    st.session_state.active_exercise = {
+        'exercise': exercise,
+        'session_num': session_num,
+        'exercise_num': exercise_num,
+        'start_time': datetime.now()
+    }
+    
+    # Interface selon le type d'exercice
+    if exercise['type'] == 'relaxation':
+        show_relaxation_exercise(exercise)
+    elif exercise['type'] == 'practice':
+        show_practice_exercise(exercise)
+    elif exercise['type'] == 'organization':
+        show_organization_exercise(exercise)
+    else:
+        show_generic_exercise(exercise)
+
+def show_relaxation_exercise(exercise: Dict[str, Any]):
+    """Affiche un exercice de relaxation"""
+    
+    st.markdown(f"### 😌 {exercise['title']}")
+    
+    # Instructions
+    st.info(exercise['description'])
+    
+    # Timer
+    duration = exercise.get('duration', 5) * 60  # Convertir en secondes
+    
+    if 'exercise_timer' not in st.session_state:
+        st.session_state.exercise_timer = duration
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("▶️ Démarrer", key="start_relax"):
+            st.session_state.exercise_running = True
+    
+    with col2:
+        if st.button("⏸️ Pause", key="pause_relax"):
+            st.session_state.exercise_running = False
+    
+    with col3:
+        if st.button("🔄 Réinitialiser", key="reset_relax"):
+            st.session_state.exercise_timer = duration
+    
+    # Affichage du timer
+    if 'exercise_running' in st.session_state and st.session_state.exercise_running:
+        remaining = st.session_state.exercise_timer
+        mins, secs = divmod(remaining, 60)
+        
+        st.markdown(
+            f"""
+            <div style="text-align: center; font-size: 48px; font-weight: bold; color: #1f77b4;">
+                {mins:02d}:{secs:02d}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    # Guide audio (simulé)
+    with st.expander("🎧 Guide audio"):
+        st.info("Guide audio disponible dans la version complète")
+
+def show_practice_exercise(exercise: Dict[str, Any]):
+    """Affiche un exercice de pratique"""
+    
+    st.markdown(f"### 🎯 {exercise['title']}")
+    st.write(exercise['description'])
+    
+    # Zone de pratique
+    practice_response = st.text_area(
+        "Votre pratique:",
+        height=200,
+        placeholder="Commencez votre exercice ici...",
+        key="practice_area"
+    )
+    
+    # Chronomètre
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("⏱️ Chronométrer", key="time_practice"):
+            st.session_state.practice_start = datetime.now()
+    
+    with col2:
+        if 'practice_start' in st.session_state:
+            elapsed = (datetime.now() - st.session_state.practice_start).seconds
+            st.metric("Temps écoulé", f"{elapsed}s")
+    
+    # Feedback
+    if st.button("✅ Terminer et évaluer", key="evaluate_practice"):
+        st.success("Exercice complété!")
+        
+        # Auto-évaluation
+        st.markdown("#### Auto-évaluation")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            performance = st.select_slider(
+                "Performance",
+                options=["À retravailler", "Correct", "Bien", "Excellent"],
+                key="practice_performance"
+            )
+        
+        with col2:
+            difficulty = st.select_slider(
+                "Difficulté ressentie",
+                options=["Facile", "Modéré", "Difficile", "Très difficile"],
+                key="practice_difficulty"
             )
 
-def create_preparation_summary(result: PreparationClientResult) -> str:
-    """Crée une fiche résumé de la préparation"""
+def show_organization_exercise(exercise: Dict[str, Any]):
+    """Affiche un exercice d'organisation"""
     
-    summary = f"""FICHE RÉSUMÉ - PRÉPARATION {result.prep_type.upper()}
+    st.markdown(f"### 📊 {exercise['title']}")
+    st.write(exercise['description'])
+    
+    # Interface d'organisation
+    st.markdown("#### Organisez vos idées")
+    
+    # Créer des zones pour organiser
+    categories = ["Faits principaux", "Dates clés", "Personnes impliquées", "Preuves"]
+    
+    for category in categories:
+        with st.expander(category, expanded=True):
+            items = st.text_area(
+                f"Listez les éléments pour {category}",
+                height=100,
+                key=f"org_{category}"
+            )
+    
+    # Visualisation
+    if st.button("📊 Créer une carte mentale", key="create_mindmap"):
+        st.info("Fonctionnalité de carte mentale disponible dans la version complète")
+
+def show_generic_exercise(exercise: Dict[str, Any]):
+    """Affiche un exercice générique"""
+    
+    st.markdown(f"### 📝 {exercise['title']}")
+    st.write(exercise['description'])
+    
+    # Instructions génériques
+    st.info(f"⏱️ Durée recommandée : {exercise.get('duration', 10)} minutes")
+    
+    # Zone de travail
+    work_area = st.text_area(
+        "Espace de travail",
+        height=300,
+        placeholder="Utilisez cet espace pour votre exercice...",
+        key="generic_work_area"
+    )
+    
+    # Validation
+    if st.button("✅ Marquer comme complété", key="complete_generic"):
+        st.success("✅ Exercice complété!")
+
+def export_preparation_plan(plan: PreparationPlan) -> bytes:
+    """Exporte le plan de préparation complet"""
+    
+    # Créer le document
+    content = f"""PLAN DE PRÉPARATION COMPLET
 {'=' * 60}
+Créé le : {plan.created_date.strftime('%d/%m/%Y')}
+Type de procédure : {plan.prep_type}
+Profil client : {plan.client_profile}
+Stratégie : {plan.strategy}
+Date cible : {plan.target_date.strftime('%d/%m/%Y') if plan.target_date else 'Non définie'}
+Nombre de séances : {plan.total_sessions}
+{'=' * 60}
+"""
+    
+    # Ajouter chaque séance
+    for session in plan.sessions:
+        content += f"""
+SÉANCE {session.session_number} : {session.title}
+{'-' * 50}
+Durée : {session.duration_minutes} minutes
+Statut : {'Complétée' if session.completed else 'À faire'}
+OBJECTIFS :
+"""
+        for obj in session.objectives:
+            content += f"- {obj}\n"
+        
+        content += f"\nQUESTIONS ({len(session.questions)}) :\n"
+        for i, q in enumerate(session.questions[:5], 1):
+            content += f"{i}. {q['question']}\n"
+            content += f"   → {q.get('answer', 'À définir')}\n"
+        
+        if len(session.questions) > 5:
+            content += f"... et {len(session.questions) - 5} autres questions\n"
+        
+        content += f"\nEXERCICES :\n"
+        for ex in session.exercises:
+            content += f"- {ex['title']} ({ex.get('duration', 10)} min)\n"
+        
+        if session.homework:
+            content += f"\nDEVOIR : {session.homework}\n"
+        
+        content += "\n" + "=" * 60 + "\n"
+    
+    return content.encode('utf-8')
 
-Date : {result.timestamp.strftime('%d/%m/%Y')}
-Profil client : {result.profile}
-Stratégie : {result.strategy}
-Durée préparation : {result.duration_estimate}
+def create_calendar_entries(plan: PreparationPlan) -> str:
+    """Crée des entrées de calendrier au format iCal"""
+    
+    ical_content = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Preparation Client//FR
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+"""
+    
+    # Calculer les dates des séances
+    if plan.target_date:
+        days_available = (plan.target_date - datetime.now().date()).days
+        interval = days_available / (plan.total_sessions + 1)
+    else:
+        interval = 4
+    
+    for i, session in enumerate(plan.sessions):
+        start_date = datetime.now() + timedelta(days=int(interval * i))
+        start_time = start_date.replace(hour=14, minute=0, second=0)  # 14h par défaut
+        end_time = start_time + timedelta(minutes=session.duration_minutes)
+        
+        ical_content += f"""BEGIN:VEVENT
+UID:{session.session_number}@preparationclient
+DTSTART:{start_time.strftime('%Y%m%dT%H%M%S')}
+DTEND:{end_time.strftime('%Y%m%dT%H%M%S')}
+SUMMARY:Préparation - {session.title}
+DESCRIPTION:Séance {session.session_number} de préparation\\n{len(session.questions)} questions à préparer\\nDevoir: {session.homework or 'Aucun'}
+LOCATION:Cabinet avocat
+STATUS:CONFIRMED
+END:VEVENT
+"""
+    
+    ical_content += "END:VCALENDAR"
+    
+    return ical_content
 
-POINTS CLÉS À RETENIR :
+def create_mobile_plan(plan: PreparationPlan) -> str:
+    """Crée une version mobile du plan"""
+    
+    mobile_content = f"""PLAN MOBILE - {plan.prep_type.upper()}
+{'=' * 40}
+📅 {plan.total_sessions} SÉANCES
+⏱️ {sum(s.duration_minutes for s in plan.sessions)} MIN TOTAL
+🎯 STRATÉGIE: {plan.strategy.upper()}
+{'=' * 40}
+"""
+    
+    for s in plan.sessions:
+        status = "✅" if s.completed else "⏳"
+        mobile_content += f"""
+{status} SÉANCE {s.session_number}
+{s.theme}
+⏱️ {s.duration_minutes} min
+❓ {len(s.questions)} questions
+📝 {s.homework or 'Pas de devoir'}
 {'-' * 40}
 """
     
-    # Top 10 Q/R
-    summary += "\n📌 QUESTIONS ESSENTIELLES :\n\n"
+    # Ajouter les questions essentielles
+    mobile_content += "\n❓ TOP QUESTIONS\n" + "=" * 40 + "\n"
     
-    for i, qa in enumerate(result.get_top_questions(10), 1):
-        summary += f"{i}. Q: {qa['question']}\n"
-        summary += f"   R: {qa['answer']}\n\n"
-    
-    # Phrases à éviter absolument
-    summary += "\n⚠️ NE JAMAIS DIRE :\n"
-    summary += "-" * 40 + "\n"
-    
-    for item in result.do_not_say[:10]:
-        summary += f"❌ {item}\n"
-    
-    # Conseils comportement
-    behavior_section = extract_section(result.content, "COMPORTEMENT")
-    if behavior_section:
-        summary += f"\n💡 COMPORTEMENT :\n{'-' * 40}\n"
-        summary += behavior_section[:500] + "...\n"
-    
-    # Droits essentiels
-    rights_section = extract_section(result.content, "DROITS")
-    if rights_section:
-        summary += f"\n⚖️ VOS DROITS :\n{'-' * 40}\n"
-        summary += rights_section[:300] + "...\n"
-    
-    return summary
-
-def create_print_friendly_summary(result: PreparationClientResult) -> str:
-    """Crée une version imprimable de la fiche résumé"""
-    
-    # Version épurée pour impression A4
-    summary = f"""
-                    FICHE DE PRÉPARATION
-                    {result.prep_type.upper()}
-                    
-================================================================
-
-CLIENT : _________________________    DATE : {datetime.now().strftime('%d/%m/%Y')}
-
-AVOCAT : _________________________    HEURE : _______________
-
-================================================================
-
-⬜ ATTITUDE GÉNÉRALE :
-   - Calme et posé
-   - Réponses courtes et précises
-   - "Je ne sais pas" si incertain
-   - Demander reformulation si nécessaire
-
-⬜ TENUE :
-   - Correcte et sobre
-   - Éviter signes ostentatoires
-
-================================================================
-
-TOP 5 QUESTIONS CRITIQUES :
-
-1. ____________________________________________________________
-   → __________________________________________________________
-
-2. ____________________________________________________________
-   → __________________________________________________________
-
-3. ____________________________________________________________
-   → __________________________________________________________
-
-4. ____________________________________________________________
-   → __________________________________________________________
-
-5. ____________________________________________________________
-   → __________________________________________________________
-
-================================================================
-
-⚠️ INTERDICTIONS ABSOLUES :
-   ⬜ Pas de spéculation
-   ⬜ Pas d'accusation d'autrui
-   ⬜ Pas de minimisation excessive
-   ⬜ Pas de contradiction
-   ⬜ Pas d'aveu même partiel
-
-================================================================
-
-NOTES :
-_________________________________________________________________
-_________________________________________________________________
-_________________________________________________________________
-_________________________________________________________________
-
-================================================================
-
-Signature client : ________________    Signature avocat : ________________
-"""
-    
-    return summary
-
-def highlight_search_terms(content: str, search_term: str) -> str:
-    """Surligne les termes recherchés dans le contenu"""
-    
-    if not search_term:
-        return content
-    
-    # Échapper les caractères spéciaux HTML
-    content = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    
-    # Surligner (insensible à la casse)
-    pattern = re.compile(re.escape(search_term), re.IGNORECASE)
-    highlighted = pattern.sub(
-        lambda m: f'<mark style="background-color: yellow;">{m.group()}</mark>',
-        content
-    )
-    
-    # Préserver les sauts de ligne
-    highlighted = highlighted.replace('\n', '<br>')
-    
-    return highlighted
-
-def show_interrogation_simulation(result: PreparationClientResult):
-    """Mode simulation d'interrogatoire"""
-    
-    st.markdown("### 🎮 Simulation d'interrogatoire")
-    
-    # État de la simulation
-    if 'simulation_index' not in st.session_state:
-        st.session_state.simulation_index = 0
-        st.session_state.simulation_score = []
-    
-    questions = result.key_qa
-    current_q = st.session_state.simulation_index
-    
-    if current_q < len(questions):
-        # Question actuelle
-        st.info(f"Question {current_q + 1}/{len(questions)}")
-        st.subheader(questions[current_q]['question'])
-        
-        # Zone de réponse
-        user_answer = st.text_area(
-            "Votre réponse :",
-            height=150,
-            key=f"sim_answer_{current_q}"
-        )
-        
-        # Afficher la réponse suggérée
-        with st.expander("💡 Voir la réponse suggérée"):
-            st.success(questions[current_q]['answer'])
-            
-            # Conseils supplémentaires
-            st.info("""
-            **Points d'attention :**
-            - Restez factuel
-            - Évitez les détails inutiles
-            - Ne spéculez pas
-            - Gardez un ton neutre
-            """)
-        
-        # Évaluation
-        st.markdown("#### Auto-évaluation")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("✅ Bonne réponse", key=f"good_{current_q}"):
-                st.session_state.simulation_score.append(1)
-                st.session_state.simulation_index += 1
-                st.rerun()
-        
-        with col2:
-            if st.button("😐 Moyenne", key=f"medium_{current_q}"):
-                st.session_state.simulation_score.append(0.5)
-                st.session_state.simulation_index += 1
-                st.rerun()
-        
-        with col3:
-            if st.button("❌ À retravailler", key=f"bad_{current_q}"):
-                st.session_state.simulation_score.append(0)
-                st.session_state.simulation_index += 1
-                st.rerun()
-    
-    else:
-        # Fin de simulation
-        display_simulation_results()
-
-def display_simulation_results():
-    """Affiche les résultats de la simulation"""
-    
-    st.success("🎉 Simulation terminée !")
-    
-    # Calcul du score
-    score = st.session_state.simulation_score
-    total = sum(score)
-    max_score = len(score)
-    percentage = (total / max_score * 100) if max_score > 0 else 0
-    
-    # Affichage
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Score global", f"{percentage:.0f}%")
-    
-    with col2:
-        st.metric("Questions réussies", f"{score.count(1)}/{len(score)}")
-    
-    with col3:
-        st.metric("À retravailler", score.count(0))
-    
-    # Graphique de progression
-    st.markdown("### 📊 Progression détaillée")
-    
-    # Créer un graphique simple avec les résultats
-    results_display = ""
-    for i, s in enumerate(score, 1):
-        if s == 1:
-            results_display += "🟢"
-        elif s == 0.5:
-            results_display += "🟡"
-        else:
-            results_display += "🔴"
-        
-        if i % 10 == 0:
-            results_display += f" {i}\n"
-    
-    st.text(results_display)
-    
-    # Recommandations
-    st.markdown("### 💡 Recommandations")
-    
-    if percentage >= 80:
-        st.success("""
-        Excellente préparation ! Vous maîtrisez bien les réponses.
-        - Continuez à réviser les points clés
-        - Travaillez la fluidité
-        - Restez vigilant sur les questions pièges
-        """)
-    elif percentage >= 60:
-        st.warning("""
-        Bonne base, mais des points à améliorer.
-        - Revoyez les questions ratées
-        - Pratiquez les reformulations
-        - Mémorisez les phrases clés
-        """)
-    else:
-        st.error("""
-        Préparation insuffisante. Il faut plus de travail.
-        - Reprenez la préparation complète
-        - Faites plus d'exercices
-        - Demandez des sessions supplémentaires
-        """)
-    
-    # Actions
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🔄 Recommencer", key="restart_simulation"):
-            st.session_state.simulation_index = 0
-            st.session_state.simulation_score = []
-            st.rerun()
-    
-    with col2:
-        if st.button("📊 Rapport détaillé", key="detailed_report"):
-            report = create_simulation_report(score)
-            st.download_button(
-                "💾 Télécharger rapport",
-                report.encode('utf-8'),
-                f"rapport_simulation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                "text/plain"
-            )
-
-def create_simulation_report(scores: List[float]) -> str:
-    """Crée un rapport détaillé de la simulation"""
-    
-    total = sum(scores)
-    percentage = (total / len(scores) * 100) if scores else 0
-    
-    report = f"""RAPPORT DE SIMULATION D'INTERROGATOIRE
-{'=' * 50}
-
-Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}
-Nombre de questions : {len(scores)}
-Score global : {percentage:.1f}%
-
-DÉTAIL PAR QUESTION :
-{'-' * 30}
-"""
-    
-    for i, score in enumerate(scores, 1):
-        status = "✅ Réussi" if score == 1 else "⚠️ Moyen" if score == 0.5 else "❌ À revoir"
-        report += f"Question {i:02d} : {status}\n"
-    
-    report += f"""
-{'-' * 30}
-RÉSUMÉ :
-- Questions réussies : {scores.count(1)}
-- Questions moyennes : {scores.count(0.5)}
-- Questions ratées : {scores.count(0)}
-
-RECOMMANDATIONS :
-"""
-    
-    if percentage >= 80:
-        report += "- Excellente maîtrise générale\n"
-        report += "- Maintenir le niveau par des révisions régulières\n"
-    elif percentage >= 60:
-        report += "- Niveau satisfaisant mais perfectible\n"
-        report += "- Retravailler les questions ratées en priorité\n"
-    else:
-        report += "- Préparation insuffisante\n"
-        report += "- Nécessité de reprendre la formation complète\n"
-    
-    return report
-
-def show_exercise_timer():
-    """Timer pour les exercices de préparation"""
-    
-    st.markdown("### ⏱️ Chronomètre exercices")
-    
-    # Exercices prédéfinis avec durées
-    exercise_durations = {
-        "Présentation personnelle": 60,
-        "Récit chronologique": 180,
-        "Questions rapides": 120,
-        "Gestion du silence": 30,
-        "Reformulation": 60,
-        "Respiration profonde": 120
-    }
-    
-    selected_exercise = st.selectbox(
-        "Choisir l'exercice",
-        list(exercise_durations.keys()),
-        key="exercise_timer_select"
-    )
-    
-    duration = exercise_durations[selected_exercise]
-    
-    st.info(f"⏱️ Durée recommandée : {duration} secondes")
-    
-    # Instructions spécifiques
-    instructions = {
-        "Présentation personnelle": "Présentez-vous en 1 minute : identité, profession, situation familiale",
-        "Récit chronologique": "Racontez les faits de manière chronologique en 3 minutes maximum",
-        "Questions rapides": "Répondez à des questions simples le plus rapidement possible",
-        "Gestion du silence": "Restez calme et silencieux pendant 30 secondes",
-        "Reformulation": "Reformulez des questions complexes en termes simples",
-        "Respiration profonde": "Exercice de respiration pour gérer le stress"
-    }
-    
-    st.write(f"**Instructions :** {instructions[selected_exercise]}")
-    
-    # Timer interface
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("▶️ Démarrer", key="start_exercise_timer"):
-            st.session_state.exercise_start = datetime.now()
-            st.session_state.exercise_duration = duration
-    
-    with col2:
-        if 'exercise_start' in st.session_state:
-            elapsed = (datetime.now() - st.session_state.exercise_start).seconds
-            remaining = max(0, st.session_state.exercise_duration - elapsed)
-            
-            st.metric("Temps restant", f"{remaining}s")
-            
-            # Barre de progression
-            progress = min(elapsed / st.session_state.exercise_duration, 1.0)
-            st.progress(progress)
-    
-    with col3:
-        if st.button("🔄 Réinitialiser", key="reset_exercise_timer"):
-            if 'exercise_start' in st.session_state:
-                del st.session_state.exercise_start
-
-def show_exercise_practice(exercise: Dict[str, Any]):
-    """Interface de pratique pour un exercice"""
-    
-    st.markdown(f"### 🎯 Pratique : {exercise['title']}")
-    
-    # Instructions détaillées
-    st.info(exercise['description'])
-    
-    # Zone de pratique selon le type
-    if exercise['type'] == 'qa_practice':
-        st.text_area(
-            "Votre réponse",
-            placeholder="Tapez votre réponse ici...",
-            height=200,
-            key="practice_response"
-        )
-        
-        if st.button("💡 Exemple de bonne réponse"):
-            st.success("Réponse type : Je ne me souviens pas précisément de cet événement.")
-    
-    elif exercise['type'] == 'reformulation':
-        st.text_input(
-            "Question complexe",
-            value="Pouvez-vous expliquer la nature exacte de vos relations avec la société X et justifier les transferts de fonds?",
-            disabled=True
-        )
-        
-        reformulation = st.text_area(
-            "Votre reformulation",
-            placeholder="Reformulez la question...",
-            key="reformulation_practice"
-        )
-        
-        if st.button("💡 Exemple"):
-            st.success("Reformulation : Vous me demandez quel était mon lien avec la société X et pourquoi il y a eu des virements ?")
-
-def create_mobile_version(result: PreparationClientResult) -> str:
-    """Crée une version mobile de la préparation"""
-    
-    mobile_content = f"""PRÉPARATION MOBILE - {result.prep_type.upper()}
-{'=' * 40}
-
-⚡ POINTS ESSENTIELS
-
-📌 ATTITUDE
-- Calme et posé
-- Réponses courtes
-- "Je ne sais pas" si doute
-- Demander à reformuler
-
-⚠️ JAMAIS DIRE
-"""
-    
-    # Top 5 des phrases à éviter
-    for i, phrase in enumerate(result.do_not_say[:5], 1):
-        mobile_content += f"{i}. {phrase}\n"
-    
-    mobile_content += "\n❓ QUESTIONS CLÉS\n" + "=" * 40 + "\n"
-    
-    # Top 10 Q/R
-    for i, qa in enumerate(result.get_top_questions(10), 1):
-        mobile_content += f"\nQ{i}: {qa['question']}\n"
-        mobile_content += f"→ {qa['answer']}\n"
-        mobile_content += "-" * 40 + "\n"
-    
-    mobile_content += """
-🆘 EN CAS DE DIFFICULTÉ
-- Respirer profondément
-- Demander à répéter
-- "Je dois réfléchir"
-- "Je ne comprends pas"
-
-⚖️ VOS DROITS
-- Avocat présent
-- Refuser de répondre
-- Demander une pause
-- Accès au dossier
-"""
+    question_count = 0
+    for session in plan.sessions:
+        for q in session.questions[:2]:  # 2 questions par séance
+            question_count += 1
+            mobile_content += f"\nQ{question_count}: {q['question']}\n"
+            mobile_content += f"→ {q.get('answer', 'À préparer')}\n"
+            mobile_content += "-" * 40 + "\n"
     
     return mobile_content
 
-def export_preparation_to_pdf(result: PreparationClientResult) -> bytes:
-    """Exporte la préparation en PDF (version simplifiée)"""
+def export_all_preparation_data() -> str:
+    """Exporte toutes les données de préparation"""
     
-    # Version texte formatée
-    content = f"""DOCUMENT DE PRÉPARATION
-{result.prep_type.upper()}
-
-{'=' * 60}
-
-Généré le : {result.timestamp.strftime('%d/%m/%Y')}
-Type : {result.prep_type}
-Profil client : {result.profile}
-Stratégie : {result.strategy}
-
-{'=' * 60}
-
-{result.content}
-
-{'=' * 60}
-
-Ce document est confidentiel et couvert par le secret professionnel.
-"""
+    export_data = {
+        'export_date': datetime.now().isoformat(),
+        'version': '1.0'
+    }
     
-    return content.encode('utf-8')
+    # Plan de préparation
+    if 'preparation_plan' in st.session_state:
+        plan = st.session_state.preparation_plan
+        export_data['preparation_plan'] = {
+            'total_sessions': plan.total_sessions,
+            'prep_type': plan.prep_type,
+            'client_profile': plan.client_profile,
+            'strategy': plan.strategy,
+            'created_date': plan.created_date.isoformat(),
+            'target_date': plan.target_date.isoformat() if plan.target_date else None,
+            'overall_progress': plan.overall_progress,
+            'sessions': []
+        }
+        
+        for session in plan.sessions:
+            session_data = {
+                'session_number': session.session_number,
+                'title': session.title,
+                'theme': session.theme,
+                'objectives': session.objectives,
+                'duration_minutes': session.duration_minutes,
+                'completed': session.completed,
+                'completion_date': session.completion_date.isoformat() if session.completion_date else None,
+                'score': session.score,
+                'notes': session.notes,
+                'questions_count': len(session.questions),
+                'exercises_count': len(session.exercises)
+            }
+            export_data['preparation_plan']['sessions'].append(session_data)
+    
+    # Résultats de préparation
+    if 'preparation_client_result' in st.session_state:
+        result = st.session_state.preparation_client_result
+        export_data['preparation_result'] = {
+            'prep_type': result.prep_type,
+            'profile': result.profile,
+            'strategy': result.strategy,
+            'timestamp': result.timestamp.isoformat(),
+            'key_qa_count': len(result.key_qa),
+            'do_not_say_count': len(result.do_not_say)
+        }
+    
+    # Feedback des séances
+    if 'session_feedback' in st.session_state:
+        export_data['session_feedback'] = st.session_state.session_feedback
+    
+    # Notes
+    notes_data = {}
+    for key in st.session_state:
+        if key.startswith('session_notes_'):
+            notes_data[key] = st.session_state[key]
+    
+    if notes_data:
+        export_data['notes'] = notes_data
+    
+    return json.dumps(export_data, ensure_ascii=False, indent=2)
+
+# Classe étendue pour le résultat de préparation
+class PreparationClientResult:
+    def __init__(self, content, prep_type, profile, strategy, key_qa, 
+                 do_not_say, exercises, duration_estimate, timestamp):
+        self.content = content
+        self.prep_type = prep_type
+        self.profile = profile
+        self.strategy = strategy
+        self.key_qa = key_qa
+        self.do_not_say = do_not_say
+        self.exercises = exercises
+        self.duration_estimate = duration_estimate
+        self.timestamp = timestamp
+    
+    def get_top_questions(self, n=10):
+        """Retourne les n questions les plus importantes"""
+        return self.key_qa[:n]
