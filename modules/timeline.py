@@ -21,7 +21,7 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
-from models.dataclasses import TimelineEvent, Document
+from modules.dataclasses import TimelineEvent, Document
 from utils.helpers import extract_dates, extract_entities, format_legal_date
 from managers.multi_llm_manager import MultiLLMManager
 
