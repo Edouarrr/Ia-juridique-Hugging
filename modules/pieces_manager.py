@@ -1209,7 +1209,7 @@ def handle_universal_search(query: str):
             'keywords': ['dossier', 'affaire', 'dossier pénal', 'organiser dossier'],
             'module': 'dossier_penal',
             'view': 'dossiers'
-        }
+        },
     }
     
     # Détection du module approprié
