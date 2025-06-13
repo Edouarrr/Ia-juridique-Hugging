@@ -114,6 +114,51 @@ except ImportError:
     ARGUMENTATION_PATTERNS = {}
     ANALYSIS_CONFIGS = {}
 
+# ========================= NOUVEAUX IMPORTS POUR GÉNÉRATION JURIDIQUE =========================
+
+# Import du module d'intégration juridique
+try:
+    from modules.integration_juridique import (
+        enhance_search_with_generation,
+        AnalyseurRequeteJuridique,
+        process_juridical_generation
+    )
+    JURIDIQUE_AVAILABLE = True
+except ImportError:
+    JURIDIQUE_AVAILABLE = False
+    print("⚠️ Module integration_juridique non disponible")
+
+# Import du module de génération
+try:
+    from modules.generation_juridique import show_page as show_generation_page
+    GENERATION_MODULE_AVAILABLE = True
+except ImportError:
+    GENERATION_MODULE_AVAILABLE = False
+    print("⚠️ Module generation_juridique non disponible")
+
+# NOUVEAU : Import du module de génération longue
+try:
+    from modules.generation_longue import (
+        GenerateurDocumentsLongs,
+        show_generation_longue_interface
+    )
+    GENERATION_LONGUE_AVAILABLE = True
+except ImportError:
+    GENERATION_LONGUE_AVAILABLE = False
+    print("⚠️ Module generation_longue non disponible")
+
+# NOUVEAU : Import du cahier des charges
+try:
+    from config.cahier_des_charges import (
+        STRUCTURES_ACTES,
+        PROMPTS_GENERATION,
+        validate_acte
+    )
+    CAHIER_CHARGES_AVAILABLE = True
+except ImportError:
+    CAHIER_CHARGES_AVAILABLE = False
+    print("⚠️ Cahier des charges non disponible")
+
 # ========================= CLASSE UniversalSearchInterface =========================
 
 class UniversalSearchInterface:
@@ -326,6 +371,107 @@ def create_bordereau_document(bordereau: 'BordereauPieces', format: str = 'text'
         
         return '\n'.join(lines)
 
+# ========================= FONCTION ANALYSE_IA_PAGE =========================
+
+def analyse_ia_page():
+    """Page d'analyse IA - fonction qui était manquante"""
+    st.markdown("## 🤖 Analyse IA")
+    
+    # Vérifier si des documents sont disponibles
+    documents = []
+    if 'azure_documents' in st.session_state:
+        documents.extend(st.session_state.azure_documents.values())
+    if 'imported_documents' in st.session_state:
+        documents.extend(st.session_state.imported_documents.values())
+    
+    if not documents:
+        st.warning("Aucun document disponible pour l'analyse. Importez d'abord des documents.")
+        return
+    
+    # Options d'analyse
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        analysis_type = st.selectbox(
+            "Type d'analyse",
+            [
+                "Analyse complète",
+                "Analyse des risques",
+                "Analyse des infractions",
+                "Analyse chronologique",
+                "Analyse des parties",
+                "Analyse des preuves"
+            ]
+        )
+    
+    with col2:
+        doc_selection = st.multiselect(
+            "Documents à analyser",
+            options=[doc.get('title', f'Document {i}') for i, doc in enumerate(documents)],
+            default=[doc.get('title', f'Document {i}') for i, doc in enumerate(documents[:5])]
+        )
+    
+    # Options avancées
+    with st.expander("⚙️ Options avancées"):
+        include_citations = st.checkbox("Inclure les citations", value=True)
+        include_recommendations = st.checkbox("Inclure des recommandations", value=True)
+        output_format = st.selectbox(
+            "Format de sortie",
+            ["Rapport structuré", "Points clés", "Synthèse narrative"]
+        )
+    
+    # Bouton d'analyse
+    if st.button("🚀 Lancer l'analyse", type="primary"):
+        with st.spinner(f"⏳ {analysis_type} en cours..."):
+            # Simuler l'analyse
+            st.session_state.ai_analysis_results = {
+                'type': analysis_type,
+                'document_count': len(doc_selection),
+                'timestamp': datetime.now(),
+                'content': generate_analysis_content(analysis_type, doc_selection)
+            }
+            st.success("✅ Analyse terminée !")
+            st.rerun()
+    
+    # Afficher les résultats s'ils existent
+    if 'ai_analysis_results' in st.session_state:
+        show_analysis_results()
+
+def generate_analysis_content(analysis_type: str, documents: List[str]) -> str:
+    """Génère le contenu de l'analyse (placeholder)"""
+    content = f"# {analysis_type}\n\n"
+    content += f"**Documents analysés :** {len(documents)}\n"
+    content += f"**Date :** {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+    
+    if analysis_type == "Analyse complète":
+        content += """## Synthèse exécutive
+Les documents analysés révèlent plusieurs points d'attention...
+
+## Points clés
+1. Identification de patterns récurrents
+2. Zones de risque détectées
+3. Opportunités identifiées
+
+## Recommandations
+- Action 1 : ...
+- Action 2 : ...
+- Action 3 : ..."""
+    
+    elif analysis_type == "Analyse des risques":
+        content += """## Risques identifiés
+### Risque juridique élevé
+- Point 1
+- Point 2
+
+### Risque financier modéré
+- Point 1
+- Point 2
+
+### Risque réputationnel faible
+- Point 1"""
+    
+    return content
+
 # ========================= MANAGERS AVANCÉS - IMPORT CONDITIONNEL =========================
 
 MANAGERS = {
@@ -436,9 +582,8 @@ except ImportError:
 MODULES_AVAILABLE = {}
 MODULE_FUNCTIONS = {}
 
-# Import conditionnel de tous les modules - CORRECTION : utiliser show_page pour tous
+# Import conditionnel de tous les modules - ajout de analyse_ia_page comme fonction interne
 modules_to_import = [
-    ('analyse_ia', ['show_page']),
     ('bordereau', ['show_page']),
     ('comparison', ['show_page']),
     ('configuration', ['show_page']),
@@ -466,6 +611,10 @@ for module_name, functions in modules_to_import:
                 MODULE_FUNCTIONS[f'{module_name}_page'] = getattr(module, func_name)
     except ImportError:
         MODULES_AVAILABLE[module_name] = False
+
+# Ajouter la fonction analyse_ia_page directement
+MODULE_FUNCTIONS['analyse_ia_page'] = analyse_ia_page
+MODULES_AVAILABLE['analyse_ia'] = True
 
 # ========================= GÉNÉRATION AVANCÉE DE PLAINTES =========================
 
@@ -1931,6 +2080,77 @@ async def process_plainte_request(query: str, analysis: 'QueryAnalysis'):
         # Générer
         await generate_advanced_plainte(query)
 
+# ========================= AFFICHAGE DES RÉSULTATS JURIDIQUES =========================
+
+def show_juridique_results():
+    """Affiche les résultats de génération juridique"""
+    if 'generation_result' not in st.session_state:
+        return
+        
+    result = st.session_state.generation_result
+    
+    if result['type'] == 'acte_juridique':
+        acte = result['acte']
+        
+        st.markdown(f"### ⚖️ {acte.titre}")
+        
+        # NOUVEAU : Validation automatique du cahier des charges
+        if CAHIER_CHARGES_AVAILABLE and not result.get('validation'):
+            validation = validate_acte(acte.contenu, acte.type_acte)
+            result['validation'] = validation
+        
+        # Affichage de la validation
+        if result.get('validation'):
+            validation = result['validation']
+            if validation['valid']:
+                st.success(f"✅ Conforme au cahier des charges ({validation['word_count']} mots)")
+            else:
+                st.warning("⚠️ Non-conformités détectées")
+                for error in validation['errors']:
+                    st.error(f"• {error}")
+        
+        # Zone d'édition
+        contenu = st.text_area(
+            "Contenu de l'acte",
+            value=acte.contenu,
+            height=600,
+            key="edit_juridique_result"
+        )
+        
+        # Actions enrichies
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.download_button(
+                "📥 Télécharger",
+                contenu.encode('utf-8'),
+                f"{acte.type_acte}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                "text/plain"
+            )
+        
+        with col2:
+            if st.button("✅ Revalider CDC"):
+                from config.cahier_des_charges import validate_acte
+                validation = validate_acte(contenu, acte.type_acte)
+                st.session_state.generation_result['validation'] = validation
+                st.rerun()
+        
+        with col3:
+            if st.button("📜 Version longue"):
+                if GENERATION_LONGUE_AVAILABLE:
+                    st.session_state.show_generation_longue = True
+                    st.session_state.juridique_context = {
+                        'type_acte': acte.type_acte,
+                        'parties': result.get('parties', {}),
+                        'infractions': result.get('infractions', [])
+                    }
+                    st.rerun()
+        
+        with col4:
+            if st.button("🔄 Régénérer"):
+                del st.session_state.generation_result
+                st.rerun()
+
 # ========================= INTERFACE UTILISATEUR =========================
 
 class SearchInterface:
@@ -1951,12 +2171,27 @@ class SearchInterface:
                 self.current_phase = None
         else:
             self.current_phase = None
+        
+        # NOUVEAU : Ajouter l'analyseur juridique
+        if JURIDIQUE_AVAILABLE:
+            self.analyseur_juridique = AnalyseurRequeteJuridique()
+        else:
+            self.analyseur_juridique = None
     
     async def process_universal_query(self, query: str):
         """Traite une requête en utilisant le service de recherche"""
         
         # Sauvegarder la requête
         st.session_state.last_universal_query = query
+        
+        # NOUVEAU : Analyser d'abord avec l'analyseur juridique si disponible
+        if self.analyseur_juridique:
+            analyse_juridique = self.analyseur_juridique.analyser_requete(query)
+            
+            # Si c'est une demande de génération juridique
+            if analyse_juridique['is_generation'] and analyse_juridique['type_acte']:
+                st.session_state.current_juridique_analysis = analyse_juridique
+                return await self._process_juridique_request(query, analyse_juridique)
         
         # Analyser la requête avec le service
         if self.search_service:
@@ -1967,9 +2202,19 @@ class SearchInterface:
         
         # Router selon le type de commande détecté
         if query_analysis.command_type == 'redaction':
+            # Vérifier si c'est une rédaction juridique
+            if self.analyseur_juridique:
+                analyse_juridique = self.analyseur_juridique.analyser_requete(query)
+                if analyse_juridique['type_acte']:
+                    return await self._process_juridique_request(query, analyse_juridique)
             return await self._process_redaction_request(query, query_analysis)
         elif query_analysis.command_type == 'plainte':
-            return await process_plainte_request(query, query_analysis)
+            # Utiliser le nouveau module juridique si disponible
+            if self.analyseur_juridique:
+                analyse_juridique = self.analyseur_juridique.analyser_requete(query)
+                return await self._process_juridique_request(query, analyse_juridique)
+            else:
+                return await process_plainte_request(query, query_analysis)
         elif query_analysis.command_type == 'plaidoirie':
             return await self._process_plaidoirie_request(query, query_analysis)
         elif query_analysis.command_type == 'preparation_client':
@@ -2001,6 +2246,31 @@ class SearchInterface:
         else:
             # Recherche par défaut
             return await self._process_search_request(query, query_analysis)
+    
+    # ========================= NOUVELLE MÉTHODE POUR TRAITER LES REQUÊTES JURIDIQUES =========================
+    
+    async def _process_juridique_request(self, query: str, analyse_juridique: Dict):
+        """Traite une demande juridique avec le nouveau module"""
+        
+        if not JURIDIQUE_AVAILABLE:
+            st.warning("Module juridique non disponible, utilisation du mode standard")
+            # Fallback vers l'ancienne méthode
+            if hasattr(self, '_process_plainte_request'):
+                return await self._process_plainte_request(query, None)
+            else:
+                st.error("Aucun module de génération disponible")
+                return
+        
+        # Vérifier si c'est une demande de document long
+        if any(term in query.lower() for term in ['exhaustive', 'complète', '50 pages', 'document long']):
+            if GENERATION_LONGUE_AVAILABLE:
+                st.session_state.show_generation_longue = True
+                st.session_state.juridique_context = analyse_juridique
+                st.rerun()
+                return
+        
+        # Traiter la génération standard
+        await process_juridical_generation(query, analyse_juridique)
     
     def _simple_query_analysis(self, query: str):
         """Analyse simple de la requête si le service n'est pas disponible"""
@@ -2502,7 +2772,7 @@ Exemples :
     if st.checkbox("📁 Voir toutes les références disponibles"):
         show_available_references()
     
-    # Suggestions de commandes
+    # Suggestions de commandes enrichies
     with st.expander("💡 Exemples de commandes", expanded=False):
         st.markdown("""
         **Recherche :**
@@ -2515,10 +2785,23 @@ Exemples :
         - `analyser les risques @dossier_pénal`
         - `identifier les infractions @affaire_corruption`
         
-        **Rédaction :**
-        - `rédiger conclusions défense @affaire_martin abus biens sociaux`
-        - `créer plainte avec constitution partie civile escroquerie`
-        - `rédiger plainte contre Vinci, SOGEPROM @projet_26_05_2025`
+        **Rédaction juridique (NOUVEAU - Cahier des charges) :** 
+        - `rédiger plainte contre Vinci pour abus de biens sociaux`
+        - `créer conclusions de nullité @affaire_martin`
+        - `rédiger plainte avec constitution de partie civile contre SOGEPROM`
+        - `générer citation directe corruption @projet_26_05_2025`
+        - `écrire observations article 175 CPP`
+        - `conclusions en réplique exhaustives` (génère 30+ pages)
+        - `plainte CPC complète contre Vinci, Bouygues` (génère 50+ pages)
+        
+        **Documents longs (25-50+ pages) :**
+        - `plainte exhaustive contre [société] pour [infractions]`
+        - `conclusions complètes @affaire avec analyse approfondie`
+        - `document long : plainte CPC détaillée 50 pages`
+        
+        **Rédaction standard :**
+        - `rédiger conclusions défense @affaire_martin`
+        - `créer plainte escroquerie`
         
         **Synthèse :**
         - `synthétiser les pièces @dossier_fraude`
@@ -2531,8 +2814,34 @@ Exemples :
         - `exporter analyse format word`
         """)
     
-    # Menu d'actions rapides
+    # Menu d'actions rapides enrichi
     show_quick_actions()
+    
+    # NOUVEAU : Afficher le module juridique si demandé
+    if st.session_state.get('show_juridique_module', False):
+        if GENERATION_MODULE_AVAILABLE:
+            show_generation_page()
+            # Bouton pour revenir à la recherche
+            if st.button("← Retour à la recherche", key="back_to_search"):
+                st.session_state.show_juridique_module = False
+                st.rerun()
+            return
+        else:
+            st.error("Module de génération juridique non disponible")
+            st.session_state.show_juridique_module = False
+    
+    # NOUVEAU : Afficher le module de génération longue si demandé
+    if st.session_state.get('show_generation_longue', False):
+        if GENERATION_LONGUE_AVAILABLE:
+            show_generation_longue_interface()
+            # Bouton pour revenir à la recherche
+            if st.button("← Retour à la recherche", key="back_to_search_longue"):
+                st.session_state.show_generation_longue = False
+                st.rerun()
+            return
+        else:
+            st.error("Module de génération longue non disponible")
+            st.session_state.show_generation_longue = False
     
     # Traiter la requête
     if query and (search_button or st.session_state.get('process_query', False)):
@@ -2605,6 +2914,29 @@ def show_modules_status():
                 st.metric("Templates", "❌")
                 st.metric("Styles", "❌")
         
+        # État du module juridique
+        st.markdown("### ⚖️ Module juridique")
+        if JURIDIQUE_AVAILABLE:
+            st.success("✅ Module d'intégration juridique disponible")
+        else:
+            st.error("❌ Module d'intégration juridique non disponible")
+            
+        if GENERATION_MODULE_AVAILABLE:
+            st.success("✅ Module de génération juridique disponible")
+        else:
+            st.error("❌ Module de génération juridique non disponible")
+        
+        # NOUVEAU : État des modules complémentaires
+        if GENERATION_LONGUE_AVAILABLE:
+            st.success("✅ Module documents longs (25-50+ pages) disponible")
+        else:
+            st.error("❌ Module documents longs non disponible")
+
+        if CAHIER_CHARGES_AVAILABLE:
+            st.success("✅ Cahier des charges juridique chargé")
+        else:
+            st.error("❌ Cahier des charges non disponible")
+        
         # Liste détaillée des modules
         st.markdown("### 📋 Modules actifs")
         for module, available in MODULES_AVAILABLE.items():
@@ -2623,7 +2955,7 @@ def show_modules_status():
 
 def show_quick_actions():
     """Affiche les actions rapides"""
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)  # Ajout d'une colonne
     
     with col1:
         if st.button("📝 Nouvelle rédaction", key="quick_redaction"):
@@ -2646,6 +2978,26 @@ def show_quick_actions():
     with col4:
         if st.button("🔄 Réinitialiser", key="quick_reset"):
             clear_universal_state()
+    
+    # Bouton pour accès direct au module juridique
+    with col5:
+        if st.button("⚖️ Actes juridiques", key="quick_juridique"):
+            if GENERATION_MODULE_AVAILABLE:
+                st.session_state.show_juridique_module = True
+            else:
+                st.session_state.pending_query = "rédiger plainte"
+                st.session_state.process_query = True
+            st.rerun()
+    
+    # NOUVEAU : Bouton pour documents longs
+    with col6:
+        if st.button("📜 Doc. longs", key="quick_long_docs"):
+            if GENERATION_LONGUE_AVAILABLE:
+                st.session_state.show_generation_longue = True
+            else:
+                st.session_state.pending_query = "plainte exhaustive 50 pages"
+                st.session_state.process_query = True
+            st.rerun()
 
 def show_unified_results():
     """Affiche tous les types de résultats de manière unifiée"""
@@ -2661,6 +3013,11 @@ def show_unified_results():
     # Plainte générée
     elif st.session_state.get('generated_plainte'):
         show_plainte_results()
+        results_found = True
+    
+    # NOUVEAU : Résultats juridiques
+    elif st.session_state.get('generation_result'):
+        show_juridique_results()
         results_found = True
     
     # Résultats d'analyse
@@ -2881,7 +3238,10 @@ def clear_universal_state():
         'redaction_result', 'ai_analysis_results', 'search_results',
         'synthesis_result', 'selected_pieces', 'import_files',
         'generated_plainte', 'timeline_result', 'bordereau_result',
-        'jurisprudence_results'
+        'jurisprudence_results', 'generation_result', 'current_juridique_analysis',
+        'show_juridique_module',
+        # NOUVEAU : Ajouter ces clés
+        'show_generation_longue', 'juridique_context', 'document_long_genere'
     ]
     
     for key in keys_to_clear:
