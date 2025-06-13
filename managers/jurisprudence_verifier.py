@@ -19,7 +19,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from cachetools import TTLCache
 import os
 
-from models.jurisprudence_models import JurisprudenceReference, VerificationResult, SourceJurisprudence
+from modules.jurisprudence_models import JurisprudenceReference, VerificationResult, SourceJurisprudence
 from config.app_config import LEGAL_APIS
 
 # Configuration du logging
