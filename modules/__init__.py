@@ -2,13 +2,6 @@
 """
 Package modules - Contient tous les modules fonctionnels de l'application juridique
 Détection automatique des fonctions disponibles dans chaque module
-
-Ce fichier détecte automatiquement toutes les fonctions publiques de chaque module
-et crée MODULE_FUNCTIONS dynamiquement si nécessaire.
-
-Pour activer le mode debug : 
-- Définir la variable d'environnement DEBUG_MODULES=true
-- Ou appeler debug_modules_status() après l'import
 """
 
 import inspect
@@ -18,7 +11,7 @@ import os
 from typing import Dict, Any, List, Tuple, Callable
 from datetime import datetime
 
-# Mode debug (activé via variable d'environnement ou streamlit)
+# Mode debug
 DEBUG_MODE = os.environ.get('DEBUG_MODULES', 'false').lower() == 'true'
 
 # Import des dataclasses depuis ce module
@@ -27,48 +20,81 @@ try:
 except ImportError:
     pass
 
-# Liste de tous les modules possibles
+# IMPORTANT: Liste des modules avec les VRAIS noms de fichiers
 MODULES_LIST = [
-    'pieces_manager', 'redaction', 'timeline', 'recherche', 'dossier_penal',
-    'bordereau', 'plaidoirie', 'mapping', 'email', 'preparation_client',
-    'synthesis', 'templates', 'comparison', 'configuration', 'documents_longs',
-    'explorer', 'import_export', 'jurisprudence', 'selection_pieces',
-    'redaction_unified', 'risques', 'analyse_ia', 'export_juridique',
-    'generation_juridique', 'generation_longue', 'integration_juridique'
+    # Modules principaux (vérifiés dans votre liste)
+    'analyse_ia',           # analyse_ia.py ✓
+    'bordereau',            # bordereau.py ✓
+    'comparison',           # comparison.py ✓
+    'configuration',        # configuration.py ✓
+    'dataclasses',          # dataclasses.py ✓
+    'dossier_penal',        # dossier_penal.py ✓
+    'email',                # email.py ✓
+    'explorer',             # explorer.py ✓
+    'export_juridique',     # export_juridique.py ✓
+    'generation_juridique', # generation_juridique.py ✓
+    'generation-longue',    # generation-longue.py ✓ (avec tiret!)
+    'import_export',        # import_export.py ✓
+    'integration_juridique',# integration_juridique.py ✓
+    'jurisprudence',        # jurisprudence.py ✓
+    'mapping',              # mapping.py ✓
+    'pieces_manager',       # pieces_manager.py ✓
+    'plaidoirie',           # plaidoirie.py ✓
+    'preparation_client',   # preparation_client.py ✓
+    'recherche',            # recherche.py ✓
+    'redaction',            # redaction.py ✓
+    'redaction_unified',    # redaction_unified.py ✓
+    'risques',              # risques.py ✓
+    'selection_pieces',     # selection_pieces.py ✓
+    'synthesis',            # synthesis.py ✓
+    'template',             # template.py ✓ (sans 's'!)
+    'timeline',             # timeline.py ✓
 ]
 
-# Dictionnaire pour stocker les erreurs d'import
+# Dictionnaire pour stocker les erreurs
 _import_errors = {}
 _function_detection_errors = {}
 
+def safe_import_module(module_name: str):
+    """Import sécurisé d'un module avec gestion des noms spéciaux"""
+    try:
+        # Gérer les modules avec tirets (remplacer par underscore pour l'import)
+        import_name = module_name.replace('-', '_')
+        
+        # Tenter l'import
+        if '-' in module_name:
+            # Pour les modules avec tirets, utiliser importlib
+            module = importlib.import_module(f'.{module_name}', package='modules')
+        else:
+            # Import normal
+            module = importlib.import_module(f'.{module_name}', package='modules')
+        
+        return module
+    except ImportError as e:
+        _import_errors[module_name] = str(e)
+        return None
+    except Exception as e:
+        _import_errors[module_name] = f"Erreur inattendue: {str(e)}"
+        return None
+
 def get_module_functions(module) -> Dict[str, str]:
-    """
-    Détecte automatiquement toutes les fonctions d'un module
-    et retourne un dictionnaire {nom_fonction: description}
-    """
+    """Détecte automatiquement toutes les fonctions d'un module"""
     functions = {}
     
     try:
-        # Parcourir tous les membres du module
         for name, obj in inspect.getmembers(module):
-            # Vérifier que c'est une fonction définie dans ce module
             if (inspect.isfunction(obj) and 
                 obj.__module__ == module.__name__ and
-                not name.startswith('_')):  # Ignorer les fonctions privées
+                not name.startswith('_')):
                 
-                # Obtenir la docstring ou créer une description par défaut
                 doc = inspect.getdoc(obj)
                 if doc:
-                    # Prendre la première ligne de la docstring
                     description = doc.split('\n')[0].strip()
-                    # Limiter la longueur et enlever les guillemets finaux
                     if len(description) > 100:
                         description = description[:97] + "..."
                     description = description.rstrip('"\'')
                 else:
-                    # Créer une description basée sur le nom
                     description = name.replace('_', ' ').title()
-                    # Améliorer certains patterns courants
                     replacements = {
                         'Display ': 'Afficher ',
                         'Create ': 'Créer ',
@@ -82,15 +108,6 @@ def get_module_functions(module) -> Dict[str, str]:
                         'Update ': 'Mettre à jour ',
                         'Delete ': 'Supprimer ',
                         'Validate ': 'Valider ',
-                        'Search ': 'Rechercher ',
-                        'Load ': 'Charger ',
-                        'Save ': 'Sauvegarder ',
-                        'Init ': 'Initialiser ',
-                        'Check ': 'Vérifier ',
-                        'Analyze ': 'Analyser ',
-                        'Render ': 'Afficher ',
-                        'Handle ': 'Gérer ',
-                        'Manager': 'Gestionnaire'
                     }
                     for eng, fr in replacements.items():
                         description = description.replace(eng, fr)
@@ -103,104 +120,172 @@ def get_module_functions(module) -> Dict[str, str]:
     return functions
 
 def create_stub_module(module_name: str):
-    """
-    Crée un module stub (vide) pour éviter les erreurs d'import
-    """
+    """Crée un module stub pour éviter les erreurs"""
     import types
     stub_module = types.ModuleType(module_name)
     stub_module.__file__ = f"<stub for {module_name}>"
     stub_module.MODULE_FUNCTIONS = {}
     
-    # Fonction par défaut pour les modules stub
     def not_implemented(*args, **kwargs):
         return f"Module {module_name} non implémenté"
     
     stub_module.not_implemented = not_implemented
     return stub_module
 
-# Compteurs pour le suivi
+# Gestion des imports manquants dans dataclasses
+def patch_missing_dataclasses():
+    """Ajoute les dataclasses manquantes si nécessaire"""
+    try:
+        import modules.dataclasses as dc
+        
+        # Ajouter les classes manquantes si elles n'existent pas
+        if not hasattr(dc, 'EmailConfig'):
+            class EmailConfig:
+                def __init__(self):
+                    self.smtp_server = ""
+                    self.smtp_port = 587
+                    self.sender = ""
+            setattr(dc, 'EmailConfig', EmailConfig)
+        
+        if not hasattr(dc, 'Relationship'):
+            class Relationship:
+                def __init__(self, source="", target="", type=""):
+                    self.source = source
+                    self.target = target
+                    self.type = type
+            setattr(dc, 'Relationship', Relationship)
+        
+        if not hasattr(dc, 'PlaidoirieResult'):
+            class PlaidoirieResult:
+                def __init__(self, content="", success=False):
+                    self.content = content
+                    self.success = success
+            setattr(dc, 'PlaidoirieResult', PlaidoirieResult)
+        
+        if not hasattr(dc, 'PreparationClientResult'):
+            class PreparationClientResult:
+                def __init__(self, documents=None, notes=""):
+                    self.documents = documents or []
+                    self.notes = notes
+            setattr(dc, 'PreparationClientResult', PreparationClientResult)
+            
+    except Exception as e:
+        print(f"Erreur lors du patch des dataclasses: {e}")
+
+# Gestion des imports manquants dans utils.helpers
+def patch_missing_helpers():
+    """Ajoute les fonctions manquantes dans helpers si nécessaire"""
+    try:
+        import utils.helpers as helpers
+        
+        if not hasattr(helpers, 'truncate_text'):
+            def truncate_text(text: str, max_length: int = 100) -> str:
+                """Tronque un texte à une longueur maximale"""
+                if len(text) <= max_length:
+                    return text
+                return text[:max_length-3] + "..."
+            setattr(helpers, 'truncate_text', truncate_text)
+            
+    except Exception as e:
+        print(f"Erreur lors du patch des helpers: {e}")
+
+# Appliquer les patches
+patch_missing_dataclasses()
+patch_missing_helpers()
+
+# Compteurs
 _modules_loaded = 0
 _modules_failed = 0
 _modules_stubbed = 0
 _total_functions = 0
 
-# Import dynamique de tous les modules et configuration automatique
+# Import dynamique de tous les modules
 for module_name in MODULES_LIST:
     try:
-        # Tenter d'importer le module
-        module = importlib.import_module(f'.{module_name}', package='modules')
+        # Import sécurisé
+        module = safe_import_module(module_name)
         
-        # Rendre le module disponible globalement
-        globals()[module_name] = module
-        _modules_loaded += 1
-        
-        # Si MODULE_FUNCTIONS n'existe pas, le créer automatiquement
-        if not hasattr(module, 'MODULE_FUNCTIONS'):
-            detected_functions = get_module_functions(module)
+        if module:
+            # Rendre le module disponible (remplacer les tirets par underscores pour l'accès)
+            access_name = module_name.replace('-', '_')
+            globals()[access_name] = module
+            _modules_loaded += 1
             
-            # Si des fonctions ont été détectées, les assigner
-            if detected_functions:
-                setattr(module, 'MODULE_FUNCTIONS', detected_functions)
-                _total_functions += len(detected_functions)
-                if DEBUG_MODE:
-                    print(f"✅ Module {module_name}: {len(detected_functions)} fonctions détectées")
+            # Créer MODULE_FUNCTIONS si absent
+            if not hasattr(module, 'MODULE_FUNCTIONS'):
+                detected_functions = get_module_functions(module)
+                
+                if detected_functions:
+                    setattr(module, 'MODULE_FUNCTIONS', detected_functions)
+                    _total_functions += len(detected_functions)
+                    if DEBUG_MODE:
+                        print(f"✅ Module {module_name}: {len(detected_functions)} fonctions détectées")
+                else:
+                    setattr(module, 'MODULE_FUNCTIONS', {})
+                    if DEBUG_MODE:
+                        print(f"ℹ️ Module {module_name}: aucune fonction publique détectée")
             else:
-                # Module sans fonctions ou avec uniquement des classes
-                setattr(module, 'MODULE_FUNCTIONS', {})
+                _total_functions += len(getattr(module, 'MODULE_FUNCTIONS', {}))
                 if DEBUG_MODE:
-                    print(f"ℹ️ Module {module_name}: aucune fonction publique détectée")
+                    print(f"✅ Module {module_name}: MODULE_FUNCTIONS existant conservé")
         else:
-            # MODULE_FUNCTIONS existe déjà
-            _total_functions += len(getattr(module, 'MODULE_FUNCTIONS', {}))
-            if DEBUG_MODE:
-                print(f"✅ Module {module_name}: MODULE_FUNCTIONS existant conservé")
+            # Créer un stub pour éviter les erreurs
+            _modules_failed += 1
+            access_name = module_name.replace('-', '_')
             
-    except ImportError as e:
-        # Module non trouvé - créer un stub pour éviter les erreurs
-        _import_errors[module_name] = str(e)
-        _modules_failed += 1
-        
-        # Créer un module stub
-        try:
-            stub = create_stub_module(module_name)
-            globals()[module_name] = stub
-            _modules_stubbed += 1
-            if DEBUG_MODE:
-                print(f"⚠️ Module {module_name} non trouvé - stub créé: {e}")
-        except Exception as stub_error:
-            if DEBUG_MODE:
-                print(f"❌ Impossible de créer un stub pour {module_name}: {stub_error}")
-        continue
-        
+            try:
+                stub = create_stub_module(module_name)
+                globals()[access_name] = stub
+                _modules_stubbed += 1
+                if DEBUG_MODE:
+                    print(f"⚠️ Module {module_name} non trouvé - stub créé")
+            except Exception as stub_error:
+                if DEBUG_MODE:
+                    print(f"❌ Impossible de créer un stub pour {module_name}: {stub_error}")
+            
     except Exception as e:
-        # Autre erreur - enregistrer et continuer
         _import_errors[module_name] = str(e)
         _modules_failed += 1
         if DEBUG_MODE:
             print(f"❌ Erreur avec module {module_name}: {e}")
-        continue
 
-# Fonction utilitaire pour obtenir tous les modules chargés
+# Créer des alias pour les modules manquants
+# documents_longs n'existe pas, créer un stub
+if 'documents_longs' not in globals():
+    globals()['documents_longs'] = create_stub_module('documents_longs')
+
+# templates -> template (alias)
+if 'template' in globals() and 'templates' not in globals():
+    globals()['templates'] = globals()['template']
+
+# generation_longue -> generation-longue (alias)
+if 'generation_longue' in globals():
+    globals()['generation-longue'] = globals()['generation_longue']
+
+# Fonctions utilitaires
 def get_loaded_modules() -> Dict[str, Any]:
     """Retourne un dictionnaire de tous les modules chargés avec succès"""
     loaded = {}
+    # Inclure tous les noms possibles (avec tirets et underscores)
     for module_name in MODULES_LIST:
+        access_name = module_name.replace('-', '_')
+        if access_name in globals():
+            loaded[access_name] = globals()[access_name]
         if module_name in globals():
             loaded[module_name] = globals()[module_name]
     return loaded
 
-# Fonction pour obtenir MODULE_FUNCTIONS d'un module spécifique
 def get_module_functions_by_name(module_name: str) -> Dict[str, str]:
-    """
-    Retourne MODULE_FUNCTIONS pour un module donné
-    Retourne un dict vide si le module n'existe pas
-    """
-    if module_name in globals():
-        module = globals()[module_name]
-        return getattr(module, 'MODULE_FUNCTIONS', {})
+    """Retourne MODULE_FUNCTIONS pour un module donné"""
+    # Essayer avec le nom original et avec underscore
+    access_name = module_name.replace('-', '_')
+    
+    for name in [module_name, access_name]:
+        if name in globals():
+            module = globals()[name]
+            return getattr(module, 'MODULE_FUNCTIONS', {})
     return {}
 
-# Fonction pour lister tous les modules avec leurs fonctions
 def list_all_modules_and_functions() -> Dict[str, Dict[str, str]]:
     """Retourne un dictionnaire de tous les modules et leurs fonctions"""
     result = {}
@@ -208,41 +293,8 @@ def list_all_modules_and_functions() -> Dict[str, Dict[str, str]]:
         result[module_name] = getattr(module, 'MODULE_FUNCTIONS', {})
     return result
 
-# Fonction pour forcer la recréation de MODULE_FUNCTIONS
-def refresh_module_functions(module_name: str, force: bool = False) -> bool:
-    """
-    Rafraîchit MODULE_FUNCTIONS pour un module spécifique
-    
-    Args:
-        module_name: Nom du module à rafraîchir
-        force: Si True, écrase MODULE_FUNCTIONS même s'il existe
-        
-    Returns:
-        True si le rafraîchissement a réussi, False sinon
-    """
-    if module_name not in globals():
-        return False
-    
-    module = globals()[module_name]
-    
-    # Si MODULE_FUNCTIONS existe et force=False, ne rien faire
-    if hasattr(module, 'MODULE_FUNCTIONS') and not force:
-        return True
-    
-    # Détecter les fonctions
-    detected_functions = get_module_functions(module)
-    setattr(module, 'MODULE_FUNCTIONS', detected_functions)
-    
-    return True
-
-# Fonction pour obtenir l'état d'un module spécifique
 def get_module_status(module_name: str) -> Dict[str, Any]:
-    """
-    Retourne le statut détaillé d'un module
-    
-    Returns:
-        Dict avec 'loaded', 'functions_count', 'functions', 'error', 'is_stub'
-    """
+    """Retourne le statut détaillé d'un module"""
     status = {
         'loaded': False,
         'functions_count': 0,
@@ -251,33 +303,29 @@ def get_module_status(module_name: str) -> Dict[str, Any]:
         'is_stub': False
     }
     
-    if module_name in globals():
-        module = globals()[module_name]
-        status['loaded'] = True
-        status['functions'] = getattr(module, 'MODULE_FUNCTIONS', {})
-        status['functions_count'] = len(status['functions'])
-        
-        # Vérifier si c'est un stub
-        if hasattr(module, '__file__') and module.__file__.startswith('<stub'):
-            status['is_stub'] = True
-            
-        # Ajouter l'erreur d'import si elle existe
-        if module_name in _import_errors:
-            status['error'] = _import_errors[module_name]
-    else:
-        status['error'] = f"Module '{module_name}' non chargé"
+    # Essayer les deux noms
+    access_name = module_name.replace('-', '_')
     
+    for name in [module_name, access_name]:
+        if name in globals():
+            module = globals()[name]
+            status['loaded'] = True
+            status['functions'] = getattr(module, 'MODULE_FUNCTIONS', {})
+            status['functions_count'] = len(status['functions'])
+            
+            if hasattr(module, '__file__') and module.__file__.startswith('<stub'):
+                status['is_stub'] = True
+                
+            if module_name in _import_errors:
+                status['error'] = _import_errors[module_name]
+            
+            return status
+    
+    status['error'] = _import_errors.get(module_name, f"Module '{module_name}' non chargé")
     return status
 
-# Fonction de debug pour afficher l'état des modules
 def debug_modules_status(detailed: bool = False, output_to_streamlit: bool = False):
-    """
-    Affiche le statut de tous les modules (pour debug)
-    
-    Args:
-        detailed: Si True, affiche le détail des fonctions
-        output_to_streamlit: Si True, retourne le texte pour Streamlit au lieu de print
-    """
+    """Affiche le statut de tous les modules"""
     loaded = get_loaded_modules()
     
     output_lines = []
@@ -288,10 +336,15 @@ def debug_modules_status(detailed: bool = False, output_to_streamlit: bool = Fal
     output_lines.append(f"Modules en erreur: {_modules_failed}")
     output_lines.append(f"Modules stub: {_modules_stubbed}")
     output_lines.append(f"Total fonctions: {_total_functions}")
+    
+    if _import_errors:
+        output_lines.append(f"\n❌ Erreurs d'import:")
+        for module_name, error in _import_errors.items():
+            output_lines.append(f"  - {module_name}: {error}")
+    
     output_lines.append(f"\n📋 Détail par module:")
     output_lines.append(f"{'-'*60}")
     
-    # Organiser par statut
     modules_ok = []
     modules_stub = []
     modules_error = []
@@ -305,36 +358,20 @@ def debug_modules_status(detailed: bool = False, output_to_streamlit: bool = Fal
         else:
             modules_error.append((module_name, status))
     
-    # Afficher les modules OK
     if modules_ok:
         output_lines.append("\n🟢 Modules chargés avec succès:")
         for module_name, status in sorted(modules_ok):
             output_lines.append(f"  ✅ {module_name:<25} : {status['functions_count']} fonctions")
-            if detailed and status['functions']:
-                for func_name, desc in sorted(status['functions'].items()):
-                    output_lines.append(f"      - {func_name}: {desc[:50]}...")
     
-    # Afficher les modules stub
     if modules_stub:
-        output_lines.append("\n🟡 Modules stub (fichiers manquants):")
+        output_lines.append("\n🟡 Modules stub:")
         for module_name, status in sorted(modules_stub):
             output_lines.append(f"  ⚠️  {module_name:<25} : stub créé")
-            if status['error']:
-                output_lines.append(f"      Erreur: {status['error']}")
     
-    # Afficher les modules en erreur
     if modules_error:
         output_lines.append("\n🔴 Modules en erreur:")
         for module_name, status in sorted(modules_error):
-            output_lines.append(f"  ❌ {module_name:<25} : non chargé")
-            if status['error']:
-                output_lines.append(f"      Erreur: {status['error']}")
-    
-    # Afficher les erreurs de détection de fonctions
-    if _function_detection_errors:
-        output_lines.append(f"\n⚠️  Erreurs de détection de fonctions:")
-        for module_name, error in _function_detection_errors.items():
-            output_lines.append(f"  - {module_name}: {error}")
+            output_lines.append(f"  ❌ {module_name:<25} : {status['error']}")
     
     output_lines.append(f"{'-'*60}")
     output_lines.append(f"{'='*60}\n")
@@ -346,141 +383,24 @@ def debug_modules_status(detailed: bool = False, output_to_streamlit: bool = Fal
     else:
         print(output_text)
 
-# Fonction pour générer un rapport HTML
-def generate_debug_report_html() -> str:
-    """Génère un rapport HTML détaillé de l'état des modules"""
-    loaded = get_loaded_modules()
-    
-    html = f"""
-    <html>
-    <head>
-        <title>Rapport Debug Modules - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            .summary {{ background: #f0f0f0; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
-            .module-ok {{ background: #d4edda; padding: 10px; margin: 5px 0; border-radius: 3px; }}
-            .module-stub {{ background: #fff3cd; padding: 10px; margin: 5px 0; border-radius: 3px; }}
-            .module-error {{ background: #f8d7da; padding: 10px; margin: 5px 0; border-radius: 3px; }}
-            .function-list {{ margin-left: 20px; font-size: 0.9em; }}
-            h1, h2, h3 {{ color: #333; }}
-        </style>
-    </head>
-    <body>
-        <h1>📦 Rapport Debug Modules</h1>
-        <div class="summary">
-            <h2>Résumé</h2>
-            <p>Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p>Modules chargés: {_modules_loaded}/{len(MODULES_LIST)}</p>
-            <p>Modules en erreur: {_modules_failed}</p>
-            <p>Modules stub: {_modules_stubbed}</p>
-            <p>Total fonctions: {_total_functions}</p>
-        </div>
-    """
-    
-    # Modules OK
-    modules_ok = [(name, get_module_status(name)) for name in MODULES_LIST 
-                  if get_module_status(name)['loaded'] and not get_module_status(name)['is_stub']]
-    
-    if modules_ok:
-        html += "<h2>🟢 Modules chargés avec succès</h2>"
-        for module_name, status in sorted(modules_ok):
-            html += f"""
-            <div class="module-ok">
-                <strong>{module_name}</strong> - {status['functions_count']} fonctions
-                <div class="function-list">
-            """
-            for func_name, desc in sorted(status['functions'].items()):
-                html += f"<br>• {func_name}: {desc}"
-            html += "</div></div>"
-    
-    # Modules stub
-    modules_stub = [(name, get_module_status(name)) for name in MODULES_LIST 
-                    if get_module_status(name)['is_stub']]
-    
-    if modules_stub:
-        html += "<h2>🟡 Modules stub (fichiers manquants)</h2>"
-        for module_name, status in sorted(modules_stub):
-            html += f"""
-            <div class="module-stub">
-                <strong>{module_name}</strong> - stub créé
-                {f"<br>Erreur: {status['error']}" if status['error'] else ""}
-            </div>
-            """
-    
-    # Modules en erreur
-    modules_error = [(name, get_module_status(name)) for name in MODULES_LIST 
-                     if not get_module_status(name)['loaded']]
-    
-    if modules_error:
-        html += "<h2>🔴 Modules en erreur</h2>"
-        for module_name, status in sorted(modules_error):
-            html += f"""
-            <div class="module-error">
-                <strong>{module_name}</strong> - non chargé
-                {f"<br>Erreur: {status['error']}" if status['error'] else ""}
-            </div>
-            """
-    
-    html += "</body></html>"
-    return html
-
-# Fonction pour tester l'import d'un module spécifique
-def test_module_import(module_name: str, verbose: bool = True) -> Tuple[bool, str]:
-    """
-    Teste l'import d'un module spécifique et retourne le résultat
-    
-    Returns:
-        Tuple (succès: bool, message: str)
-    """
-    try:
-        # Réimporter le module
-        module = importlib.import_module(f'.{module_name}', package='modules')
-        
-        # Détecter les fonctions
-        functions = get_module_functions(module)
-        
-        if verbose:
-            message = f"✅ Module {module_name} importé avec succès\n"
-            message += f"   Fonctions détectées: {len(functions)}\n"
-            if functions:
-                message += "   Liste des fonctions:\n"
-                for func_name, desc in functions.items():
-                    message += f"     - {func_name}: {desc}\n"
-        else:
-            message = f"Module {module_name}: OK ({len(functions)} fonctions)"
-        
-        return True, message
-        
-    except Exception as e:
-        message = f"❌ Erreur avec {module_name}: {str(e)}"
-        return False, message
-
-# Export de tous les modules disponibles et fonctions utilitaires
+# Export
 __all__ = [
-    'dataclasses', 
-    'get_loaded_modules', 
+    'dataclasses',
+    'get_loaded_modules',
     'get_module_functions_by_name',
-    'list_all_modules_and_functions', 
+    'list_all_modules_and_functions',
     'debug_modules_status',
-    'refresh_module_functions', 
     'get_module_status',
-    'generate_debug_report_html',
-    'test_module_import',
-    'get_module_functions',
     'create_stub_module'
-] + MODULES_LIST
+] + [name.replace('-', '_') for name in MODULES_LIST] + ['documents_longs', 'templates']
 
-# Fonction pour créer une page de debug dans Streamlit
+# Fonction pour Streamlit
 def create_streamlit_debug_page():
-    """
-    Crée une page de debug complète pour Streamlit
-    À utiliser dans votre app.py
-    """
+    """Crée une page de debug pour Streamlit"""
     import streamlit as st
     
     st.title("🔧 Debug des Modules")
     
-    # Résumé
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Modules chargés", f"{_modules_loaded}/{len(MODULES_LIST)}")
@@ -491,13 +411,11 @@ def create_streamlit_debug_page():
     with col4:
         st.metric("Total fonctions", _total_functions)
     
-    # Tabs pour différentes vues
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Vue d'ensemble", "🔍 Détails", "🧪 Tests", "📄 Rapport"])
+    tab1, tab2, tab3 = st.tabs(["📊 Vue d'ensemble", "❌ Erreurs", "🔍 Détails"])
     
     with tab1:
         st.subheader("État des modules")
         
-        # Utiliser des expanders pour chaque catégorie
         with st.expander(f"✅ Modules OK ({_modules_loaded - _modules_stubbed})", expanded=True):
             for module_name in sorted(MODULES_LIST):
                 status = get_module_status(module_name)
@@ -508,18 +426,28 @@ def create_streamlit_debug_page():
             for module_name in sorted(MODULES_LIST):
                 status = get_module_status(module_name)
                 if status['is_stub']:
-                    st.warning(f"{module_name}: {status['error'] or 'Fichier manquant'}")
-        
-        with st.expander(f"❌ Modules en erreur ({_modules_failed - _modules_stubbed})"):
-            for module_name in sorted(MODULES_LIST):
-                status = get_module_status(module_name)
-                if not status['loaded']:
-                    st.error(f"{module_name}: {status['error'] or 'Erreur inconnue'}")
+                    st.warning(f"{module_name}: stub créé")
     
     with tab2:
+        st.subheader("Erreurs d'import détaillées")
+        
+        if _import_errors:
+            for module_name, error in _import_errors.items():
+                with st.expander(f"❌ {module_name}"):
+                    st.error(error)
+                    
+                    # Suggestions de correction
+                    if "No module named" in error:
+                        st.info("💡 Ce module n'existe pas. Vérifiez le nom du fichier.")
+                    elif "cannot import name" in error:
+                        st.info("💡 La classe/fonction importée n'existe pas dans le module cible.")
+                        st.code(f"# Ajoutez cette classe dans {error.split('from')[1].strip()}")
+        else:
+            st.success("Aucune erreur d'import !")
+    
+    with tab3:
         st.subheader("Détails des modules")
         
-        # Sélecteur de module
         selected_module = st.selectbox(
             "Sélectionner un module",
             options=MODULES_LIST,
@@ -543,59 +471,12 @@ def create_streamlit_debug_page():
                 st.write("**Liste des fonctions:**")
                 for func_name, desc in sorted(status['functions'].items()):
                     st.write(f"- `{func_name}`: {desc}")
-    
-    with tab3:
-        st.subheader("Tests d'import")
-        
-        test_module = st.selectbox(
-            "Module à tester",
-            options=MODULES_LIST,
-            key="test_module"
-        )
-        
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            if st.button("🧪 Tester l'import"):
-                success, message = test_module_import(test_module)
-                if success:
-                    st.success(message)
-                else:
-                    st.error(message)
-        
-        with col2:
-            if st.button("🔄 Rafraîchir les fonctions"):
-                if refresh_module_functions(test_module, force=True):
-                    st.success(f"Fonctions rafraîchies pour {test_module}")
-                else:
-                    st.error(f"Impossible de rafraîchir {test_module}")
-    
-    with tab4:
-        st.subheader("Rapport complet")
-        
-        if st.button("📊 Générer le rapport texte"):
-            report = debug_modules_status(detailed=True, output_to_streamlit=True)
-            st.code(report, language="text")
-        
-        if st.button("📄 Générer le rapport HTML"):
-            html_report = generate_debug_report_html()
-            st.download_button(
-                label="💾 Télécharger le rapport HTML",
-                data=html_report,
-                file_name=f"debug_modules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                mime="text/html"
-            )
 
-# Afficher le debug au chargement si activé
+# Debug au chargement si activé
 if DEBUG_MODE and __name__ != '__main__':
     debug_modules_status()
 
-# Exemple de test pour vérifier l'import
+# Test
 if __name__ == '__main__':
     print("Test du système de modules...")
     debug_modules_status(detailed=True)
-    
-    # Tester l'accès à un module spécifique
-    print("\n" + "="*60)
-    print("Test d'import du module redaction:")
-    success, message = test_module_import('redaction')
-    print(message)
