@@ -800,3 +800,30 @@ def normalize_whitespace(text: str) -> str:
     
     # Reconstruire avec des sauts de ligne simples
     return '\n'.join(lines)
+
+def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """
+    Tronque un texte à une longueur maximale.
+    
+    Args:
+        text: Le texte à tronquer
+        max_length: La longueur maximale (par défaut 100)
+        suffix: Le suffixe à ajouter (par défaut "...")
+        
+    Returns:
+        Le texte tronqué
+    """
+    if not text:
+        return ""
+    
+    if len(text) <= max_length:
+        return text
+    
+    # Calculer la longueur disponible pour le texte
+    available_length = max_length - len(suffix)
+    
+    if available_length <= 0:
+        return suffix
+    
+    # Tronquer et ajouter le suffixe
+    return text[:available_length] + suffix
