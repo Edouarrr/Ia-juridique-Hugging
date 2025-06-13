@@ -4,23 +4,10 @@
 import streamlit as st
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-import io
-
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
-
-try:
-    import docx
-    from docx.shared import Pt, Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
+import pandas as pd
 
 from models.dataclasses import PieceSelectionnee
+from modules.export_manager import export_manager, ExportConfig
 
 def process_bordereau_request(query: str, analysis: dict):
     """Traite une demande de création de bordereau"""
@@ -47,35 +34,34 @@ def create_bordereau(pieces: List[PieceSelectionnee], analysis: dict) -> dict:
     
     bordereau = {
         'header': f"""BORDEREAU DE COMMUNICATION DE PIÈCES
-
 AFFAIRE : {analysis.get('reference', 'N/A').upper()}
 DATE : {datetime.now().strftime('%d/%m/%Y')}
 NOMBRE DE PIÈCES : {len(pieces)}
-
 POUR : {pour}
 CONTRE : {contre}
 DEVANT : {juridiction}
-
 PIÈCES COMMUNIQUÉES :""",
         'pieces': pieces,
         'footer': f"""
 Je certifie que les pièces communiquées sont conformes aux originaux en ma possession.
-
 Fait à [Ville], le {datetime.now().strftime('%d/%m/%Y')}
-
 [Signature]""",
         'metadata': {
             'created_at': datetime.now(),
             'piece_count': len(pieces),
             'categories': list(set(p.categorie for p in pieces)),
-            'reference': analysis.get('reference')
+            'reference': analysis.get('reference'),
+            'pour': pour,
+            'contre': contre,
+            'juridiction': juridiction
         }
     }
     
     return bordereau
 
 def display_bordereau_interface(bordereau: dict, pieces: List[PieceSelectionnee]):
-    """Affiche l'interface du bordereau"""
+    """Affiche l'interface du bordereau avec le nouveau système d'export"""
+    
     st.markdown("### 📊 Bordereau de communication de pièces")
     
     # Options d'édition
@@ -116,52 +102,38 @@ def display_bordereau_interface(bordereau: dict, pieces: List[PieceSelectionnee]
     else:
         st.text(bordereau['footer'])
     
-    # Actions
+    # Export avec le nouveau système unifié
     st.markdown("### 💾 Export du bordereau")
     
-    col1, col2, col3, col4 = st.columns(4)
+    # Préparer le contenu pour l'export
+    bordereau_content = prepare_bordereau_for_export(bordereau)
+    
+    # Utiliser l'interface unifiée d'export
+    export_manager.show_export_interface(
+        content=bordereau_content,
+        title=f"Bordereau_{bordereau['metadata'].get('reference', 'pieces')}",
+        content_type='document',
+        key_prefix="bordereau"
+    )
+    
+    # Actions supplémentaires
+    col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📄 Word (.docx)", key="export_bordereau_docx"):
-            docx_content = create_bordereau_docx(bordereau)
-            st.download_button(
-                "💾 Télécharger DOCX",
-                docx_content,
-                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="download_bordereau_docx"
-            )
-    
-    with col2:
-        if st.button("📊 Excel (.xlsx)", key="export_bordereau_xlsx"):
-            xlsx_content = create_bordereau_xlsx(bordereau)
-            st.download_button(
-                "💾 Télécharger XLSX",
-                xlsx_content,
-                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_bordereau_xlsx"
-            )
-    
-    with col3:
-        if st.button("📝 Texte (.txt)", key="export_bordereau_txt"):
-            txt_content = create_bordereau_txt(bordereau)
-            st.download_button(
-                "💾 Télécharger TXT",
-                txt_content,
-                f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                "text/plain",
-                key="download_bordereau_txt"
-            )
-    
-    with col4:
-        if st.button("📧 Envoyer", key="send_bordereau"):
+        if st.button("📧 Préparer pour envoi", key="prepare_email_bordereau"):
             st.session_state.pending_email = {
                 'type': 'bordereau',
                 'content': bordereau,
                 'subject': f"Bordereau de pièces - {bordereau['metadata']['reference']}"
             }
-            st.info("📧 Prêt pour envoi - Configurez l'email")
+            st.success("📧 Bordereau prêt pour envoi")
+    
+    with col2:
+        if st.button("📋 Copier le texte", key="copy_bordereau"):
+            # Créer une version texte pour le presse-papier
+            text_content = bordereau_content['text']
+            st.code(text_content, language=None)
+            st.info("💡 Sélectionnez et copiez le texte ci-dessus")
     
     # Stocker le bordereau
     st.session_state.current_bordereau = bordereau
@@ -169,203 +141,56 @@ def display_bordereau_interface(bordereau: dict, pieces: List[PieceSelectionnee]
 def display_pieces_table(pieces: List[PieceSelectionnee], edit_mode: bool):
     """Affiche le tableau des pièces"""
     
-    if PANDAS_AVAILABLE:
-        # Créer un DataFrame
-        df_data = []
-        for piece in pieces:
-            df_data.append({
-                'N°': piece.numero,
-                'Cote': piece.cote or f"P-{piece.numero:03d}",
-                'Titre': piece.titre,
-                'Description': piece.description,
-                'Catégorie': piece.categorie,
-                'Date': piece.date.strftime('%d/%m/%Y') if piece.date else 'N/A',
-                'Pages': piece.pages or '-',
-                'Format': piece.format or '-'
-            })
-        
-        df = pd.DataFrame(df_data)
-        
-        if edit_mode:
-            # Mode édition avec ag-grid si disponible
-            st.data_editor(
-                df,
-                use_container_width=True,
-                num_rows="fixed",
-                key="bordereau_pieces_editor"
-            )
-        else:
-            # Affichage simple
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True
-            )
-        
-        # Statistiques par catégorie
-        with st.expander("📊 Statistiques par catégorie"):
-            category_stats = df.groupby('Catégorie').agg({
-                'N°': 'count',
-                'Pages': lambda x: sum(p for p in x if isinstance(p, int))
-            }).rename(columns={'N°': 'Nombre'})
-            
-            st.dataframe(category_stats)
+    # Créer un DataFrame
+    df_data = []
+    for piece in pieces:
+        df_data.append({
+            'N°': piece.numero,
+            'Cote': piece.cote or f"P-{piece.numero:03d}",
+            'Titre': piece.titre,
+            'Description': piece.description,
+            'Catégorie': piece.categorie,
+            'Date': piece.date.strftime('%d/%m/%Y') if piece.date else 'N/A',
+            'Pages': piece.pages or '-',
+            'Format': piece.format or '-'
+        })
     
+    df = pd.DataFrame(df_data)
+    
+    if edit_mode:
+        # Mode édition
+        edited_df = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="fixed",
+            key="bordereau_pieces_editor"
+        )
+        # Mettre à jour les pièces si modifiées
+        # ... (logique de mise à jour)
     else:
-        # Affichage sans pandas
-        for piece in pieces:
-            with st.container():
-                col1, col2, col3, col4 = st.columns([1, 3, 1, 1])
-                
-                with col1:
-                    st.write(f"**{piece.numero}**")
-                
-                with col2:
-                    st.write(piece.titre)
-                    if piece.description:
-                        st.caption(piece.description)
-                
-                with col3:
-                    st.caption(piece.categorie)
-                
-                with col4:
-                    if piece.date:
-                        st.caption(piece.date.strftime('%d/%m/%Y'))
-
-def create_bordereau_docx(bordereau: dict) -> bytes:
-    """Crée le document Word du bordereau"""
-    if not DOCX_AVAILABLE:
-        # Fallback texte
-        return create_bordereau_txt(bordereau).encode('utf-8')
+        # Affichage simple
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True
+        )
     
-    try:
-        doc = docx.Document()
+    # Statistiques par catégorie
+    with st.expander("📊 Statistiques par catégorie"):
+        category_stats = df.groupby('Catégorie').agg({
+            'N°': 'count',
+            'Pages': lambda x: sum(p for p in x if isinstance(p, int))
+        }).rename(columns={'N°': 'Nombre'})
         
-        # Styles
-        styles = doc.styles
-        
-        # En-tête
-        for line in bordereau['header'].split('\n'):
-            if line.strip():
-                p = doc.add_paragraph(line)
-                if 'BORDEREAU' in line:
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    p.runs[0].bold = True
-                    p.runs[0].font.size = Pt(16)
-                elif any(x in line for x in ['AFFAIRE', 'DATE', 'NOMBRE']):
-                    p.runs[0].bold = True
-        
-        doc.add_paragraph()
-        
-        # Table des pièces
-        table = doc.add_table(rows=1, cols=6)
-        table.style = 'Table Grid'
-        
-        # En-têtes de colonnes
-        headers = ['N°', 'Cote', 'Titre', 'Description', 'Catégorie', 'Date']
-        hdr_cells = table.rows[0].cells
-        for i, header in enumerate(headers):
-            hdr_cells[i].text = header
-            hdr_cells[i].paragraphs[0].runs[0].bold = True
-            hdr_cells[i].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Lignes de pièces
-        for piece in bordereau['pieces']:
-            row_cells = table.add_row().cells
-            row_cells[0].text = str(piece.numero)
-            row_cells[1].text = piece.cote or f"P-{piece.numero:03d}"
-            row_cells[2].text = piece.titre
-            row_cells[3].text = piece.description or ''
-            row_cells[4].text = piece.categorie
-            row_cells[5].text = piece.date.strftime('%d/%m/%Y') if piece.date else 'N/A'
-            
-            # Centrer le numéro et la cote
-            row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Pied de page
-        doc.add_paragraph()
-        for line in bordereau['footer'].split('\n'):
-            if line.strip():
-                doc.add_paragraph(line)
-        
-        # Sauvegarder
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        
-        return buffer.getvalue()
-        
-    except Exception as e:
-        st.error(f"Erreur création bordereau DOCX: {e}")
-        return create_bordereau_txt(bordereau).encode('utf-8')
+        st.dataframe(category_stats)
 
-def create_bordereau_xlsx(bordereau: dict) -> bytes:
-    """Crée le fichier Excel du bordereau"""
-    if not PANDAS_AVAILABLE:
-        return create_bordereau_txt(bordereau).encode('utf-8')
+def prepare_bordereau_for_export(bordereau: dict) -> dict:
+    """Prépare le bordereau pour l'export unifié"""
     
-    try:
-        # Créer un writer Excel
-        buffer = io.BytesIO()
-        
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            # Feuille principale
-            df_data = []
-            for piece in bordereau['pieces']:
-                df_data.append({
-                    'N°': piece.numero,
-                    'Cote': piece.cote or f"P-{piece.numero:03d}",
-                    'Titre': piece.titre,
-                    'Description': piece.description or '',
-                    'Catégorie': piece.categorie,
-                    'Date': piece.date.strftime('%d/%m/%Y') if piece.date else 'N/A',
-                    'Pages': piece.pages or '',
-                    'Format': piece.format or ''
-                })
-            
-            df = pd.DataFrame(df_data)
-            df.to_excel(writer, sheet_name='Bordereau', index=False)
-            
-            # Feuille de métadonnées
-            metadata_df = pd.DataFrame([
-                ['Référence', bordereau['metadata'].get('reference', 'N/A')],
-                ['Date création', bordereau['metadata']['created_at'].strftime('%d/%m/%Y %H:%M')],
-                ['Nombre de pièces', bordereau['metadata']['piece_count']],
-                ['Catégories', ', '.join(bordereau['metadata']['categories'])]
-            ], columns=['Propriété', 'Valeur'])
-            
-            metadata_df.to_excel(writer, sheet_name='Informations', index=False)
-            
-            # Ajuster les largeurs
-            for sheet_name in writer.sheets:
-                worksheet = writer.sheets[sheet_name]
-                for column in worksheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    
-                    for cell in column:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    
-                    adjusted_width = min(max_length + 2, 50)
-                    worksheet.column_dimensions[column_letter].width = adjusted_width
-        
-        buffer.seek(0)
-        return buffer.getvalue()
-        
-    except Exception as e:
-        st.error(f"Erreur création bordereau Excel: {e}")
-        return create_bordereau_txt(bordereau).encode('utf-8')
-
-def create_bordereau_txt(bordereau: dict) -> str:
-    """Crée le bordereau en format texte"""
-    content = bordereau['header'] + '\n\n'
+    # Version texte complète
+    text_lines = [bordereau['header'], '']
     
-    # Largeurs de colonnes pour l'alignement
+    # Table des pièces en format texte
     col_widths = {
         'numero': 5,
         'cote': 10,
@@ -383,8 +208,8 @@ def create_bordereau_txt(bordereau: dict) -> str:
         f"{'DATE'.ljust(col_widths['date'])}"
     )
     
-    content += header + '\n'
-    content += '-' * len(header) + '\n'
+    text_lines.append(header)
+    text_lines.append('-' * len(header))
     
     # Lignes du tableau
     for piece in bordereau['pieces']:
@@ -401,18 +226,35 @@ def create_bordereau_txt(bordereau: dict) -> str:
             f"{date_str.ljust(col_widths['date'])}"
         )
         
-        content += line + '\n'
+        text_lines.append(line)
         
-        # Ajouter la description sur une ligne séparée si elle existe
         if piece.description:
-            content += f"     → {piece.description}\n"
+            text_lines.append(f"     → {piece.description}")
     
-    content += '\n' + bordereau['footer']
+    text_lines.extend(['', bordereau['footer']])
     
-    return content
+    # DataFrame pour export Excel
+    df_pieces = pd.DataFrame([{
+        'N°': p.numero,
+        'Cote': p.cote or f"P-{p.numero:03d}",
+        'Titre': p.titre,
+        'Description': p.description or '',
+        'Catégorie': p.categorie,
+        'Date': p.date.strftime('%d/%m/%Y') if p.date else 'N/A',
+        'Pages': p.pages or '',
+        'Format': p.format or ''
+    } for p in bordereau['pieces']])
+    
+    return {
+        'text': '\n'.join(text_lines),
+        'dataframe': df_pieces,
+        'metadata': bordereau['metadata'],
+        'structured': bordereau
+    }
 
 def validate_bordereau(bordereau: dict) -> List[str]:
     """Valide un bordereau et retourne les erreurs"""
+    
     errors = []
     
     if not bordereau.get('pieces'):
@@ -428,10 +270,15 @@ def validate_bordereau(bordereau: dict) -> List[str]:
     if len(cotes) != len(set(cotes)):
         errors.append("Cotes en double détectées")
     
+    # Vérifier les informations obligatoires
+    if '[À compléter]' in bordereau.get('header', ''):
+        errors.append("Informations manquantes dans l'en-tête")
+    
     return errors
 
 def generate_bordereau_summary(bordereau: dict) -> str:
     """Génère un résumé du bordereau"""
+    
     pieces = bordereau.get('pieces', [])
     
     summary = f"""RÉSUMÉ DU BORDEREAU
@@ -440,7 +287,12 @@ Référence : {bordereau['metadata'].get('reference', 'N/A')}
 Date : {bordereau['metadata']['created_at'].strftime('%d/%m/%Y')}
 Nombre total de pièces : {len(pieces)}
 
-Répartition par catégorie :
+PARTIES :
+- Pour : {bordereau['metadata'].get('pour', 'N/A')}
+- Contre : {bordereau['metadata'].get('contre', 'N/A')}
+- Juridiction : {bordereau['metadata'].get('juridiction', 'N/A')}
+
+RÉPARTITION PAR CATÉGORIE :
 """
     
     # Compter par catégorie
@@ -450,4 +302,31 @@ Répartition par catégorie :
     for cat, count in categories.most_common():
         summary += f"- {cat} : {count} pièce(s)\n"
     
+    # Ajouter des statistiques
+    total_pages = sum(p.pages for p in pieces if p.pages and isinstance(p.pages, int))
+    if total_pages:
+        summary += f"\nNombre total de pages : {total_pages}"
+    
     return summary
+
+# Fonction pour l'export direct du bordereau (compatibilité)
+def export_bordereau_to_format(bordereau: dict, format: str) -> bytes:
+    """Export direct du bordereau dans un format spécifique"""
+    
+    content = prepare_bordereau_for_export(bordereau)
+    
+    # Déterminer le type de contenu selon le format
+    if format in ['xlsx', 'csv']:
+        export_content = content['dataframe']
+    else:
+        export_content = content['text']
+    
+    config = ExportConfig(
+        format=format,
+        title=f"Bordereau_{bordereau['metadata'].get('reference', 'pieces')}",
+        content=export_content,
+        metadata=bordereau['metadata']
+    )
+    
+    data, _ = export_manager.export(config)
+    return data
