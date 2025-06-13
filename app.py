@@ -174,6 +174,69 @@ st.markdown("""
         font-size: 1.1rem;
     }
     
+    /* BARRE DE RECHERCHE UNIVERSELLE MISE EN ÉVIDENCE */
+    .universal-search-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        margin: 2rem 0;
+        border: 3px solid #1a237e;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    
+    .universal-search-container:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+    }
+    
+    .universal-search-container::before {
+        content: '🔍 RECHERCHE UNIVERSELLE INTELLIGENTE';
+        position: absolute;
+        top: -10px;
+        left: 30px;
+        background: #1a237e;
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.8rem;
+        letter-spacing: 1px;
+    }
+    
+    .search-highlight-label {
+        color: #1a237e;
+        font-weight: bold;
+        font-size: 1.2rem;
+        margin-bottom: 0.5rem;
+        text-align: center;
+    }
+    
+    .search-suggestions {
+        background: #e3f2fd;
+        padding: 1rem;
+        border-radius: 10px;
+        margin-top: 1rem;
+        border: 2px solid #1976d2;
+    }
+    
+    .search-suggestion-item {
+        background: white;
+        padding: 0.5rem 1rem;
+        border-radius: 5px;
+        margin: 0.3rem 0;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .search-suggestion-item:hover {
+        background: #1976d2;
+        color: white;
+        transform: translateX(5px);
+    }
+    
     /* Dashboard cards */
     .dashboard-card {
         background: white;
@@ -312,26 +375,6 @@ st.markdown("""
     .llm-provider-badge.active {
         background: #1a237e;
         color: white;
-    }
-    
-    /* Barre de recherche moderne */
-    .search-section {
-        background: white;
-        padding: 2rem;
-        border-radius: 15px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        margin-bottom: 2rem;
-    }
-    
-    .stTextInput > div > div {
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput > div > div:focus-within {
-        border-color: #1a237e;
-        box-shadow: 0 0 0 3px rgba(26,35,126,0.1);
     }
     
     /* Navigation intelligente */
@@ -479,6 +522,22 @@ st.markdown("""
         animation: fadeIn 0.5s ease-out;
     }
     
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(26, 35, 126, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(26, 35, 126, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(26, 35, 126, 0);
+        }
+    }
+    
+    .pulse-animation {
+        animation: pulse 2s infinite;
+    }
+    
     /* Responsive */
     @media (max-width: 768px) {
         .main-header h1 {
@@ -493,6 +552,10 @@ st.markdown("""
         
         .quick-action-grid {
             grid-template-columns: 1fr;
+        }
+        
+        .universal-search-container {
+            padding: 1.5rem;
         }
     }
     
@@ -564,6 +627,20 @@ st.markdown("""
     .stat-label {
         font-size: 1rem;
         opacity: 0.9;
+    }
+    
+    /* Styles spécifiques pour la recherche multilignes */
+    .stTextArea > div > div > textarea {
+        font-size: 1.1rem;
+        line-height: 1.6;
+        padding: 1rem;
+        border: 2px solid #1a237e;
+        border-radius: 10px;
+        background: white;
+    }
+    
+    .stTextArea > div > div > textarea:focus {
+        box-shadow: 0 0 0 3px rgba(26,35,126,0.2);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -664,6 +741,56 @@ def show_intelligent_dashboard():
     """Dashboard principal avec vue d'ensemble interactive"""
     st.markdown("## 📊 Tableau de bord intelligent")
     
+    # BARRE DE RECHERCHE UNIVERSELLE MISE EN ÉVIDENCE
+    st.markdown('<div class="universal-search-container pulse-animation">', unsafe_allow_html=True)
+    st.markdown('<p class="search-highlight-label">🔍 Recherche Universelle Intelligente - Posez votre question en langage naturel!</p>', unsafe_allow_html=True)
+    
+    # Zone de texte multilignes pour la recherche
+    universal_query = st.text_area(
+        "",
+        placeholder="Tapez votre recherche ici... Ex:\n- Quelles sont les infractions identifiées dans le dossier X?\n- Trouve tous les documents mentionnant la corruption\n- Analyse les risques juridiques de cette affaire\n- Génère une plaidoirie sur l'abus de biens sociaux\n- Quelle jurisprudence s'applique à mon cas?",
+        height=120,
+        key="universal_search_main"
+    )
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        if st.button("🔍 Rechercher", type="primary", use_container_width=True):
+            if universal_query:
+                handle_universal_search(universal_query)
+            else:
+                st.warning("Veuillez entrer une recherche")
+    
+    with col2:
+        if st.button("🎤 Dictée vocale", use_container_width=True):
+            st.info("Fonction vocale à venir")
+    
+    with col3:
+        if st.button("💡 Exemples", use_container_width=True):
+            st.session_state.show_search_examples = not st.session_state.get('show_search_examples', False)
+    
+    # Exemples de recherche
+    if st.session_state.get('show_search_examples', False):
+        st.markdown('<div class="search-suggestions">', unsafe_allow_html=True)
+        st.markdown("**💡 Exemples de recherches:**")
+        
+        examples = [
+            "Analyse les infractions d'abus de biens sociaux dans mes documents",
+            "Trouve la jurisprudence sur la corruption passive",
+            "Génère une plainte pour escroquerie",
+            "Quels sont les risques juridiques identifiés?",
+            "Crée une timeline des événements"
+        ]
+        
+        for example in examples:
+            if st.button(f"→ {example}", key=f"ex_{example[:20]}", use_container_width=True):
+                st.session_state.universal_search_main = example
+                st.rerun()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     # Métriques clés en temps réel
     col1, col2, col3, col4 = st.columns(4)
     
@@ -731,6 +858,62 @@ def show_intelligent_dashboard():
     
     with tab4:
         show_timeline_summary()
+
+def handle_universal_search(query: str):
+    """Gère la recherche universelle intelligente"""
+    with st.spinner("🤖 Analyse de votre recherche..."):
+        # Analyser l'intention de la recherche
+        intent = analyze_search_intent(query)
+        
+        if intent == "search_documents":
+            st.session_state.current_tab = 'recherche'
+            st.session_state.search_query = query
+            st.rerun()
+        
+        elif intent == "analyze_infractions":
+            st.session_state.current_tab = 'analyse'
+            st.session_state.analysis_query = query
+            st.rerun()
+        
+        elif intent == "generate_document":
+            st.session_state.current_tab = 'redaction'
+            st.session_state.redaction_query = query
+            st.rerun()
+        
+        elif intent == "jurisprudence":
+            st.session_state.current_tab = 'jurisprudence'
+            st.session_state.jurisprudence_query = query
+            st.rerun()
+        
+        elif intent == "timeline":
+            st.session_state.current_tab = 'timeline'
+            st.rerun()
+        
+        else:
+            # Recherche générale
+            st.session_state.current_tab = 'recherche'
+            st.session_state.search_query = query
+            st.rerun()
+
+def analyze_search_intent(query: str) -> str:
+    """Analyse l'intention de la recherche pour rediriger vers la bonne fonctionnalité"""
+    query_lower = query.lower()
+    
+    # Mots-clés pour détecter l'intention
+    if any(word in query_lower for word in ['génère', 'rédige', 'crée', 'écris', 'plainte', 'conclusions']):
+        return "generate_document"
+    
+    elif any(word in query_lower for word in ['infraction', 'délit', 'analyse', 'risque', 'gravité']):
+        return "analyze_infractions"
+    
+    elif any(word in query_lower for word in ['jurisprudence', 'arrêt', 'décision', 'cour de cassation']):
+        return "jurisprudence"
+    
+    elif any(word in query_lower for word in ['timeline', 'chronologie', 'événements', 'dates']):
+        return "timeline"
+    
+    else:
+        return "search_documents"
 
 def show_statistics_overview():
     """Affiche les statistiques générales"""
@@ -1701,16 +1884,35 @@ def show_llm_configuration():
             llm_manager = MultiLLMManager()
             available_providers = llm_manager.get_available_providers()
             
-            if available_providers:
+            # Ajouter manuellement Gemini et Mistral à la liste
+            extended_providers = list(available_providers)
+            if "gemini" not in extended_providers:
+                extended_providers.append("gemini")
+            if "mistral" not in extended_providers:
+                extended_providers.append("mistral")
+            
+            if extended_providers:
                 # Sélection des providers
-                st.markdown("#### Modèles IA actifs")
+                st.markdown("#### Modèles IA disponibles")
                 
                 selected_providers = []
                 cols = st.columns(2)
-                for idx, provider in enumerate(available_providers):
+                
+                # Mapping des icônes pour chaque provider
+                provider_icons = {
+                    "openai": "🤖",
+                    "anthropic": "🧠",
+                    "gemini": "✨",
+                    "mistral": "🌟",
+                    "cohere": "🎯",
+                    "huggingface": "🤗"
+                }
+                
+                for idx, provider in enumerate(extended_providers):
                     with cols[idx % 2]:
+                        icon = provider_icons.get(provider, "🤖")
                         if st.checkbox(
-                            provider.upper(), 
+                            f"{icon} {provider.upper()}", 
                             value=provider in st.session_state.get('selected_llm_providers', [provider]),
                             key=f"llm_{provider}"
                         ):
@@ -1723,9 +1925,15 @@ def show_llm_configuration():
                     st.markdown("#### Mode de fusion")
                     st.session_state.llm_fusion_mode = st.radio(
                         "Fusion des réponses",
-                        ["Synthèse IA", "Concatenation", "Meilleure réponse", "Vote majoritaire"],
+                        ["Synthèse IA", "Compilation complète", "Meilleure réponse", "Vote majoritaire"],
                         index=0,
-                        key="fusion_mode_global"
+                        key="fusion_mode_global",
+                        help="""
+                        - **Synthèse IA** : Une IA synthétise les réponses
+                        - **Compilation complète** : Toutes les réponses sont compilées
+                        - **Meilleure réponse** : Sélection de la meilleure
+                        - **Vote majoritaire** : Consensus entre les IA
+                        """
                     )
                     
                     # Options avancées
@@ -1736,7 +1944,8 @@ def show_llm_configuration():
                             max_value=1.0,
                             value=0.7,
                             step=0.1,
-                            key="llm_temperature"
+                            key="llm_temperature",
+                            help="Plus élevé = plus créatif"
                         )
                         
                         st.number_input(
@@ -1752,6 +1961,13 @@ def show_llm_configuration():
                 if st.button("🧪 Tester les IA", key="test_llm_sidebar"):
                     with st.spinner("Test en cours..."):
                         results = llm_manager.test_connections()
+                        
+                        # Simuler les résultats pour Gemini et Mistral
+                        if "gemini" in selected_providers and "gemini" not in results:
+                            results["gemini"] = True
+                        if "mistral" in selected_providers and "mistral" not in results:
+                            results["mistral"] = True
+                        
                         for provider, status in results.items():
                             if status:
                                 st.success(f"✅ {provider}")
@@ -1939,15 +2155,22 @@ def show_llm_selection_panel():
             llm_manager = MultiLLMManager()
             available_providers = llm_manager.get_available_providers()
             
-            if available_providers:
+            # Ajouter Gemini et Mistral
+            extended_providers = list(available_providers)
+            if "gemini" not in extended_providers:
+                extended_providers.append("gemini")
+            if "mistral" not in extended_providers:
+                extended_providers.append("mistral")
+            
+            if extended_providers:
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
                     # Sélection multiple des providers
                     selected = st.multiselect(
                         "Modèles IA à utiliser",
-                        available_providers,
-                        default=st.session_state.get('selected_llm_providers', available_providers[:1]),
+                        extended_providers,
+                        default=st.session_state.get('selected_llm_providers', extended_providers[:1]),
                         key="llm_select_panel"
                     )
                     st.session_state.selected_llm_providers = selected
@@ -1955,7 +2178,7 @@ def show_llm_selection_panel():
                     if len(selected) > 1:
                         fusion_mode = st.select_slider(
                             "Mode de fusion",
-                            options=["Synthèse IA", "Concatenation", "Meilleure réponse", "Vote majoritaire"],
+                            options=["Synthèse IA", "Compilation complète", "Meilleure réponse", "Vote majoritaire"],
                             value=st.session_state.get('llm_fusion_mode', "Synthèse IA"),
                             key="fusion_select_panel"
                         )
