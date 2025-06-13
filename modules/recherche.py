@@ -7,6 +7,7 @@ import html
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 from difflib import SequenceMatcher
+from streamlit_shortcuts import add_keyboard_shortcuts
 
 # ========================= IMPORTS CENTRALISÉS =========================
 
@@ -375,18 +376,890 @@ Réponds UNIQUEMENT avec le JSON, sans autre texte."""
             "requete_reformulee": query
         }
 
-# ========================= CLASSE UniversalSearchInterface =========================
+# ========================= IMPORTS MANAGERS =========================
 
-class UniversalSearchInterface:
-    """Interface de recherche universelle"""
+MANAGERS = {
+    'azure_blob': False,
+    'azure_search': False,
+    'company_info': False,
+    'document_manager': False,
+    'dynamic_generators': False,
+    'export_manager': False,
+    'jurisprudence_verifier': False,
+    'legal_search': False,
+    'llm_manager': False,
+    'multi_llm': False,
+    'style_analyzer': False,
+    'template_manager': False,
+    'universal_search': False
+}
+
+# Import des managers (gardé minimal pour la lisibilité)
+managers_to_import = [
+    ('azure_blob_manager', 'AzureBlobManager', 'azure_blob'),
+    ('azure_search_manager', 'AzureSearchManager', 'azure_search'),
+    ('company_info_manager', 'CompanyInfoManager', 'company_info'),
+    ('document_manager', 'DocumentManager', 'document_manager'),
+    ('export_manager', 'ExportManager', 'export_manager'),
+    ('jurisprudence_verifier', 'JurisprudenceVerifier', 'jurisprudence_verifier'),
+    ('legal_search', 'LegalSearchManager', 'legal_search'),
+    ('multi_llm_manager', 'MultiLLMManager', 'multi_llm'),
+    ('style_analyzer', 'StyleAnalyzer', 'style_analyzer'),
+    ('template_manager', 'TemplateManager', 'template_manager')
+]
+
+for module_name, class_name, key in managers_to_import:
+    try:
+        exec(f"from managers.{module_name} import {class_name}")
+        MANAGERS[key] = True
+    except ImportError as e:
+        print(f"Import {class_name} failed: {e}")
+
+# Import des fonctions spéciales
+try:
+    from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
+    MANAGERS['dynamic_generators'] = True
+except ImportError as e:
+    print(f"Import dynamic_generators functions failed: {e}")
+
+# ========================= IMPORTS DES MODULES SPÉCIFIQUES =========================
+
+MODULES_AVAILABLE = {}
+MODULE_FUNCTIONS = {}
+
+# Import conditionnel de tous les modules
+modules_to_import = [
+    ('bordereau', ['show_page']),
+    ('comparison', ['show_page']),
+    ('configuration', ['show_page']),
+    ('email', ['show_page']),
+    ('explorer', ['show_page']),
+    ('import_export', ['show_page']),
+    ('jurisprudence', ['show_page']),
+    ('mapping', ['show_page']),
+    ('plaidoirie', ['show_page']),
+    ('preparation_client', ['show_page']),
+    ('redaction_unified', ['show_page']),
+    ('selection_piece', ['show_page']),
+    ('synthesis', ['show_page']),
+    ('templates', ['show_page']),
+    ('timeline', ['show_page'])
+]
+
+for module_name, functions in modules_to_import:
+    try:
+        module = __import__(f'modules.{module_name}', fromlist=functions)
+        MODULES_AVAILABLE[module_name] = True
+        
+        for func_name in functions:
+            if hasattr(module, func_name):
+                MODULE_FUNCTIONS[f'{module_name}_page'] = getattr(module, func_name)
+    except ImportError:
+        MODULES_AVAILABLE[module_name] = False
+
+# ========================= GÉNÉRATION AVANCÉE DE PLAINTES =========================
+
+async def generate_advanced_plainte(query: str):
+    """Génère une plainte avancée avec toutes les fonctionnalités"""
     
-    def __init__(self):
-        self.search_service = get_universal_search_service() if SEARCH_SERVICE_AVAILABLE else None
-        self.nl_analyzer = NaturalLanguageAnalyzer()
+    st.markdown("### 🚀 Génération avancée de plainte")
     
-    def show_interface(self):
-        """Affiche l'interface de recherche universelle"""
-        show_page()
+    # Analyser la requête
+    analysis = analyze_plainte_request(query)
+    
+    # Vérifier si CPC
+    is_cpc = check_if_cpc_required(query)
+    
+    if is_cpc:
+        st.info("📋 Génération d'une plainte avec constitution de partie civile EXHAUSTIVE")
+        await generate_exhaustive_cpc_plainte(analysis)
+    else:
+        await generate_standard_plainte(analysis)
+
+def analyze_plainte_request(query: str) -> Dict[str, Any]:
+    """Analyse la requête pour extraire les informations"""
+    
+    # Extraction des parties
+    parties_pattern = r'contre\s+([A-Z][A-Za-z\s,&]+?)(?:\s+et\s+|,\s*|$)'
+    parties = re.findall(parties_pattern, query, re.IGNORECASE)
+    
+    # Extraction des infractions
+    infractions = []
+    infractions_keywords = {
+        'abus de biens sociaux': 'Abus de biens sociaux',
+        'abs': 'Abus de biens sociaux',
+        'corruption': 'Corruption',
+        'escroquerie': 'Escroquerie',
+        'abus de confiance': 'Abus de confiance',
+        'blanchiment': 'Blanchiment'
+    }
+    
+    query_lower = query.lower()
+    for keyword, infraction in infractions_keywords.items():
+        if keyword in query_lower:
+            infractions.append(infraction)
+    
+    return {
+        'parties': parties,
+        'infractions': infractions or ['Abus de biens sociaux'],  # Par défaut
+        'query': query
+    }
+
+def check_if_cpc_required(query: str) -> bool:
+    """Vérifie si une CPC est requise"""
+    cpc_indicators = [
+        'constitution de partie civile',
+        'cpc',
+        'partie civile',
+        'exhaustive',
+        'complète'
+    ]
+    
+    query_lower = query.lower()
+    return any(indicator in query_lower for indicator in cpc_indicators)
+
+async def generate_exhaustive_cpc_plainte(analysis: Dict[str, Any]):
+    """Génère une plainte CPC exhaustive de 8000+ mots"""
+    
+    with st.spinner("⏳ Génération d'une plainte exhaustive en cours... (cela peut prendre 2-3 minutes)"):
+        
+        # Options de génération
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            temperature = st.slider(
+                "🌡️ Créativité",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.3,
+                step=0.1,
+                help="Plus bas = plus factuel, Plus haut = plus créatif"
+            )
+        
+        with col2:
+            model = "claude-3-sonnet" 
+            if HAS_API_UTILS:
+                models = get_available_models()
+                if models:
+                    model = st.selectbox("🤖 Modèle", models, index=0)
+        
+        with col3:
+            enrich_parties = st.checkbox(
+                "🏢 Enrichir les parties",
+                value=True,
+                help="Rechercher des informations sur les sociétés"
+            )
+        
+        # Enrichissement des parties si demandé
+        enriched_parties = analysis['parties']
+        if enrich_parties and MANAGERS['company_info']:
+            enriched_parties = await enrich_parties_info(analysis['parties'])
+        
+        # Générer le prompt détaillé
+        prompt = create_exhaustive_cpc_prompt(
+            parties=enriched_parties,
+            infractions=analysis['infractions']
+        )
+        
+        # Appel à l'API
+        try:
+            if HAS_API_UTILS:
+                response = await call_llm_api(
+                    prompt=prompt,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=8000
+                )
+                
+                # Stocker le résultat
+                st.session_state.generated_plainte = response
+                st.session_state.search_results = {
+                    'type': 'plainte_avancee',
+                    'content': response,
+                    'metadata': {
+                        'parties': enriched_parties,
+                        'infractions': analysis['infractions'],
+                        'model': model,
+                        'length': len(response.split())
+                    }
+                }
+                
+                # Afficher les statistiques
+                show_plainte_statistics(response)
+                
+                # Vérifier les jurisprudences si disponible
+                if MANAGERS['jurisprudence_verifier']:
+                    verify_jurisprudences_in_plainte(response)
+                
+                # Suggestions d'amélioration
+                show_improvement_suggestions(response)
+                
+            else:
+                # Fallback sans API
+                st.warning("API non disponible - Génération d'un modèle de plainte")
+                generate_plainte_template(enriched_parties, analysis['infractions'])
+                
+        except Exception as e:
+            st.error(f"Erreur lors de la génération : {str(e)}")
+
+async def generate_standard_plainte(analysis: Dict[str, Any]):
+    """Génère une plainte standard"""
+    
+    with st.spinner("⏳ Génération de la plainte..."):
+        
+        # Options simplifiées
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            plainte_type = st.selectbox(
+                "Type de plainte",
+                ["Simple", "Avec constitution de partie civile"],
+                index=1
+            )
+        
+        with col2:
+            include_jurisprudence = st.checkbox(
+                "📚 Inclure jurisprudences",
+                value=True
+            )
+        
+        # Générer
+        if HAS_API_UTILS:
+            prompt = create_standard_plainte_prompt(
+                parties=analysis['parties'],
+                infractions=analysis['infractions'],
+                plainte_type=plainte_type,
+                include_jurisprudence=include_jurisprudence
+            )
+            
+            try:
+                response = await call_llm_api(
+                    prompt=prompt,
+                    model="claude-3-sonnet",
+                    temperature=0.3
+                )
+                
+                st.session_state.generated_plainte = response
+                st.session_state.search_results = {
+                    'type': 'plainte',
+                    'content': response
+                }
+                
+            except Exception as e:
+                st.error(f"Erreur : {str(e)}")
+        else:
+            generate_plainte_template(analysis['parties'], analysis['infractions'])
+
+# ========================= ENRICHISSEMENT DES PARTIES =========================
+
+async def enrich_parties_info(parties: List[str]) -> List[Dict[str, Any]]:
+    """Enrichit les informations sur les parties"""
+    
+    if not MANAGERS['company_info']:
+        return [{'name': p} for p in parties]
+    
+    enriched = []
+    company_manager = CompanyInfoManager()
+    
+    for party in parties:
+        with st.spinner(f"🔍 Recherche d'informations sur {party}..."):
+            info = await company_manager.get_company_info(party)
+            
+            if info:
+                enriched.append({
+                    'name': party,
+                    'siren': info.get('siren'),
+                    'address': info.get('address'),
+                    'legal_form': info.get('legal_form'),
+                    'capital': info.get('capital'),
+                    'executives': info.get('executives', [])
+                })
+            else:
+                enriched.append({'name': party})
+    
+    return enriched
+
+# ========================= CRÉATION DES PROMPTS =========================
+
+def create_exhaustive_cpc_prompt(parties: List[Any], infractions: List[str]) -> str:
+    """Crée un prompt pour une plainte CPC exhaustive"""
+    
+    parties_text = format_parties_for_prompt(parties)
+    infractions_text = ', '.join(infractions)
+    
+    return f"""
+Rédigez une plainte avec constitution de partie civile EXHAUSTIVE et DÉTAILLÉE d'au moins 8000 mots.
+PARTIES MISES EN CAUSE :
+{parties_text}
+INFRACTIONS À DÉVELOPPER :
+{infractions_text}
+STRUCTURE IMPOSÉE :
+1. EN-TÊTE COMPLET
+   - Destinataire (Doyen des juges d'instruction)
+   - Plaignant (à compléter)
+   - Objet détaillé
+2. EXPOSÉ EXHAUSTIF DES FAITS (3000+ mots)
+   - Contexte détaillé de l'affaire
+   - Chronologie précise et complète
+   - Description minutieuse de chaque fait
+   - Liens entre les protagonistes
+   - Montants et préjudices détaillés
+3. DISCUSSION JURIDIQUE APPROFONDIE (3000+ mots)
+   Pour chaque infraction :
+   - Rappel complet des textes
+   - Analyse détaillée des éléments constitutifs
+   - Application aux faits espèce par espèce
+   - Jurisprudences pertinentes citées
+   - Réfutation des arguments contraires
+4. PRÉJUDICES DÉTAILLÉS (1000+ mots)
+   - Préjudice financier chiffré
+   - Préjudice moral développé
+   - Préjudice d'image
+   - Autres préjudices
+5. DEMANDES ET CONCLUSION (1000+ mots)
+   - Constitution de partie civile motivée
+   - Demandes d'actes précises
+   - Mesures conservatoires
+   - Provision sur dommages-intérêts
+CONSIGNES :
+- Style juridique soutenu et précis
+- Citations de jurisprudences récentes
+- Argumentation implacable
+- Aucune zone d'ombre
+- Anticipation des contre-arguments
+"""
+
+def create_standard_plainte_prompt(parties: List[str], infractions: List[str], 
+                                  plainte_type: str, include_jurisprudence: bool) -> str:
+    """Crée un prompt pour une plainte standard"""
+    
+    parties_text = ', '.join(parties)
+    infractions_text = ', '.join(infractions)
+    
+    jurisprudence_instruction = ""
+    if include_jurisprudence:
+        jurisprudence_instruction = "\n- Citez au moins 3 jurisprudences pertinentes"
+    
+    return f"""
+Rédigez une {plainte_type} concernant :
+- Parties : {parties_text}
+- Infractions : {infractions_text}
+Structure :
+1. En-tête et qualités
+2. Exposé des faits
+3. Discussion juridique
+4. Préjudices
+5. Demandes
+Consignes :
+- Style juridique professionnel
+- Argumentation structurée{jurisprudence_instruction}
+- Environ 2000-3000 mots
+"""
+
+def format_parties_for_prompt(parties: List[Any]) -> str:
+    """Formate les parties pour le prompt"""
+    
+    if not parties:
+        return "À COMPLÉTER"
+    
+    formatted = []
+    for party in parties:
+        if isinstance(party, dict):
+            text = f"- {party['name']}"
+            if party.get('siren'):
+                text += f" (SIREN: {party['siren']})"
+            if party.get('address'):
+                text += f"\n  Siège: {party['address']}"
+            if party.get('executives'):
+                text += f"\n  Dirigeants: {', '.join(party['executives'][:3])}"
+            formatted.append(text)
+        else:
+            formatted.append(f"- {party}")
+    
+    return '\n'.join(formatted)
+
+# ========================= VÉRIFICATION ET ANALYSE =========================
+
+def verify_jurisprudences_in_plainte(content: str):
+    """Vérifie les jurisprudences citées dans la plainte"""
+    
+    if not MANAGERS['jurisprudence_verifier']:
+        return
+    
+    with st.expander("🔍 Vérification des jurisprudences"):
+        verifier = JurisprudenceVerifier()
+        
+        # Extraire les références
+        jurisprudence_pattern = r'(Cass\.\s+\w+\.?,?\s+\d{1,2}\s+\w+\s+\d{4}|C\.\s*cass\.\s*\w+\.?\s*\d{1,2}\s+\w+\s+\d{4})'
+        references = re.findall(jurisprudence_pattern, content)
+        
+        if references:
+            st.write(f"**{len(references)} références trouvées**")
+            
+            verified = 0
+            for ref in references[:5]:  # Vérifier les 5 premières
+                if verifier.verify_reference(ref):
+                    st.success(f"✅ {ref}")
+                    verified += 1
+                else:
+                    st.warning(f"⚠️ {ref} - Non vérifiée")
+            
+            reliability = (verified / len(references[:5])) * 100
+            st.metric("Taux de fiabilité", f"{reliability:.0f}%")
+        else:
+            st.info("Aucune jurisprudence détectée")
+
+def show_plainte_statistics(content: str):
+    """Affiche les statistiques de la plainte"""
+    
+    with st.expander("📊 Statistiques du document"):
+        words = content.split()
+        sentences = content.split('.')
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Mots", len(words))
+        
+        with col2:
+            st.metric("Phrases", len(sentences))
+        
+        with col3:
+            st.metric("Pages estimées", f"~{len(words) // 250}")
+        
+        # Analyse du style si disponible
+        if MANAGERS['style_analyzer']:
+            analyzer = StyleAnalyzer()
+            style_score = analyzer.analyze_style(content)
+            
+            st.markdown("**Analyse du style :**")
+            st.progress(style_score / 100)
+            st.caption(f"Score de qualité : {style_score}/100")
+
+def show_improvement_suggestions(content: str):
+    """Suggère des améliorations pour la plainte"""
+    
+    with st.expander("💡 Suggestions d'amélioration"):
+        suggestions = []
+        
+        # Vérifier la longueur
+        word_count = len(content.split())
+        if word_count < 2000:
+            suggestions.append("📝 Développer davantage l'exposé des faits")
+        
+        # Vérifier les citations
+        if content.count('"') < 4:
+            suggestions.append("📚 Ajouter plus de citations de jurisprudence")
+        
+        # Vérifier les montants
+        if not re.search(r'\d+\s*€|\d+\s*euros', content):
+            suggestions.append("💰 Chiffrer précisément les préjudices")
+        
+        # Vérifier la structure
+        required_sections = ['FAITS', 'DISCUSSION', 'PRÉJUDICE', 'DEMANDE']
+        missing = [s for s in required_sections if s not in content.upper()]
+        if missing:
+            suggestions.append(f"📋 Ajouter sections : {', '.join(missing)}")
+        
+        if suggestions:
+            for suggestion in suggestions:
+                st.write(suggestion)
+        else:
+            st.success("✅ La plainte semble complète !")
+
+# ========================= TEMPLATES DE FALLBACK =========================
+
+def generate_plainte_template(parties: List[Any], infractions: List[str]):
+    """Génère un template de plainte sans API"""
+    
+    template = generate_plainte_cpc(
+        parties_defenderesses=[p['name'] if isinstance(p, dict) else p for p in parties],
+        infractions=infractions
+    )
+    
+    st.session_state.generated_plainte = template
+    st.session_state.search_results = {
+        'type': 'plainte_template',
+        'content': template
+    }
+
+def generate_plainte_cpc(parties_defenderesses: List[str], infractions: List[str], 
+                        demandeurs: List[str] = None, options: Dict = None) -> str:
+    """Génère une plainte avec constitution de partie civile"""
+    
+    parties_text = format_parties_list([{'name': p} for p in parties_defenderesses])
+    infractions_text = '\n'.join([f"- {i}" for i in infractions]) if infractions else "- [À COMPLÉTER]"
+    
+    return f"""PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+Monsieur le Doyen des Juges d'Instruction
+Tribunal Judiciaire de [VILLE]
+[ADRESSE]
+[VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+OBJET : Plainte avec constitution de partie civile
+RÉFÉRENCES : [À COMPLÉTER]
+Monsieur le Doyen,
+Je soussigné(e) [NOM PRÉNOM]
+Né(e) le [DATE] à [LIEU]
+De nationalité française
+Profession : [PROFESSION]
+Demeurant : [ADRESSE COMPLÈTE]
+Téléphone : [TÉLÉPHONE]
+Email : [EMAIL]
+Ayant pour conseil : [SI APPLICABLE]
+Maître [NOM AVOCAT]
+Avocat au Barreau de [VILLE]
+[ADRESSE CABINET]
+Ai l'honneur de déposer entre vos mains une plainte avec constitution de partie civile contre :
+{parties_text}
+Et toute autre personne que l'instruction révèlerait avoir participé aux faits ci-après exposés.
+I. EXPOSÉ DÉTAILLÉ DES FAITS
+[DÉVELOPPEMENT DÉTAILLÉ - À COMPLÉTER]
+II. DISCUSSION JURIDIQUE
+Les faits exposés ci-dessus caractérisent les infractions suivantes :
+{infractions_text}
+[ANALYSE JURIDIQUE DÉTAILLÉE - À COMPLÉTER]
+III. PRÉJUDICES SUBIS
+[DÉTAIL DES PRÉJUDICES - À COMPLÉTER]
+IV. CONSTITUTION DE PARTIE CIVILE
+Par les présents, je déclare me constituer partie civile et demander réparation intégrale de mon préjudice.
+Je sollicite :
+- La désignation d'un juge d'instruction
+- L'ouverture d'une information judiciaire
+- Tous actes d'instruction utiles à la manifestation de la vérité
+- La mise en examen des personnes mises en cause
+- Le renvoi devant la juridiction de jugement
+- La condamnation des prévenus
+- L'allocation de dommages-intérêts en réparation du préjudice subi
+V. PIÈCES JUSTIFICATIVES
+Vous trouverez ci-joint :
+[LISTE DÉTAILLÉE DES PIÈCES]
+Je verse la consignation fixée par vos soins.
+Je vous prie d'agréer, Monsieur le Doyen, l'expression de ma considération distinguée.
+Fait à [VILLE], le {datetime.now().strftime('%d/%m/%Y')}
+[SIGNATURE]
+"""
+
+def format_parties_list(parties: List[Any]) -> str:
+    """Formate la liste des parties pour le template"""
+    
+    if not parties:
+        return "- [NOM DE LA PARTIE]\n  [FORME JURIDIQUE]\n  [SIÈGE SOCIAL]\n  [SIREN]"
+    
+    formatted = []
+    for party in parties:
+        if isinstance(party, dict):
+            formatted.append(f"- {party.get('name', '[NOM]')}")
+            if party.get('legal_form'):
+                formatted.append(f"  {party['legal_form']}")
+            if party.get('address'):
+                formatted.append(f"  {party['address']}")
+            if party.get('siren'):
+                formatted.append(f"  SIREN : {party['siren']}")
+        else:
+            formatted.append(f"- {party}")
+            formatted.append("  [FORME JURIDIQUE]")
+            formatted.append("  [SIÈGE SOCIAL]")
+            formatted.append("  [SIREN]")
+    
+    return '\n'.join(formatted)
+
+# ========================= FONCTIONS UTILITAIRES =========================
+
+def determine_document_category(doc: Dict[str, Any]) -> str:
+    """Détermine la catégorie d'un document"""
+    if doc.get('category'):
+        return doc['category']
+    
+    title = doc.get('title', '').lower()
+    content = doc.get('content', '').lower()[:1000]
+    
+    category_keywords = {
+        'Procédure': ['assignation', 'citation', 'conclusions', 'jugement', 'arrêt', 'ordonnance', 
+                      'requête', 'pourvoi', 'appel', 'mémoire', 'audience'],
+        'Expertise': ['expertise', 'expert', 'rapport d\'expertise', 'évaluation', 'diagnostic',
+                      'constat', 'analyse technique', 'étude'],
+        'Contrat': ['contrat', 'convention', 'accord', 'bail', 'cession', 'pacte', 'protocole',
+                    'engagement', 'marché', 'commande'],
+        'Correspondance': ['courrier', 'lettre', 'email', 'courriel', 'notification', 'mise en demeure',
+                          'réponse', 'demande', 'réclamation'],
+        'Comptabilité': ['facture', 'devis', 'comptable', 'bilan', 'compte', 'relevé', 'paiement',
+                        'avoir', 'note de frais', 'budget'],
+        'Administratif': ['statuts', 'kbis', 'pv', 'procès-verbal', 'assemblée', 'délibération',
+                         'décision', 'arrêté', 'décret', 'règlement'],
+        'Preuve': ['attestation', 'témoignage', 'déclaration', 'certificat', 'justificatif',
+                   'preuve', 'pièce', 'élément'],
+        'Pénal': ['plainte', 'garde à vue', 'audition', 'procès-verbal', 'enquête', 'instruction',
+                  'commission rogatoire', 'réquisitoire']
+    }
+    
+    best_category = 'Autre'
+    max_score = 0
+    
+    for category, keywords in category_keywords.items():
+        score = 0
+        for keyword in keywords:
+            if keyword in title:
+                score += 2
+            if keyword in content:
+                score += 1
+        
+        if score > max_score:
+            max_score = score
+            best_category = category
+    
+    return best_category
+
+def calculate_piece_relevance(doc: Dict[str, Any], analysis: Any) -> float:
+    """Calcule la pertinence d'une pièce par rapport à l'analyse"""
+    score = 0.5
+    
+    if not analysis:
+        return score
+    
+    title = doc.get('title', '').lower()
+    content = doc.get('content', '').lower()[:2000]
+    metadata = doc.get('metadata', {})
+    
+    if hasattr(analysis, 'keywords'):
+        for keyword in analysis.keywords:
+            keyword_lower = keyword.lower()
+            if keyword_lower in title:
+                score += 0.2
+            elif keyword_lower in content:
+                score += 0.1
+    
+    if hasattr(analysis, 'reference') and analysis.reference:
+        ref_lower = analysis.reference.lower()
+        if ref_lower in title:
+            score += 0.3
+        elif ref_lower in content:
+            score += 0.15
+    
+    if hasattr(analysis, 'parties'):
+        all_parties = []
+        all_parties.extend(analysis.parties.get('demandeurs', []))
+        all_parties.extend(analysis.parties.get('defendeurs', []))
+        
+        for partie in all_parties:
+            partie_lower = partie.lower()
+            if partie_lower in title:
+                score += 0.15
+            elif partie_lower in content:
+                score += 0.08
+    
+    if hasattr(analysis, 'infractions'):
+        for infraction in analysis.infractions:
+            infraction_lower = infraction.lower()
+            if infraction_lower in title or infraction_lower in content:
+                score += 0.1
+    
+    if metadata.get('date'):
+        try:
+            doc_date = datetime.fromisoformat(str(metadata['date']))
+            days_old = (datetime.now() - doc_date).days
+            if days_old < 30:
+                score += 0.1
+            elif days_old < 90:
+                score += 0.05
+        except:
+            pass
+    
+    if hasattr(analysis, 'document_type'):
+        doc_type = determine_document_category(doc)
+        if analysis.document_type == 'plainte' and doc_type in ['Pénal', 'Preuve']:
+            score += 0.15
+        elif analysis.document_type == 'conclusions' and doc_type == 'Procédure':
+            score += 0.15
+    
+    return min(max(score, 0.0), 1.0)
+
+# ========================= SYNTHÈSE DES PIÈCES =========================
+
+async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
+    """Synthétise les pièces sélectionnées"""
+    
+    if not MANAGERS['multi_llm']:
+        st.error('Module Multi-LLM non disponible')
+        return {'error': 'Module Multi-LLM non disponible'}
+    
+    try:
+        from managers.multi_llm_manager import MultiLLMManager
+        llm_manager = MultiLLMManager()
+        
+        if not llm_manager.clients:
+            st.error('Aucune IA disponible')
+            return {'error': 'Aucune IA disponible'}
+        
+        # Construire le contexte
+        context = "PIÈCES À SYNTHÉTISER:\n\n"
+        
+        for i, piece in enumerate(pieces[:20], 1):
+            context += f"Pièce {i}: {piece.get('title', 'Sans titre')}\n"
+            if piece.get('category'):
+                context += f"Catégorie: {piece['category']}\n"
+            if piece.get('content'):
+                context += f"Extrait: {piece['content'][:200]}...\n"
+            context += "\n"
+        
+        # Prompt de synthèse
+        synthesis_prompt = f"""{context}
+Crée une synthèse structurée de ces pièces.
+La synthèse doit inclure:
+1. Vue d'ensemble des pièces
+2. Points clés par catégorie
+3. Chronologie si applicable
+4. Points d'attention juridiques
+5. Recommandations"""
+        
+        provider = list(llm_manager.clients.keys())[0]
+        response = llm_manager.query_single_llm(
+            provider,
+            synthesis_prompt,
+            "Tu es un expert en analyse de documents juridiques."
+        )
+        
+        if response['success']:
+            synthesis_result = {
+                'content': response['response'],
+                'piece_count': len(pieces),
+                'categories': list(set(p.get('category', 'Autre') for p in pieces)),
+                'timestamp': datetime.now()
+            }
+            st.session_state.synthesis_result = synthesis_result
+            
+            # Afficher directement le résultat
+            with st.expander("📝 Synthèse générée", expanded=True):
+                st.write(response['response'])
+                
+                # Actions
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.download_button(
+                        "📥 Télécharger",
+                        response['response'].encode('utf-8'),
+                        f"synthese_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        "text/plain"
+                    )
+                with col2:
+                    if st.button("🔄 Regénérer"):
+                        st.rerun()
+            
+            return synthesis_result
+        else:
+            st.error(f"Échec de la synthèse : {response.get('error', 'Erreur inconnue')}")
+            return {'error': 'Échec de la synthèse'}
+            
+    except Exception as e:
+        st.error(f'Erreur synthèse: {str(e)}')
+        return {'error': f'Erreur synthèse: {str(e)}'}
+
+# ========================= FONCTION ANALYSE_IA_PAGE =========================
+
+def analyse_ia_page():
+    """Page d'analyse IA"""
+    st.markdown("## 🤖 Analyse IA")
+    
+    # Vérifier si on a un contexte d'analyse depuis la recherche NL
+    if 'analysis_context' in st.session_state:
+        context = st.session_state.analysis_context
+        st.info(f"📋 Contexte détecté : {context.get('focus', 'Analyse')} pour {context.get('reference', 'le dossier')}")
+    
+    # Vérifier si des documents sont disponibles
+    documents = []
+    if 'azure_documents' in st.session_state:
+        documents.extend(st.session_state.azure_documents.values())
+    if 'imported_documents' in st.session_state:
+        documents.extend(st.session_state.imported_documents.values())
+    
+    if not documents:
+        st.warning("Aucun document disponible pour l'analyse. Importez d'abord des documents.")
+        return
+    
+    # Options d'analyse
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Type d'analyse avec pré-sélection si contexte
+        default_type = "Analyse complète"
+        if 'analysis_context' in st.session_state:
+            type_map = {
+                'risques': "Analyse des risques",
+                'infractions': "Analyse des infractions",
+                'chronologique': "Analyse chronologique",
+                'parties': "Analyse des parties",
+                'preuves': "Analyse des preuves"
+            }
+            default_type = type_map.get(st.session_state.analysis_context.get('type_analyse'), "Analyse complète")
+        
+        analysis_type = st.selectbox(
+            "Type d'analyse",
+            [
+                "Analyse complète",
+                "Analyse des risques",
+                "Analyse des infractions",
+                "Analyse chronologique",
+                "Analyse des parties",
+                "Analyse des preuves"
+            ],
+            index=[
+                "Analyse complète",
+                "Analyse des risques",
+                "Analyse des infractions",
+                "Analyse chronologique",
+                "Analyse des parties",
+                "Analyse des preuves"
+            ].index(default_type)
+        )
+    
+    with col2:
+        # Pré-sélectionner les documents si contexte
+        default_selection = []
+        if 'analysis_context' in st.session_state and st.session_state.analysis_context.get('reference'):
+            ref = st.session_state.analysis_context['reference'].lower()
+            default_selection = [
+                doc.get('title', f'Document {i}') 
+                for i, doc in enumerate(documents) 
+                if ref in doc.get('title', '').lower()
+            ][:10]
+        
+        if not default_selection:
+            default_selection = [doc.get('title', f'Document {i}') for i, doc in enumerate(documents[:5])]
+        
+        doc_selection = st.multiselect(
+            "Documents à analyser",
+            options=[doc.get('title', f'Document {i}') for i, doc in enumerate(documents)],
+            default=default_selection
+        )
+    
+    # Options avancées
+    with st.expander("⚙️ Options avancées"):
+        include_citations = st.checkbox("Inclure les citations", value=True)
+        include_recommendations = st.checkbox("Inclure des recommandations", value=True)
+        output_format = st.selectbox(
+            "Format de sortie",
+            ["Rapport structuré", "Points clés", "Synthèse narrative"]
+        )
+    
+    # Bouton d'analyse
+    if st.button("🚀 Lancer l'analyse", type="primary"):
+        with st.spinner(f"⏳ {analysis_type} en cours..."):
+            # Ici vous appelleriez votre service d'analyse
+            st.session_state.ai_analysis_results = {
+                'type': analysis_type,
+                'document_count': len(doc_selection),
+                'timestamp': datetime.now(),
+                'content': f"[Résultats de l'analyse {analysis_type} sur {len(doc_selection)} documents]"
+            }
+            st.success("✅ Analyse terminée !")
+            st.rerun()
+    
+    # Afficher les résultats s'ils existent
+    if 'ai_analysis_results' in st.session_state:
+        show_analysis_results()
+
+# Ajouter la fonction analyse_ia_page directement
+MODULE_FUNCTIONS['analyse_ia_page'] = analyse_ia_page
+MODULES_AVAILABLE['analyse_ia'] = True
 
 # ========================= CLASSE SearchInterface MODIFIÉE =========================
 
@@ -706,656 +1579,7 @@ class SearchInterface:
             st.warning("Service de recherche non disponible")
             return []
 
-# ========================= FONCTIONS UTILITAIRES LOCALES =========================
-
-def determine_document_category(doc: Dict[str, Any]) -> str:
-    """Détermine la catégorie d'un document"""
-    if doc.get('category'):
-        return doc['category']
-    
-    title = doc.get('title', '').lower()
-    content = doc.get('content', '').lower()[:1000]
-    
-    category_keywords = {
-        'Procédure': ['assignation', 'citation', 'conclusions', 'jugement', 'arrêt', 'ordonnance', 
-                      'requête', 'pourvoi', 'appel', 'mémoire', 'audience'],
-        'Expertise': ['expertise', 'expert', 'rapport d\'expertise', 'évaluation', 'diagnostic',
-                      'constat', 'analyse technique', 'étude'],
-        'Contrat': ['contrat', 'convention', 'accord', 'bail', 'cession', 'pacte', 'protocole',
-                    'engagement', 'marché', 'commande'],
-        'Correspondance': ['courrier', 'lettre', 'email', 'courriel', 'notification', 'mise en demeure',
-                          'réponse', 'demande', 'réclamation'],
-        'Comptabilité': ['facture', 'devis', 'comptable', 'bilan', 'compte', 'relevé', 'paiement',
-                        'avoir', 'note de frais', 'budget'],
-        'Administratif': ['statuts', 'kbis', 'pv', 'procès-verbal', 'assemblée', 'délibération',
-                         'décision', 'arrêté', 'décret', 'règlement'],
-        'Preuve': ['attestation', 'témoignage', 'déclaration', 'certificat', 'justificatif',
-                   'preuve', 'pièce', 'élément'],
-        'Pénal': ['plainte', 'garde à vue', 'audition', 'procès-verbal', 'enquête', 'instruction',
-                  'commission rogatoire', 'réquisitoire']
-    }
-    
-    best_category = 'Autre'
-    max_score = 0
-    
-    for category, keywords in category_keywords.items():
-        score = 0
-        for keyword in keywords:
-            if keyword in title:
-                score += 2
-            if keyword in content:
-                score += 1
-        
-        if score > max_score:
-            max_score = score
-            best_category = category
-    
-    return best_category
-
-def calculate_piece_relevance(doc: Dict[str, Any], analysis: Any) -> float:
-    """Calcule la pertinence d'une pièce par rapport à l'analyse"""
-    score = 0.5
-    
-    if not analysis:
-        return score
-    
-    title = doc.get('title', '').lower()
-    content = doc.get('content', '').lower()[:2000]
-    metadata = doc.get('metadata', {})
-    
-    if hasattr(analysis, 'keywords'):
-        for keyword in analysis.keywords:
-            keyword_lower = keyword.lower()
-            if keyword_lower in title:
-                score += 0.2
-            elif keyword_lower in content:
-                score += 0.1
-    
-    if hasattr(analysis, 'reference') and analysis.reference:
-        ref_lower = analysis.reference.lower()
-        if ref_lower in title:
-            score += 0.3
-        elif ref_lower in content:
-            score += 0.15
-    
-    if hasattr(analysis, 'parties'):
-        all_parties = []
-        all_parties.extend(analysis.parties.get('demandeurs', []))
-        all_parties.extend(analysis.parties.get('defendeurs', []))
-        
-        for partie in all_parties:
-            partie_lower = partie.lower()
-            if partie_lower in title:
-                score += 0.15
-            elif partie_lower in content:
-                score += 0.08
-    
-    if hasattr(analysis, 'infractions'):
-        for infraction in analysis.infractions:
-            infraction_lower = infraction.lower()
-            if infraction_lower in title or infraction_lower in content:
-                score += 0.1
-    
-    if metadata.get('date'):
-        try:
-            doc_date = datetime.fromisoformat(str(metadata['date']))
-            days_old = (datetime.now() - doc_date).days
-            if days_old < 30:
-                score += 0.1
-            elif days_old < 90:
-                score += 0.05
-        except:
-            pass
-    
-    if hasattr(analysis, 'document_type'):
-        doc_type = determine_document_category(doc)
-        if analysis.document_type == 'plainte' and doc_type in ['Pénal', 'Preuve']:
-            score += 0.15
-        elif analysis.document_type == 'conclusions' and doc_type == 'Procédure':
-            score += 0.15
-    
-    return min(max(score, 0.0), 1.0)
-
-# ========================= FONCTION ANALYSE_IA_PAGE =========================
-
-def analyse_ia_page():
-    """Page d'analyse IA"""
-    st.markdown("## 🤖 Analyse IA")
-    
-    # Vérifier si on a un contexte d'analyse depuis la recherche NL
-    if 'analysis_context' in st.session_state:
-        context = st.session_state.analysis_context
-        st.info(f"📋 Contexte détecté : {context.get('focus', 'Analyse')} pour {context.get('reference', 'le dossier')}")
-    
-    # Vérifier si des documents sont disponibles
-    documents = []
-    if 'azure_documents' in st.session_state:
-        documents.extend(st.session_state.azure_documents.values())
-    if 'imported_documents' in st.session_state:
-        documents.extend(st.session_state.imported_documents.values())
-    
-    if not documents:
-        st.warning("Aucun document disponible pour l'analyse. Importez d'abord des documents.")
-        return
-    
-    # Options d'analyse
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Type d'analyse avec pré-sélection si contexte
-        default_type = "Analyse complète"
-        if 'analysis_context' in st.session_state:
-            type_map = {
-                'risques': "Analyse des risques",
-                'infractions': "Analyse des infractions",
-                'chronologique': "Analyse chronologique",
-                'parties': "Analyse des parties",
-                'preuves': "Analyse des preuves"
-            }
-            default_type = type_map.get(st.session_state.analysis_context.get('type_analyse'), "Analyse complète")
-        
-        analysis_type = st.selectbox(
-            "Type d'analyse",
-            [
-                "Analyse complète",
-                "Analyse des risques",
-                "Analyse des infractions",
-                "Analyse chronologique",
-                "Analyse des parties",
-                "Analyse des preuves"
-            ],
-            index=[
-                "Analyse complète",
-                "Analyse des risques",
-                "Analyse des infractions",
-                "Analyse chronologique",
-                "Analyse des parties",
-                "Analyse des preuves"
-            ].index(default_type)
-        )
-    
-    with col2:
-        # Pré-sélectionner les documents si contexte
-        default_selection = []
-        if 'analysis_context' in st.session_state and st.session_state.analysis_context.get('reference'):
-            ref = st.session_state.analysis_context['reference'].lower()
-            default_selection = [
-                doc.get('title', f'Document {i}') 
-                for i, doc in enumerate(documents) 
-                if ref in doc.get('title', '').lower()
-            ][:10]
-        
-        if not default_selection:
-            default_selection = [doc.get('title', f'Document {i}') for i, doc in enumerate(documents[:5])]
-        
-        doc_selection = st.multiselect(
-            "Documents à analyser",
-            options=[doc.get('title', f'Document {i}') for i, doc in enumerate(documents)],
-            default=default_selection
-        )
-    
-    # Options avancées
-    with st.expander("⚙️ Options avancées"):
-        include_citations = st.checkbox("Inclure les citations", value=True)
-        include_recommendations = st.checkbox("Inclure des recommandations", value=True)
-        output_format = st.selectbox(
-            "Format de sortie",
-            ["Rapport structuré", "Points clés", "Synthèse narrative"]
-        )
-    
-    # Bouton d'analyse
-    if st.button("🚀 Lancer l'analyse", type="primary"):
-        with st.spinner(f"⏳ {analysis_type} en cours..."):
-            # Ici vous appelleriez votre service d'analyse
-            st.session_state.ai_analysis_results = {
-                'type': analysis_type,
-                'document_count': len(doc_selection),
-                'timestamp': datetime.now(),
-                'content': f"[Résultats de l'analyse {analysis_type} sur {len(doc_selection)} documents]"
-            }
-            st.success("✅ Analyse terminée !")
-            st.rerun()
-    
-    # Afficher les résultats s'ils existent
-    if 'ai_analysis_results' in st.session_state:
-        show_analysis_results()
-
-# ========================= MANAGERS AVANCÉS - IMPORT CONDITIONNEL =========================
-
-MANAGERS = {
-    'azure_blob': False,
-    'azure_search': False,
-    'company_info': False,
-    'document_manager': False,
-    'dynamic_generators': False,
-    'export_manager': False,
-    'jurisprudence_verifier': False,
-    'legal_search': False,
-    'llm_manager': False,
-    'multi_llm': False,
-    'style_analyzer': False,
-    'template_manager': False,
-    'universal_search': False
-}
-
-# Import des managers (gardé minimal pour la lisibilité)
-managers_to_import = [
-    ('azure_blob_manager', 'AzureBlobManager', 'azure_blob'),
-    ('azure_search_manager', 'AzureSearchManager', 'azure_search'),
-    ('company_info_manager', 'CompanyInfoManager', 'company_info'),
-    ('document_manager', 'DocumentManager', 'document_manager'),
-    ('export_manager', 'ExportManager', 'export_manager'),
-    ('jurisprudence_verifier', 'JurisprudenceVerifier', 'jurisprudence_verifier'),
-    ('legal_search', 'LegalSearchManager', 'legal_search'),
-    ('multi_llm_manager', 'MultiLLMManager', 'multi_llm'),
-    ('style_analyzer', 'StyleAnalyzer', 'style_analyzer'),
-    ('template_manager', 'TemplateManager', 'template_manager')
-]
-
-for module_name, class_name, key in managers_to_import:
-    try:
-        exec(f"from managers.{module_name} import {class_name}")
-        MANAGERS[key] = True
-    except ImportError as e:
-        print(f"Import {class_name} failed: {e}")
-
-# Import des fonctions spéciales
-try:
-    from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
-    MANAGERS['dynamic_generators'] = True
-except ImportError as e:
-    print(f"Import dynamic_generators functions failed: {e}")
-
-# ========================= IMPORTS DES MODULES SPÉCIFIQUES =========================
-
-MODULES_AVAILABLE = {}
-MODULE_FUNCTIONS = {}
-
-# Import conditionnel de tous les modules
-modules_to_import = [
-    ('bordereau', ['show_page']),
-    ('comparison', ['show_page']),
-    ('configuration', ['show_page']),
-    ('email', ['show_page']),
-    ('explorer', ['show_page']),
-    ('import_export', ['show_page']),
-    ('jurisprudence', ['show_page']),
-    ('mapping', ['show_page']),
-    ('plaidoirie', ['show_page']),
-    ('preparation_client', ['show_page']),
-    ('redaction_unified', ['show_page']),
-    ('selection_piece', ['show_page']),
-    ('synthesis', ['show_page']),
-    ('templates', ['show_page']),
-    ('timeline', ['show_page'])
-]
-
-for module_name, functions in modules_to_import:
-    try:
-        module = __import__(f'modules.{module_name}', fromlist=functions)
-        MODULES_AVAILABLE[module_name] = True
-        
-        for func_name in functions:
-            if hasattr(module, func_name):
-                MODULE_FUNCTIONS[f'{module_name}_page'] = getattr(module, func_name)
-    except ImportError:
-        MODULES_AVAILABLE[module_name] = False
-
-# Ajouter la fonction analyse_ia_page directement
-MODULE_FUNCTIONS['analyse_ia_page'] = analyse_ia_page
-MODULES_AVAILABLE['analyse_ia'] = True
-
-# ========================= SYNTHÈSE DES PIÈCES =========================
-
-async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
-    """Synthétise les pièces sélectionnées"""
-    
-    if not MANAGERS['multi_llm']:
-        st.error('Module Multi-LLM non disponible')
-        return {'error': 'Module Multi-LLM non disponible'}
-    
-    try:
-        from managers.multi_llm_manager import MultiLLMManager
-        llm_manager = MultiLLMManager()
-        
-        if not llm_manager.clients:
-            st.error('Aucune IA disponible')
-            return {'error': 'Aucune IA disponible'}
-        
-        # Construire le contexte
-        context = "PIÈCES À SYNTHÉTISER:\n\n"
-        
-        for i, piece in enumerate(pieces[:20], 1):
-            context += f"Pièce {i}: {piece.get('title', 'Sans titre')}\n"
-            if piece.get('category'):
-                context += f"Catégorie: {piece['category']}\n"
-            if piece.get('content'):
-                context += f"Extrait: {piece['content'][:200]}...\n"
-            context += "\n"
-        
-        # Prompt de synthèse
-        synthesis_prompt = f"""{context}
-Crée une synthèse structurée de ces pièces.
-La synthèse doit inclure:
-1. Vue d'ensemble des pièces
-2. Points clés par catégorie
-3. Chronologie si applicable
-4. Points d'attention juridiques
-5. Recommandations"""
-        
-        provider = list(llm_manager.clients.keys())[0]
-        response = llm_manager.query_single_llm(
-            provider,
-            synthesis_prompt,
-            "Tu es un expert en analyse de documents juridiques."
-        )
-        
-        if response['success']:
-            synthesis_result = {
-                'content': response['response'],
-                'piece_count': len(pieces),
-                'categories': list(set(p.get('category', 'Autre') for p in pieces)),
-                'timestamp': datetime.now()
-            }
-            st.session_state.synthesis_result = synthesis_result
-            
-            # Afficher directement le résultat
-            with st.expander("📝 Synthèse générée", expanded=True):
-                st.write(response['response'])
-                
-                # Actions
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.download_button(
-                        "📥 Télécharger",
-                        response['response'].encode('utf-8'),
-                        f"synthese_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                        "text/plain"
-                    )
-                with col2:
-                    if st.button("🔄 Regénérer"):
-                        st.rerun()
-            
-            return synthesis_result
-        else:
-            st.error(f"Échec de la synthèse : {response.get('error', 'Erreur inconnue')}")
-            return {'error': 'Échec de la synthèse'}
-            
-    except Exception as e:
-        st.error(f'Erreur synthèse: {str(e)}')
-        return {'error': f'Erreur synthèse: {str(e)}'}
-
-# ========================= FONCTION PRINCIPALE =========================
-
-def show_page():
-    """Fonction principale de la page recherche universelle avec compréhension du langage naturel"""
-    
-    # Initialiser l'interface
-    if 'search_interface' not in st.session_state:
-        st.session_state.search_interface = SearchInterface()
-    
-    interface = st.session_state.search_interface
-    
-    st.markdown("## 🔍 Recherche Universelle avec IA")
-    
-    # Toggle pour afficher l'analyse IA
-    col_header1, col_header2, col_header3 = st.columns([3, 1, 1])
-    with col_header2:
-        st.session_state.show_nl_analysis = st.checkbox("🧠 Voir analyse IA", value=False)
-    
-    with col_header3:
-        if st.checkbox("🔧 État des modules"):
-            show_modules_status()
-    
-    # Barre de recherche principale
-    col1, col2 = st.columns([5, 1])
-    
-    with col1:
-        default_value = ""
-        if 'pending_query' in st.session_state:
-            default_value = st.session_state.pending_query
-            del st.session_state.pending_query
-        elif 'universal_query' in st.session_state:
-            default_value = st.session_state.universal_query
-        
-        query = st.text_area(
-            "Entrez votre demande en langage naturel",
-            value=default_value,
-            placeholder="""Écrivez naturellement ce que vous souhaitez faire. L'IA comprendra votre intention.
-
-Exemples en langage naturel :
-- "J'ai besoin de préparer mon client Lesueur pour l'audience de demain"
-- "Trouve-moi tous les documents sur l'affaire Vinci concernant la corruption"
-- "Rédige une plainte exhaustive contre SOGEPROM pour abus de biens sociaux"
-- "Fais-moi une synthèse des derniers échanges avec l'avocat adverse"
-- "Analyse les risques juridiques dans le dossier Martin"
-- "Crée des conclusions complètes pour l'affaire Dupont" (→ génération longue)
-- "Écris un courrier simple au client" (→ génération standard)
-
-Vous pouvez toujours utiliser @ pour référencer un dossier spécifique.""",
-            key="universal_query",
-            height=150,
-            help="💡 Écrivez naturellement. Pour des documents longs, utilisez des mots comme 'exhaustif', 'complet', 'détaillé'."
-        )
-        
-        # Auto-complétion des références
-        if query and '@' in query:
-            suggestions = get_reference_suggestions(query)
-            if suggestions:
-                st.markdown("**Suggestions :**")
-                cols = st.columns(min(len(suggestions), 5))
-                for i, suggestion in enumerate(suggestions[:5]):
-                    with cols[i]:
-                        if st.button(suggestion, key=f"sugg_{i}", use_container_width=True):
-                            parts = query.split('@')
-                            if len(parts) > 1:
-                                new_query = parts[0] + suggestion
-                                st.session_state.pending_query = new_query
-                                st.rerun()
-    
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        search_button = st.button("🔍 Rechercher", key="search_button", use_container_width=True)
-    
-    # Prévisualisation en temps réel
-    if query and '@' in query:
-        parts = query.split('@')
-        if len(parts) > 1:
-            ref_part = parts[-1].split()[0] if parts[-1].strip() else ''
-            
-            if ref_part and len(ref_part) >= 2:
-                show_live_preview(ref_part, query)
-    
-    # Afficher les références disponibles
-    if st.checkbox("📁 Voir toutes les références disponibles"):
-        show_available_references()
-    
-    # Suggestions de commandes enrichies
-    with st.expander("💡 Exemples de demandes", expanded=False):
-        st.markdown("""
-        **🗣️ Langage naturel :**
-        - `J'ai besoin de préparer mon client pour l'audience de demain`
-        - `Trouve-moi les conclusions de l'avocat adverse dans l'affaire Martin`
-        - `Quels sont les risques juridiques si on poursuit Vinci ?`
-        - `Aide-moi à rédiger une réponse aux conclusions adverses`
-        - `Fais un résumé des pièces comptables du dossier SOGEPROM`
-        
-        **📝 Rédaction (automatiquement routée vers le bon module) :**
-        - `Rédige une plainte exhaustive contre Vinci` → Module génération longue (50+ pages)
-        - `Crée des conclusions complètes pour l'appel` → Module génération longue (40+ pages)
-        - `Écris une plainte simple contre Martin` → Module génération standard
-        - `Prépare un courrier au client` → Module génération standard
-        
-        **📊 Analyse et synthèse :**
-        - `Analyse les échanges de mails dans l'affaire SOGEPROM`
-        - `Fais-moi un résumé chronologique des événements`
-        - `Identifie les contradictions dans les témoignages`
-        
-        **🔍 Recherche classique :**
-        - `@affaire_martin documents comptables`
-        - `contrats société XYZ`
-        """)
-    
-    # Menu d'actions rapides
-    show_quick_actions()
-    
-    # Afficher le module juridique si demandé
-    if st.session_state.get('show_juridique_module', False):
-        if GENERATION_MODULE_AVAILABLE:
-            show_generation_page()
-            if st.button("← Retour à la recherche", key="back_to_search"):
-                st.session_state.show_juridique_module = False
-                st.rerun()
-            return
-        else:
-            st.error("Module de génération juridique non disponible")
-            st.session_state.show_juridique_module = False
-    
-    # Afficher le module de génération longue si demandé
-    if st.session_state.get('show_generation_longue', False):
-        if GENERATION_LONGUE_AVAILABLE:
-            show_generation_longue_interface()
-            if st.button("← Retour à la recherche", key="back_to_search_longue"):
-                st.session_state.show_generation_longue = False
-                st.rerun()
-            return
-        else:
-            st.error("Module de génération longue non disponible")
-            st.session_state.show_generation_longue = False
-    
-    # Traiter la requête
-    if query and (search_button or st.session_state.get('process_query', False)):
-        with st.spinner("🔄 Traitement en cours..."):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(interface.process_universal_query(query))
-            finally:
-                loop.close()
-    
-    # Afficher les résultats
-    show_unified_results()
-    
-    # Réinitialiser le flag de traitement
-    if 'process_query' in st.session_state:
-        st.session_state.process_query = False
-    
-    # Footer avec actions
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("💾 Sauvegarder le travail", key="save_work"):
-            save_current_work()
-    
-    with col2:
-        if st.button("📊 Afficher les statistiques", key="show_stats"):
-            asyncio.run(show_work_statistics())
-    
-    with col3:
-        if st.button("🔗 Partager", key="share_work"):
-            st.info("Fonctionnalité de partage à implémenter")
-
 # ========================= FONCTIONS D'AFFICHAGE =========================
-
-def show_modules_status():
-    """Affiche l'état détaillé des modules et des managers"""
-    with st.expander("🔧 État des modules et managers", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Modules disponibles", sum(1 for v in MODULES_AVAILABLE.values() if v))
-            st.metric("Fonctions importées", len(MODULE_FUNCTIONS))
-        
-        with col2:
-            st.metric("Managers disponibles", sum(1 for v in MANAGERS.values() if v))
-            st.metric("Service de recherche", "✅" if SEARCH_SERVICE_AVAILABLE else "❌")
-        
-        with col3:
-            if CONFIGURATIONS_AVAILABLE:
-                st.metric("Templates", len(BUILTIN_DOCUMENT_TEMPLATES))
-                st.metric("Styles", len(DEFAULT_STYLE_CONFIGS))
-            else:
-                st.metric("Templates", "❌")
-                st.metric("Styles", "❌")
-        
-        # État du module juridique
-        st.markdown("### ⚖️ Modules de génération")
-        
-        if GENERATION_LONGUE_AVAILABLE:
-            st.success("✅ Module documents longs disponible (25-50+ pages)")
-        else:
-            st.error("❌ Module documents longs non disponible")
-            
-        if GENERATION_MODULE_AVAILABLE:
-            st.success("✅ Module génération standard disponible")
-        else:
-            st.error("❌ Module génération standard non disponible")
-        
-        if JURIDIQUE_AVAILABLE:
-            st.success("✅ Module d'intégration juridique disponible")
-        else:
-            st.error("❌ Module d'intégration juridique non disponible")
-
-        if CAHIER_CHARGES_AVAILABLE:
-            st.success("✅ Cahier des charges juridique chargé")
-        else:
-            st.error("❌ Cahier des charges non disponible")
-        
-        # État du module IA
-        if HAS_API_UTILS:
-            st.success("✅ APIs IA disponibles")
-        else:
-            st.error("❌ APIs IA non disponibles")
-        
-        if LLM_MANAGER_AVAILABLE:
-            st.success("✅ LLM Manager disponible")
-        else:
-            st.error("❌ LLM Manager non disponible")
-
-def show_quick_actions():
-    """Affiche les actions rapides"""
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        if st.button("📝 Nouvelle rédaction", key="quick_redaction"):
-            st.session_state.pending_query = "rédiger "
-            st.session_state.process_query = True
-            st.rerun()
-    
-    with col2:
-        if st.button("🤖 Analyser dossier", key="quick_analysis"):
-            st.session_state.pending_query = "analyser "
-            st.session_state.process_query = True
-            st.rerun()
-    
-    with col3:
-        if st.button("📥 Importer", key="quick_import"):
-            st.session_state.pending_query = "importer documents"
-            st.session_state.process_query = True
-            st.rerun()
-    
-    with col4:
-        if st.button("🔄 Réinitialiser", key="quick_reset"):
-            clear_universal_state()
-    
-    with col5:
-        if st.button("⚖️ Actes juridiques", key="quick_juridique"):
-            if GENERATION_MODULE_AVAILABLE:
-                st.session_state.show_juridique_module = True
-            else:
-                st.session_state.pending_query = "rédiger plainte"
-                st.session_state.process_query = True
-            st.rerun()
-    
-    with col6:
-        if st.button("📜 Doc. longs", key="quick_long_docs"):
-            if GENERATION_LONGUE_AVAILABLE:
-                st.session_state.show_generation_longue = True
-            else:
-                st.session_state.pending_query = "plainte exhaustive 50 pages"
-                st.session_state.process_query = True
-            st.rerun()
 
 def show_unified_results():
     """Affiche tous les types de résultats de manière unifiée"""
@@ -1458,6 +1682,282 @@ def show_synthesis_results():
     
     if result.get('piece_count'):
         st.info(f"📄 Pièces analysées : {result['piece_count']}")
+
+# ========================= FONCTIONS PRINCIPALES =========================
+
+def show_page():
+    """Fonction principale de la page recherche universelle avec compréhension du langage naturel"""
+    
+    # Initialiser l'interface
+    if 'search_interface' not in st.session_state:
+        st.session_state.search_interface = SearchInterface()
+    
+    interface = st.session_state.search_interface
+    
+    st.markdown("## 🔍 Recherche Universelle avec IA")
+    
+    # Toggle pour afficher l'analyse IA
+    col_header1, col_header2, col_header3 = st.columns([3, 1, 1])
+    with col_header2:
+        st.session_state.show_nl_analysis = st.checkbox("🧠 Voir analyse IA", value=False)
+    
+    with col_header3:
+        if st.checkbox("🔧 État des modules"):
+            show_modules_status()
+    
+    # Barre de recherche principale - MODIFIÉE : 125px pour ~5 lignes
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        default_value = ""
+        if 'pending_query' in st.session_state:
+            default_value = st.session_state.pending_query
+            del st.session_state.pending_query
+        elif 'universal_query' in st.session_state:
+            default_value = st.session_state.universal_query
+        
+        # Créer un formulaire pour permettre la validation avec Entrée
+        with st.form(key='search_form', clear_on_submit=False):
+            query = st.text_area(
+                "Entrez votre demande en langage naturel",
+                value=default_value,
+                placeholder="""Écrivez naturellement ce que vous souhaitez faire. L'IA comprendra votre intention.
+
+Exemples :
+- J'ai besoin de préparer mon client Lesueur pour l'audience de demain
+- Trouve-moi tous les documents sur l'affaire Vinci concernant la corruption
+- Rédige une plainte exhaustive contre SOGEPROM pour abus de biens sociaux
+- Fais-moi une synthèse des derniers échanges avec l'avocat adverse
+- Analyse les risques juridiques dans le dossier Martin""",
+                key="universal_query_input",
+                height=125,  # 125px pour environ 5 lignes
+                help="💡 Écrivez naturellement. Appuyez sur Entrée ou cliquez sur Rechercher."
+            )
+            
+            # Stocker la valeur dans session_state
+            st.session_state.universal_query = query
+            
+            # Boutons du formulaire
+            col_form1, col_form2 = st.columns([4, 1])
+            with col_form2:
+                search_button = st.form_submit_button("🔍 Rechercher", use_container_width=True, type="primary")
+    
+    with col2:
+        # Espace pour aligner avec le formulaire
+        st.markdown("<div style='height: 125px;'></div>", unsafe_allow_html=True)
+    
+    # Auto-complétion des références (en dehors du formulaire)
+    if query and '@' in query:
+        suggestions = get_reference_suggestions(query)
+        if suggestions:
+            st.markdown("**Suggestions :**")
+            cols = st.columns(min(len(suggestions), 5))
+            for i, suggestion in enumerate(suggestions[:5]):
+                with cols[i]:
+                    if st.button(suggestion, key=f"sugg_{i}", use_container_width=True):
+                        parts = query.split('@')
+                        if len(parts) > 1:
+                            new_query = parts[0] + suggestion
+                            st.session_state.pending_query = new_query
+                            st.rerun()
+    
+    # Prévisualisation en temps réel
+    if query and '@' in query:
+        parts = query.split('@')
+        if len(parts) > 1:
+            ref_part = parts[-1].split()[0] if parts[-1].strip() else ''
+            
+            if ref_part and len(ref_part) >= 2:
+                show_live_preview(ref_part, query)
+    
+    # Afficher les références disponibles
+    if st.checkbox("📁 Voir toutes les références disponibles"):
+        show_available_references()
+    
+    # Suggestions de commandes enrichies
+    with st.expander("💡 Exemples de demandes", expanded=False):
+        st.markdown("""
+        **🗣️ Langage naturel :**
+        - `J'ai besoin de préparer mon client pour l'audience de demain`
+        - `Trouve-moi les conclusions de l'avocat adverse dans l'affaire Martin`
+        - `Quels sont les risques juridiques si on poursuit Vinci ?`
+        - `Aide-moi à rédiger une réponse aux conclusions adverses`
+        - `Fais un résumé des pièces comptables du dossier SOGEPROM`
+        
+        **📝 Rédaction (automatiquement routée vers le bon module) :**
+        - `Rédige une plainte exhaustive contre Vinci` → Module génération longue (50+ pages)
+        - `Crée des conclusions complètes pour l'appel` → Module génération longue (40+ pages)
+        - `Écris une plainte simple contre Martin` → Module génération standard
+        - `Prépare un courrier au client` → Module génération standard
+        
+        **📊 Analyse et synthèse :**
+        - `Analyse les échanges de mails dans l'affaire SOGEPROM`
+        - `Fais-moi un résumé chronologique des événements`
+        - `Identifie les contradictions dans les témoignages`
+        
+        **🔍 Recherche classique :**
+        - `@affaire_martin documents comptables`
+        - `contrats société XYZ`
+        """)
+    
+    # Menu d'actions rapides
+    show_quick_actions()
+    
+    # Afficher le module juridique si demandé
+    if st.session_state.get('show_juridique_module', False):
+        if GENERATION_MODULE_AVAILABLE:
+            show_generation_page()
+            if st.button("← Retour à la recherche", key="back_to_search"):
+                st.session_state.show_juridique_module = False
+                st.rerun()
+            return
+        else:
+            st.error("Module de génération juridique non disponible")
+            st.session_state.show_juridique_module = False
+    
+    # Afficher le module de génération longue si demandé
+    if st.session_state.get('show_generation_longue', False):
+        if GENERATION_LONGUE_AVAILABLE:
+            show_generation_longue_interface()
+            if st.button("← Retour à la recherche", key="back_to_search_longue"):
+                st.session_state.show_generation_longue = False
+                st.rerun()
+            return
+        else:
+            st.error("Module de génération longue non disponible")
+            st.session_state.show_generation_longue = False
+    
+    # Traiter la requête
+    if query and (search_button or st.session_state.get('process_query', False)):
+        with st.spinner("🔄 Traitement en cours..."):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(interface.process_universal_query(query))
+            finally:
+                loop.close()
+    
+    # Afficher les résultats
+    show_unified_results()
+    
+    # Réinitialiser le flag de traitement
+    if 'process_query' in st.session_state:
+        st.session_state.process_query = False
+    
+    # Footer avec actions
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💾 Sauvegarder le travail", key="save_work"):
+            save_current_work()
+    
+    with col2:
+        if st.button("📊 Afficher les statistiques", key="show_stats"):
+            asyncio.run(show_work_statistics())
+    
+    with col3:
+        if st.button("🔗 Partager", key="share_work"):
+            st.info("Fonctionnalité de partage à implémenter")
+
+def show_modules_status():
+    """Affiche l'état détaillé des modules et des managers"""
+    with st.expander("🔧 État des modules et managers", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Modules disponibles", sum(1 for v in MODULES_AVAILABLE.values() if v))
+            st.metric("Fonctions importées", len(MODULE_FUNCTIONS))
+        
+        with col2:
+            st.metric("Managers disponibles", sum(1 for v in MANAGERS.values() if v))
+            st.metric("Service de recherche", "✅" if SEARCH_SERVICE_AVAILABLE else "❌")
+        
+        with col3:
+            if CONFIGURATIONS_AVAILABLE:
+                st.metric("Templates", len(BUILTIN_DOCUMENT_TEMPLATES))
+                st.metric("Styles", len(DEFAULT_STYLE_CONFIGS))
+            else:
+                st.metric("Templates", "❌")
+                st.metric("Styles", "❌")
+        
+        # État du module juridique
+        st.markdown("### ⚖️ Modules de génération")
+        
+        if GENERATION_LONGUE_AVAILABLE:
+            st.success("✅ Module documents longs disponible (25-50+ pages)")
+        else:
+            st.error("❌ Module documents longs non disponible")
+            
+        if GENERATION_MODULE_AVAILABLE:
+            st.success("✅ Module génération standard disponible")
+        else:
+            st.error("❌ Module génération standard non disponible")
+        
+        if JURIDIQUE_AVAILABLE:
+            st.success("✅ Module d'intégration juridique disponible")
+        else:
+            st.error("❌ Module d'intégration juridique non disponible")
+
+        if CAHIER_CHARGES_AVAILABLE:
+            st.success("✅ Cahier des charges juridique chargé")
+        else:
+            st.error("❌ Cahier des charges non disponible")
+        
+        # État du module IA
+        if HAS_API_UTILS:
+            st.success("✅ APIs IA disponibles")
+        else:
+            st.error("❌ APIs IA non disponibles")
+        
+        if LLM_MANAGER_AVAILABLE:
+            st.success("✅ LLM Manager disponible")
+        else:
+            st.error("❌ LLM Manager non disponible")
+
+def show_quick_actions():
+    """Affiche les actions rapides"""
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        if st.button("📝 Nouvelle rédaction", key="quick_redaction"):
+            st.session_state.pending_query = "rédiger "
+            st.session_state.process_query = True
+            st.rerun()
+    
+    with col2:
+        if st.button("🤖 Analyser dossier", key="quick_analysis"):
+            st.session_state.pending_query = "analyser "
+            st.session_state.process_query = True
+            st.rerun()
+    
+    with col3:
+        if st.button("📥 Importer", key="quick_import"):
+            st.session_state.pending_query = "importer documents"
+            st.session_state.process_query = True
+            st.rerun()
+    
+    with col4:
+        if st.button("🔄 Réinitialiser", key="quick_reset"):
+            clear_universal_state()
+    
+    with col5:
+        if st.button("⚖️ Actes juridiques", key="quick_juridique"):
+            if GENERATION_MODULE_AVAILABLE:
+                st.session_state.show_juridique_module = True
+            else:
+                st.session_state.pending_query = "rédiger plainte"
+                st.session_state.process_query = True
+            st.rerun()
+    
+    with col6:
+        if st.button("📜 Doc. longs", key="quick_long_docs"):
+            if GENERATION_LONGUE_AVAILABLE:
+                st.session_state.show_generation_longue = True
+            else:
+                st.session_state.pending_query = "plainte exhaustive 50 pages"
+                st.session_state.process_query = True
+            st.rerun()
 
 # ========================= FONCTIONS UTILITAIRES =========================
 
