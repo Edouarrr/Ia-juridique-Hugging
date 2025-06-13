@@ -1,59 +1,128 @@
-# managers/__init__.py
 """
-Package managers - Gestionnaires pour l'application juridique
+Gestionnaires Azure et IA - Initialisation et imports dynamiques
 """
 
 import logging
+import os
+import sys
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Définition des managers à importer
-MANAGERS = [
-    ('azure_blob_manager', 'AzureBlobManager'),
-    ('azure_search_manager', 'AzureSearchManager'),
-    ('company_info_manager', 'CompanyInfoManager'),
-    ('document_manager', 'DocumentManager'),
-    ('dynamic_generators', 'DynamicGenerators'),
-    ('export_manager', 'ExportManager'),
-    ('jurisprudence_verifier', 'JurisprudenceVerifier'),
-    ('legal_search', 'LegalSearchManager'),
-    ('llm_manager', 'LLMManager'),
-    ('multi_llm_manager', 'MultiLLMManager'),
-    ('style_analyzer', 'StyleAnalyzer'),
-    ('template_manager', 'TemplateManager'),
-    ('UniversalSearchInterface', 'UniversalSearchInterface'),
-    ('universal_search_service', 'UniversalSearchService'),
-    ('unified_document_generator', 'UnifiedDocumentGenerator'),
+# Définir __all__ pour les exports
+__all__ = [
+    'AzureBlobManager',
+    'AzureSearchManager', 
+    'AzureOpenAIManager',
+    'MultiLLMManager',
+    'get_managers_status'
 ]
 
-# Import dynamique des managers disponibles
-__all__ = []
-_available_managers = {}
+# Dictionnaire des managers disponibles
+AVAILABLE_MANAGERS = {
+    'azure_blob_manager': 'AzureBlobManager',
+    'azure_search_manager': 'AzureSearchManager',
+    'azure_openai_manager': 'AzureOpenAIManager',
+    'multi_llm_manager': 'MultiLLMManager'
+}
 
-for module_name, class_name in MANAGERS:
+# État des imports
+_import_status = {
+    'loaded': [],
+    'failed': {}
+}
+
+# Import dynamique des managers
+for module_name, class_name in AVAILABLE_MANAGERS.items():
     try:
-        module = __import__(f'.{module_name}', fromlist=[class_name], package=__name__)
-        manager_class = getattr(module, class_name)
+        # Obtenir le chemin du module actuel
+        current_module = sys.modules[__name__]
         
-        # Rendre le manager disponible dans le namespace
-        globals()[class_name] = manager_class
-        _available_managers[class_name] = manager_class
-        __all__.append(class_name)
+        # Importer le module de manière relative sans l'argument package
+        if hasattr(current_module, '__package__'):
+            # Utiliser importlib pour un import plus robuste
+            import importlib
+            full_module_name = f"{current_module.__package__}.{module_name}"
+            module = importlib.import_module(f".{module_name}", current_module.__package__)
+        else:
+            # Fallback pour les anciennes versions
+            module = __import__(f'{__name__}.{module_name}', fromlist=[class_name])
         
+        # Extraire la classe et l'ajouter au namespace
+        if hasattr(module, class_name):
+            globals()[class_name] = getattr(module, class_name)
+            _import_status['loaded'].append(class_name)
+            logger.info(f"✅ Manager chargé : {class_name}")
+        else:
+            error_msg = f"Classe {class_name} non trouvée dans {module_name}"
+            _import_status['failed'][class_name] = error_msg
+            logger.warning(f"⚠️ {error_msg}")
+            
     except ImportError as e:
-        logger.debug(f"Manager {class_name} non disponible: {e}")
-    except AttributeError as e:
-        logger.warning(f"Classe {class_name} introuvable dans {module_name}: {e}")
+        error_msg = f"Module non disponible : {str(e)}"
+        _import_status['failed'][class_name] = error_msg
+        logger.warning(f"⚠️ {class_name} - {error_msg}")
+        
+        # Créer une classe placeholder
+        class_code = f"""
+class {class_name}:
+    '''Placeholder pour {class_name} non disponible'''
+    def __init__(self, *args, **kwargs):
+        self.connected = False
+        self.error = "{error_msg}"
+        logger.warning("Utilisation du placeholder pour {class_name}")
+    
+    def __getattr__(self, name):
+        logger.warning(f"Tentative d'accès à {{name}} sur {class_name} non disponible")
+        return lambda *args, **kwargs: None
+"""
+        exec(class_code, globals())
+        
+    except Exception as e:
+        error_msg = f"Erreur inattendue : {str(e)}"
+        _import_status['failed'][class_name] = error_msg
+        logger.error(f"❌ {class_name} - {error_msg}")
+        
+        # Créer une classe placeholder pour l'erreur
+        class_code = f"""
+class {class_name}:
+    '''Placeholder pour {class_name} avec erreur'''
+    def __init__(self, *args, **kwargs):
+        self.connected = False
+        self.error = "{error_msg}"
+"""
+        exec(class_code, globals())
 
-# Fonction utilitaire pour vérifier la disponibilité d'un manager
-def is_manager_available(manager_name: str) -> bool:
-    """Vérifie si un manager est disponible"""
-    return manager_name in _available_managers
+def get_managers_status() -> Dict[str, Any]:
+    """Retourne le statut des managers"""
+    return {
+        'total_managers': len(AVAILABLE_MANAGERS),
+        'loaded_count': len(_import_status['loaded']),
+        'failed_count': len(_import_status['failed']),
+        'loaded': _import_status['loaded'],
+        'failed': _import_status['failed']
+    }
 
-# Fonction pour obtenir la liste des managers disponibles
-def get_available_managers() -> list:
-    """Retourne la liste des managers disponibles"""
-    return list(_available_managers.keys())
+def test_managers():
+    """Test rapide des managers disponibles"""
+    status = get_managers_status()
+    print(f"\n📊 Statut des Managers :")
+    print(f"Total : {status['total_managers']}")
+    print(f"Chargés : {status['loaded_count']} ✅")
+    print(f"Échoués : {status['failed_count']} ❌")
+    
+    if status['loaded']:
+        print(f"\n✅ Managers disponibles :")
+        for manager in status['loaded']:
+            print(f"  - {manager}")
+    
+    if status['failed']:
+        print(f"\n❌ Managers non disponibles :")
+        for manager, error in status['failed'].items():
+            print(f"  - {manager}: {error}")
+    
+    return status
 
-# Ajouter les fonctions utilitaires à __all__
-__all__.extend(['is_manager_available', 'get_available_managers'])
+# Test automatique si exécuté directement
+if __name__ == "__main__":
+    test_managers()
