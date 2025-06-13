@@ -3461,3 +3461,152 @@ __all__ = [
     'collect_available_documents',
     'group_documents_by_category',  # Fonction ajoutée
 ]
+
+# À AJOUTER À LA FIN DE votre fichier models/dataclasses.py
+
+# ========== CLASSES POUR EMAIL ==========
+@dataclass
+class EmailConfig:
+    """Configuration pour l'envoi d'emails"""
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    sender: str = ""
+    password: str = ""
+    use_tls: bool = True
+
+@dataclass
+class EmailMessage:
+    """Message email"""
+    to: List[str]
+    subject: str
+    body: str
+    cc: List[str] = field(default_factory=list)
+    bcc: List[str] = field(default_factory=list)
+    attachments: List[str] = field(default_factory=list)
+    html: bool = False
+
+# ========== CLASSES POUR MAPPING ==========
+@dataclass
+class Relationship:
+    """Relation entre deux entités"""
+    source: str
+    target: str
+    type: str
+    properties: Dict[str, Any] = field(default_factory=dict)
+    strength: float = 1.0
+
+@dataclass
+class EntityNode:
+    """Nœud d'entité dans le graphe"""
+    id: str
+    name: str
+    type: str  # personne, société, lieu, etc.
+    properties: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class RelationshipGraph:
+    """Graphe de relations"""
+    nodes: List[EntityNode] = field(default_factory=list)
+    relationships: List[Relationship] = field(default_factory=list)
+
+# ========== CLASSES POUR PLAIDOIRIE ==========
+@dataclass
+class PlaidoirieResult:
+    """Résultat de génération de plaidoirie"""
+    content: str
+    success: bool
+    structure: Dict[str, str] = field(default_factory=dict)
+    arguments_principaux: List[str] = field(default_factory=list)
+    duree_estimee: int = 30  # en minutes
+    tone: str = "professionnel"  # professionnel, passionné, factuel
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class ArgumentJuridique:
+    """Argument juridique pour plaidoirie"""
+    titre: str
+    contenu: str
+    fondements: List[str] = field(default_factory=list)  # articles, jurisprudences
+    force: int = 5  # de 1 à 10
+    ordre: int = 0
+
+# ========== CLASSES POUR PREPARATION CLIENT ==========
+@dataclass
+class PreparationClientResult:
+    """Résultat de préparation client"""
+    documents: List[Document] = field(default_factory=list)
+    notes: str = ""
+    questions_cles: List[str] = field(default_factory=list)
+    points_attention: List[str] = field(default_factory=list)
+    recommandations: List[str] = field(default_factory=list)
+    duree_estimee: int = 60  # en minutes
+    agenda: Dict[str, str] = field(default_factory=dict)
+
+@dataclass
+class QuestionClient:
+    """Question à poser au client"""
+    question: str
+    categorie: str  # factuelle, juridique, stratégique
+    importance: str  # haute, moyenne, basse
+    reponse_attendue: str = ""
+    notes: str = ""
+
+# ========== CLASSES SUPPLÉMENTAIRES UTILES ==========
+@dataclass
+class AnalyseRisqueResult:
+    """Résultat d'analyse de risque"""
+    niveau_global: str  # faible, moyen, élevé, critique
+    risques: List[Risque] = field(default_factory=list)
+    opportunites: List[str] = field(default_factory=list)
+    recommandations: List[str] = field(default_factory=list)
+    score: float = 0.0
+
+@dataclass
+class GenerationResult:
+    """Résultat générique de génération"""
+    content: str
+    success: bool
+    type: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    tokens_used: int = 0
+    generation_time: float = 0.0
+
+@dataclass
+class ExportResult:
+    """Résultat d'export"""
+    success: bool
+    file_path: str = ""
+    format: str = "pdf"
+    size: int = 0
+    error: str = ""
+
+@dataclass
+class TimelineEvent:
+    """Événement pour la timeline"""
+    date: datetime
+    titre: str
+    description: str
+    type: str  # audience, deadline, rdv, etc.
+    importance: str  # haute, moyenne, basse
+    documents_lies: List[str] = field(default_factory=list)
+    participants: List[str] = field(default_factory=list)
+    lieu: str = ""
+    statut: str = "à venir"  # passé, à venir, en cours
+
+# ========== EXPORT COMPLET ==========
+# Ajouter ces classes à votre __all__ existant
+__all__.extend([
+    'EmailConfig',
+    'EmailMessage',
+    'Relationship',
+    'EntityNode', 
+    'RelationshipGraph',
+    'PlaidoirieResult',
+    'ArgumentJuridique',
+    'PreparationClientResult',
+    'QuestionClient',
+    'AnalyseRisqueResult',
+    'GenerationResult',
+    'ExportResult',
+    'TimelineEvent'
+])
