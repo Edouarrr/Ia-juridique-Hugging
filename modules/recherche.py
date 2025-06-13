@@ -1073,6 +1073,825 @@ def calculate_piece_relevance(doc: Dict[str, Any], analysis: Any) -> float:
     
     return min(max(score, 0.0), 1.0)
 
+# ========================= COMPARAISON MULTI-IA =========================
+
+async def compare_ai_generations(prompt: str, models: List[str] = None):
+    """Compare les générations de plusieurs IA"""
+    
+    if not HAS_API_UTILS:
+        st.warning("Comparaison multi-IA non disponible")
+        return
+    
+    st.markdown("### 🤖 Comparaison Multi-IA")
+    
+    if not models:
+        models = get_available_models()[:3]  # Top 3 modèles
+    
+    results = {}
+    
+    # Générer avec chaque modèle
+    cols = st.columns(len(models))
+    
+    for idx, model in enumerate(models):
+        with cols[idx]:
+            with st.spinner(f"Génération {model}..."):
+                try:
+                    response = await call_llm_api(
+                        prompt=prompt,
+                        model=model,
+                        temperature=0.3,
+                        max_tokens=2000
+                    )
+                    results[model] = response
+                    st.success(f"✅ {model}")
+                except Exception as e:
+                    st.error(f"❌ {model}: {str(e)}")
+    
+    # Afficher les résultats
+    if results:
+        st.markdown("#### Résultats")
+        
+        selected_model = st.radio(
+            "Choisir le meilleur résultat",
+            list(results.keys())
+        )
+        
+        st.text_area(
+            f"Résultat {selected_model}",
+            results[selected_model],
+            height=400
+        )
+        
+        if st.button("✅ Utiliser ce résultat"):
+            st.session_state.generated_plainte = results[selected_model]
+            st.success("Résultat sélectionné !")
+
+async def enhanced_multi_llm_comparison(prompt: str, options: Dict[str, Any] = None):
+    """Comparaison multi-LLM avec fonctionnalités avancées"""
+    
+    if not MANAGERS['multi_llm']:
+        # Fallback vers la version simple
+        return await compare_ai_generations(prompt)
+    
+    multi_llm = MultiLLMManager()
+    
+    st.markdown("### 🤖 Comparaison Multi-LLM Avancée")
+    
+    # Options de comparaison
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        models = st.multiselect(
+            "Modèles à comparer",
+            multi_llm.get_available_providers(),
+            default=multi_llm.get_available_providers()[:3]
+        )
+    
+    with col2:
+        comparison_mode = st.selectbox(
+            "Mode de comparaison",
+            ["Parallèle", "Séquentiel", "Consensus"],
+            help="Parallèle: tous en même temps | Séquentiel: un par un | Consensus: trouve le meilleur"
+        )
+    
+    with col3:
+        metrics = st.multiselect(
+            "Métriques d'évaluation",
+            ["Qualité", "Pertinence", "Créativité", "Cohérence"],
+            default=["Qualité", "Pertinence"]
+        )
+    
+    if st.button("🚀 Lancer la comparaison", type="primary"):
+        results = {}
+        
+        if comparison_mode == "Parallèle":
+            # Génération parallèle
+            tasks = []
+            for model in models:
+                task = multi_llm.generate_async(prompt, model=model)
+                tasks.append((model, task))
+            
+            # Attendre toutes les réponses
+            progress = st.progress(0)
+            for idx, (model, task) in enumerate(tasks):
+                with st.spinner(f"Génération {model}..."):
+                    try:
+                        response = await task
+                        results[model] = response
+                        progress.progress((idx + 1) / len(tasks))
+                    except Exception as e:
+                        st.error(f"❌ {model}: {str(e)}")
+        
+        elif comparison_mode == "Séquentiel":
+            # Génération séquentielle avec amélioration
+            previous_response = None
+            for model in models:
+                with st.spinner(f"Génération {model}..."):
+                    try:
+                        if previous_response:
+                            # Enrichir le prompt avec la réponse précédente
+                            enriched_prompt = f"{prompt}\n\nAméliore cette réponse:\n{previous_response[:500]}..."
+                            response = await multi_llm.generate(enriched_prompt, model=model)
+                        else:
+                            response = await multi_llm.generate(prompt, model=model)
+                        
+                        results[model] = response
+                        previous_response = response
+                    except Exception as e:
+                        st.error(f"❌ {model}: {str(e)}")
+        
+        else:  # Consensus
+            # Générer avec tous les modèles puis trouver le consensus
+            with st.spinner("Recherche du consensus..."):
+                consensus = await multi_llm.get_consensus(prompt, models=models)
+                results['consensus'] = consensus
+        
+        # Évaluation et affichage
+        if results:
+            st.markdown("#### 📊 Résultats")
+            
+            # Évaluer selon les métriques
+            if metrics and comparison_mode != "Consensus":
+                evaluations = {}
+                for model, response in results.items():
+                    evaluations[model] = await multi_llm.evaluate_response(
+                        response, 
+                        metrics=metrics
+                    )
+                
+                # Afficher les scores
+                st.markdown("**Scores d'évaluation:**")
+                df_scores = []
+                for model, scores in evaluations.items():
+                    row = {'Modèle': model}
+                    row.update(scores)
+                    df_scores.append(row)
+                
+                st.dataframe(df_scores)
+                
+                # Identifier le meilleur
+                best_model = max(evaluations.items(), 
+                               key=lambda x: sum(x[1].values()))[0]
+                st.success(f"🏆 Meilleur modèle : {best_model}")
+            
+            # Afficher les réponses
+            if comparison_mode == "Consensus":
+                st.text_area("Consensus", results['consensus'], height=400)
+            else:
+                selected = st.selectbox(
+                    "Voir la réponse de",
+                    list(results.keys())
+                )
+                
+                st.text_area(
+                    f"Réponse {selected}",
+                    results[selected],
+                    height=400
+                )
+                
+                # Actions
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("📋 Copier"):
+                        st.session_state.clipboard = results[selected]
+                        st.success("Copié !")
+                
+                with col2:
+                    if st.button("💾 Utiliser"):
+                        st.session_state.generated_content = results[selected]
+                        st.success("Contenu sélectionné !")
+                
+                with col3:
+                    if st.button("🔄 Regénérer"):
+                        st.rerun()
+
+# ========================= RECHERCHE JURIDIQUE AVANCÉE =========================
+
+async def perform_legal_search(query: str, options: Dict[str, Any] = None):
+    """Effectue une recherche juridique avancée"""
+    
+    if not MANAGERS['legal_search']:
+        st.warning("Module de recherche juridique non disponible")
+        return None
+    
+    with st.spinner("🔍 Recherche juridique en cours..."):
+        legal_search = LegalSearchManager()
+        
+        # Options de recherche
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            search_type = st.selectbox(
+                "Type de recherche",
+                ["Jurisprudence", "Doctrine", "Textes légaux", "Tout"],
+                index=3
+            )
+        
+        with col2:
+            jurisdiction = st.selectbox(
+                "Juridiction",
+                ["Toutes", "Cour de cassation", "Cours d'appel", "Tribunaux"],
+                index=0
+            )
+        
+        with col3:
+            date_filter = st.selectbox(
+                "Période",
+                ["Toutes", "1 an", "5 ans", "10 ans"],
+                index=1
+            )
+        
+        # Recherche
+        try:
+            results = await legal_search.search(
+                query=query,
+                search_type=search_type,
+                jurisdiction=jurisdiction,
+                date_filter=date_filter
+            )
+            
+            # Afficher les résultats
+            if results:
+                st.success(f"✅ {len(results)} résultats trouvés")
+                
+                for idx, result in enumerate(results[:10], 1):
+                    with st.expander(f"{idx}. {result.get('title', 'Sans titre')}"):
+                        st.write(f"**Source:** {result.get('source', 'Non spécifiée')}")
+                        st.write(f"**Date:** {result.get('date', 'Non datée')}")
+                        st.write(f"**Juridiction:** {result.get('jurisdiction', 'Non spécifiée')}")
+                        st.markdown("---")
+                        st.write(result.get('content', 'Pas de contenu'))
+                        
+                        if result.get('reference'):
+                            st.caption(f"Référence: {result['reference']}")
+            else:
+                st.info("Aucun résultat trouvé")
+                
+        except Exception as e:
+            st.error(f"Erreur lors de la recherche : {str(e)}")
+
+# ========================= GESTION AVANCÉE DES DOCUMENTS =========================
+
+async def manage_documents_advanced(action: str, documents: List[Any] = None):
+    """Gestion avancée des documents avec DocumentManager"""
+    
+    if not MANAGERS['document_manager']:
+        st.warning("Module de gestion documentaire non disponible")
+        return None
+    
+    doc_manager = DocumentManager()
+    
+    if action == "import":
+        st.markdown("### 📥 Import avancé de documents")
+        
+        uploaded_files = st.file_uploader(
+            "Choisir des fichiers",
+            type=['pdf', 'docx', 'txt', 'rtf'],
+            accept_multiple_files=True
+        )
+        
+        if uploaded_files:
+            with st.spinner(f"Import de {len(uploaded_files)} fichiers..."):
+                imported = []
+                
+                for file in uploaded_files:
+                    try:
+                        # Traitement avec OCR si nécessaire
+                        result = await doc_manager.import_document(
+                            file,
+                            ocr_enabled=st.checkbox(f"OCR pour {file.name}", value=True),
+                            extract_metadata=True
+                        )
+                        imported.append(result)
+                        st.success(f"✅ {file.name}")
+                    except Exception as e:
+                        st.error(f"❌ {file.name}: {str(e)}")
+                
+                return imported
+    
+    elif action == "analyze":
+        st.markdown("### 📊 Analyse avancée de documents")
+        
+        if documents:
+            analysis_type = st.multiselect(
+                "Types d'analyse",
+                ["Structure", "Entités", "Sentiment", "Thèmes", "Relations"],
+                default=["Structure", "Entités"]
+            )
+            
+            results = {}
+            for doc in documents:
+                with st.spinner(f"Analyse de {doc.get('name', 'document')}..."):
+                    try:
+                        analysis = await doc_manager.analyze_document(
+                            doc,
+                            analysis_types=analysis_type
+                        )
+                        results[doc['id']] = analysis
+                    except Exception as e:
+                        st.error(f"Erreur : {str(e)}")
+            
+            # Afficher les résultats d'analyse
+            for doc_id, analysis in results.items():
+                with st.expander(f"Analyse de {doc_id}"):
+                    for analysis_type, data in analysis.items():
+                        st.write(f"**{analysis_type}:**")
+                        st.json(data)
+
+# ========================= GÉNÉRATEURS DYNAMIQUES =========================
+
+async def use_dynamic_generators(content_type: str, context: Dict[str, Any]):
+    """Utilise les générateurs dynamiques pour enrichir le contenu"""
+    
+    if not MANAGERS['dynamic_generators']:
+        st.warning("Générateurs dynamiques non disponibles")
+        return None
+    
+    st.markdown("### ✨ Génération dynamique")
+    
+    # Options selon le type de contenu
+    if content_type == "plainte":
+        # Génération de templates dynamiques
+        if st.button("Générer des templates de plainte"):
+            with st.spinner("Génération des templates..."):
+                try:
+                    templates = await generate_dynamic_templates('plainte', context)
+                    
+                    st.success("✅ Templates générés")
+                    for name, template in templates.items():
+                        with st.expander(name):
+                            st.text_area("Contenu", value=template, height=300)
+                            st.download_button(
+                                "📥 Télécharger",
+                                template,
+                                file_name=f"{name.replace(' ', '_')}.txt"
+                            )
+                except Exception as e:
+                    st.error(f"Erreur : {str(e)}")
+        
+        # Génération de prompts de recherche
+        if st.button("Générer des prompts de recherche"):
+            with st.spinner("Génération des prompts..."):
+                try:
+                    prompts = await generate_dynamic_search_prompts(
+                        context.get('query', 'plainte'),
+                        context.get('context', '')
+                    )
+                    
+                    st.success("✅ Prompts générés")
+                    for category, subcategories in prompts.items():
+                        with st.expander(category):
+                            for subcat, prompts_list in subcategories.items():
+                                st.subheader(subcat)
+                                for prompt in prompts_list:
+                                    st.write(f"• {prompt}")
+                except Exception as e:
+                    st.error(f"Erreur : {str(e)}")
+
+# ========================= GESTION DES PIÈCES AVANCÉE =========================
+
+def create_bordereau(pieces: List['PieceSelectionnee'], analysis: Any = None) -> 'BordereauPieces':
+    """Crée un bordereau de pièces"""
+    if not DATACLASSES_AVAILABLE:
+        st.error("Les dataclasses ne sont pas disponibles")
+        return None
+    
+    # Déterminer le titre et l'affaire
+    titre = "Bordereau de communication de pièces"
+    affaire = "Affaire non spécifiée"
+    
+    if analysis:
+        if hasattr(analysis, 'reference') and analysis.reference:
+            affaire = f"Affaire {analysis.reference}"
+        elif hasattr(analysis, 'original_query'):
+            # Extraire l'affaire de la requête
+            ref_match = re.search(r'@(\w+)', analysis.original_query)
+            if ref_match:
+                affaire = f"Affaire {ref_match.group(1)}"
+    
+    # Créer le bordereau
+    bordereau = BordereauPieces(
+        id=f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        titre=titre,
+        affaire=affaire,
+        date_creation=datetime.now(),
+        pieces=pieces
+    )
+    
+    # Ajouter des métadonnées si disponibles
+    if analysis and hasattr(analysis, 'parties'):
+        parties = analysis.parties
+        if parties.get('demandeurs'):
+            bordereau.metadata['demandeurs'] = parties['demandeurs']
+        if parties.get('defendeurs'):
+            bordereau.metadata['defendeurs'] = parties['defendeurs']
+    
+    # Calculer des statistiques
+    bordereau.metadata['stats'] = {
+        'total_pieces': len(pieces),
+        'categories': list(set(p.categorie for p in pieces)),
+        'pertinence_moyenne': sum(p.pertinence for p in pieces) / len(pieces) if pieces else 0
+    }
+    
+    return bordereau
+
+def create_bordereau_document(bordereau: 'BordereauPieces', format: str = 'text') -> str:
+    """Crée le document du bordereau dans le format spécifié"""
+    if format == 'markdown':
+        return bordereau.export_to_markdown_with_links()
+    elif format == 'text':
+        return bordereau.export_to_text()
+    else:
+        # Format HTML ou autre
+        lines = []
+        lines.append(f"<h1>BORDEREAU DE COMMUNICATION DE PIÈCES</h1>")
+        lines.append(f"<p><strong>AFFAIRE :</strong> {bordereau.affaire}</p>")
+        lines.append(f"<p><strong>DATE :</strong> {bordereau.date_creation.strftime('%d/%m/%Y')}</p>")
+        lines.append(f"<p><strong>NOMBRE DE PIÈCES :</strong> {len(bordereau.pieces)}</p>")
+        
+        lines.append("<table border='1'>")
+        lines.append("<tr><th>N°</th><th>Cote</th><th>Titre</th><th>Date</th><th>Pages</th></tr>")
+        
+        for piece in bordereau.pieces:
+            date_str = piece.date.strftime('%d/%m/%Y') if piece.date else '-'
+            pages_str = str(piece.pages) if piece.pages else '-'
+            lines.append(f"<tr>")
+            lines.append(f"<td>{piece.numero}</td>")
+            lines.append(f"<td>{piece.cote}</td>")
+            lines.append(f"<td>{piece.titre}</td>")
+            lines.append(f"<td>{date_str}</td>")
+            lines.append(f"<td>{pages_str}</td>")
+            lines.append(f"</tr>")
+        
+        lines.append("</table>")
+        
+        return '\n'.join(lines)
+
+def show_piece_selection_advanced(analysis: Any):
+    """Interface avancée de sélection de pièces"""
+    
+    st.markdown("### 📁 Sélection avancée des pièces")
+    
+    # Collecter les documents disponibles
+    if DATACLASSES_AVAILABLE and 'collect_available_documents' in globals():
+        documents = collect_available_documents()
+    else:
+        # Fallback si la fonction n'est pas disponible
+        documents = []
+        # Collecter depuis session state
+        all_docs = st.session_state.get('azure_documents', {})
+        for doc_id, doc in all_docs.items():
+            if hasattr(doc, '__dict__'):
+                documents.append(doc.__dict__)
+            else:
+                documents.append(doc)
+    
+    if not documents:
+        st.warning("Aucun document disponible. Importez d'abord des documents.")
+        return
+    
+    # Grouper par catégorie
+    if DATACLASSES_AVAILABLE and 'group_documents_by_category' in globals():
+        categories = group_documents_by_category(documents)
+    else:
+        # Fallback simple
+        categories = {'Documents': documents}
+    
+    # Options de filtrage
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_categories = st.multiselect(
+            "Catégories",
+            list(categories.keys()),
+            default=list(categories.keys())
+        )
+    
+    with col2:
+        sort_by = st.selectbox(
+            "Trier par",
+            ["Pertinence", "Date", "Titre", "Catégorie"]
+        )
+    
+    # Sélection des pièces
+    selected_pieces = []
+    
+    for category in selected_categories:
+        if category in categories:
+            st.markdown(f"#### {category}")
+            
+            for doc in categories[category]:
+                col1, col2, col3 = st.columns([1, 3, 1])
+                
+                with col1:
+                    selected = st.checkbox(
+                        "",
+                        key=f"select_{doc.get('id', hash(str(doc)))}",
+                        value=doc.get('id', hash(str(doc))) in st.session_state.get('selected_pieces_ids', [])
+                    )
+                
+                with col2:
+                    st.write(f"**{doc.get('title', 'Sans titre')}**")
+                    if doc.get('metadata', {}).get('date'):
+                        st.caption(f"Date: {doc['metadata']['date']}")
+                
+                with col3:
+                    relevance = calculate_piece_relevance(doc, analysis)
+                    st.progress(relevance)
+                    st.caption(f"{relevance*100:.0f}% pertinent")
+                
+                if selected:
+                    selected_pieces.append(doc)
+    
+    # Actions sur la sélection
+    if selected_pieces:
+        st.markdown("---")
+        st.info(f"📋 {len(selected_pieces)} pièces sélectionnées")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("📋 Créer bordereau"):
+                show_bordereau_interface_advanced(selected_pieces, analysis)
+        
+        with col2:
+            if st.button("📄 Synthétiser"):
+                asyncio.run(synthesize_selected_pieces(selected_pieces))
+        
+        with col3:
+            if st.button("📥 Exporter liste"):
+                export_piece_list(selected_pieces)
+        
+        with col4:
+            if st.button("🗑️ Réinitialiser"):
+                st.session_state.selected_pieces_ids = []
+                st.rerun()
+        
+        # Stocker la sélection
+        st.session_state.selected_pieces = selected_pieces
+        st.session_state.selected_pieces_ids = [p.get('id', hash(str(p))) for p in selected_pieces]
+
+def show_bordereau_interface_advanced(documents: List[Dict], analysis: Any):
+    """Interface avancée de création de bordereau"""
+    
+    st.markdown("### 📋 Création du bordereau")
+    
+    if not DATACLASSES_AVAILABLE:
+        st.error("Les dataclasses ne sont pas disponibles pour créer le bordereau")
+        return
+    
+    # Préparer les pièces pour le bordereau
+    pieces = []
+    for idx, doc in enumerate(documents, 1):
+        piece = PieceSelectionnee(
+            numero=idx,
+            titre=doc.get('title', 'Sans titre'),
+            description=doc.get('metadata', {}).get('description', ''),
+            categorie=determine_document_category(doc),
+            date=doc.get('metadata', {}).get('date'),
+            pertinence=calculate_piece_relevance(doc, analysis)
+        )
+        pieces.append(piece)
+    
+    # Créer le bordereau
+    bordereau = create_bordereau(pieces, analysis)
+    
+    if bordereau:
+        # Afficher le bordereau
+        st.text_area(
+            "Aperçu du bordereau",
+            value=bordereau.export_to_text()[:1000] + "...",
+            height=300
+        )
+        
+        # Options d'export
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            format_export = st.selectbox(
+                "Format d'export",
+                ["Texte", "Markdown", "PDF", "Word"]
+            )
+        
+        with col2:
+            if st.button("📥 Télécharger le bordereau"):
+                if format_export == "Texte":
+                    content = bordereau.export_to_text()
+                elif format_export == "Markdown":
+                    content = bordereau.export_to_markdown_with_links()
+                else:
+                    content = bordereau.export_to_text()  # Fallback
+                
+                st.download_button(
+                    "💾 Télécharger",
+                    content.encode('utf-8'),
+                    f"bordereau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'txt' if format_export == 'Texte' else 'md'}",
+                    "text/plain" if format_export == "Texte" else "text/markdown"
+                )
+        
+        # Statistiques
+        st.markdown("#### 📊 Statistiques")
+        summary = bordereau.generate_summary()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total pièces", summary['total_pieces'])
+        
+        with col2:
+            st.metric("Catégories", len(summary['pieces_by_category']))
+        
+        with col3:
+            st.metric("Sources", summary['sources_count'])
+
+def export_piece_list(pieces: List[Any]):
+    """Exporte la liste des pièces"""
+    content = "LISTE DES PIÈCES SÉLECTIONNÉES\n"
+    content += f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    content += f"Nombre de pièces : {len(pieces)}\n\n"
+    
+    # Grouper par catégorie
+    from collections import defaultdict
+    by_category = defaultdict(list)
+    for piece in pieces:
+        category = piece.get('category', 'Non catégorisé')
+        by_category[category].append(piece)
+    
+    for category, cat_pieces in by_category.items():
+        content += f"\n{category.upper()} ({len(cat_pieces)} pièces)\n"
+        content += "-" * 50 + "\n"
+        
+        for i, piece in enumerate(cat_pieces, 1):
+            content += f"{i}. {piece.get('title', 'Sans titre')}\n"
+            if piece.get('metadata', {}).get('date'):
+                content += f"   Date: {piece['metadata']['date']}\n"
+            content += "\n"
+    
+    # Proposer le téléchargement
+    st.download_button(
+        "💾 Télécharger la liste",
+        content.encode('utf-8'),
+        f"liste_pieces_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain"
+    )
+
+# ========================= STATISTIQUES AVANCÉES =========================
+
+def show_document_statistics(content: str):
+    """Affiche les statistiques détaillées d'un document"""
+    
+    # Calculs de base
+    words = content.split()
+    sentences = content.split('.')
+    paragraphs = content.split('\n\n')
+    
+    # Analyse avancée
+    law_refs = len(re.findall(r'article\s+[LR]?\s*\d+', content, re.IGNORECASE))
+    case_refs = len(re.findall(r'(Cass\.|C\.\s*cass\.|Crim\.|Civ\.)', content, re.IGNORECASE))
+    
+    # Affichage en colonnes
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Mots", f"{len(words):,}")
+        st.metric("Phrases", f"{len(sentences):,}")
+    
+    with col2:
+        st.metric("Paragraphes", len(paragraphs))
+        st.metric("Mots/phrase", f"{len(words) / max(len(sentences), 1):.1f}")
+    
+    with col3:
+        st.metric("Articles cités", law_refs)
+        st.metric("Jurisprudences", case_refs)
+    
+    with col4:
+        avg_word_length = sum(len(w) for w in words) / max(len(words), 1)
+        st.metric("Long. moy.", f"{avg_word_length:.1f} car")
+        st.metric("Pages est.", f"~{len(words) // 250}")
+    
+    # Analyse linguistique si StyleAnalyzer disponible
+    if MANAGERS['style_analyzer']:
+        with st.expander("📊 Analyse linguistique avancée"):
+            try:
+                analyzer = StyleAnalyzer()
+                linguistic_analysis = analyzer.analyze_text_complexity(content)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Complexité lexicale:**")
+                    st.progress(linguistic_analysis.get('lexical_diversity', 0.5))
+                    
+                with col2:
+                    st.write("**Lisibilité:**")
+                    readability_score = linguistic_analysis.get('readability_score', 50)
+                    st.progress(readability_score / 100)
+                    
+            except Exception as e:
+                st.error(f"Erreur analyse linguistique: {str(e)}")
+
+# ========================= TRAITEMENT COMPLET DES PLAINTES =========================
+
+async def process_plainte_request(query: str, analysis: 'QueryAnalysis'):
+    """Traite une demande de plainte avec toutes les options"""
+    
+    st.markdown("### 📋 Configuration de la plainte")
+    
+    # Déterminer le type de plainte
+    query_lower = query.lower()
+    is_partie_civile = any(term in query_lower for term in [
+        'partie civile', 'constitution de partie civile', 'cpc', 
+        'doyen', 'juge d\'instruction', 'instruction'
+    ])
+    
+    # Extraire les parties et infractions
+    parties_demanderesses = []
+    parties_defenderesses = []
+    infractions = []
+    
+    if hasattr(analysis, 'parties'):
+        parties_demanderesses = analysis.parties.get('demandeurs', [])
+        parties_defenderesses = analysis.parties.get('defendeurs', [])
+    
+    if hasattr(analysis, 'infractions'):
+        infractions = analysis.infractions
+    
+    # Interface de configuration
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**🏢 Demandeurs (victimes)**")
+        demandeurs_text = st.text_area(
+            "Un par ligne",
+            value='\n'.join(parties_demanderesses),
+            height=100,
+            key="demandeurs_input"
+        )
+        parties_demanderesses = [p.strip() for p in demandeurs_text.split('\n') if p.strip()]
+        
+        st.markdown("**🎯 Infractions**")
+        infractions_text = st.text_area(
+            "Une par ligne",
+            value='\n'.join(infractions),
+            height=100,
+            key="infractions_input"
+        )
+        infractions = [i.strip() for i in infractions_text.split('\n') if i.strip()]
+    
+    with col2:
+        st.markdown("**⚖️ Défendeurs (mis en cause)**")
+        defendeurs_text = st.text_area(
+            "Un par ligne",
+            value='\n'.join(parties_defenderesses),
+            height=100,
+            key="defendeurs_input"
+        )
+        parties_defenderesses = [p.strip() for p in defendeurs_text.split('\n') if p.strip()]
+        
+        st.markdown("**⚙️ Options**")
+        type_plainte = st.radio(
+            "Type de plainte",
+            ["Plainte simple", "Plainte avec CPC"],
+            index=1 if is_partie_civile else 0,
+            key="type_plainte_radio"
+        )
+        is_partie_civile = (type_plainte == "Plainte avec CPC")
+        
+        include_chronologie = st.checkbox("Inclure chronologie détaillée", value=True)
+        include_prejudices = st.checkbox("Détailler les préjudices", value=True)
+        include_jurisprudence = st.checkbox("Citer jurisprudences", value=is_partie_civile)
+    
+    # Enrichissement des parties si CompanyInfoManager disponible
+    if st.checkbox("🏢 Enrichir les informations des sociétés", value=True):
+        if MANAGERS['company_info'] and (parties_demanderesses or parties_defenderesses):
+            enriched_parties = await enrich_parties_info(
+                parties_demanderesses + parties_defenderesses
+            )
+            
+            if enriched_parties:
+                with st.expander("📊 Informations enrichies", expanded=False):
+                    for party in enriched_parties:
+                        st.json(party)
+    
+    # Bouton de génération
+    if st.button("🚀 Générer la plainte", type="primary", key="generate_plainte_btn"):
+        # Préparer l'analyse enrichie
+        analysis_dict = {
+            'parties': {
+                'demandeurs': parties_demanderesses,
+                'defendeurs': parties_defenderesses
+            },
+            'infractions': infractions,
+            'reference': analysis.reference if hasattr(analysis, 'reference') else None,
+            'options': {
+                'is_partie_civile': is_partie_civile,
+                'include_chronologie': include_chronologie,
+                'include_prejudices': include_prejudices,
+                'include_jurisprudence': include_jurisprudence
+            }
+        }
+        
+        # Générer
+        await generate_advanced_plainte(query)
+
 # ========================= SYNTHÈSE DES PIÈCES =========================
 
 async def synthesize_selected_pieces(pieces: List[Any]) -> Dict:
