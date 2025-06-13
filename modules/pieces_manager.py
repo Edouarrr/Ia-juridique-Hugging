@@ -235,18 +235,22 @@ class GestionnairePiecesUnifie:
         """Génère un bordereau de communication de pièces"""
         
         # En-tête
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        avocat_name = metadata.get('avocat', '[Nom de l\'avocat]')
+        barreau_ville = metadata.get('barreau', '[Ville]')
+        
         contenu = f"""BORDEREAU DE COMMUNICATION DE PIÈCES
 
 Référence : {metadata.get('reference', 'N/A')}
-Date : {datetime.now().strftime('%d/%m/%Y')}
+Date : {date_str}
 
 {metadata.get('destinataire', 'TRIBUNAL JUDICIAIRE')}
 
 Affaire : {metadata.get('client', '')} c/ {metadata.get('adversaire', '')}
 {metadata.get('juridiction', '')}
 
-Maître {metadata.get('avocat', '[Nom de l\'avocat]')}
-Avocat au Barreau de {metadata.get('barreau', '[Ville]')}
+Maître {avocat_name}
+Avocat au Barreau de {barreau_ville}
 
 COMMUNIQUE LES PIÈCES SUIVANTES :
 
@@ -263,7 +267,8 @@ COMMUNIQUE LES PIÈCES SUIVANTES :
                 contenu += f"Pièce n° {piece.numero} : {piece.titre}"
                 
                 if piece.date:
-                    contenu += f" ({piece.date.strftime('%d/%m/%Y')})"
+                    date_piece_str = piece.date.strftime('%d/%m/%Y')
+                    contenu += f" ({date_piece_str})"
                 
                 if piece.description:
                     contenu += f"\n              {truncate_text(piece.description, 100)}"
@@ -271,12 +276,16 @@ COMMUNIQUE LES PIÈCES SUIVANTES :
                 contenu += "\n"
         
         # Total et signature
+        date_jour = datetime.now().strftime('%d/%m/%Y')
+        ville_str = metadata.get('ville', '[Ville]')
+        avocat_str = metadata.get('avocat', '[Nom de l\'avocat]')
+        
         contenu += f"""
 TOTAL : {len(pieces)} pièce{'s' if len(pieces) > 1 else ''}
 
-Fait à {metadata.get('ville', '[Ville]')}, le {datetime.now().strftime('%d/%m/%Y')}
+Fait à {ville_str}, le {date_jour}
 
-Maître {metadata.get('avocat', '[Nom de l\'avocat]')}
+Maître {avocat_str}
 """
         
         return contenu
@@ -288,9 +297,10 @@ Maître {metadata.get('avocat', '[Nom de l\'avocat]')}
     ) -> str:
         """Génère un inventaire détaillé des pièces"""
         
+        date_str = datetime.now().strftime('%d/%m/%Y')
         contenu = f"""INVENTAIRE DES PIÈCES
 
-Date : {datetime.now().strftime('%d/%m/%Y')}
+Date : {date_str}
 Référence : {metadata.get('reference', 'N/A')}
 Nombre total de pièces : {len(pieces)}
 
@@ -298,6 +308,10 @@ Nombre total de pièces : {len(pieces)}
         
         # Tableau détaillé
         for piece in pieces:
+            date_piece = piece.date.strftime('%d/%m/%Y') if piece.date else 'Non datée'
+            nature_value = piece.nature.value if hasattr(piece, 'nature') else 'Copie'
+            force_probante_value = piece.force_probante.value if hasattr(piece, 'force_probante') else 'Normale'
+            
             contenu += f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PIÈCE N° {piece.numero}
@@ -305,17 +319,17 @@ PIÈCE N° {piece.numero}
 
 Titre : {piece.titre}
 Catégorie : {piece.categorie}
-Date : {piece.date.strftime('%d/%m/%Y') if piece.date else 'Non datée'}
+Date : {date_piece}
 Source : {piece.source}
 Cote : {piece.cote or f'P-{piece.numero:03d}'}
 
 Description :
 {piece.description or 'Aucune description'}
 
-Nature : {piece.nature.value if hasattr(piece, 'nature') else 'Copie'}
+Nature : {nature_value}
 Communicable : {'Oui' if piece.communicable else 'Non'}
 Confidentiel : {'Oui' if piece.confidentiel else 'Non'}
-Force probante : {piece.force_probante.value if hasattr(piece, 'force_probante') else 'Normale'}
+Force probante : {force_probante_value}
 """
         
         return contenu
@@ -538,11 +552,12 @@ Format : analyse structurée avec recommandations."""
                 # Convertir en DataFrame
                 df_data = []
                 for piece in bordereau['pieces']:
+                    date_str = piece.date.strftime('%d/%m/%Y') if piece.date else ''
                     df_data.append({
                         'N°': piece.numero,
                         'Titre': piece.titre,
                         'Catégorie': piece.categorie,
-                        'Date': piece.date.strftime('%d/%m/%Y') if piece.date else '',
+                        'Date': date_str,
                         'Description': piece.description,
                         'Source': piece.source,
                         'Cote': piece.cote or f'P-{piece.numero:03d}'
@@ -714,7 +729,8 @@ def display_search_results(
         with col2:
             st.caption(f"📁 {piece.categorie}")
             if piece.date:
-                st.caption(f"📅 {piece.date.strftime('%d/%m/%Y')}")
+                date_formatted = piece.date.strftime('%d/%m/%Y')
+                st.caption(f"📅 {date_formatted}")
         
         with col3:
             # Vérifier si déjà sélectionnée
@@ -1105,7 +1121,8 @@ def display_generated_bordereau(
                 ext = ext_map.get(format_map.get(format_export, "text"), "txt")
                 
                 # Nom du fichier
-                filename = f"bordereau_{bordereau['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+                date_time_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"bordereau_{bordereau['type']}_{date_time_str}.{ext}"
                 
                 # Bouton de téléchargement
                 st.download_button(
@@ -1202,8 +1219,9 @@ def display_piece_analysis_results(analysis: Dict[str, Any]):
     with st.expander("📊 Résultats de l'analyse", expanded=True):
         st.write(analysis.get('analyse', ''))
         
-        if analysis.get('timestamp'):
-            st.caption(f"Analyse effectuée le {analysis['timestamp'].strftime('%d/%m/%Y à %H:%M')}")
+    if analysis.get('timestamp'):
+        timestamp_str = analysis['timestamp'].strftime('%d/%m/%Y à %H:%M')
+        st.caption(f"Analyse effectuée le {timestamp_str}")
 
 def display_statistics_tab(gestionnaire: GestionnairePiecesUnifie):
     """Onglet des statistiques sur les pièces"""
@@ -1255,13 +1273,15 @@ def display_statistics_tab(gestionnaire: GestionnairePiecesUnifie):
     # Créer un DataFrame des pièces
     pieces_data = []
     for piece in gestionnaire.pieces_selectionnees:
+        date_str = piece.date.strftime('%d/%m/%Y') if piece.date else 'N/D'
+        pertinence_str = f"{piece.pertinence:.0%}"
         pieces_data.append({
             'N°': piece.numero,
             'Titre': piece.titre,
             'Catégorie': piece.categorie,
-            'Date': piece.date.strftime('%d/%m/%Y') if piece.date else 'N/D',
+            'Date': date_str,
             'Source': piece.source,
-            'Pertinence': f"{piece.pertinence:.0%}",
+            'Pertinence': pertinence_str,
             'Communicable': '✅' if piece.communicable else '❌',
             'Confidentiel': '🔒' if piece.confidentiel else ''
         })
@@ -1399,10 +1419,11 @@ def process_liste_pieces_request(query: str, analysis: dict):
                 # Export Word
                 file_content = gestionnaire.exporter_bordereau(bordereau, "word")
                 if file_content:
+                    date_export = datetime.now().strftime('%Y%m%d')
                     st.download_button(
                         "📄 Télécharger Word",
                         file_content,
-                        f"bordereau_{type_bordereau}_{datetime.now().strftime('%Y%m%d')}.docx",
+                        f"bordereau_{type_bordereau}_{date_export}.docx",
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
             
@@ -1410,10 +1431,11 @@ def process_liste_pieces_request(query: str, analysis: dict):
                 # Export PDF
                 file_content = gestionnaire.exporter_bordereau(bordereau, "pdf")
                 if file_content:
+                    date_export = datetime.now().strftime('%Y%m%d')
                     st.download_button(
                         "📕 Télécharger PDF",
                         file_content,
-                        f"bordereau_{type_bordereau}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        f"bordereau_{type_bordereau}_{date_export}.pdf",
                         "application/pdf"
                     )
             
@@ -1421,10 +1443,11 @@ def process_liste_pieces_request(query: str, analysis: dict):
                 # Export Excel
                 file_content = gestionnaire.exporter_bordereau(bordereau, "excel")
                 if file_content:
+                    date_export = datetime.now().strftime('%Y%m%d')
                     st.download_button(
                         "📊 Télécharger Excel",
                         file_content,
-                        f"bordereau_{type_bordereau}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        f"bordereau_{type_bordereau}_{date_export}.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
         else:
