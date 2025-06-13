@@ -1149,10 +1149,10 @@ def show_outils_interface():
     """Interface des outils avancés"""
     st.markdown("### 🛠️ Outils avancés")
     
-    # Tool categories
+    # Tool categories - AJOUT de "Test Imports" dans la liste
     tool_category = st.selectbox(
         "Catégorie d'outils",
-        ["Import/Export", "Configuration", "Maintenance", "Développement"],
+        ["Import/Export", "Configuration", "Maintenance", "Développement", "Test Imports"],
         key="tool_category"
     )
     
@@ -1181,22 +1181,45 @@ def show_outils_interface():
     
     elif tool_category == "Développement":
         show_development_interface()
-
-    elif tool_category == "Test Imports":
-    st.markdown("### 🧪 Test rapide des imports")
     
-    if modules:
-        loaded = modules.get_loaded_modules()
-        st.success(f"✅ {len(loaded)} modules chargés")
+    elif tool_category == "Test Imports":
+        st.markdown("### 🧪 Test rapide des imports")
         
-        # Test truncate_text
-        try:
-            from utils.helpers import truncate_text
-            st.success("✅ truncate_text disponible")
-        except:
-            st.error("❌ truncate_text manquant")
-    else:
-        st.error("❌ Système de modules non chargé")
+        if modules:
+            loaded = modules.get_loaded_modules()
+            st.success(f"✅ {len(loaded)} modules chargés")
+            
+            # Test truncate_text
+            try:
+                from utils.helpers import truncate_text
+                st.success("✅ truncate_text disponible")
+            except:
+                st.error("❌ truncate_text manquant")
+                
+            # Test des classes dataclasses
+            st.markdown("#### Test des classes dataclasses")
+            classes_to_test = [
+                ('EmailConfig', 'models.dataclasses'),
+                ('Relationship', 'models.dataclasses'),
+                ('PlaidoirieResult', 'models.dataclasses'),
+                ('PreparationClientResult', 'models.dataclasses')
+            ]
+            
+            col1, col2 = st.columns(2)
+            for i, (class_name, module_path) in enumerate(classes_to_test):
+                with col1 if i % 2 == 0 else col2:
+                    try:
+                        exec(f"from {module_path} import {class_name}")
+                        st.success(f"✅ {class_name}")
+                    except ImportError:
+                        st.error(f"❌ {class_name}")
+                        
+            # Afficher les modules avec erreurs
+            if st.checkbox("Voir les détails des modules"):
+                modules.create_streamlit_debug_page()
+                
+        else:
+            st.error("❌ Système de modules non chargé")
 
 def show_configuration_interface():
     """Interface de configuration"""
