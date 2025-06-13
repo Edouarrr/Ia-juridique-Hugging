@@ -1,297 +1,346 @@
 # utils/text_processing.py
 """
-Fonctions de traitement de texte
+Fonctions de traitement de texte pour l'application juridique
 """
-
 import re
 import unicodedata
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Tuple, Optional, Dict
+import string
 
-
-def clean_key(text: str) -> str:
-    """Nettoie une chaîne pour l'utiliser comme clé"""
+def clean_text(text: str) -> str:
+    """
+    Nettoie un texte en supprimant les caractères indésirables.
+    
+    Args:
+        text: Le texte à nettoyer
+        
+    Returns:
+        Le texte nettoyé
+    """
     if not text:
         return ""
     
-    # Normaliser les caractères Unicode
-    text = unicodedata.normalize('NFKD', text)
-    text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+    # Convertir en string si nécessaire
+    text = str(text)
     
-    # Remplacer les caractères spéciaux
-    text = re.sub(r'[^\w\s-]', '', text.lower())
-    text = re.sub(r'[-\s]+', '_', text)
+    # Supprimer les caractères de contrôle
+    text = ''.join(char for char in text if unicodedata.category(char)[0] != 'C')
     
-    # Limiter la longueur
-    return text[:50]
-
-
-def normalize_whitespace(text: str) -> str:
-    """Normalise les espaces dans un texte"""
-    # Remplacer les espaces multiples par un seul
-    text = re.sub(r'\s+', ' ', text)
+    # Normaliser les espaces
+    text = ' '.join(text.split())
     
-    # Supprimer les espaces en début/fin de ligne
-    lines = text.split('\n')
-    lines = [line.strip() for line in lines]
-    
-    # Reconstruire avec des sauts de ligne simples
-    return '\n'.join(lines)
-
-
-def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
-    """Tronque un texte à une longueur maximale"""
-    if not text:
-        return ""
-    
-    if len(text) <= max_length:
-        return text
-    
-    available_length = max_length - len(suffix)
-    if available_length <= 0:
-        return suffix
-    
-    return text[:available_length] + suffix
-
-
-def extract_section(text: str, section_title: str) -> Optional[str]:
-    """Extrait une section spécifique d'un texte"""
-    patterns = [
-        rf"(?:^|\n)\s*{re.escape(section_title)}\s*:?\s*\n",
-        rf"(?:^|\n)\s*\*\*{re.escape(section_title)}\*\*\s*:?\s*\n",
-        rf"(?:^|\n)\s*#{1,3}\s*{re.escape(section_title)}\s*\n"
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-        if match:
-            start = match.end()
-            
-            # Trouver la fin de la section
-            next_section = re.search(
-                r'\n\s*(?:\*\*[A-Z]|\#{1,3}\s*[A-Z]|^[A-Z][A-Z\s]+:)', 
-                text[start:], 
-                re.MULTILINE
-            )
-            
-            end = start + next_section.start() if next_section else len(text)
-            return text[start:end].strip()
-    
-    return None
-
-
-def chunk_text(text: str, chunk_size: int = 3000, overlap: int = 200) -> List[str]:
-    """Divise un texte en chunks avec overlap"""
-    if len(text) <= chunk_size:
-        return [text]
-    
-    chunks = []
-    start = 0
-    
-    while start < len(text):
-        end = start + chunk_size
-        
-        # Essayer de couper à une phrase
-        if end < len(text):
-            sentence_end = text.rfind('.', start, end)
-            if sentence_end > start:
-                end = sentence_end + 1
-        
-        chunks.append(text[start:end])
-        start = end - overlap
-    
-    return chunks
-
-
-def calculate_text_similarity(text1: str, text2: str) -> float:
-    """Calcule la similarité entre deux textes (0-1)"""
-    # Normaliser
-    text1_lower = text1.lower().strip()
-    text2_lower = text2.lower().strip()
-    
-    if text1_lower == text2_lower:
-        return 1.0
-    
-    # Tokenizer simple
-    words1 = set(text1_lower.split())
-    words2 = set(text2_lower.split())
-    
-    # Jaccard similarity
-    intersection = words1.intersection(words2)
-    union = words1.union(words2)
-    
-    return len(intersection) / len(union) if union else 0.0
-
-
-def highlight_text(text: str, keywords: List[str], color: str = "yellow") -> str:
-    """Surligne des mots-clés dans un texte (HTML)"""
-    if not keywords:
-        return text
-    
-    # Échapper les caractères HTML
-    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-    
-    # Surligner chaque mot-clé
-    for keyword in keywords:
-        if keyword:
-            pattern = re.compile(re.escape(keyword), re.IGNORECASE)
-            text = pattern.sub(
-                f'<mark style="background-color: {color};">{keyword}</mark>', 
-                text
-            )
-    
-    return text
-
-
-def extract_key_phrases(text: str, max_phrases: int = 5) -> List[str]:
-    """Extrait les phrases clés d'un texte"""
-    sentences = text.split('.')
-    key_phrases = []
-    
-    for sentence in sentences[:max_phrases * 2]:  # Prendre plus pour filtrer
-        sentence = sentence.strip()
-        # Phrases significatives (ni trop courtes, ni trop longues)
-        if 20 < len(sentence) < 200:
-            key_phrases.append(sentence + '.')
-    
-    return key_phrases[:max_phrases]
-
-
-def generate_summary(text: str, max_length: int = 500) -> str:
-    """Génère un résumé simple d'un texte"""
-    if len(text) <= max_length:
-        return text
-    
-    # Prendre le début jusqu'à la dernière phrase complète
-    truncated = text[:max_length]
-    last_period = truncated.rfind('.')
-    
-    if last_period > max_length * 0.8:
-        return truncated[:last_period + 1]
-    else:
-        return truncated + "..."
-
-
-def calculate_read_time(text: str, words_per_minute: int = 200) -> int:
-    """Calcule le temps de lecture estimé en minutes"""
-    word_count = len(text.split())
-    read_time = word_count / words_per_minute
-    
-    return max(1, int(read_time + 0.5))
-
-
-def extract_entities(text: str) -> Dict[str, List[str]]:
-    """Extrait les entités d'un texte (personnes, organisations, lieux)"""
-    entities = {
-        'persons': [],
-        'organizations': [],
-        'locations': [],
-        'dates': []
-    }
-    
-    # Personnes (noms propres composés)
-    person_pattern = r'\b(?:M\.|Mme|Me|Dr|Pr)?\.?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b'
-    potential_persons = re.findall(person_pattern, text)
-    
-    # Filtrer les faux positifs
-    false_positives = ['La République', 'Le Tribunal', 'La Cour', 'Le Ministère']
-    entities['persons'] = [p for p in potential_persons if p not in false_positives]
-    
-    # Organisations
-    org_patterns = [
-        r'\b[A-Z]{2,}\b',  # Acronymes
-        r'\bSociété\s+[A-Z]\w+(?:\s+[A-Z]\w+)*\b',
-        r'\b(?:SARL|SAS|SA|EURL|SCI)\s+[A-Z]\w+\b'
-    ]
-    
-    for pattern in org_patterns:
-        orgs = re.findall(pattern, text)
-        entities['organizations'].extend(orgs)
-    
-    # Lieux
-    location_pattern = r'\b(?:à|de|en)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
-    entities['locations'] = list(set(re.findall(location_pattern, text)))
-    
-    # Dédupliquer
-    for key in entities:
-        entities[key] = list(set(entities[key]))
-    
-    return entities
-
-
-def extract_monetary_amounts(text: str) -> List[Dict[str, Any]]:
-    """Extrait les montants monétaires d'un texte"""
-    amounts = []
-    
-    patterns = [
-        (r'(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s*€', 'EUR'),
-        (r'(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*\$', 'USD'),
-        (r'€\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)', 'EUR'),
-        (r'\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', 'USD')
-    ]
-    
-    for pattern, currency in patterns:
-        matches = re.finditer(pattern, text)
-        for match in matches:
-            amount_str = match.group(1)
-            
-            try:
-                # Normaliser le format
-                amount_str = amount_str.replace('.', '').replace(',', '.')
-                amount = float(amount_str)
-                
-                amounts.append({
-                    'amount': amount,
-                    'currency': currency,
-                    'text': match.group(0),
-                    'position': match.start()
-                })
-            except ValueError:
-                continue
-    
-    return amounts
-
-
-def clean_legal_text(text: str) -> str:
-    """Nettoie un texte juridique en préservant la mise en forme"""
     # Supprimer les espaces multiples
     text = re.sub(r'\s+', ' ', text)
     
+    # Supprimer les espaces en début et fin
+    text = text.strip()
+    
+    return text
+
+def process_text(text: str) -> str:
+    """
+    Traite un texte pour le préparer à l'analyse.
+    
+    Args:
+        text: Le texte à traiter
+        
+    Returns:
+        Le texte traité
+    """
+    if not text:
+        return ""
+    
+    # Nettoyer le texte
+    text = clean_text(text)
+    
     # Corriger la ponctuation
-    text = re.sub(r'\s+([.,;:!?])', r'\1', text)
-    text = re.sub(r'([.,;:!?])(\w)', r'\1 \2', text)
+    text = fix_punctuation(text)
     
-    # Corriger les guillemets
-    text = re.sub(r'"\s*([^"]+)\s*"', r'« \1 »', text)
+    # Normaliser les guillemets
+    text = normalize_quotes(text)
     
-    # Préserver les sauts de paragraphe
-    text = re.sub(r'\n\s*\n', '\n\n', text)
-    
-    return text.strip()
+    return text
 
+def fix_punctuation(text: str) -> str:
+    """
+    Corrige la ponctuation dans un texte.
+    
+    Args:
+        text: Le texte à corriger
+        
+    Returns:
+        Le texte avec la ponctuation corrigée
+    """
+    # Ajouter des espaces après la ponctuation si nécessaire
+    text = re.sub(r'([.!?;:,])([A-Za-zÀ-ÿ])', r'\1 \2', text)
+    
+    # Supprimer les espaces avant la ponctuation
+    text = re.sub(r'\s+([.!?;:,])', r'\1', text)
+    
+    # Corriger les points de suspension
+    text = re.sub(r'\.{3,}', '...', text)
+    
+    return text
 
-def format_legal_citations(text: str) -> str:
-    """Formate les citations juridiques selon les conventions"""
-    patterns = [
-        # Cour de cassation
-        (r'\bCass\.?\s*', 'Cass. '),
-        (r'\b(civ|crim|com|soc)\.?\s*(\d)', r'\1. \2'),
-        
-        # Conseil d'État
-        (r'\bCE\b', 'CE'),
-        (r'\bConseil d\'Etat\b', 'Conseil d\'État'),
-        
-        # Articles
-        (r'\bart\.?\s*', 'art. '),
-        (r'\barticles?\s+', 'art. '),
-        
-        # Autres
-        (r'\bc\.\s*', 'c. '),  # contre
-        (r'\bp\.\s*', 'p. '),  # page
-        (r'\bn°\s*', 'n° '),  # numéro
-    ]
+def normalize_quotes(text: str) -> str:
+    """
+    Normalise les différents types de guillemets.
     
-    formatted_text = text
-    for pattern, replacement in patterns:
-        formatted_text = re.sub(pattern, replacement, formatted_text, flags=re.IGNORECASE)
+    Args:
+        text: Le texte à normaliser
+        
+    Returns:
+        Le texte avec des guillemets normalisés
+    """
+    # Remplacer les guillemets typographiques par des guillemets simples
+    quotes_map = {
+        '"': '"',
+        '"': '"',
+        '„': '"',
+        '«': '"',
+        '»': '"',
+        ''': "'",
+        ''': "'",
+        '‚': "'",
+        '‹': "'",
+        '›': "'"
+    }
     
-    return formatted_text
+    for old_quote, new_quote in quotes_map.items():
+        text = text.replace(old_quote, new_quote)
+    
+    return text
+
+def extract_sentences(text: str) -> List[str]:
+    """
+    Extrait les phrases d'un texte.
+    
+    Args:
+        text: Le texte source
+        
+    Returns:
+        Liste des phrases
+    """
+    if not text:
+        return []
+    
+    # Séparer sur les points, points d'exclamation et d'interrogation
+    # mais pas sur les abréviations courantes
+    abbreviations = ['M.', 'Mme', 'Dr', 'Me', 'art.', 'al.', 'cf.', 'etc.', 'p.', 'pp.']
+    
+    # Remplacer temporairement les abréviations
+    temp_text = text
+    for i, abbr in enumerate(abbreviations):
+        temp_text = temp_text.replace(abbr, f"ABBR{i}")
+    
+    # Séparer les phrases
+    sentences = re.split(r'[.!?]+', temp_text)
+    
+    # Restaurer les abréviations et nettoyer
+    result = []
+    for sentence in sentences:
+        for i, abbr in enumerate(abbreviations):
+            sentence = sentence.replace(f"ABBR{i}", abbr)
+        
+        sentence = sentence.strip()
+        if sentence:
+            result.append(sentence)
+    
+    return result
+
+def extract_paragraphs(text: str) -> List[str]:
+    """
+    Extrait les paragraphes d'un texte.
+    
+    Args:
+        text: Le texte source
+        
+    Returns:
+        Liste des paragraphes
+    """
+    if not text:
+        return []
+    
+    # Séparer sur les doubles retours à la ligne
+    paragraphs = re.split(r'\n\s*\n', text)
+    
+    # Nettoyer et filtrer
+    result = []
+    for para in paragraphs:
+        para = para.strip()
+        if para:
+            result.append(para)
+    
+    return result
+
+def count_words(text: str) -> int:
+    """
+    Compte le nombre de mots dans un texte.
+    
+    Args:
+        text: Le texte à analyser
+        
+    Returns:
+        Le nombre de mots
+    """
+    if not text:
+        return 0
+    
+    # Nettoyer le texte
+    text = clean_text(text)
+    
+    # Compter les mots
+    words = text.split()
+    return len(words)
+
+def extract_keywords(text: str, max_keywords: int = 10) -> List[str]:
+    """
+    Extrait les mots-clés principaux d'un texte.
+    
+    Args:
+        text: Le texte source
+        max_keywords: Nombre maximum de mots-clés à extraire
+        
+    Returns:
+        Liste des mots-clés
+    """
+    if not text:
+        return []
+    
+    # Mots vides à ignorer (stop words français)
+    stop_words = {
+        'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'et', 'ou', 'mais',
+        'donc', 'or', 'ni', 'car', 'que', 'qui', 'quoi', 'dont', 'où', 'à',
+        'au', 'aux', 'avec', 'ce', 'ces', 'dans', 'sur', 'sous', 'par', 'pour',
+        'en', 'vers', 'chez', 'il', 'elle', 'on', 'nous', 'vous', 'ils', 'elles',
+        'je', 'tu', 'me', 'te', 'se', 'leur', 'lui', 'y', 'est', 'sont', 'été',
+        'être', 'avoir', 'fait', 'faire', 'dit', 'dire', 'aller', 'tout', 'tous',
+        'toute', 'toutes', 'autre', 'autres', 'même', 'mêmes', 'tel', 'telle',
+        'tels', 'telles', 'quel', 'quelle', 'quels', 'quelles', 'sans', 'plus',
+        'moins', 'très', 'bien', 'peu', 'plu', 'soit', 'ne', 'pas', 'point',
+        'non', 'cette', 'cet', 'mon', 'ton', 'son', 'ma', 'ta', 'sa', 'mes',
+        'tes', 'ses', 'notre', 'votre', 'nos', 'vos', 'leurs'
+    }
+    
+    # Convertir en minuscules et extraire les mots
+    words = re.findall(r'\b[a-zà-ÿ]+\b', text.lower())
+    
+    # Filtrer les mots vides et les mots courts
+    keywords = [word for word in words if word not in stop_words and len(word) > 3]
+    
+    # Compter les occurrences
+    word_count = {}
+    for word in keywords:
+        word_count[word] = word_count.get(word, 0) + 1
+    
+    # Trier par fréquence et retourner les plus fréquents
+    sorted_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)
+    
+    return [word for word, count in sorted_words[:max_keywords]]
+
+def highlight_text(text: str, keywords: List[str], tag: str = "mark") -> str:
+    """
+    Met en évidence des mots-clés dans un texte.
+    
+    Args:
+        text: Le texte source
+        keywords: Liste des mots-clés à mettre en évidence
+        tag: Tag HTML à utiliser (par défaut "mark")
+        
+    Returns:
+        Le texte avec les mots-clés mis en évidence
+    """
+    if not text or not keywords:
+        return text
+    
+    # Créer un pattern pour tous les mots-clés
+    pattern = '|'.join(re.escape(keyword) for keyword in keywords)
+    
+    # Remplacer en ignorant la casse
+    def replace_func(match):
+        return f'<{tag}>{match.group()}</{tag}>'
+    
+    highlighted = re.sub(f'\\b({pattern})\\b', replace_func, text, flags=re.IGNORECASE)
+    
+    return highlighted
+
+def remove_html_tags(text: str) -> str:
+    """
+    Supprime les balises HTML d'un texte.
+    
+    Args:
+        text: Le texte contenant des balises HTML
+        
+    Returns:
+        Le texte sans balises HTML
+    """
+    if not text:
+        return ""
+    
+    # Pattern pour détecter les balises HTML
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', text)
+
+def normalize_whitespace(text: str) -> str:
+    """
+    Normalise les espaces blancs dans un texte.
+    
+    Args:
+        text: Le texte à normaliser
+        
+    Returns:
+        Le texte avec des espaces normalisés
+    """
+    if not text:
+        return ""
+    
+    # Remplacer tous les types d'espaces par des espaces simples
+    text = re.sub(r'[\s\u00A0\u2000-\u200B\u2028\u2029\u202F\u205F\u3000]+', ' ', text)
+    
+    # Supprimer les espaces en début et fin
+    text = text.strip()
+    
+    return text
+
+def split_into_chunks(text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:
+    """
+    Divise un texte en morceaux de taille fixe avec chevauchement.
+    
+    Args:
+        text: Le texte à diviser
+        chunk_size: Taille de chaque morceau en caractères
+        overlap: Nombre de caractères de chevauchement
+        
+    Returns:
+        Liste des morceaux de texte
+    """
+    if not text or chunk_size <= 0:
+        return []
+    
+    chunks = []
+    start = 0
+    text_length = len(text)
+    
+    while start < text_length:
+        # Calculer la fin du chunk
+        end = start + chunk_size
+        
+        # Si ce n'est pas le dernier chunk, essayer de couper à la fin d'une phrase
+        if end < text_length:
+            # Chercher le dernier point, point d'exclamation ou d'interrogation
+            last_sentence_end = max(
+                text.rfind('.', start, end),
+                text.rfind('!', start, end),
+                text.rfind('?', start, end)
+            )
+            
+            if last_sentence_end > start:
+                end = last_sentence_end + 1
+        
+        # Ajouter le chunk
+        chunks.append(text[start:end].strip())
+        
+        # Passer au chunk suivant avec chevauchement
+        start = end - overlap if end < text_length else end
+    
+    return chunks
