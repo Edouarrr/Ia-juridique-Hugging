@@ -1,37 +1,70 @@
 # requirements.txt - Application Juridique IA
-# Version optimisée pour Hugging Face Spaces
+# Version fusionnée et optimisée
 
 # =============================================================================
-# FRAMEWORK PRINCIPAL (OBLIGATOIRE)
+# FRAMEWORK PRINCIPAL
 # =============================================================================
 streamlit>=1.28.0
+streamlit-chat>=0.1.1
 
 # =============================================================================
-# AZURE (OBLIGATOIRE pour votre app)
+# IA ET TRAITEMENT DU LANGAGE
+# =============================================================================
+# APIs des modèles de langage
+openai>=1.0.0
+anthropic>=0.25.0
+google-generativeai>=0.5.0
+mistralai>=0.0.8
+groq>=0.4.0
+
+# Langchain et tokenization
+langchain>=0.1.0
+langchain-community>=0.0.10
+tiktoken>=0.5.0
+
+# =============================================================================
+# TRAITEMENT DE DOCUMENTS
+# =============================================================================
+# Documents Office
+python-docx>=0.8.11          # Lecture/écriture fichiers Word
+openpyxl>=3.1.0             # Excel
+python-pptx>=0.6.21         # PowerPoint (optionnel)
+
+# PDF
+PyPDF2>=3.0.0               # Lecture fichiers PDF basique
+pdfplumber>=0.9.0           # Alternative pour PDF complexes
+reportlab>=4.0.0            # Génération PDF
+
+# Détection et parsing
+python-magic>=0.4.27        # Détection type de fichier
+chardet>=5.2.0              # Détection encodage
+lxml>=4.9.0                 # Parser XML/HTML
+
+# =============================================================================
+# SCRAPING ET API
+# =============================================================================
+httpx>=0.24.0               # Client HTTP asynchrone moderne
+requests>=2.31.0            # Client HTTP simple
+beautifulsoup4>=4.12.0      # Parsing HTML
+selenium>=4.15.0            # Scraping dynamique (si nécessaire)
+
+# =============================================================================
+# AZURE
 # =============================================================================
 azure-storage-blob>=12.19.0
 azure-search-documents>=11.4.0
-azure-core>=1.26.0
 azure-identity>=1.14.0
+azure-keyvault-secrets>=4.7.0
+azure-search-documents==11.4.0
+azure-core
+azure-identity
 
 # =============================================================================
-# TRAITEMENT DE DOCUMENTS (OBLIGATOIRE)
+# BASE DE DONNÉES ET RECHERCHE
 # =============================================================================
-# Documents Office
-python-docx>=0.8.11          # Word
-openpyxl>=3.1.0             # Excel
-
-# PDF
-PyPDF2>=3.0.0               # Lecture PDF basique
-reportlab>=4.0.0            # Génération PDF (pour exports)
-
-# =============================================================================
-# IA ET LLM (selon vos APIs)
-# =============================================================================
-openai>=1.0.0               # Pour Azure OpenAI et OpenAI API
-# anthropic>=0.25.0         # Si vous utilisez Claude
-# google-generativeai>=0.5.0 # Si vous utilisez Gemini
-# mistralai>=0.0.8          # Si vous utilisez Mistral
+chromadb>=0.4.0             # Base vectorielle
+faiss-cpu>=1.7.4            # Recherche vectorielle
+sqlalchemy>=2.0.0           # ORM (si nécessaire)
 
 # =============================================================================
 # TRAITEMENT ET ANALYSE DE DONNÉES
@@ -39,53 +72,70 @@ openai>=1.0.0               # Pour Azure OpenAI et OpenAI API
 pandas>=2.0.0
 numpy>=1.24.0
 python-dateutil>=2.8.2
+pytz>=2023.3
 
 # =============================================================================
 # VISUALISATION
 # =============================================================================
-plotly>=5.17.0              # Graphiques interactifs
-matplotlib>=3.7.0           # Graphiques statiques
+plotly>=5.17.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+networkx>=3.1.0             # Pour cartographie relationnelle
 
 # =============================================================================
-# UTILITAIRES ESSENTIELS
+# UTILITAIRES
 # =============================================================================
-python-dotenv>=1.0.0        # Variables d'environnement
-requests>=2.31.0            # Requêtes HTTP
-beautifulsoup4>=4.12.0      # Parsing HTML
-Pillow>=10.0.0             # Traitement d'images
+# Configuration et environnement
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Performance et asynchrone
 aiofiles>=23.0.0           # IO asynchrone
+python-multipart>=0.0.6
+tenacity>=8.2.0            # Retry logic
+cachetools>=5.3.0          # Cache en mémoire
+
+# Templates
+jinja2>=3.1.0              # Templating
 
 # =============================================================================
-# SÉCURITÉ
+# SÉCURITÉ ET VALIDATION
 # =============================================================================
-cryptography>=41.0.0        # Pour Azure
+cryptography>=41.0.0
+pydantic>=2.0.0
+email-validator>=2.0.0
 
 # =============================================================================
-# À RETIRER (modules Python standard)
+# BUILD ET COMPATIBILITÉ
 # =============================================================================
-# datetime                  # Déjà inclus dans Python
-# asyncio                   # Déjà inclus dans Python
-# typing                    # Déjà inclus dans Python
+setuptools>=68.0.0
+wheel>=0.41.0
 
 # =============================================================================
-# OPTIONNEL - À AJOUTER SELON VOS BESOINS
+# OPTIONNEL - À DÉCOMMENTER SI NÉCESSAIRE
 # =============================================================================
-
-# Pour la recherche sémantique avancée :
-# chromadb>=0.4.0
-# langchain>=0.1.0
-# tiktoken>=0.5.0
-
-# Pour l'OCR sur PDF scannés :
+# OCR
 # pytesseract>=0.3.10
 # pdf2image>=1.16.0
 
-# Pour l'envoi d'emails :
+# Email
 # yagmail>=0.15.0
 
-# Pour le scraping web avancé :
-# selenium>=4.15.0
-
-# Pour l'analyse linguistique française :
+# Analyses linguistiques avancées
 # spacy>=3.6.0
 # fr-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.6.0/fr_core_news_sm-3.6.0-py3-none-any.whl
+# textstat>=0.7.3           # Analyse de lisibilité
+
+# Tests et développement
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# flake8>=6.0.0
+
+# Monitoring et logs
+# sentry-sdk>=1.0.0
+# loguru>=0.7.0     
+
+datetime
+asyncio
+typing
