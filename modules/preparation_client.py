@@ -13,7 +13,7 @@ import plotly.express as px
 
 from config.app_config import LLMProvider
 from managers.multi_llm_manager import MultiLLMManager
-from models.dataclasses import PreparationClientResult
+from modules.dataclasses import PreparationClientResult
 from utils.helpers import extract_section
 
 @dataclass
