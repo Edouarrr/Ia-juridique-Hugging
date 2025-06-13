@@ -1,211 +1,388 @@
 # managers/dynamic_generators.py
-"""Générateurs dynamiques pour prompts et templates"""
+"""Générateurs dynamiques pour créer des templates et contenus à la volée"""
 
-import json
+import streamlit as st
+from typing import Dict, List, Optional, Any
+from datetime import datetime
 import re
-import logging
-import asyncio
-from typing import Dict, List, Any
 
-logger = logging.getLogger(__name__)
+from modules.dataclasses import (
+    DocumentTemplate,
+    TypeDocument,
+    StyleRedaction
+)
+from config.app_config import DOCUMENT_TEMPLATES, LEGAL_PHRASES
 
-from managers.multi_llm_manager import MultiLLMManager
-from config.app_config import LLMProvider
+def generate_dynamic_templates(document_type: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Génère dynamiquement des templates basés sur le contexte
+    """
+    # Template de base
+    base_template = DOCUMENT_TEMPLATES.get(document_type, {
+        "structure": ["INTRODUCTION", "DÉVELOPPEMENT", "CONCLUSION"],
+        "required_sections": ["INTRODUCTION", "CONCLUSION"]
+    })
+    
+    # Adapter selon le contexte
+    if document_type == "conclusions":
+        return _generate_conclusions_template(context)
+    elif document_type == "assignation":
+        return _generate_assignation_template(context)
+    elif document_type == "plaidoirie":
+        return _generate_plaidoirie_template(context)
+    else:
+        return _adapt_generic_template(base_template, context)
 
-async def generate_dynamic_search_prompts(search_query: str, context: str = "") -> Dict[str, Dict[str, List[str]]]:
-    """Génère dynamiquement des prompts de recherche basés sur la requête"""
-    llm_manager = MultiLLMManager()
+def _generate_conclusions_template(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Génère un template de conclusions adapté au contexte"""
     
-    # Utiliser Claude Opus 4 et ChatGPT 4o si disponibles
-    preferred_providers = []
-    if LLMProvider.CLAUDE_OPUS in llm_manager.clients:
-        preferred_providers.append(LLMProvider.CLAUDE_OPUS)
-    if LLMProvider.CHATGPT_4O in llm_manager.clients:
-        preferred_providers.append(LLMProvider.CHATGPT_4O)
+    # Structure de base
+    structure = [
+        "EN-TÊTE",
+        "POUR",
+        "RAPPEL DE LA PROCÉDURE",
+        "RAPPEL DES FAITS"
+    ]
     
-    if not preferred_providers and llm_manager.clients:
-        preferred_providers = [list(llm_manager.clients.keys())[0]]
+    # Ajouter des sections selon le contexte
+    if context.get('has_expertise', False):
+        structure.append("SUR L'EXPERTISE")
     
-    if not preferred_providers:
-        # Retour aux prompts statiques si aucun LLM disponible
-        return {
-            "🔍 Recherches suggérées": {
-                "Générique": [
-                    f"{search_query} jurisprudence récente",
-                    f"{search_query} éléments constitutifs",
-                    f"{search_query} moyens de défense",
-                    f"{search_query} sanctions encourues"
-                ]
-            }
-        }
+    if context.get('infractions_count', 0) > 0:
+        structure.append("SUR LA QUALIFICATION DES FAITS")
     
-    prompt = f"""En tant qu'expert en droit pénal des affaires, génère des prompts de recherche juridique pertinents basés sur cette requête : "{search_query}"
-{f"Contexte supplémentaire : {context}" if context else ""}
-
-Crée une structure JSON avec des catégories et sous-catégories de prompts de recherche.
-Chaque prompt doit être concis (max 80 caractères) et cibler un aspect juridique précis.
-
-Format attendu :
-{{
-    "🔍 Éléments constitutifs": {{
-        "Élément matériel": ["prompt1", "prompt2", ...],
-        "Élément intentionnel": ["prompt1", "prompt2", ...]
-    }},
-    "⚖️ Jurisprudence": {{
-        "Décisions récentes": ["prompt1", "prompt2", ...],
-        "Arrêts de principe": ["prompt1", "prompt2", ...]
-    }},
-    "🛡️ Moyens de défense": {{
-        "Exceptions": ["prompt1", "prompt2", ...],
-        "Stratégies": ["prompt1", "prompt2", ...]
-    }}
-}}
-
-Génère au moins 3 catégories avec 2 sous-catégories chacune, et 4 prompts par sous-catégorie."""
+    # Discussion principale
+    structure.append("DISCUSSION")
     
-    system_prompt = """Tu es un avocat spécialisé en droit pénal des affaires avec 20 ans d'expérience.
-Tu maîtrises parfaitement la recherche juridique et sais formuler des requêtes précises pour trouver
-la jurisprudence, la doctrine et les textes pertinents. Tes prompts sont toujours en français,
-techniquement précis et adaptés au contexte du droit pénal économique français."""
+    # Sous-sections de discussion
+    if context.get('responsability_claim', False):
+        structure.append("  A. Sur la responsabilité")
     
-    try:
-        response = await llm_manager.query_single_llm(
-            preferred_providers[0],
-            prompt,
-            system_prompt
-        )
-        
-        if response['success']:
-            # Extraire le JSON de la réponse
-            json_match = re.search(r'\{[\s\S]*\}', response['response'])
-            if json_match:
-                try:
-                    return json.loads(json_match.group(0))
-                except json.JSONDecodeError:
-                    pass
-        
-    except Exception as e:
-        logger.error(f"Erreur génération prompts dynamiques: {e}")
+    if context.get('damages_claim', False):
+        structure.append("  B. Sur les préjudices")
+        structure.append("  C. Sur l'évaluation des dommages-intérêts")
     
-    # Fallback
+    # Sections finales
+    if context.get('procedural_issues', False):
+        structure.append("SUR LA PROCÉDURE")
+    
+    structure.extend([
+        "SUR LES DEMANDES ACCESSOIRES",
+        "PAR CES MOTIFS",
+        "BORDEREAU DE PIÈCES"
+    ])
+    
     return {
-        "🔍 Recherches suggérées": {
-            "Générique": [
-                f"{search_query} jurisprudence",
-                f"{search_query} éléments constitutifs",
-                f"{search_query} défense",
-                f"{search_query} sanctions"
+        "structure": structure,
+        "required_sections": ["POUR", "DISCUSSION", "PAR CES MOTIFS"],
+        "variables": {
+            "demandeur": context.get('demandeur', '[DEMANDEUR]'),
+            "defendeur": context.get('defendeur', '[DÉFENDEUR]'),
+            "tribunal": context.get('tribunal', 'Tribunal Judiciaire'),
+            "numero_rg": context.get('numero_rg', '[N° RG]')
+        },
+        "suggested_length": {
+            "RAPPEL DES FAITS": "2-3 pages",
+            "DISCUSSION": "5-10 pages",
+            "PAR CES MOTIFS": "1-2 pages"
+        }
+    }
+
+def _generate_assignation_template(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Génère un template d'assignation adapté"""
+    
+    structure = [
+        "L'AN DEUX MILLE VINGT-CINQ",
+        "À LA REQUÊTE DE",
+        "AYANT POUR AVOCAT",
+        "J'AI HUISSIER SOUSSIGNÉ",
+        "DONNÉ ASSIGNATION À"
+    ]
+    
+    # Adapter selon le type de procédure
+    procedure_type = context.get('procedure_type', 'standard')
+    
+    if procedure_type == 'référé':
+        structure.extend([
+            "AVERTISSEMENT - PROCÉDURE DE RÉFÉRÉ",
+            "TRÈS IMPORTANT"
+        ])
+    
+    structure.extend([
+        "EXPOSÉ DES FAITS ET DE LA PROCÉDURE",
+        "DISCUSSION"
+    ])
+    
+    # Ajouter les moyens selon le contexte
+    if context.get('nullity_claims', False):
+        structure.append("I. SUR LA NULLITÉ")
+    
+    if context.get('competence_issue', False):
+        structure.append("II. SUR LA COMPÉTENCE")
+    
+    structure.extend([
+        "III. SUR LE FOND",
+        "IV. SUR LES DEMANDES",
+        "PAR CES MOTIFS",
+        "PIÈCES COMMUNIQUÉES"
+    ])
+    
+    return {
+        "structure": structure,
+        "required_sections": [
+            "À LA REQUÊTE DE",
+            "DONNÉ ASSIGNATION À",
+            "PAR CES MOTIFS"
+        ],
+        "variables": _get_assignation_variables(context),
+        "formules_type": _get_assignation_formules(procedure_type)
+    }
+
+def _generate_plaidoirie_template(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Génère un template de plaidoirie"""
+    
+    duration = context.get('duration_minutes', 30)
+    
+    # Structure adaptée à la durée
+    if duration <= 15:
+        structure = [
+            "INTRODUCTION (2 min)",
+            "FAITS ESSENTIELS (3 min)",
+            "ARGUMENT PRINCIPAL (8 min)",
+            "CONCLUSION (2 min)"
+        ]
+    elif duration <= 30:
+        structure = [
+            "INTRODUCTION (3 min)",
+            "RAPPEL DES FAITS (5 min)",
+            "PREMIER ARGUMENT (8 min)",
+            "DEUXIÈME ARGUMENT (8 min)",
+            "RÉFUTATION (4 min)",
+            "CONCLUSION (2 min)"
+        ]
+    else:
+        structure = [
+            "INTRODUCTION (5 min)",
+            "CONTEXTE ET PROCÉDURE (5 min)",
+            "RAPPEL DES FAITS (8 min)",
+            "PREMIER ARGUMENT (10 min)",
+            "DEUXIÈME ARGUMENT (10 min)",
+            "TROISIÈME ARGUMENT (8 min)",
+            "RÉFUTATION DES ARGUMENTS ADVERSES (8 min)",
+            "SYNTHÈSE (4 min)",
+            "CONCLUSION (2 min)"
+        ]
+    
+    return {
+        "structure": structure,
+        "required_sections": ["INTRODUCTION", "CONCLUSION"],
+        "timing_notes": True,
+        "oral_markers": [
+            "[PAUSE]",
+            "[INSISTER]",
+            "[REGARDER LE TRIBUNAL]",
+            "[MONTRER LA PIÈCE]"
+        ],
+        "rhetorical_devices": [
+            "Questions rhétoriques",
+            "Anaphores",
+            "Gradations",
+            "Antithèses"
+        ]
+    }
+
+def _adapt_generic_template(base_template: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    """Adapte un template générique selon le contexte"""
+    
+    template = base_template.copy()
+    
+    # Ajouter des sections si nécessaire
+    if context.get('complex_case', False):
+        if "ANALYSE DÉTAILLÉE" not in template["structure"]:
+            idx = template["structure"].index("DÉVELOPPEMENT") + 1
+            template["structure"].insert(idx, "ANALYSE DÉTAILLÉE")
+    
+    # Ajouter des variables contextuelles
+    template["variables"] = {
+        "date": datetime.now().strftime("%d/%m/%Y"),
+        "auteur": context.get('auteur', '[AUTEUR]'),
+        **context.get('custom_variables', {})
+    }
+    
+    return template
+
+def _get_assignation_variables(context: Dict[str, Any]) -> Dict[str, str]:
+    """Retourne les variables pour une assignation"""
+    
+    return {
+        "demandeur_nom": context.get('demandeur_nom', '[NOM DEMANDEUR]'),
+        "demandeur_adresse": context.get('demandeur_adresse', '[ADRESSE DEMANDEUR]'),
+        "defendeur_nom": context.get('defendeur_nom', '[NOM DÉFENDEUR]'),
+        "defendeur_adresse": context.get('defendeur_adresse', '[ADRESSE DÉFENDEUR]'),
+        "tribunal": context.get('tribunal', 'Tribunal Judiciaire'),
+        "date_audience": context.get('date_audience', '[DATE AUDIENCE]'),
+        "heure_audience": context.get('heure_audience', '[HEURE]'),
+        "huissier_nom": context.get('huissier_nom', '[NOM HUISSIER]'),
+        "avocat_nom": context.get('avocat_nom', '[NOM AVOCAT]'),
+        "avocat_barreau": context.get('avocat_barreau', '[BARREAU]')
+    }
+
+def _get_assignation_formules(procedure_type: str) -> Dict[str, List[str]]:
+    """Retourne les formules types pour une assignation"""
+    
+    formules = {
+        "standard": [
+            "J'ai, Huissier de Justice soussigné",
+            "Donné assignation à",
+            "À comparaître devant",
+            "Pour s'entendre",
+            "Sous toutes réserves"
+        ],
+        "référé": [
+            "J'ai, Huissier de Justice soussigné",
+            "Donné assignation À COMPARAÎTRE D'HEURE À HEURE",
+            "Devant Monsieur le Président",
+            "Statuant en référé",
+            "Pour s'entendre",
+            "Dire et juger",
+            "Le tout sous toutes réserves"
+        ]
+    }
+    
+    return formules.get(procedure_type, formules["standard"])
+
+def generate_document_outline(document_type: str, key_points: List[str]) -> List[Dict[str, Any]]:
+    """Génère un plan détaillé pour un document"""
+    
+    outline = []
+    
+    # Générer le plan selon le type
+    if document_type == "conclusions":
+        outline = _generate_conclusions_outline(key_points)
+    elif document_type == "memoire":
+        outline = _generate_memoire_outline(key_points)
+    else:
+        outline = _generate_generic_outline(document_type, key_points)
+    
+    return outline
+
+def _generate_conclusions_outline(key_points: List[str]) -> List[Dict[str, Any]]:
+    """Génère un plan détaillé pour des conclusions"""
+    
+    outline = [
+        {
+            "section": "POUR",
+            "level": 1,
+            "content": "Identification complète du demandeur",
+            "subsections": []
+        },
+        {
+            "section": "RAPPEL DES FAITS",
+            "level": 1,
+            "content": "Exposé chronologique et objectif",
+            "subsections": [
+                {"title": "Contexte", "points": []},
+                {"title": "Événements", "points": key_points[:2] if len(key_points) > 2 else key_points}
             ]
+        },
+        {
+            "section": "DISCUSSION",
+            "level": 1,
+            "content": "Analyse juridique approfondie",
+            "subsections": []
         }
-    }
-
-async def generate_dynamic_templates(type_acte: str, context: Dict[str, Any] = None) -> Dict[str, str]:
-    """Génère dynamiquement des modèles d'actes juridiques"""
-    llm_manager = MultiLLMManager()
+    ]
     
-    # Utiliser Claude Opus 4 et ChatGPT 4o si disponibles
-    preferred_providers = []
-    if LLMProvider.CLAUDE_OPUS in llm_manager.clients:
-        preferred_providers.append(LLMProvider.CLAUDE_OPUS)
-    if LLMProvider.CHATGPT_4O in llm_manager.clients:
-        preferred_providers.append(LLMProvider.CHATGPT_4O)
+    # Ajouter les points clés dans la discussion
+    for i, point in enumerate(key_points[2:] if len(key_points) > 2 else [], 1):
+        outline[2]["subsections"].append({
+            "title": f"Moyen {i}",
+            "points": [point]
+        })
     
-    if not preferred_providers and llm_manager.clients:
-        preferred_providers = [list(llm_manager.clients.keys())[0]]
+    outline.append({
+        "section": "PAR CES MOTIFS",
+        "level": 1,
+        "content": "Demandes au tribunal",
+        "subsections": []
+    })
     
-    if not preferred_providers:
-        return {}
+    return outline
+
+def _generate_memoire_outline(key_points: List[str]) -> List[Dict[str, Any]]:
+    """Génère un plan pour un mémoire"""
     
-    context_str = ""
-    if context:
-        context_str = f"""
-Contexte spécifique :
-- Client : {context.get('client', 'Non spécifié')}
-- Infraction : {context.get('infraction', 'Non spécifiée')}
-- Juridiction : {context.get('juridiction', 'Non spécifiée')}
-"""
+    outline = [
+        {
+            "section": "INTRODUCTION",
+            "level": 1,
+            "content": "Présentation de la problématique",
+            "subsections": []
+        }
+    ]
     
-    prompt = f"""Génère 3 modèles d'actes juridiques pour : "{type_acte}"
-{context_str}
-
-Pour chaque modèle, fournis :
-1. Un titre descriptif avec emoji (ex: "📨 Demande d'audition libre")
-2. Le contenu complet du modèle avec les balises [CHAMP] pour les éléments à personnaliser
-
-Utilise un style juridique professionnel, formel et conforme aux usages du barreau français.
-Les modèles doivent être immédiatement utilisables par un avocat.
-
-Format de réponse attendu (JSON) :
-{{
-    "📄 Modèle standard de {type_acte}": "Contenu du modèle...",
-    "⚖️ Modèle approfondi de {type_acte}": "Contenu du modèle...",
-    "🔍 Modèle détaillé de {type_acte}": "Contenu du modèle..."
-}}"""
+    # Structurer les points en parties
+    if len(key_points) <= 3:
+        # Une seule partie
+        outline.append({
+            "section": "DÉVELOPPEMENT",
+            "level": 1,
+            "content": "Analyse complète",
+            "subsections": [{"title": p, "points": []} for p in key_points]
+        })
+    else:
+        # Deux parties
+        mid = len(key_points) // 2
+        outline.extend([
+            {
+                "section": "PREMIÈRE PARTIE",
+                "level": 1,
+                "content": "Premier aspect",
+                "subsections": [{"title": p, "points": []} for p in key_points[:mid]]
+            },
+            {
+                "section": "DEUXIÈME PARTIE",
+                "level": 1,
+                "content": "Second aspect",
+                "subsections": [{"title": p, "points": []} for p in key_points[mid:]]
+            }
+        ])
     
-    system_prompt = """Tu es un avocat au barreau de Paris, spécialisé en droit pénal des affaires.
-Tu rédiges des actes juridiques depuis 20 ans et maîtrises parfaitement les formules consacrées,
-la structure des actes et les mentions obligatoires. Tes modèles sont toujours conformes
-aux exigences procédurales et aux usages de la profession."""
+    outline.append({
+        "section": "CONCLUSION",
+        "level": 1,
+        "content": "Synthèse et perspectives",
+        "subsections": []
+    })
     
-    try:
-        # Interroger les LLMs
-        responses = await llm_manager.query_multiple_llms(
-            preferred_providers,
-            prompt,
-            system_prompt
-        )
-        
-        # Fusionner les réponses si plusieurs LLMs
-        if len(responses) > 1:
-            fusion_prompt = f"""Voici plusieurs propositions de modèles pour "{type_acte}".
-Fusionne-les intelligemment pour créer les 3 meilleurs modèles en gardant le meilleur de chaque proposition.
+    return outline
 
-{chr(10).join([f"Proposition {i+1}: {r['response']}" for i, r in enumerate(responses) if r['success']])}
-
-Retourne un JSON avec 3 modèles fusionnés."""
-            
-            fusion_response = await llm_manager.query_single_llm(
-                preferred_providers[0],
-                fusion_prompt,
-                "Tu es un expert en fusion de contenus juridiques."
-            )
-            
-            if fusion_response['success']:
-                response_text = fusion_response['response']
-            else:
-                response_text = responses[0]['response'] if responses[0]['success'] else ""
-        else:
-            response_text = responses[0]['response'] if responses and responses[0]['success'] else ""
-        
-        # Extraire le JSON
-        if response_text:
-            json_match = re.search(r'\{[\s\S]*\}', response_text)
-            if json_match:
-                try:
-                    return json.loads(json_match.group(0))
-                except json.JSONDecodeError:
-                    pass
-        
-    except Exception as e:
-        logger.error(f"Erreur génération modèles dynamiques: {e}")
+def _generate_generic_outline(document_type: str, key_points: List[str]) -> List[Dict[str, Any]]:
+    """Génère un plan générique"""
     
-    # Fallback avec un modèle basique
-    return {
-        f"📄 Modèle standard de {type_acte}": f"""[EN-TÊTE AVOCAT]
-
-À l'attention de [DESTINATAIRE]
-Objet : {type_acte}
-Référence : [RÉFÉRENCE]
-
-[FORMULE D'APPEL],
-
-J'ai l'honneur de [OBJET DE LA DEMANDE].
-
-[DÉVELOPPEMENT]
-
-[CONCLUSION]
-
-Je vous prie d'agréer, [FORMULE DE POLITESSE].
-
-[SIGNATURE]"""
-    }
+    outline = [
+        {
+            "section": "INTRODUCTION",
+            "level": 1,
+            "content": "Présentation du sujet",
+            "subsections": []
+        }
+    ]
+    
+    # Ajouter les points comme sections
+    for i, point in enumerate(key_points, 1):
+        outline.append({
+            "section": f"PARTIE {i}",
+            "level": 1,
+            "content": point,
+            "subsections": []
+        })
+    
+    outline.append({
+        "section": "CONCLUSION",
+        "level": 1,
+        "content": "Synthèse",
+        "subsections": []
+    })
+    
+    return outline
