@@ -26,7 +26,7 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
-from models.dataclasses import Entity, Relationship, Document
+from modules.dataclasses import Entity, Relationship, Document
 from utils.helpers import extract_entities, clean_key
 from managers.multi_llm_manager import MultiLLMManager
 
