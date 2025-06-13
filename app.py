@@ -58,6 +58,16 @@ except ImportError as e:
     MultiLLMManager = None
     display_llm_status = None
 
+# Import du module preparation_client
+try:
+    from modules.preparation_client import process_preparation_client_request
+    PREPARATION_CLIENT_AVAILABLE = True
+    print("✅ Module preparation_client importé")
+except ImportError as e:
+    print(f"⚠️ Module preparation_client non disponible: {e}")
+    PREPARATION_CLIENT_AVAILABLE = False
+    process_preparation_client_request = None
+
 # Vérifier la disponibilité des modules Azure
 AZURE_AVAILABLE = False
 AZURE_ERROR = None
@@ -779,7 +789,10 @@ def show_intelligent_dashboard():
             "Trouve la jurisprudence sur la corruption passive",
             "Génère une plainte pour escroquerie",
             "Quels sont les risques juridiques identifiés?",
-            "Crée une timeline des événements"
+            "Crée une timeline des événements",
+            "Prépare mon client pour l'audition de police",
+            "Coaching client pour interrogatoire juge d'instruction",
+            "Préparation comparution tribunal correctionnel"
         ]
         
         for example in examples:
@@ -889,6 +902,11 @@ def handle_universal_search(query: str):
             st.session_state.current_tab = 'timeline'
             st.rerun()
         
+        elif intent == "preparation_client":
+            st.session_state.current_tab = 'preparation_client'
+            st.session_state.preparation_query = query
+            st.rerun()
+        
         else:
             # Recherche générale
             st.session_state.current_tab = 'recherche'
@@ -911,6 +929,9 @@ def analyze_search_intent(query: str) -> str:
     
     elif any(word in query_lower for word in ['timeline', 'chronologie', 'événements', 'dates']):
         return "timeline"
+    
+    elif any(word in query_lower for word in ['préparer', 'préparation', 'client', 'audition', 'interrogatoire', 'coaching']):
+        return "preparation_client"
     
     else:
         return "search_documents"
@@ -2050,6 +2071,7 @@ def show_navigation_bar():
         "analyse": {"icon": "📊", "label": "Analyse", "desc": "Analyse juridique IA"},
         "pieces": {"icon": "📎", "label": "Pièces", "desc": "Gestion des pièces"},
         "timeline": {"icon": "📅", "label": "Timeline", "desc": "Chronologie"},
+        "preparation_client": {"icon": "🎯", "label": "Préparation", "desc": "Préparer le client"},
         "bordereau": {"icon": "📋", "label": "Bordereau", "desc": "Bordereaux"},
         "jurisprudence": {"icon": "⚖️", "label": "Jurisprudence", "desc": "Base juridique"},
         "plaidoirie": {"icon": "🎤", "label": "Plaidoirie", "desc": "Plaidoiries"},
@@ -2102,7 +2124,7 @@ def show_tab_content():
     current_tab = st.session_state.get('current_tab', 'dashboard')
     
     # Afficher la configuration LLM si nécessaire
-    if current_tab in ['redaction', 'analyse', 'plaidoirie']:
+    if current_tab in ['redaction', 'analyse', 'plaidoirie', 'preparation_client']:
         show_llm_selection_panel()
     
     if current_tab == 'dashboard':
@@ -2135,6 +2157,9 @@ def show_tab_content():
         
     elif current_tab == 'timeline':
         show_timeline_interface()
+        
+    elif current_tab == 'preparation_client':
+        show_preparation_client_interface()
         
     elif current_tab == 'bordereau':
         show_bordereau_interface()
@@ -2296,6 +2321,30 @@ def show_plaidoirie_interface():
 def show_plaidoirie_fallback():
     """Interface de secours pour les plaidoiries"""
     st.info("Module plaidoirie en cours de chargement...")
+
+def show_preparation_client_interface():
+    """Interface pour la préparation du client"""
+    if PREPARATION_CLIENT_AVAILABLE:
+        # Récupérer la requête si elle vient de la recherche universelle
+        query = st.session_state.get('preparation_query', '')
+        
+        # Analyser le contexte (parties, infractions, etc.)
+        analysis = {
+            'query': query,
+            'parties': st.session_state.get('parties', {}),
+            'infractions': ', '.join([
+                inf.type.value if hasattr(inf, 'type') else str(inf) 
+                for inf in st.session_state.get('infractions_identifiees', [])
+            ]),
+            'phase': st.session_state.get('current_phase', 'ENQUETE_PRELIMINAIRE'),
+            'documents': list(st.session_state.get('azure_documents', {}).keys())
+        }
+        
+        # Appeler le module
+        process_preparation_client_request(query, analysis)
+    else:
+        st.error("❌ Module de préparation client non disponible")
+        st.info("Vérifiez que le fichier `modules/preparation_client.py` est bien présent")
 
 def show_outils_interface():
     """Interface des outils avancés"""
