@@ -3,103 +3,57 @@
 Package managers - Gestionnaires pour l'application juridique
 """
 
-# Import conditionnel des managers disponibles
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Définition des managers à importer
+MANAGERS = [
+    ('azure_blob_manager', 'AzureBlobManager'),
+    ('azure_search_manager', 'AzureSearchManager'),
+    ('company_info_manager', 'CompanyInfoManager'),
+    ('document_manager', 'DocumentManager'),
+    ('dynamic_generators', 'DynamicGenerators'),
+    ('export_manager', 'ExportManager'),
+    ('jurisprudence_verifier', 'JurisprudenceVerifier'),
+    ('legal_search', 'LegalSearchManager'),
+    ('llm_manager', 'LLMManager'),
+    ('multi_llm_manager', 'MultiLLMManager'),
+    ('style_analyzer', 'StyleAnalyzer'),
+    ('template_manager', 'TemplateManager'),
+    ('UniversalSearchInterface', 'UniversalSearchInterface'),
+    ('universal_search_service', 'UniversalSearchService'),
+    ('unified_document_generator', 'UnifiedDocumentGenerator'),
+]
+
+# Import dynamique des managers disponibles
 __all__ = []
+_available_managers = {}
 
-# Azure Blob Manager
-try:
-    from .azure_blob_manager import AzureBlobManager
-    __all__.append('AzureBlobManager')
-except ImportError:
-    pass
+for module_name, class_name in MANAGERS:
+    try:
+        module = __import__(f'.{module_name}', fromlist=[class_name], package=__name__)
+        manager_class = getattr(module, class_name)
+        
+        # Rendre le manager disponible dans le namespace
+        globals()[class_name] = manager_class
+        _available_managers[class_name] = manager_class
+        __all__.append(class_name)
+        
+    except ImportError as e:
+        logger.debug(f"Manager {class_name} non disponible: {e}")
+    except AttributeError as e:
+        logger.warning(f"Classe {class_name} introuvable dans {module_name}: {e}")
 
-# Azure Search Manager  
-try:
-    from .azure_search_manager import AzureSearchManager
-    __all__.append('AzureSearchManager')
-except ImportError:
-    pass
+# Fonction utilitaire pour vérifier la disponibilité d'un manager
+def is_manager_available(manager_name: str) -> bool:
+    """Vérifie si un manager est disponible"""
+    return manager_name in _available_managers
 
-# Company Info Manager
-try:
-    from .company_info_manager import CompanyInfoManager
-    __all__.append('CompanyInfoManager')
-except ImportError:
-    pass
+# Fonction pour obtenir la liste des managers disponibles
+def get_available_managers() -> list:
+    """Retourne la liste des managers disponibles"""
+    return list(_available_managers.keys())
 
-# Document Manager
-try:
-    from .document_manager import DocumentManager
-    __all__.append('DocumentManager')
-except ImportError:
-    pass
-
-# Dynamic Generators
-try:
-    from .dynamic_generators import DynamicGenerators
-    __all__.append('DynamicGenerators')
-except ImportError:
-    pass
-
-# Export Manager
-try:
-    from .export_manager import ExportManager
-    __all__.append('ExportManager')
-except ImportError:
-    pass
-
-# Jurisprudence Verifier
-try:
-    from .jurisprudence_verifier import JurisprudenceVerifier
-    __all__.append('JurisprudenceVerifier')
-except ImportError:
-    pass
-
-# Legal Search
-try:
-    from .legal_search import LegalSearchManager
-    __all__.append('LegalSearchManager')
-except ImportError:
-    pass
-
-# LLM Manager
-try:
-    from .llm_manager import LLMManager
-    __all__.append('LLMManager')
-except ImportError:
-    pass
-
-# Multi LLM Manager
-try:
-    from .multi_llm_manager import MultiLLMManager
-    __all__.append('MultiLLMManager')
-except ImportError:
-    pass
-
-# Style Analyzer
-try:
-    from .style_analyzer import StyleAnalyzer
-    __all__.append('StyleAnalyzer')
-except ImportError:
-    pass
-
-# Template Manager
-try:
-    from .template_manager import TemplateManager
-    __all__.append('TemplateManager')
-except ImportError:
-    pass
-
-# Universal Search Interface
-try:
-    from .UniversalSearchInterface import UniversalSearchInterface
-    __all__.append('UniversalSearchInterface')
-except ImportError:
-    pass
-
-# Universal Search Service
-try:
-    from .universal_search_service import UniversalSearchService
-    __all__.append('UniversalSearchService')
-except ImportError:
-    pass
+# Ajouter les fonctions utilitaires à __all__
+__all__.extend(['is_manager_available', 'get_available_managers'])
