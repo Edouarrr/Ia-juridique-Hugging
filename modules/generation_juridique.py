@@ -2,7 +2,7 @@
 
 import streamlit as st
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import re
 from dataclasses import dataclass
 
