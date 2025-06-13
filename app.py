@@ -1,4 +1,4 @@
-""""Application principale avec interface optimisée et navigation intelligente"""
+"""Application principale avec interface optimisée et navigation intelligente"""
 
 import streamlit as st
 from datetime import datetime
@@ -153,7 +153,7 @@ try:
 except ImportError:
     modules_disponibles['pieces_manager'] = False
 
-# Module unifié d'import/export (mis à jour pour utiliser export_manager)
+# Module unifié d'import/export (PRIORITAIRE)
 try:
     from modules.import_export import (
         show_import_interface, 
@@ -163,10 +163,30 @@ try:
         show_import_export_interface
     )
     modules_disponibles['import_export'] = True
+    print("✅ Module import_export chargé")
 except ImportError:
     modules_disponibles['import_export'] = False
+    print("❌ Module import_export non disponible")
 
-# Module explorateur de documents (NOUVEAU)
+# Module de configuration (PRIORITAIRE)
+try:
+    from modules.configuration import show_page as show_configuration_page
+    modules_disponibles['configuration'] = True
+    print("✅ Module configuration chargé")
+except ImportError:
+    modules_disponibles['configuration'] = False
+    print("❌ Module configuration non disponible")
+
+# Module de jurisprudence (PRIORITAIRE)
+try:
+    from modules.jurisprudence import show_page as show_jurisprudence_page
+    modules_disponibles['jurisprudence'] = True
+    print("✅ Module jurisprudence chargé")
+except ImportError:
+    modules_disponibles['jurisprudence'] = False
+    print("❌ Module jurisprudence non disponible")
+
+# Module explorateur de documents
 try:
     from modules.explorer import show_explorer_interface
     modules_disponibles['explorer'] = True
@@ -174,7 +194,7 @@ try:
 except ImportError:
     modules_disponibles['explorer'] = False
 
-# Module de génération longue (NOUVEAU)
+# Module de génération longue
 try:
     from modules.generation_longue import show_generation_longue_interface
     modules_disponibles['generation_longue'] = True
@@ -188,13 +208,6 @@ try:
     modules_disponibles['dossier_penal'] = True
 except ImportError:
     modules_disponibles['dossier_penal'] = False
-
-# Module de jurisprudence (garde séparé car spécifique)
-try:
-    from modules.jurisprudence import show_page as show_jurisprudence_page
-    modules_disponibles['jurisprudence'] = True
-except ImportError:
-    modules_disponibles['jurisprudence'] = False
 
 try:
     from modules.risques import display_risques_interface
@@ -228,25 +241,130 @@ try:
 except ImportError:
     modules_disponibles['mapping'] = False
 
+# Module Timeline (INTÉGRATION COMPLÈTE)
 try:
-    from modules.timeline import show_page as show_timeline_page
+    from modules.timeline import process_timeline_request
     modules_disponibles['timeline'] = True
+    print("✅ Module timeline chargé")
+    
+    # Fonction show_page pour timeline
+    def show_timeline_page():
+        """Page principale du module timeline"""
+        st.markdown("## 📅 Timeline des événements")
+        
+        # Options de création
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            query = st.text_area(
+                "Décrivez la chronologie souhaitée",
+                placeholder="Ex: Créer une timeline des événements financiers dans le dossier VINCI\n"
+                           "Ou: Chronologie des auditions et témoignages\n"
+                           "Ou: Timeline procédurale de l'affaire",
+                height=100,
+                key="timeline_query"
+            )
+        
+        with col2:
+            st.markdown("#### Options rapides")
+            if st.button("📅 Timeline complète", use_container_width=True):
+                st.session_state.timeline_query = "Créer une timeline complète de tous les événements"
+            if st.button("⚖️ Timeline procédurale", use_container_width=True):
+                st.session_state.timeline_query = "Timeline des événements procéduraux (plaintes, auditions, jugements)"
+            if st.button("💰 Timeline financière", use_container_width=True):
+                st.session_state.timeline_query = "Timeline des transactions et mouvements financiers"
+        
+        if query and st.button("🚀 Générer la timeline", type="primary", use_container_width=True):
+            process_timeline_request(query, {'reference': query})
+        
+        # Afficher une timeline existante
+        if st.session_state.get('timeline_result'):
+            st.markdown("---")
+            st.markdown("### 📊 Timeline générée")
+            from modules.timeline import display_timeline_results
+            display_timeline_results(st.session_state.timeline_result)
+            
 except ImportError:
     modules_disponibles['timeline'] = False
+    def show_timeline_page():
+        st.error("Module timeline non disponible")
 
+# Module Comparison (INTÉGRATION COMPLÈTE)
 try:
-    from modules.comparison import process_comparison_request, show_page as show_comparison_page
+    from modules.comparison import process_comparison_request
     modules_disponibles['comparison'] = True
+    print("✅ Module comparison chargé")
+    
+    # Fonction show_page pour comparison
+    def show_comparison_page():
+        """Page principale du module comparison"""
+        st.markdown("## 🔄 Comparaison de documents")
+        
+        # Options de comparaison
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            query = st.text_area(
+                "Décrivez la comparaison souhaitée",
+                placeholder="Ex: Comparer les témoignages de Martin et Dupont\n"
+                           "Ou: Analyser les divergences entre les expertises\n"
+                           "Ou: Comparer les versions du contrat",
+                height=100,
+                key="comparison_query"
+            )
+        
+        with col2:
+            st.markdown("#### Comparaisons types")
+            if st.button("📋 Auditions", use_container_width=True):
+                st.session_state.comparison_query = "Comparer toutes les auditions et témoignages"
+            if st.button("🔬 Expertises", use_container_width=True):
+                st.session_state.comparison_query = "Comparer les rapports d'expertise"
+            if st.button("📄 Versions", use_container_width=True):
+                st.session_state.comparison_query = "Comparer les différentes versions des documents"
+        
+        if query and st.button("🚀 Lancer la comparaison", type="primary", use_container_width=True):
+            process_comparison_request(query, {'reference': query})
+        
+        # Afficher une comparaison existante
+        if st.session_state.get('comparison_result'):
+            st.markdown("---")
+            st.markdown("### 📊 Résultats de la comparaison")
+            from modules.comparison import display_comparison_results
+            display_comparison_results(st.session_state.comparison_result)
+            
 except ImportError:
     modules_disponibles['comparison'] = False
+    def show_comparison_page():
+        st.error("Module comparison non disponible")
 
+# Module Email (INTÉGRATION COMPLÈTE)
+try:
+    from modules.email import (
+        process_email_request, 
+        show_email_interface,
+        prepare_and_send_document
+    )
+    modules_disponibles['email'] = True
+    print("✅ Module email chargé")
+    
+    # Fonction show_page pour email
+    def show_email_page():
+        """Page principale du module email"""
+        show_email_interface()
+        
+except ImportError:
+    modules_disponibles['email'] = False
+    def show_email_page():
+        st.error("Module email non disponible")
+
+# Module synthèse
 try:
     from modules.synthesis import show_page as show_synthesis_page
     modules_disponibles['synthesis'] = True
 except ImportError:
     modules_disponibles['synthesis'] = False
 
-# Modules de communication et support (bordereau mis à jour)
+# Modules de communication et support
 try:
     from modules.bordereau import (
         display_bordereau_interface,
@@ -258,42 +376,17 @@ except ImportError:
     modules_disponibles['bordereau'] = False
 
 try:
-    from modules.email import process_email_request, show_email_interface, show_page as show_email_page
-    modules_disponibles['email'] = True
-except ImportError:
-    modules_disponibles['email'] = False
-
-try:
     from modules.preparation_client import show_page as show_preparation_page
     modules_disponibles['preparation_client'] = True
 except ImportError:
     modules_disponibles['preparation_client'] = False
 
-# Modules de configuration et outils
-try:
-    from modules.configuration import show_page as show_configuration_page
-    modules_disponibles['configuration'] = True
-except ImportError:
-    modules_disponibles['configuration'] = False
-
+# Module template
 try:
     from modules.template import show_template_manager
     modules_disponibles['template'] = True
 except ImportError:
     modules_disponibles['template'] = False
-
-try:
-    from modules.integration_juridique import show_page as show_integration_page
-    modules_disponibles['integration_juridique'] = True
-except ImportError:
-    modules_disponibles['integration_juridique'] = False
-
-# Module export_juridique (gardé pour compatibilité)
-try:
-    from modules.export_juridique import GestionnaireExport
-    modules_disponibles['export_juridique'] = True
-except ImportError:
-    modules_disponibles['export_juridique'] = False
 
 # ========== SECTION 2: STYLES CSS MODERNES ==========
 
@@ -809,8 +902,8 @@ def show_modern_sidebar():
                 st.session_state.current_view = 'generation_longue'
                 st.session_state.current_module = 'generation_longue'
         
-        # Section Visualisation
-        st.markdown("#### 📊 Visualisation")
+        # Section Visualisation & Analyse
+        st.markdown("#### 📊 Visualisation & Analyse")
         
         tools = [
             ("📋 Bordereau", "bordereau", "bordereau"),
@@ -889,7 +982,9 @@ def show_home_page():
                 "Compare les témoignages de Martin et Dupont dans l'affaire ABC",
                 "Import tous les documents PDF du dossier Dupont",
                 "Sélectionne toutes les pièces importantes pour la communication",
-                "Export le bordereau en Word avec mise en forme juridique"
+                "Export le bordereau en Word avec mise en forme juridique",
+                "Créer une timeline des événements financiers",
+                "Envoyer par email le document avec les pièces jointes"
             ]
             import random
             st.session_state.universal_search = random.choice(examples)
@@ -962,6 +1057,7 @@ def show_home_page():
             ("📎", "Gestion des pièces", "Organisez vos pièces et documents", "pieces_manager"),
             ("📥", "Import/Export", "Import/Export unifié de documents", "import_export"),
             ("🗂️", "Explorateur", "Explorez vos fichiers et sources", "explorer"),
+            ("🔧", "Configuration", "Paramètres de l'application", "configuration"),
         ],
         "Intelligence Artificielle": [
             ("🤖", "Recherche & Analyse IA", "Recherche et analyse unifiées par IA", "recherche_analyse_unifiee"),
@@ -974,7 +1070,7 @@ def show_home_page():
             ("📋", "Bordereau", "Création de bordereaux", "bordereau"),
             ("📅", "Timeline", "Chronologies visuelles", "timeline"),
         ],
-        "Communication": [
+        "Communication & Analyse": [
             ("📧", "Emails", "Gestion des emails", "email"),
             ("👥", "Préparation client", "Préparez vos rendez-vous", "preparation_client"),
             ("🔄", "Comparaison", "Comparez des documents", "comparison"),
@@ -1029,6 +1125,21 @@ def handle_universal_search(query: str):
             'view': 'import_export',
             'context': 'export'
         },
+        'timeline': {
+            'keywords': ['timeline', 'chronologie', 'calendrier', 'événements', 'dates', 'temporel', 'historique'],
+            'module': 'timeline',
+            'view': 'timeline'
+        },
+        'comparison': {
+            'keywords': ['comparer', 'comparaison', 'différence', 'confronter', 'analyser les divergences', 'témoignages'],
+            'module': 'comparison',
+            'view': 'comparison'
+        },
+        'email': {
+            'keywords': ['email', 'mail', 'envoyer', 'courrier', 'correspondance', 'transmettre', 'destinataire'],
+            'module': 'email',
+            'view': 'email'
+        },
         'explorer': {
             'keywords': ['explore', 'explorer', 'parcourir', 'naviguer', 'fichiers', 'dossiers', 'azure'],
             'module': 'explorer',
@@ -1059,21 +1170,6 @@ def handle_universal_search(query: str):
             'module': 'bordereau',
             'view': 'bordereau'
         },
-        'comparison': {
-            'keywords': ['comparer', 'différence', 'comparaison', 'confronter'],
-            'module': 'comparison',
-            'view': 'comparison'
-        },
-        'timeline': {
-            'keywords': ['chronologie', 'timeline', 'calendrier', 'dates', 'événements'],
-            'module': 'timeline',
-            'view': 'timeline'
-        },
-        'email': {
-            'keywords': ['email', 'mail', 'courrier', 'envoyer', 'correspondance'],
-            'module': 'email',
-            'view': 'email'
-        },
         'risques': {
             'keywords': ['risque', 'danger', 'menace', 'vulnérabilité', 'évaluation des risques'],
             'module': 'risques',
@@ -1083,6 +1179,11 @@ def handle_universal_search(query: str):
             'keywords': ['dossier', 'affaire', 'dossier pénal', 'organiser dossier'],
             'module': 'dossier_penal',
             'view': 'dossiers'
+        },
+        'configuration': {
+            'keywords': ['configuration', 'paramètres', 'réglages', 'settings', 'préférences'],
+            'module': 'configuration',
+            'view': 'configuration'
         }
     }
     
@@ -1238,13 +1339,6 @@ def show_module_content():
         elif module == 'preparation_client' and modules_disponibles.get('preparation_client'):
             show_preparation_page()
             
-        elif module == 'integration_juridique' and modules_disponibles.get('integration_juridique'):
-            show_integration_page()
-            
-        elif module == 'export_juridique' and modules_disponibles.get('export_juridique'):
-            gestionnaire = GestionnaireExport()
-            st.info("Module d'export juridique chargé")
-            
         else:
             st.error(f"Module {module} non disponible ou non reconnu")
             
@@ -1309,10 +1403,11 @@ def main():
                 st.write("\n**Notes d'optimisation:**")
                 st.info("""
                 ✅ recherche_analyse_unifiee remplace recherche + analyse_ia
-                ✅ export_manager remplace export_juridique
-                ✅ explorer unifie la navigation
-                ✅ generation_longue complète redaction_unified
-                ✅ import_export utilise export_manager
+                ✅ export_manager remplace export_juridique  
+                ✅ import_export unifie import et export
+                ✅ configuration centralise tous les paramètres
+                ✅ jurisprudence intègre la base légale
+                ✅ timeline, comparison et email sont maintenant intégrés
                 """)
 
 # Point d'entrée
