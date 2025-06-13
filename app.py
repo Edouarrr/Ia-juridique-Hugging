@@ -19,7 +19,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Vérifier la disponibilité des modules Azure AVANT l'import
+# ========== SECTION 1: IMPORTS OPTIMISÉS ==========
+
+# Import du nouveau système de modules avec gestion d'erreur
+try:
+    import modules
+    print(f"✅ Modules importés : {len(modules.get_loaded_modules())} modules chargés")
+except ImportError as e:
+    print(f"❌ Erreur import modules : {e}")
+    modules = None
+
+# Vérifier la disponibilité des modules Azure
 AZURE_AVAILABLE = False
 AZURE_ERROR = None
 
@@ -33,12 +43,11 @@ except ImportError as e:
     AZURE_ERROR = str(e)
     print(f"⚠️ Modules Azure non disponibles: {AZURE_ERROR}")
 
-# Import corrigé - utiliser app_config au lieu de APP_CONFIG
+# Import de la configuration
 try:
     from config.app_config import app_config, api_config
 except ImportError:
     print("⚠️ config.app_config non trouvé, utilisation de la configuration par défaut")
-    # Configuration par défaut minimale
     class DefaultConfig:
         version = "1.0.0"
         debug = False
@@ -52,6 +61,7 @@ except ImportError:
     app_config = DefaultConfig()
     api_config = {}
 
+# Import des utilitaires
 try:
     from utils.helpers import initialize_session_state
 except ImportError:
@@ -66,24 +76,23 @@ except ImportError:
             st.session_state.pieces_selectionnees = {}
             st.session_state.azure_blob_manager = None
             st.session_state.azure_search_manager = None
+            # IMPORTANT: Interface unifiée par défaut
+            st.session_state.use_simplified_version = True
 
 try:
     from utils.styles import load_custom_css
 except ImportError:
-    print("⚠️ utils.styles non trouvé, utilisation de la fonction par défaut")
+    print("⚠️ utils.styles non trouvé")
     def load_custom_css():
-        """Fonction vide si le module n'est pas disponible"""
         pass
 
-# Import des services avec gestion d'erreur
+# Import du service de recherche universel
 try:
     from managers.universal_search_service import UniversalSearchService
 except ImportError:
     print("⚠️ managers.universal_search_service non trouvé")
-    # Créer une classe de substitution minimale
     class UniversalSearchService:
         async def search(self, query: str, filters: Optional[Dict] = None):
-            """Recherche de substitution"""
             from types import SimpleNamespace
             return SimpleNamespace(
                 total_count=0,
@@ -93,7 +102,6 @@ except ImportError:
             )
         
         async def get_search_statistics(self):
-            """Statistiques de substitution"""
             return {
                 'total_searches': 0,
                 'average_results': 0,
@@ -101,7 +109,8 @@ except ImportError:
                 'popular_keywords': {}
             }
 
-# Styles CSS personnalisés fusionnés
+# ========== SECTION 2: STYLES CSS ==========
+
 st.markdown("""
 <style>
     /* Styles de base */
@@ -118,6 +127,23 @@ st.markdown("""
     .main-title p {
         color: #666;
         font-size: 1.2rem;
+    }
+    
+    /* Version indicator optimisé */
+    .version-indicator {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: bold;
+        text-align: center;
+        margin: 15px auto;
+        max-width: 300px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .version-indicator.classic {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     }
     
     /* Styles pour la barre de recherche */
@@ -144,33 +170,33 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* Style pour les tags */
-    .tag {
-        display: inline-block;
-        padding: 4px 8px;
-        margin: 2px;
-        background-color: #e1ecf4;
-        border-radius: 3px;
-        font-size: 0.85em;
-        color: #39739d;
+    /* Azure status optimisé */
+    .azure-status {
+        padding: 8px;
+        border-radius: 5px;
+        margin: 5px 0;
+        font-size: 0.9em;
     }
     
-    /* Style pour la référence @ */
-    .reference-tag {
-        background-color: #ffd93d;
-        color: #6c4a00;
-        font-weight: bold;
+    .azure-connected {
+        background-color: #d4edda;
+        color: #155724;
     }
     
-    /* Indicateur de recherche */
-    .search-indicator {
-        text-align: center;
-        color: #666;
-        font-style: italic;
-        margin: 20px 0;
+    .azure-disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
     }
     
-    /* Bouton de recherche amélioré */
+    /* Sidebar optimisée */
+    .sidebar-section {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+    }
+    
+    /* Boutons optimisés */
     .stButton > button {
         background-color: #1f77b4;
         color: white;
@@ -185,770 +211,158 @@ st.markdown("""
         background-color: #1557a0;
         transform: translateY(-2px);
     }
-    
-    /* Styles pour les métriques Azure */
-    .azure-status {
-        padding: 10px;
-        border-radius: 5px;
-        margin: 5px 0;
-    }
-    
-    .azure-connected {
-        background-color: #d4edda;
-        color: #155724;
-    }
-    
-    .azure-disconnected {
-        background-color: #f8d7da;
-        color: #721c24;
-    }
-    
-    .azure-warning {
-        background-color: #fff3cd;
-        color: #856404;
-    }
-    
-    /* Style pour les highlights */
-    mark {
-        background-color: #ffd93d;
-        padding: 2px 4px;
-        border-radius: 3px;
-    }
-    
-    /* Nouveau style pour l'indicateur de version */
-    .version-indicator {
-        background-color: #ffd93d;
-        color: #6c4a00;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
-        text-align: center;
-        margin: 10px 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialisation du service de recherche
-@st.cache_resource
-def get_search_service():
-    """Initialise et retourne le service de recherche"""
-    return UniversalSearchService()
+# ========== SECTION 3: FONCTIONS AZURE ==========
 
 def init_azure_managers():
-    """Initialise les gestionnaires Azure avec logs détaillés"""
-    
-    print("=== INITIALISATION AZURE ===")
-    
-    # Vérifier d'abord si Azure est disponible
+    """Initialise les gestionnaires Azure de manière optimisée"""
     if not AZURE_AVAILABLE:
-        print(f"⚠️ Azure non disponible: {AZURE_ERROR}")
         st.session_state.azure_blob_manager = None
         st.session_state.azure_search_manager = None
         st.session_state.azure_error = AZURE_ERROR
         return
     
     # Azure Blob Manager
-    if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
-        print("Initialisation Azure Blob Manager...")
+    if 'azure_blob_manager' not in st.session_state:
         try:
-            # Vérifier d'abord si la variable d'environnement existe
-            if not os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
-                print("⚠️ AZURE_STORAGE_CONNECTION_STRING non définie")
-                st.session_state.azure_blob_manager = None
-                st.session_state.azure_blob_error = "Connection string non définie"
-            else:
+            if os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
                 from managers.azure_blob_manager import AzureBlobManager
-                
-                print("Import AzureBlobManager réussi")
-                manager = AzureBlobManager()
-                print(f"AzureBlobManager créé: {manager}")
-                
-                st.session_state.azure_blob_manager = manager
-                
-                if hasattr(manager, 'is_connected') and manager.is_connected():
-                    print("✅ Azure Blob connecté avec succès")
-                    containers = manager.list_containers()
-                    print(f"Containers trouvés: {containers}")
-                else:
-                    print("❌ Azure Blob non connecté")
-                    if hasattr(manager, 'get_connection_error'):
-                        error = manager.get_connection_error()
-                        print(f"Erreur: {error}")
-                        
-        except ImportError as e:
-            print(f"⚠️ Module azure_blob_manager non trouvé: {e}")
-            st.session_state.azure_blob_manager = None
-            st.session_state.azure_blob_error = "Module non disponible"
+                st.session_state.azure_blob_manager = AzureBlobManager()
+            else:
+                st.session_state.azure_blob_manager = None
         except Exception as e:
-            print(f"❌ Erreur fatale Azure Blob: {e}")
-            print(traceback.format_exc())
             st.session_state.azure_blob_manager = None
             st.session_state.azure_blob_error = str(e)
-    else:
-        print("Azure Blob Manager déjà initialisé")
     
-    # Azure Search Manager  
-    if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
-        print("Initialisation Azure Search Manager...")
+    # Azure Search Manager
+    if 'azure_search_manager' not in st.session_state:
         try:
-            # Vérifier d'abord si les variables d'environnement existent
-            if not os.getenv('AZURE_SEARCH_ENDPOINT') or not os.getenv('AZURE_SEARCH_KEY'):
-                print("⚠️ Variables Azure Search non définies")
-                st.session_state.azure_search_manager = None
-                st.session_state.azure_search_error = "Endpoint ou clé non définis"
-            else:
+            if os.getenv('AZURE_SEARCH_ENDPOINT') and os.getenv('AZURE_SEARCH_KEY'):
                 from managers.azure_search_manager import AzureSearchManager
-                
-                print("Import AzureSearchManager réussi")
-                manager = AzureSearchManager()
-                print(f"AzureSearchManager créé: {manager}")
-                
-                st.session_state.azure_search_manager = manager
-                
-                if hasattr(manager, 'search_client') and manager.search_client:
-                    print("✅ Azure Search connecté avec succès")
-                else:
-                    print("❌ Azure Search non connecté")
-                    if hasattr(manager, 'get_connection_error'):
-                        error = manager.get_connection_error()
-                        print(f"Erreur: {error}")
-                        
-        except ImportError as e:
-            print(f"⚠️ Module azure_search_manager non trouvé: {e}")
-            st.session_state.azure_search_manager = None
-            st.session_state.azure_search_error = "Module non disponible"
+                st.session_state.azure_search_manager = AzureSearchManager()
+            else:
+                st.session_state.azure_search_manager = None
         except Exception as e:
-            print(f"❌ Erreur fatale Azure Search: {e}")
-            print(traceback.format_exc())
             st.session_state.azure_search_manager = None
             st.session_state.azure_search_error = str(e)
-    else:
-        print("Azure Search Manager déjà initialisé")
 
-def reinit_azure():
-    """Force la réinitialisation d'Azure"""
-    print("=== RÉINITIALISATION AZURE FORCÉE ===")
-    
-    # Supprimer les managers existants
-    if 'azure_blob_manager' in st.session_state:
-        del st.session_state.azure_blob_manager
-    if 'azure_search_manager' in st.session_state:
-        del st.session_state.azure_search_manager
-    if 'azure_error' in st.session_state:
-        del st.session_state.azure_error
-    if 'azure_blob_error' in st.session_state:
-        del st.session_state.azure_blob_error
-    if 'azure_search_error' in st.session_state:
-        del st.session_state.azure_search_error
-    
-    # Réinitialiser
-    init_azure_managers()
-    
-    st.rerun()
-
-def show_azure_status_detailed():
-    """Affichage détaillé du statut Azure avec diagnostics"""
-    
-    # Vérifier si Azure est disponible globalement
-    if not AZURE_AVAILABLE:
-        st.markdown("**🚨 SDK Azure non disponible**")
-        st.warning("Les bibliothèques Azure ne sont pas installées")
-        st.caption("Installez avec : pip install azure-storage-blob azure-search-documents")
-        return
-    
-    # Test des variables d'environnement
-    conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-    search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-    search_key = os.getenv('AZURE_SEARCH_KEY')
+def show_azure_status_compact():
+    """Affichage compact du statut Azure dans la sidebar"""
+    st.markdown("### 📊 État Azure")
     
     # Azure Blob
-    st.markdown("**Azure Blob Storage**")
-    blob_manager = st.session_state.get('azure_blob_manager')
+    blob_status = "❌ Non connecté"
+    blob_class = "azure-disconnected"
+    if st.session_state.get('azure_blob_manager'):
+        if hasattr(st.session_state.azure_blob_manager, 'is_connected') and st.session_state.azure_blob_manager.is_connected():
+            blob_status = "✅ Connecté"
+            blob_class = "azure-connected"
     
-    if not conn_str:
-        st.error("❌ Connection String manquante")
-    elif st.session_state.get('azure_blob_error'):
-        st.error("❌ Erreur d'initialisation")
-        st.caption(st.session_state.get('azure_blob_error', 'Erreur inconnue'))
-    elif not blob_manager:
-        st.warning("⚠️ Manager non initialisé")
-    elif hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
-        st.success("✅ Connecté")
-        containers = blob_manager.list_containers()
-        if containers:
-            st.caption(f"{len(containers)} containers")
-        else:
-            st.caption("0 containers")
-    else:
-        st.error("❌ Non connecté")
-        if hasattr(blob_manager, 'get_connection_error'):
-            error = blob_manager.get_connection_error()
-            st.caption(error[:40] + "..." if error and len(error) > 40 else error or "Erreur inconnue")
+    st.markdown(f'<div class="azure-status {blob_class}">🗄️ Blob Storage: {blob_status}</div>', unsafe_allow_html=True)
     
     # Azure Search
-    st.markdown("**Azure Search**")
-    search_manager = st.session_state.get('azure_search_manager')
+    search_status = "❌ Non connecté"
+    search_class = "azure-disconnected"
+    doc_count = 0
     
-    if not search_endpoint or not search_key:
-        st.error("❌ Endpoint/Key manquant")
-    elif st.session_state.get('azure_search_error'):
-        st.error("❌ Erreur d'initialisation")
-        st.caption(st.session_state.get('azure_search_error', 'Erreur inconnue'))
-    elif not search_manager:
-        st.warning("⚠️ Manager non initialisé")
-    elif hasattr(search_manager, 'search_client') and search_manager.search_client:
-        st.success("✅ Connecté")
-        st.caption("Index: search-rag-juridique")
-    else:
-        st.error("❌ Non connecté")
-        if hasattr(search_manager, 'get_connection_error'):
-            error = search_manager.get_connection_error()
-            st.caption(error[:40] + "..." if error and len(error) > 40 else error or "Erreur inconnue")
+    if st.session_state.get('azure_search_manager'):
+        if hasattr(st.session_state.azure_search_manager, 'search_client') and st.session_state.azure_search_manager.search_client:
+            search_status = "✅ Connecté"
+            search_class = "azure-connected"
+            try:
+                doc_count = st.session_state.azure_search_manager.get_document_count()
+                search_status = f"✅ {doc_count:,} docs"
+            except:
+                pass
+    
+    st.markdown(f'<div class="azure-status {search_class}">🔍 Search: {search_status}</div>', unsafe_allow_html=True)
 
-def show_configuration_modal():
-    """Affiche la configuration dans un modal"""
-    with st.container():
-        st.markdown("---")
-        st.header("⚙️ Configuration")
+# ========== SECTION 4: INTERFACE UNIFIÉE ==========
+
+def show_unified_search():
+    """Affiche l'interface de recherche unifiée optimisée"""
+    if not modules or not hasattr(modules, 'recherche'):
+        st.error("❌ Module recherche unifié non disponible")
+        st.info("Vérifiez que le fichier modules/recherche.py existe")
         
-        tabs = st.tabs(["🔑 Variables", "🔧 Azure", "📦 Modules", "🧪 Tests"])
-        
-        with tabs[0]:
-            st.subheader("Variables d'environnement")
-            
-            vars_to_check = [
-                ("AZURE_STORAGE_CONNECTION_STRING", "Azure Blob Storage"),
-                ("AZURE_SEARCH_ENDPOINT", "Azure Search URL"),
-                ("AZURE_SEARCH_KEY", "Azure Search Key"),
-                ("ANTHROPIC_API_KEY", "Claude API"),
-                ("OPENAI_API_KEY", "OpenAI API"),
-                ("GOOGLE_API_KEY", "Google Gemini API")
-            ]
-            
-            for var, desc in vars_to_check:
-                col1, col2, col3 = st.columns([3, 1, 2])
-                with col1:
-                    st.text(desc)
-                with col2:
-                    if os.getenv(var):
-                        st.success("✅")
-                    else:
-                        st.error("❌")
-                with col3:
-                    if os.getenv(var):
-                        value = os.getenv(var)
-                        st.caption(f"{value[:20]}...")
-        
-        with tabs[1]:
-            st.subheader("Diagnostics Azure détaillés")
-            
-            # État global Azure
-            if not AZURE_AVAILABLE:
-                st.error("🚨 SDK Azure non disponible")
-                st.code(AZURE_ERROR)
-                st.info("Solution : Ajoutez ces lignes à requirements.txt :")
-                st.code("""azure-storage-blob==12.19.0
-azure-search-documents==11.4.0
-azure-core==1.29.5
-azure-identity==1.15.0""")
-                return
-            
-            # Azure Blob
-            with st.expander("🗄️ Azure Blob Storage", expanded=True):
-                blob_manager = st.session_state.get('azure_blob_manager')
-                
-                conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-                st.write(f"**Connection String:** {'✅ Présente' if conn_str else '❌ Manquante'}")
-                
-                if blob_manager:
-                    st.write(f"**Manager:** ✅ Initialisé")
-                    if hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
-                        st.success("✅ Connexion active")
-                        containers = blob_manager.list_containers()
-                        st.write(f"**Containers:** {len(containers)}")
-                        for container in containers[:5]:
-                            st.text(f"• {container}")
-                    else:
-                        st.error("❌ Connexion échouée")
-                        if hasattr(blob_manager, 'get_connection_error'):
-                            error = blob_manager.get_connection_error()
-                            st.error(f"**Erreur:** {error}")
-                else:
-                    st.error("❌ Manager non initialisé")
-                    if st.session_state.get('azure_blob_error'):
-                        st.caption(f"Erreur: {st.session_state.azure_blob_error}")
-            
-            # Azure Search
-            with st.expander("🔍 Azure Search", expanded=True):
-                search_manager = st.session_state.get('azure_search_manager')
-                
-                endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-                key = os.getenv('AZURE_SEARCH_KEY')
-                st.write(f"**Endpoint:** {'✅ Présent' if endpoint else '❌ Manquant'}")
-                st.write(f"**Key:** {'✅ Présente' if key else '❌ Manquante'}")
-                
-                if search_manager:
-                    st.write(f"**Manager:** ✅ Initialisé")
-                    if hasattr(search_manager, 'search_client') and search_manager.search_client:
-                        st.success("✅ Connexion active")
-                        st.write(f"**Index:** {getattr(search_manager, 'index_name', 'search-rag-juridique')}")
-                    else:
-                        st.error("❌ Connexion échouée")
-                        if hasattr(search_manager, 'get_connection_error'):
-                            error = search_manager.get_connection_error()
-                            st.error(f"**Erreur:** {error}")
-                else:
-                    st.error("❌ Manager non initialisé")
-                    if st.session_state.get('azure_search_error'):
-                        st.caption(f"Erreur: {st.session_state.azure_search_error}")
-        
-        with tabs[2]:
-            st.subheader("État des modules")
-            
-            modules_to_check = [
-                ("azure.storage.blob", "Azure Blob SDK"),
-                ("azure.search.documents", "Azure Search SDK"),
-                ("azure.core", "Azure Core"),
-                ("azure.identity", "Azure Identity"),
-                ("managers.azure_blob_manager", "Azure Blob Manager"),
-                ("managers.azure_search_manager", "Azure Search Manager"),
-                ("managers.universal_search_service", "Service de recherche"),
-                ("modules.recherche", "Module recherche unifié"),
-                ("config.app_config", "Configuration app"),
-                ("utils.helpers", "Helpers"),
-                ("utils.styles", "Styles")
-            ]
-            
-            for module, desc in modules_to_check:
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.text(desc)
-                with col2:
-                    try:
-                        __import__(module)
-                        st.success("✅")
-                    except ImportError:
-                        st.error("❌")
-        
-        with tabs[3]:
-            st.subheader("Tests de connexion")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("🧪 Tester Azure Blob", key="test_blob", use_container_width=True):
-                    test_azure_blob()
-            
-            with col2:
-                if st.button("🧪 Tester Azure Search", key="test_search", use_container_width=True):
-                    test_azure_search()
-            
-            with col3:
-                if st.button("🧪 Tester tout", key="test_all", use_container_width=True):
-                    test_azure_blob()
-                    test_azure_search()
-            
-            # Affichage des informations de configuration
-            if app_config:
-                st.markdown("---")
-                st.subheader("Configuration actuelle")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Version app:** {getattr(app_config, 'version', 'N/A')}")
-                    st.write(f"**Debug mode:** {getattr(app_config, 'debug', False)}")
-                    st.write(f"**Max file size:** {getattr(app_config, 'max_file_size_mb', 10)} MB")
-                    st.write(f"**Max files:** {getattr(app_config, 'max_files_per_upload', 5)}")
-                
-                with col2:
-                    st.write(f"**Azure Storage:** {'✅' if getattr(app_config, 'enable_azure_storage', False) else '❌'}")
-                    st.write(f"**Azure Search:** {'✅' if getattr(app_config, 'enable_azure_search', False) else '❌'}")
-                    st.write(f"**Multi-LLM:** {'✅' if getattr(app_config, 'enable_multi_llm', True) else '❌'}")
-                    st.write(f"**Email:** {'✅' if getattr(app_config, 'enable_email', False) else '❌'}")
-        
-        if st.button("❌ Fermer", key="close_config"):
-            st.session_state.show_config_modal = False
+        # Bouton pour basculer vers la version classique
+        if st.button("🔄 Utiliser la version classique"):
+            st.session_state.use_simplified_version = False
             st.rerun()
-
-def test_azure_blob():
-    """Test de connexion Azure Blob"""
-    if not AZURE_AVAILABLE:
-        st.error("❌ SDK Azure non disponible")
-        return
-        
-    with st.spinner("Test Azure Blob..."):
-        try:
-            from managers.azure_blob_manager import AzureBlobManager
-            test_manager = AzureBlobManager()
-            
-            if test_manager.is_connected():
-                containers = test_manager.list_containers()
-                st.success(f"✅ Azure Blob OK - {len(containers)} containers")
-            else:
-                error = test_manager.get_connection_error()
-                st.error(f"❌ Azure Blob KO: {error}")
-        except ImportError:
-            st.error("❌ Module azure_blob_manager non trouvé")
-        except Exception as e:
-            st.error(f"❌ Erreur test Azure Blob: {e}")
-
-def test_azure_search():
-    """Test de connexion Azure Search"""
-    if not AZURE_AVAILABLE:
-        st.error("❌ SDK Azure non disponible")
-        return
-        
-    with st.spinner("Test Azure Search..."):
-        try:
-            from managers.azure_search_manager import AzureSearchManager
-            test_manager = AzureSearchManager()
-            
-            if test_manager.search_client:
-                st.success("✅ Azure Search OK")
-                
-                # Tester le nombre de documents
-                doc_count = test_manager.get_document_count()
-                st.info(f"📄 {doc_count:,} documents dans l'index")
-                
-                # Faire une recherche test
-                with st.spinner("Test de recherche..."):
-                    results = test_manager.search("*", top=5)
-                    if results.get("results"):
-                        st.success(f"✅ Recherche OK - {len(results['results'])} résultats trouvés")
-                        # Afficher le premier résultat comme exemple
-                        if results["results"]:
-                            first_result = results["results"][0]
-                            st.caption(f"Exemple: {first_result.title[:100]}...")
-                    else:
-                        st.warning("⚠️ Aucun résultat trouvé")
-            else:
-                error = test_manager.get_connection_error()
-                st.error(f"❌ Azure Search KO: {error}")
-        except ImportError:
-            st.error("❌ Module azure_search_manager non trouvé")
-        except Exception as e:
-            st.error(f"❌ Erreur test Azure Search: {e}")
-
-# Fonction pour afficher les suggestions
-def show_search_suggestions(query: str):
-    """Affiche des suggestions basées sur la requête"""
-    suggestions = []
-    
-    if query:
-        # Suggestions de références @
-        if '@' in query and not re.search(r'@\w+', query):
-            suggestions.extend([
-                "@VINCI2024", "@SOGEPROM", "@PERINET", "@ABS001"
-            ])
-        
-        # Suggestions de types de documents
-        if len(query) > 2:
-            doc_types = ["conclusions", "plainte", "assignation", "courrier", "expertise"]
-            for doc_type in doc_types:
-                if doc_type.startswith(query.lower()):
-                    suggestions.append(doc_type)
-        
-        # Suggestions d'infractions
-        if "infraction" in query.lower() or "abus" in query.lower():
-            suggestions.extend([
-                "abus de biens sociaux", "corruption", "escroquerie"
-            ])
-    
-    if suggestions:
-        st.caption("💡 Suggestions:")
-        cols = st.columns(min(len(suggestions), 4))
-        for idx, suggestion in enumerate(suggestions[:4]):
-            with cols[idx]:
-                if st.button(suggestion, key=f"sugg_{idx}"):
-                    # Au lieu de modifier search_input, on stocke la suggestion
-                    st.session_state.selected_suggestion = query + " " + suggestion
-                    st.rerun()
-
-# Fonction principale de recherche
-async def perform_search(query: str, filters: Optional[Dict] = None):
-    """Effectue la recherche et affiche les résultats"""
-    
-    # Vérifier d'abord si Azure Search est disponible
-    if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
-        # Utiliser Azure Search directement
-        with st.spinner(f"🔍 Recherche dans {st.session_state.azure_search_manager.get_document_count():,} documents..."):
-            try:
-                # Analyser la requête
-                analysis = st.session_state.azure_search_manager.analyze_query(query)
-                
-                # Effectuer la recherche Azure
-                search_results = st.session_state.azure_search_manager.search(
-                    query=query,
-                    filters=filters,
-                    top=50,
-                    use_semantic_search=True
-                )
-                
-                # Convertir les résultats au format attendu
-                from types import SimpleNamespace
-                
-                # Créer la structure de résultats
-                results = SimpleNamespace(
-                    total_count=search_results.get("total_count", 0),
-                    documents=[],
-                    facets=search_results.get("facets", {}),
-                    suggestions=[]
-                )
-                
-                # Convertir les résultats Azure au format de l'application
-                for azure_result in search_results.get("results", []):
-                    doc = SimpleNamespace(
-                        id=azure_result.id,
-                        title=azure_result.title,
-                        content=azure_result.content,
-                        source=azure_result.source,
-                        metadata=azure_result.metadata,
-                        highlights=azure_result.highlights
-                    )
-                    results.documents.append(doc)
-                
-                # Ajouter des suggestions basées sur l'analyse
-                if analysis.get("parties"):
-                    results.suggestions.extend([f"partie:{p}" for p in analysis["parties"][:3]])
-                if analysis.get("infractions"):
-                    results.suggestions.extend([f"infraction:{i}" for i in analysis["infractions"][:2]])
-                
-                return results
-                
-            except Exception as e:
-                st.error(f"Erreur Azure Search: {str(e)}")
-                # Retourner un résultat vide
-                from types import SimpleNamespace
-                return SimpleNamespace(
-                    total_count=0,
-                    documents=[],
-                    suggestions=[],
-                    facets={}
-                )
-    else:
-        # Fallback sur le service universel
-        search_service = get_search_service()
-        
-        # Indicateur de recherche en cours
-        with st.spinner(f"🔍 Recherche en cours pour : **{query}**"):
-            try:
-                results = await search_service.search(query, filters)
-            except Exception as e:
-                st.error(f"Erreur lors de la recherche: {str(e)}")
-                # Retourner un résultat vide
-                from types import SimpleNamespace
-                results = SimpleNamespace(
-                    total_count=0,
-                    documents=[],
-                    suggestions=[],
-                    facets={}
-                )
-        
-        return results
-
-# Fonction pour afficher un résultat améliorée
-def display_result_enhanced(doc, index: int):
-    """Affiche un résultat de recherche avec highlights"""
-    with st.container():
-        col1, col2 = st.columns([10, 2])
-        
-        with col1:
-            # Titre avec numéro et score
-            score_badge = ""
-            if doc.metadata.get('score', 0) >= 20:
-                score_badge = "🔥"  # Haute pertinence
-            elif doc.metadata.get('score', 0) >= 10:
-                score_badge = "⭐"  # Pertinence moyenne
-            
-            st.markdown(f"### {index}. {doc.title} {score_badge}")
-            
-            # Afficher les métadonnées
-            metadata_cols = st.columns(4)
-            with metadata_cols[0]:
-                st.caption(f"📄 Source: {doc.source}")
-            with metadata_cols[1]:
-                st.caption(f"🆔 ID: {doc.id[:8]}...")
-            with metadata_cols[2]:
-                if doc.metadata.get('score'):
-                    st.caption(f"⭐ Score: {doc.metadata['score']:.2f}")
-            with metadata_cols[3]:
-                if doc.metadata.get('type'):
-                    st.caption(f"📁 Type: {doc.metadata['type']}")
-            
-            # Afficher les highlights s'ils existent
-            if hasattr(doc, 'highlights') and doc.highlights:
-                st.markdown("**Extraits pertinents:**")
-                for highlight in doc.highlights[:3]:
-                    st.markdown(f"> *...{highlight}...*")
-            else:
-                # Sinon, afficher un extrait du contenu
-                content_preview = doc.content[:300] + "..." if len(doc.content) > 300 else doc.content
-                st.markdown(f"<div class='result-card'>{content_preview}</div>", unsafe_allow_html=True)
-            
-            # Afficher la date si disponible
-            if doc.metadata.get('date'):
-                st.caption(f"📅 Date: {doc.metadata['date']}")
-        
-        with col2:
-            # Boutons d'action
-            if st.button("📖 Voir détails", key=f"view_{index}"):
-                st.session_state.selected_document = doc
-                st.session_state.show_document_modal = True
-            
-            if st.button("📥 Télécharger", key=f"download_{index}"):
-                # Implémenter le téléchargement
-                pass
-            
-            if st.button("🔗 Partager", key=f"share_{index}"):
-                # Implémenter le partage
-                pass
-
-def display_search_facets(facets: Dict[str, Dict[str, int]]):
-    """Affiche les facettes de recherche pour filtrage dynamique"""
-    if not facets:
         return
     
-    st.markdown("### 📊 Affiner la recherche")
-    
-    cols = st.columns(3)
-    
-    # Facette Sources
-    with cols[0]:
-        if facets.get('sources'):
-            st.markdown("**Sources**")
-            for source, count in sorted(facets['sources'].items(), key=lambda x: x[1], reverse=True)[:5]:
-                if st.checkbox(f"{source} ({count})", key=f"facet_source_{source}"):
-                    # Ajouter au filtre
-                    if 'active_filters' not in st.session_state:
-                        st.session_state.active_filters = {}
-                    st.session_state.active_filters['source'] = source
-    
-    # Facette Types
-    with cols[1]:
-        if facets.get('types'):
-            st.markdown("**Types de documents**")
-            for doc_type, count in sorted(facets['types'].items(), key=lambda x: x[1], reverse=True)[:5]:
-                type_display = doc_type.upper() if doc_type != 'unknown' else 'Non classé'
-                if st.checkbox(f"{type_display} ({count})", key=f"facet_type_{doc_type}"):
-                    # Ajouter au filtre
-                    if 'active_filters' not in st.session_state:
-                        st.session_state.active_filters = {}
-                    st.session_state.active_filters['type'] = doc_type
-    
-    # Facette Scores
-    with cols[2]:
-        if facets.get('scores'):
-            st.markdown("**Pertinence**")
-            scores = facets['scores']
-            if scores.get('high', 0) > 0:
-                if st.checkbox(f"🔥 Très pertinent ({scores['high']})", key="facet_score_high"):
-                    st.session_state.filter_high_score = True
-            if scores.get('medium', 0) > 0:
-                if st.checkbox(f"⭐ Pertinent ({scores['medium']})", key="facet_score_medium"):
-                    st.session_state.filter_medium_score = True
-            if scores.get('low', 0) > 0:
-                if st.checkbox(f"📄 Peu pertinent ({scores['low']})", key="facet_score_low"):
-                    st.session_state.filter_low_score = True
-
-def display_search_suggestions(suggestions: List[str]):
-    """Affiche les suggestions de recherche alternative"""
-    if not suggestions:
-        return
-    
-    st.markdown("### 💡 Essayez aussi")
-    
-    cols = st.columns(len(suggestions))
-    for idx, suggestion in enumerate(suggestions):
-        with cols[idx]:
-            if st.button(f"🔍 {suggestion}", key=f"suggestion_{idx}", use_container_width=True):
-                # Stocker la suggestion pour la prochaine recherche
-                st.session_state.pending_search = suggestion
-                st.rerun()
-
-def show_document_modal():
-    """Affiche le modal de détail d'un document"""
-    if st.session_state.get('show_document_modal') and st.session_state.get('selected_document'):
-        doc = st.session_state.selected_document
-        
-        with st.container():
-            st.markdown("---")
-            st.markdown(f"## 📄 {doc.title}")
-            
-            # Métadonnées
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.write(f"**Source:** {doc.source}")
-            with col2:
-                st.write(f"**Type:** {doc.metadata.get('type', 'Document')}")
-            with col3:
-                if doc.metadata.get('date'):
-                    st.write(f"**Date:** {doc.metadata['date']}")
-            
-            # Contenu complet
-            st.markdown("### Contenu")
-            
-            # Si highlights disponibles, les mettre en évidence
-            if hasattr(doc, 'highlights') and doc.highlights:
-                content_with_highlights = doc.content
-                for highlight in doc.highlights:
-                    # Mettre en surbrillance les passages
-                    content_with_highlights = content_with_highlights.replace(
-                        highlight, 
-                        f"<mark style='background-color: #ffd93d;'>{highlight}</mark>"
-                    )
-                st.markdown(content_with_highlights, unsafe_allow_html=True)
-            else:
-                st.text_area("", doc.content, height=400, disabled=True)
-            
-            # Actions
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("📥 Télécharger", key="modal_download"):
-                    # Implémenter le téléchargement
-                    pass
-            with col2:
-                if st.button("📧 Envoyer par email", key="modal_email"):
-                    # Implémenter l'envoi
-                    pass
-            with col3:
-                if st.button("❌ Fermer", key="modal_close"):
-                    st.session_state.show_document_modal = False
-                    st.session_state.selected_document = None
-                    st.rerun()
-
-# ====== NOUVELLE FONCTION POUR LA RECHERCHE UNIFIÉE ======
-def show_simplified_search():
-    """Affiche l'interface de recherche unifiée"""
     try:
-        from modules import recherche  # Module unifié
-        
         # Indicateur de version
-        st.markdown('<div class="version-indicator">✨ VERSION UNIFIÉE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="version-indicator">✨ INTERFACE UNIFIÉE</div>', unsafe_allow_html=True)
         
         # Afficher l'interface unifiée
-        recherche.show_page()
+        modules.recherche.show_page()
         
-    except ImportError as e:
-        st.error("❌ Module recherche.py non trouvé !")
-        st.info("Assurez-vous d'avoir créé le fichier modules/recherche.py avec le code unifié")
-        with st.expander("Détails de l'erreur"):
-            st.code(str(e))
     except Exception as e:
-        st.error(f"❌ Erreur lors du chargement de la recherche unifiée: {str(e)}")
+        st.error(f"❌ Erreur dans l'interface unifiée: {str(e)}")
         with st.expander("Détails de l'erreur"):
             st.code(traceback.format_exc())
+        
+        if st.button("🔄 Basculer vers la version classique"):
+            st.session_state.use_simplified_version = False
+            st.rerun()
 
-# ====== FONCTION PRINCIPALE MODIFIÉE ======
-def main():
-    """Interface principale de l'application"""
+# ========== SECTION 5: INTERFACE CLASSIQUE ==========
+
+def show_classic_search():
+    """Affiche l'interface de recherche classique"""
+    # Indicateur de version
+    st.markdown('<div class="version-indicator classic">📋 INTERFACE CLASSIQUE</div>', unsafe_allow_html=True)
     
-    print("=== DÉBUT MAIN ===")
+    # Zone de recherche principale
+    st.markdown("<div class='search-container'>", unsafe_allow_html=True)
+    
+    # Message informatif si Azure est connecté
+    if st.session_state.get('azure_search_manager'):
+        try:
+            doc_count = st.session_state.azure_search_manager.get_document_count()
+            if doc_count > 0:
+                st.info(f"🎯 **{doc_count:,} documents juridiques** disponibles pour la recherche")
+        except:
+            pass
+    
+    # Barre de recherche
+    with st.form(key="search_form", clear_on_submit=False):
+        col1, col2 = st.columns([5, 1])
+        
+        with col1:
+            search_query = st.text_input(
+                "Rechercher",
+                placeholder="Ex: @VINCI2024 conclusions, abus de biens sociaux...",
+                label_visibility="hidden",
+                key="search_input"
+            )
+        
+        with col2:
+            search_button = st.form_submit_button(
+                "🔍 Rechercher",
+                use_container_width=True,
+                type="primary"
+            )
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Effectuer la recherche
+    if search_button and search_query:
+        with st.spinner(f"🔍 Recherche en cours : **{search_query}**"):
+            # TODO: Implémenter la logique de recherche classique
+            st.info("Recherche classique en cours d'implémentation...")
+
+# ========== SECTION 6: FONCTION PRINCIPALE ==========
+
+def main():
+    """Interface principale optimisée"""
     
     # Initialisation
     initialize_session_state()
     load_custom_css()
-    
-    # FORCER l'initialisation Azure AU DÉBUT
     init_azure_managers()
     
     # Titre principal
@@ -961,531 +375,196 @@ def main():
     
     st.markdown("---")
     
-    # ====== NOUVELLE SECTION : CHOIX DE VERSION ======
-    # Barre latérale avec choix de version en premier
+    # ========== SIDEBAR OPTIMISÉE ==========
     with st.sidebar:
-        st.header("🔧 Version de l'interface")
+        # Section 1: Choix de version
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.header("🎨 Interface")
         
-        # Option de basculement entre versions
-        use_simplified = st.toggle(
-            "✨ Utiliser la version unifiée",
-            value=st.session_state.get('use_simplified_version', False),
-            help="Version optimisée avec toutes les fonctionnalités et sans redondances"
+        # Toggle pour changer de version (unifié par défaut)
+        use_classic = st.toggle(
+            "Utiliser la version classique",
+            value=not st.session_state.get('use_simplified_version', True),
+            help="Basculer vers l'interface classique"
         )
         
-        # Sauvegarder le choix
-        st.session_state.use_simplified_version = use_simplified
+        # Inverser la valeur pour la logique interne
+        st.session_state.use_simplified_version = not use_classic
         
-        if use_simplified:
-            st.info("✨ Version unifiée active")
-            st.caption("Combine le meilleur des deux versions : interface simplifiée + fonctionnalités avancées")
+        if st.session_state.use_simplified_version:
+            st.success("✨ Interface unifiée")
+            st.caption("Toutes les fonctionnalités en une seule interface")
         else:
-            st.info("📋 Version classique active")
-            st.caption("Version originale avec interface de recherche traditionnelle")
+            st.info("📋 Interface classique")
+            st.caption("Interface de recherche traditionnelle")
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown("---")
+        # Section 2: État du système
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        show_azure_status_compact()
         
-        # État du système Azure
-        st.header("📊 État du système")
-        show_azure_status_detailed()
-        
-        # Métriques
-        st.markdown("---")
-        
-        # Obtenir le nombre réel de documents depuis Azure Search
-        nb_docs_azure = 0
-        if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
-            try:
-                nb_docs_azure = st.session_state.azure_search_manager.get_document_count()
-            except:
-                nb_docs_azure = 0
-        
-        nb_docs_local = len(st.session_state.get('azure_documents', {}))
+        # Métriques simples (pas de colonnes dans la sidebar)
         nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
+        st.metric("📄 Pièces sélectionnées", nb_pieces)
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if nb_docs_azure > 0:
-                st.metric("Documents Azure", f"{nb_docs_azure:,}")
-                if nb_docs_local > 0:
-                    st.caption(f"({nb_docs_local} en local)")
-            else:
-                st.metric("Documents", nb_docs_local)
-        with col2:
-            st.metric("Pièces", nb_pieces)
+        # Section 3: Actions rapides
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.header("⚡ Actions rapides")
         
-        # Boutons utilitaires
-        st.markdown("---")
-        if st.button("🔄 Réinitialiser Azure", key="reinit_azure"):
-            reinit_azure()
+        if st.button("🔄 Réinitialiser Azure", use_container_width=True):
+            init_azure_managers()
+            st.rerun()
         
-        if st.button("⚙️ Configuration", key="show_config"):
+        if st.button("📊 État des modules", use_container_width=True):
+            st.session_state.show_modules_debug = True
+        
+        if st.button("⚙️ Configuration", use_container_width=True):
             st.session_state.show_config_modal = True
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # Test rapide de recherche
-        if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
-            if st.button("🔍 Test rapide de recherche", key="quick_search_test"):
-                with st.spinner("Recherche en cours..."):
-                    try:
-                        results = st.session_state.azure_search_manager.search("*", top=3)
-                        if results.get("results"):
-                            st.success(f"✅ {results['total_count']:,} documents trouvés")
-                            for i, doc in enumerate(results["results"][:3]):
-                                st.caption(f"{i+1}. {doc.title[:50]}...")
-                        else:
-                            st.warning("Aucun résultat")
-                    except Exception as e:
-                        st.error(f"Erreur: {str(e)}")
+        # Section 4: Outils de développement
+        with st.expander("🔧 Outils de développement"):
+            if modules:
+                # Afficher un résumé des modules
+                loaded = modules.get_loaded_modules()
+                st.write(f"**Modules chargés:** {len(loaded)}")
+                
+                # Vérifications rapides
+                if st.button("🔍 Vérifier modules", use_container_width=True):
+                    status = modules.debug_modules_status(output_to_streamlit=True)
+                    st.code(status)
+                
+                if st.button("🧪 Test recherche unifié", use_container_width=True):
+                    if hasattr(modules, 'recherche'):
+                        st.success("✅ Module recherche disponible")
+                        funcs = modules.get_module_functions_by_name('recherche')
+                        st.write(f"Fonctions: {len(funcs)}")
+                    else:
+                        st.error("❌ Module recherche non chargé")
+            else:
+                st.error("❌ Système de modules non disponible")
         
-        # Mode développeur (temporaire pour debug)
-        st.markdown("---")
-        st.subheader("🧪 Outils de diagnostic")
-        
-        # Afficher l'état Azure SDK
-        if not AZURE_AVAILABLE:
-            st.warning("⚠️ SDK Azure non disponible")
-            if st.button("📋 Voir les détails", key="show_azure_details"):
-                st.code(AZURE_ERROR)
-        
-        # NOUVEAU TOGGLE POUR VERIFY_ALL_FUNCTIONS
-        run_verification = st.toggle(
-            "🔍 Vérification complète de l'intégration",
-            value=False,
-            help="Lance une vérification approfondie de tous les modules et fonctions",
-            key="run_module_verification"
-        )
-        
-        if run_verification:
-            st.info("🔧 Lancement de la vérification complète...")
-            try:
-                import verify_all_functions
-                with st.container():
-                    verify_all_functions.verify_function_integration()
-            except ImportError:
-                st.error("❌ Le fichier verify_all_functions.py n'est pas trouvé à la racine")
-                st.info("💡 Assurez-vous d'avoir créé le fichier verify_all_functions.py à la racine du projet")
-            except Exception as e:
-                st.error(f"❌ Erreur lors de la vérification : {str(e)}")
-                with st.expander("Détails de l'erreur"):
-                    st.code(traceback.format_exc())
-        
-        # Mode développeur avancé
-        if st.checkbox("🔧 Mode développeur avancé", key="advanced_dev_mode"):
-            st.info("🛠️ Outils avancés activés")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("📋 Quick Check", key="quick_check", use_container_width=True):
-                    try:
-                        # Vérification rapide inline
-                        st.write("**Modules critiques:**")
-                        modules_to_check = ['recherche', 'advanced_features', 'analyse_ia', 'bordereau']
-                        for mod in modules_to_check:
-                            try:
-                                exec(f"import modules.{mod}")
-                                st.success(f"✅ {mod}")
-                            except:
-                                st.error(f"❌ {mod}")
-                    except Exception as e:
-                        st.error(f"Erreur: {e}")
-            
-            with col2:
-                if st.button("🔍 Test Imports", key="test_imports", use_container_width=True):
-                    try:
-                        from modules import recherche
-                        if hasattr(recherche, 'MODULE_FUNCTIONS'):
-                            st.success(f"✅ {len(recherche.MODULE_FUNCTIONS)} fonctions")
-                        else:
-                            st.error("❌ MODULE_FUNCTIONS absent")
-                    except Exception as e:
-                        st.error(f"Erreur: {e}")
-            
-            # NOUVELLE SECTION - Vérification complète des imports
-            st.markdown("---")
-            st.markdown("**🔧 Diagnostics avancés**")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("🔍 Vérifier tous les imports", key="full_import_check", use_container_width=True):
-                    with st.spinner("Vérification en cours..."):
-                        try:
-                            from check_imports import check_all_imports
-                            report = check_all_imports()
-                            
-                            # Afficher un résumé
-                            if not report['errors']:
-                                st.balloons()
-                                st.success(f"✅ Tous les imports OK ({report['total_checked']} vérifiés)")
-                            else:
-                                st.error(f"❌ {len(report['errors'])} erreurs détectées")
-                                for error in report['errors'][:3]:  # Afficher les 3 premières erreurs
-                                    st.caption(f"• {error}")
-                                if len(report['errors']) > 3:
-                                    st.caption(f"... et {len(report['errors']) - 3} autres erreurs")
-                                    
-                        except ImportError:
-                            st.error("❌ check_imports.py non trouvé")
-                            st.info("💡 Créez le fichier check_imports.py à la racine du projet")
-                        except Exception as e:
-                            st.error(f"Erreur: {str(e)}")
-            
-            with col2:
-                if st.button("📊 Rapport détaillé des imports", key="detailed_import_report", use_container_width=True):
-                    with st.spinner("Génération du rapport..."):
-                        try:
-                            # Lancer check_imports.py comme une page séparée dans un nouvel onglet
-                            st.info("💡 Pour un rapport détaillé, exécutez :")
-                            st.code("streamlit run check_imports.py")
-                            
-                            # Ou afficher un résumé inline
-                            from check_imports import check_all_imports
-                            report = check_all_imports()
-                            
-                            # Créer un rapport textuel
-                            report_text = f"""
-RAPPORT DE VÉRIFICATION DES IMPORTS
-==================================
-✅ Modules OK: {len(report['success'])}
-❌ Erreurs: {len(report['errors'])}
-⚠️ Avertissements: {len(report['warnings'])}
-DÉTAILS:
---------
-"""
-                            if report['errors']:
-                                report_text += "\nERREURS:\n"
-                                for e in report['errors']:
-                                    report_text += f"- {e}\n"
-                            
-                            # Bouton de téléchargement
-                            st.download_button(
-                                label="💾 Télécharger le rapport",
-                                data=report_text,
-                                file_name=f"rapport_imports_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                                mime="text/plain"
-                            )
-                        except Exception as e:
-                            st.error(f"Erreur: {str(e)}")
-            
-            # Afficher le contenu de session_state
-            if st.checkbox("📊 Voir session_state", key="show_session_state"):
-                st.json({k: str(v)[:100] + "..." if len(str(v)) > 100 else str(v) 
-                        for k, v in st.session_state.items()})
-        
-        # Si version classique, afficher les filtres
-        if not use_simplified:
-            # Filtres de recherche
-            st.markdown("---")
-            st.header("🔧 Filtres de recherche")
-            
-            # Filtre par type de document
-            doc_type_filter = st.selectbox(
-                "Type de document",
-                ["Tous", "CONCLUSIONS", "PLAINTE", "ASSIGNATION", "COURRIER", "EXPERTISE"],
-                index=0
-            )
-            
-            # Filtre par date
-            date_range = st.date_input(
-                "Période",
-                value=[],
-                key="date_range"
-            )
-            
-            # Filtre par partie
-            partie_filter = st.text_input(
-                "Nom de partie",
-                placeholder="Ex: VINCI, SOGEPROM..."
-            )
-            
-            # Filtre par infraction
-            infraction_filter = st.multiselect(
-                "Infractions",
-                ["Abus de biens sociaux", "Corruption", "Escroquerie", "Abus de confiance", "Blanchiment"]
-            )
-        
-        # Aide (commune aux deux versions)
+        # Section 5: Aide
         with st.expander("📚 Aide"):
-            if use_simplified:
+            if st.session_state.use_simplified_version:
                 st.markdown("""
-                **Version unifiée :**
+                **Interface unifiée :**
+                - ✅ Analyse intelligente des requêtes
+                - ✅ Enrichissement automatique
+                - ✅ Toutes les fonctionnalités intégrées
                 
-                Cette version combine :
-                - ✅ L'analyse intelligente des requêtes
-                - ✅ L'enrichissement automatique des parties
-                - ✅ L'adaptation terminologique selon la phase
-                - ✅ L'intégration de tous vos modules
-                - ✅ Les fonctionnalités avancées
-                
-                **Exemples de commandes :**
-                - `rédiger plainte contre Vinci, SOGEPROM @projet_26_05_2025`
-                - `analyser les risques @dossier_pénal`
-                - `créer bordereau @pièces_sélectionnées`
-                - `jurisprudence corruption`
-                - `synthétiser les pièces @dossier_fraude`
+                **Exemples :**
+                - `rédiger plainte contre Vinci`
+                - `analyser risques @dossier_2024`
+                - `créer bordereau`
                 """)
             else:
                 st.markdown("""
-                **Conseils de recherche:**
+                **Interface classique :**
+                - Recherche simple par mots-clés
+                - Filtres manuels
+                - Export des résultats
                 
-                🔹 **Référence dossier** : Utilisez @ suivi du code  
-                   Ex: `@VINCI2024`
-                
-                🔹 **Recherche par partie** : Nom contre Nom  
-                   Ex: `VINCI contre PERINET`
-                
-                🔹 **Type de document** : Ajoutez le type  
-                   Ex: `conclusions @VINCI2024`
-                
-                🔹 **Infractions** : Mentionnez l'infraction  
-                   Ex: `abus de biens sociaux SOGEPROM`
-                
-                🔹 **Recherche combinée** :  
-                   Ex: `@VINCI2024 conclusions corruption`
+                **Syntaxe :**
+                - `@REF` : référence dossier
+                - `type:plainte` : filtrer par type
                 """)
-            
-            # Info sur la connexion Azure
-            st.markdown("---")
-            st.markdown("**📊 État de la base de données :**")
-            if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
-                try:
-                    doc_count = st.session_state.azure_search_manager.get_document_count()
-                    st.success(f"✅ {doc_count:,} documents disponibles dans Azure Search")
-                    st.info("💡 Utilisez la barre de recherche pour explorer les documents")
-                except:
-                    st.warning("⚠️ Impossible de compter les documents")
-            else:
-                st.warning("⚠️ Azure Search non connecté")
     
-    # ====== ROUTAGE SELON LA VERSION CHOISIE ======
-    if use_simplified:
-        # Afficher la version unifiée
-        show_simplified_search()
+    # ========== CONTENU PRINCIPAL ==========
+    
+    # Afficher l'interface selon le choix
+    if st.session_state.use_simplified_version:
+        show_unified_search()
     else:
-        # Continuer avec l'interface classique
-        # Zone de recherche principale
-        st.markdown("<div class='search-container'>", unsafe_allow_html=True)
-        
-        # Message informatif si Azure est connecté
-        if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
-            try:
-                doc_count = st.session_state.azure_search_manager.get_document_count()
-                if doc_count > 0:
-                    st.info(f"🎯 **{doc_count:,} documents juridiques** disponibles pour la recherche")
-            except:
-                pass
-        
-        # Créer un conteneur pour la barre de recherche
-        search_container = st.container()
-        
-        # Gérer les valeurs initiales de recherche
-        initial_value = ""
-        if 'selected_suggestion' in st.session_state:
-            initial_value = st.session_state.selected_suggestion
-            del st.session_state.selected_suggestion
-        elif 'pending_search' in st.session_state:
-            initial_value = st.session_state.pending_search
-            del st.session_state.pending_search
-        
-        with search_container:
-            # Utilisation de form pour permettre la soumission avec Entrée
-            with st.form(key="search_form", clear_on_submit=False):
-                col1, col2 = st.columns([5, 1])
-                
-                with col1:
-                    # Champ de recherche avec placeholder informatif
-                    search_query = st.text_input(
-                        "Rechercher",
-                        value=initial_value,
-                        placeholder="Tapez votre recherche... (Ex: @VINCI2024 conclusions, abus de biens sociaux, etc.)",
-                        label_visibility="hidden",
-                        key="search_input"
-                    )
-                
-                with col2:
-                    # Bouton de recherche
-                    search_button = st.form_submit_button(
-                        "🔍 Rechercher",
-                        use_container_width=True,
-                        type="primary"
-                    )
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Afficher les suggestions (hors du form)
-        if 'search_query' not in st.session_state:
-            st.session_state.search_query = ""
-        
-        # Mettre à jour la requête si elle a changé
-        if search_query and search_query != st.session_state.search_query:
-            st.session_state.search_query = search_query
-            show_search_suggestions(search_query)
-        
-        # Construire les filtres
-        filters = {}
-        if doc_type_filter != "Tous":
-            filters['document_type'] = doc_type_filter
-        if partie_filter:
-            filters['partie'] = partie_filter
-        if infraction_filter:
-            filters['infractions'] = infraction_filter
-        if len(date_range) == 2:
-            filters['date_range'] = date_range
-        
-        # Effectuer la recherche si le bouton est cliqué ou Entrée est pressée
-        if search_button and search_query:
-            # Stocker la requête dans session state
-            st.session_state.last_search = search_query
-            st.session_state.search_results = None
-            
-            # Analyser la requête pour extraire la référence @
-            ref_match = re.search(r'@(\w+)', search_query)
-            if ref_match:
-                st.info(f"🎯 Recherche dans le dossier : **{ref_match.group(1)}**")
-            
-            # Effectuer la recherche
-            try:
-                # Essayer d'abord la recherche directe si Azure est disponible
-                if st.session_state.get('azure_search_manager') and st.session_state.azure_search_manager.is_connected():
-                    # Recherche synchrone directe via Azure
-                    analysis = st.session_state.azure_search_manager.analyze_query(search_query)
-                    
-                    # Construire les filtres Azure
-                    azure_filters = {}
-                    if filters:
-                        azure_filters = filters.copy()
-                    
-                    # Effectuer la recherche
-                    search_results = st.session_state.azure_search_manager.search(
-                        query=search_query,
-                        filters=azure_filters,
-                        top=50,
-                        use_semantic_search=True
-                    )
-                    
-                    # Convertir au format attendu
-                    from types import SimpleNamespace
-                    results = SimpleNamespace(
-                        total_count=search_results.get("total_count", 0),
-                        documents=[],
-                        facets=search_results.get("facets", {}),
-                        suggestions=[]
-                    )
-                    
-                    for azure_result in search_results.get("results", []):
-                        doc = SimpleNamespace(
-                            id=azure_result.id,
-                            title=azure_result.title,
-                            content=azure_result.content,
-                            source=azure_result.source,
-                            metadata=azure_result.metadata,
-                            highlights=azure_result.highlights
-                        )
-                        results.documents.append(doc)
-                    
-                    st.session_state.search_results = results
-                else:
-                    # Fallback sur la recherche asynchrone universelle
-                    results = asyncio.run(perform_search(search_query, filters))
-                    st.session_state.search_results = results
-                    
-            except Exception as e:
-                st.error(f"❌ Erreur lors de la recherche: {str(e)}")
-                with st.expander("Détails de l'erreur"):
-                    st.code(traceback.format_exc())
-        
-        # Afficher les résultats
-        if 'search_results' in st.session_state and st.session_state.search_results:
-            results = st.session_state.search_results
-            
-            # Statistiques de recherche
+        show_classic_search()
+    
+    # ========== MODALS ==========
+    
+    # Modal debug modules
+    if st.session_state.get('show_modules_debug'):
+        with st.container():
             st.markdown("---")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Documents trouvés", results.total_count)
-            with col2:
-                st.metric("Documents affichés", len(results.documents))
-            with col3:
-                if 'last_search' in st.session_state:
-                    st.metric("Dernière recherche", st.session_state.last_search[:20] + "...")
+            st.header("📊 État des modules")
             
-            # Afficher les suggestions si disponibles
-            if hasattr(results, 'suggestions') and results.suggestions:
-                display_search_suggestions(results.suggestions)
-            
-            # Afficher les facettes si disponibles
-            if hasattr(results, 'facets') and results.facets:
-                with st.expander("🔧 Affiner les résultats", expanded=False):
-                    display_search_facets(results.facets)
-            
-            # Afficher les résultats
-            st.markdown("## 📊 Résultats de recherche")
-            
-            if results.documents:
-                # Filtrer selon les facettes actives si nécessaire
-                filtered_docs = results.documents
-                
-                # Appliquer les filtres de score si activés
-                if st.session_state.get('filter_high_score'):
-                    filtered_docs = [d for d in filtered_docs if d.metadata.get('score', 0) >= 20]
-                elif st.session_state.get('filter_medium_score'):
-                    filtered_docs = [d for d in filtered_docs if 10 <= d.metadata.get('score', 0) < 20]
-                elif st.session_state.get('filter_low_score'):
-                    filtered_docs = [d for d in filtered_docs if d.metadata.get('score', 0) < 10]
-                
-                # Afficher les documents filtrés
-                for idx, doc in enumerate(filtered_docs, 1):
-                    display_result_enhanced(doc, idx)
-                    if idx < len(filtered_docs):
-                        st.markdown("---")
+            if modules:
+                # Utiliser la fonction de debug intégrée
+                modules.create_streamlit_debug_page()
             else:
-                st.warning("Aucun document trouvé pour cette recherche.")
+                st.error("Système de modules non disponible")
             
-            # Afficher les statistiques de recherche
-            if st.button("📊 Voir les statistiques", key="show_stats"):
-                stats = asyncio.run(get_search_service().get_search_statistics())
-                with st.expander("Statistiques de recherche", expanded=True):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Recherches totales", stats['total_searches'])
-                        st.metric("Résultats moyens", f"{stats['average_results']:.1f}")
-                    with col2:
-                        st.metric("Taille du cache", stats['cache_size'])
-                        if stats['popular_keywords']:
-                            st.write("**Mots-clés populaires:**")
-                            for keyword, count in list(stats['popular_keywords'].items())[:5]:
-                                st.write(f"• {keyword}: {count} fois")
+            if st.button("❌ Fermer", key="close_modules_debug"):
+                st.session_state.show_modules_debug = False
+                st.rerun()
     
-    # Modal de document si nécessaire (commun aux deux versions)
-    if st.session_state.get('show_document_modal'):
-        show_document_modal()
+    # Modal configuration
+    if st.session_state.get('show_config_modal'):
+        with st.container():
+            st.markdown("---")
+            st.header("⚙️ Configuration")
+            
+            tabs = st.tabs(["🔑 Variables", "🔧 Azure", "📦 Modules"])
+            
+            with tabs[0]:
+                st.subheader("Variables d'environnement")
+                vars_to_check = [
+                    ("AZURE_STORAGE_CONNECTION_STRING", "Azure Blob", "🗄️"),
+                    ("AZURE_SEARCH_ENDPOINT", "Azure Search", "🔍"),
+                    ("AZURE_SEARCH_KEY", "Azure Key", "🔑"),
+                    ("ANTHROPIC_API_KEY", "Claude API", "🤖"),
+                    ("OPENAI_API_KEY", "OpenAI API", "🧠"),
+                    ("GOOGLE_API_KEY", "Gemini API", "✨")
+                ]
+                
+                for var, desc, icon in vars_to_check:
+                    if os.getenv(var):
+                        st.success(f"{icon} {desc} ✅")
+                    else:
+                        st.error(f"{icon} {desc} ❌")
+            
+            with tabs[1]:
+                st.subheader("État Azure")
+                if not AZURE_AVAILABLE:
+                    st.error("SDK Azure non disponible")
+                    st.code(AZURE_ERROR)
+                else:
+                    # Test Blob
+                    if st.button("🧪 Tester Blob Storage"):
+                        with st.spinner("Test en cours..."):
+                            # TODO: Implémenter le test
+                            st.info("Test à implémenter")
+                    
+                    # Test Search
+                    if st.button("🧪 Tester Search"):
+                        with st.spinner("Test en cours..."):
+                            # TODO: Implémenter le test
+                            st.info("Test à implémenter")
+            
+            with tabs[2]:
+                st.subheader("Modules chargés")
+                if modules:
+                    loaded = modules.get_loaded_modules()
+                    for name in sorted(loaded.keys()):
+                        status = modules.get_module_status(name)
+                        if status['is_stub']:
+                            st.warning(f"⚠️ {name} (stub)")
+                        else:
+                            st.success(f"✅ {name} ({status['functions_count']} fonctions)")
+                else:
+                    st.error("Système de modules non disponible")
+            
+            if st.button("❌ Fermer", key="close_config"):
+                st.session_state.show_config_modal = False
+                st.rerun()
     
-    # Modal de configuration si demandé (commun aux deux versions)
-    if st.session_state.get('show_config_modal', False):
-        show_configuration_modal()
-    
-    # Footer avec informations
+    # Footer
     st.markdown("---")
     st.caption(f"Dernière mise à jour : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
-# Point d'entrée
+# ========== POINT D'ENTRÉE ==========
+
 if __name__ == "__main__":
     try:
-        # Initialiser les états de session si nécessaire
-        if 'search_history' not in st.session_state:
-            st.session_state.search_history = []
-        
-        if 'azure_documents' not in st.session_state:
-            st.session_state.azure_documents = {}
-        
-        if 'imported_documents' not in st.session_state:
-            st.session_state.imported_documents = {}
-        
-        if 'pieces_selectionnees' not in st.session_state:
-            st.session_state.pieces_selectionnees = {}
-        
-        # Lancer l'application
         main()
     except Exception as e:
         st.error("❌ ERREUR FATALE")
