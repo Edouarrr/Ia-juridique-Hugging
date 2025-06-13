@@ -17,7 +17,7 @@ modules_to_import = {
     'email': 'email',
     'explorer': 'explorer',
     'export_manager': 'export_manager',
-    'generation_longue': 'generation_longue',  # Renommé sans tiret
+    'generation_longue': 'generation_longue',
     'import_export': 'import_export',
     'integration_juridique': 'integration_juridique',
     'jurisprudence': 'jurisprudence',
@@ -28,7 +28,8 @@ modules_to_import = {
     'recherche_analyse_unifiee': 'recherche_analyse_unifiee',
     'redaction_unified': 'redaction_unified',
     'risques': 'risques',
-    'redaction': 'redaction',  # Sans accent
+    'redaction': 'redaction',
+    'redaction2': 'redaction2',  # L'ancien rédaction.py
     'synthesis': 'synthesis',
     'template': 'template',
     'timeline': 'timeline'
