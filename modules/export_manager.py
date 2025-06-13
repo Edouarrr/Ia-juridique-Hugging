@@ -45,7 +45,11 @@ except ImportError:
     st.warning("⚠️ reportlab non disponible - Export PDF désactivé")
 
 # Configuration centralisée
-from config.cahier_des_charges import STYLE_DOCUMENT, HIERARCHIE_NUMEROTATION
+try:
+    from config.cahier_des_charges import STYLE_DOCUMENT, HIERARCHIE_NUMEROTATION
+except ImportError:
+    STYLE_DOCUMENT = {}
+    HIERARCHIE_NUMEROTATION = {}
 
 # ========================= TYPES ET CONFIGURATIONS =========================
 
@@ -653,6 +657,57 @@ class WordExporter(BaseExporter):
             for col_idx, value in enumerate(row):
                 table.rows[row_idx + 1].cells[col_idx].text = str(value)
     
+    def _add_list_content(self, doc, config: ExportConfig):
+        """Ajoute une liste comme contenu"""
+        doc.add_heading(config.title, 1)
+        
+        for item in config.content:
+            if isinstance(item, dict):
+                # Dictionnaire - formater comme liste de définitions
+                for key, value in item.items():
+                    para = doc.add_paragraph()
+                    run = para.add_run(f"{key}: ")
+                    run.font.bold = True
+                    para.add_run(str(value))
+            else:
+                # Simple élément
+                doc.add_paragraph(str(item), style='List Bullet')
+    
+    def _add_dict_content(self, doc, config: ExportConfig):
+        """Ajoute un dictionnaire comme contenu"""
+        doc.add_heading(config.title, 1)
+        
+        for key, value in config.content.items():
+            if isinstance(value, (list, dict)):
+                # Structure complexe
+                doc.add_heading(str(key), 2)
+                doc.add_paragraph(json.dumps(value, indent=2, ensure_ascii=False))
+            else:
+                # Simple paire clé-valeur
+                para = doc.add_paragraph()
+                run = para.add_run(f"{key}: ")
+                run.font.bold = True
+                para.add_run(str(value))
+    
+    def _add_metadata_section(self, doc, config: ExportConfig):
+        """Ajoute une section de métadonnées"""
+        doc.add_heading("Informations du document", 2)
+        
+        for key, value in config.metadata.items():
+            if not isinstance(value, (dict, list)):
+                para = doc.add_paragraph()
+                run = para.add_run(f"{key}: ")
+                run.font.italic = True
+                para.add_run(str(value))
+        
+        doc.add_paragraph()
+    
+    def _add_toc(self, doc, config: ExportConfig):
+        """Ajoute une table des matières (placeholder)"""
+        doc.add_heading("Table des matières", 1)
+        doc.add_paragraph("(Générer avec Word : Références > Table des matières)")
+        doc.add_page_break()
+    
     def _add_header(self, doc, config: ExportConfig):
         """Ajoute un en-tête au document"""
         section = doc.sections[0]
@@ -756,6 +811,46 @@ class PDFExporter(BaseExporter):
                 elements.append(Spacer(1, 12))
         
         return elements
+    
+    def _add_metadata_pdf(self, config: ExportConfig, styles: dict) -> List:
+        """Ajoute les métadonnées au PDF"""
+        elements = []
+        
+        elements.append(Paragraph("<b>Informations du document</b>", styles['Heading2']))
+        elements.append(Spacer(1, 6))
+        
+        for key, value in config.metadata.items():
+            if not isinstance(value, (dict, list)):
+                elements.append(Paragraph(f"<i>{key}:</i> {value}", styles['Normal']))
+        
+        elements.append(Spacer(1, 12))
+        return elements
+    
+    def _add_dataframe_pdf(self, df: pd.DataFrame, styles: dict) -> List:
+        """Convertit un DataFrame en tableau PDF"""
+        elements = []
+        
+        # Préparer les données
+        data = [df.columns.tolist()]  # En-têtes
+        data.extend(df.values.tolist())
+        
+        # Créer le tableau
+        table = Table(data)
+        
+        # Style du tableau
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        elements.append(table)
+        return elements
 
 class ExcelExporter(BaseExporter):
     """Exporter pour Excel"""
@@ -809,6 +904,42 @@ class ExcelExporter(BaseExporter):
         
         if config.style_options.get('autofilter', True):
             writer.sheets[sheet_name].auto_filter.ref = writer.sheets[sheet_name].dimensions
+    
+    def _export_list(self, writer, config: ExportConfig):
+        """Exporte une liste"""
+        if all(isinstance(item, dict) for item in config.content):
+            # Liste de dictionnaires -> DataFrame
+            df = pd.DataFrame(config.content)
+        else:
+            # Liste simple
+            df = pd.DataFrame({'Valeur': config.content})
+        
+        df.to_excel(writer, sheet_name='Données', index=False)
+    
+    def _export_dict(self, writer, config: ExportConfig):
+        """Exporte un dictionnaire"""
+        # Convertir en DataFrame avec clés et valeurs
+        rows = []
+        for key, value in config.content.items():
+            if isinstance(value, (list, dict)):
+                rows.append({'Clé': key, 'Valeur': json.dumps(value, ensure_ascii=False)})
+            else:
+                rows.append({'Clé': key, 'Valeur': str(value)})
+        
+        df = pd.DataFrame(rows)
+        df.to_excel(writer, sheet_name='Données', index=False)
+    
+    def _add_metadata_sheet(self, writer, config: ExportConfig):
+        """Ajoute une feuille de métadonnées"""
+        metadata_rows = []
+        
+        for key, value in config.metadata.items():
+            if not isinstance(value, (dict, list)):
+                metadata_rows.append({'Propriété': key, 'Valeur': str(value)})
+        
+        if metadata_rows:
+            df_meta = pd.DataFrame(metadata_rows)
+            df_meta.to_excel(writer, sheet_name='Métadonnées', index=False)
     
     def _apply_formatting(self, writer, config: ExportConfig):
         """Applique le formatage Excel"""
@@ -1011,6 +1142,30 @@ class HTMLExporter(BaseExporter):
         }
     </style>
 """
+    
+    def _add_metadata_html(self, config: ExportConfig) -> str:
+        """Ajoute les métadonnées en HTML"""
+        html = '<div class="metadata">\n'
+        html += '<h2>Informations du document</h2>\n'
+        html += '<ul>\n'
+        
+        for key, value in config.metadata.items():
+            if not isinstance(value, (dict, list)):
+                html += f'<li><strong>{key}:</strong> {value}</li>\n'
+        
+        html += '</ul>\n</div>\n'
+        return html
+    
+    def _process_text_html(self, text: str) -> str:
+        """Convertit le texte en HTML avec paragraphes"""
+        lines = text.split('\n')
+        html = ''
+        
+        for line in lines:
+            if line.strip():
+                html += f'<p>{line}</p>\n'
+        
+        return html
 
 class CSVExporter(BaseExporter):
     """Exporter pour CSV"""
