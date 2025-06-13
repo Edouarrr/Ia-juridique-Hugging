@@ -1480,4 +1480,4 @@ if __name__ == "__main__":
         st.error("❌ Erreur critique")
         st.code(str(e))
         with st.expander("Détails complets"):
-            st.code(traceback.format_exc())
+            st.code(traceback.format_exc()))
