@@ -1,4 +1,4 @@
-"""Application principale avec interface optimisée et navigation intelligente"""
+""""Application principale avec interface optimisée et navigation intelligente"""
 
 import streamlit as st
 from datetime import datetime
@@ -121,7 +121,29 @@ except ImportError:
 
 modules_disponibles = {}
 
-# Module unifié de gestion des pièces (fusion de pieces_manager et selection_pieces)
+# Module unifié de recherche et analyse (REMPLACE recherche ET analyse_ia)
+try:
+    from modules.recherche_analyse_unifiee import (
+        show_page as show_recherche_analyse_page,
+        UnifiedSearchAnalysisInterface,
+        NaturalLanguageAnalyzer
+    )
+    modules_disponibles['recherche_analyse_unifiee'] = True
+    print("✅ Module recherche_analyse_unifiee chargé")
+except ImportError as e:
+    modules_disponibles['recherche_analyse_unifiee'] = False
+    print(f"❌ Module recherche_analyse_unifiee non disponible: {e}")
+
+# Module unifié d'export (NOUVEAU - remplace export_juridique)
+try:
+    from modules.export_manager import export_manager, ExportConfig
+    modules_disponibles['export_manager'] = True
+    print("✅ Module export_manager chargé")
+except ImportError as e:
+    modules_disponibles['export_manager'] = False
+    print(f"❌ Module export_manager non disponible: {e}")
+
+# Module unifié de gestion des pièces
 try:
     from modules.pieces_manager import display_pieces_interface, init_pieces_manager
     modules_disponibles['pieces_manager'] = True
@@ -131,12 +153,34 @@ try:
 except ImportError:
     modules_disponibles['pieces_manager'] = False
 
-# Module unifié d'import/export
+# Module unifié d'import/export (mis à jour pour utiliser export_manager)
 try:
-    from modules.import_export import process_import_request, process_export_request, show_import_export_interface
+    from modules.import_export import (
+        show_import_interface, 
+        show_import_export_tabs,
+        process_import_request,
+        process_export_request,
+        show_import_export_interface
+    )
     modules_disponibles['import_export'] = True
 except ImportError:
     modules_disponibles['import_export'] = False
+
+# Module explorateur de documents (NOUVEAU)
+try:
+    from modules.explorer import show_explorer_interface
+    modules_disponibles['explorer'] = True
+    print("✅ Module explorer chargé")
+except ImportError:
+    modules_disponibles['explorer'] = False
+
+# Module de génération longue (NOUVEAU)
+try:
+    from modules.generation_longue import show_generation_longue_interface
+    modules_disponibles['generation_longue'] = True
+    print("✅ Module generation_longue chargé")
+except ImportError:
+    modules_disponibles['generation_longue'] = False
 
 # Modules de gestion documentaire
 try:
@@ -145,31 +189,7 @@ try:
 except ImportError:
     modules_disponibles['dossier_penal'] = False
 
-try:
-    from modules.export_juridique import GestionnaireExport
-    modules_disponibles['export_juridique'] = True
-except ImportError:
-    modules_disponibles['export_juridique'] = False
-
-try:
-    from modules.explorer import show_explorer_interface
-    modules_disponibles['explorer'] = True
-except ImportError:
-    modules_disponibles['explorer'] = False
-
-# Modules de recherche et analyse
-try:
-    from modules.recherche import show_page as show_recherche_page
-    modules_disponibles['recherche'] = True
-except ImportError:
-    modules_disponibles['recherche'] = False
-
-try:
-    from modules.analyse_ia import show_page as show_analyse_ia
-    modules_disponibles['analyse_ia'] = True
-except ImportError:
-    modules_disponibles['analyse_ia'] = False
-
+# Module de jurisprudence (garde séparé car spécifique)
 try:
     from modules.jurisprudence import show_page as show_jurisprudence_page
     modules_disponibles['jurisprudence'] = True
@@ -188,12 +208,6 @@ try:
     modules_disponibles['generation'] = True
 except ImportError:
     modules_disponibles['generation'] = False
-
-try:
-    from modules.generation_longue import show_generation_longue_interface
-    modules_disponibles['generation_longue'] = True
-except ImportError:
-    modules_disponibles['generation_longue'] = False
 
 try:
     from modules.redaction_unified import show_page as show_redaction_unified
@@ -232,9 +246,13 @@ try:
 except ImportError:
     modules_disponibles['synthesis'] = False
 
-# Modules de communication et support
+# Modules de communication et support (bordereau mis à jour)
 try:
-    from modules.bordereau import process_bordereau_request, show_page as show_bordereau_page
+    from modules.bordereau import (
+        display_bordereau_interface,
+        process_bordereau_request,
+        show_page as show_bordereau_page
+    )
     modules_disponibles['bordereau'] = True
 except ImportError:
     modules_disponibles['bordereau'] = False
@@ -269,6 +287,13 @@ try:
     modules_disponibles['integration_juridique'] = True
 except ImportError:
     modules_disponibles['integration_juridique'] = False
+
+# Module export_juridique (gardé pour compatibilité)
+try:
+    from modules.export_juridique import GestionnaireExport
+    modules_disponibles['export_juridique'] = True
+except ImportError:
+    modules_disponibles['export_juridique'] = False
 
 # ========== SECTION 2: STYLES CSS MODERNES ==========
 
@@ -690,11 +715,14 @@ def show_modern_navigation():
         # Indicateurs de statut
         azure_connected = bool(st.session_state.get('azure_blob_manager') or st.session_state.get('azure_search_manager'))
         multi_ia = st.session_state.get('multi_ia_active', True)
+        export_manager_ok = modules_disponibles.get('export_manager', False)
+        recherche_unifiee_ok = modules_disponibles.get('recherche_analyse_unifiee', False)
         
         status_html = f"""
         <div style="display: flex; align-items: center; gap: 1rem; margin-top: 8px;">
             <span><span class="status-dot {'online' if azure_connected else 'offline'}"></span>Azure</span>
             <span><span class="status-dot {'online' if multi_ia else 'offline'}"></span>Multi-IA</span>
+            <span><span class="status-dot {'online' if recherche_unifiee_ok else 'offline'}"></span>Recherche IA</span>
         </div>
         """
         st.markdown(status_html, unsafe_allow_html=True)
@@ -709,7 +737,7 @@ def show_modern_navigation():
     if search_query and st.session_state.get('nav_search') != st.session_state.get('last_nav_search'):
         st.session_state.last_nav_search = search_query
         st.session_state.universal_search_query = search_query
-        st.session_state.current_view = 'recherche'
+        st.session_state.current_view = 'recherche_analyse'
 
 def show_modern_sidebar():
     """Affiche la sidebar moderne avec menu organisé"""
@@ -748,18 +776,13 @@ def show_modern_sidebar():
                 st.session_state.current_view = 'explorer'
                 st.session_state.current_module = 'explorer'
         
-        # Section Analyse & Recherche
-        st.markdown("#### 🔍 Analyse & Recherche")
+        # Section Recherche & Analyse IA (UNIFIÉ)
+        st.markdown("#### 🔍 Recherche & Analyse IA")
         
-        if st.button("🔍 Recherche intelligente", use_container_width=True,
-                    type="primary" if st.session_state.get('current_module') == 'recherche' else "secondary"):
-            st.session_state.current_view = 'recherche'
-            st.session_state.current_module = 'recherche'
-        
-        if st.button("📊 Analyse IA", use_container_width=True,
-                    type="primary" if st.session_state.get('current_module') == 'analyse_ia' else "secondary"):
-            st.session_state.current_view = 'analyse'
-            st.session_state.current_module = 'analyse_ia'
+        if st.button("🤖 Recherche & Analyse IA", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'recherche_analyse_unifiee' else "secondary"):
+            st.session_state.current_view = 'recherche_analyse'
+            st.session_state.current_module = 'recherche_analyse_unifiee'
         
         if st.button("⚖️ Jurisprudence", use_container_width=True,
                     type="primary" if st.session_state.get('current_module') == 'jurisprudence' else "secondary"):
@@ -779,6 +802,12 @@ def show_modern_sidebar():
                     type="primary" if st.session_state.get('current_module') == 'redaction_unified' else "secondary"):
             st.session_state.current_view = 'redaction'
             st.session_state.current_module = 'redaction_unified'
+        
+        if modules_disponibles.get('generation_longue'):
+            if st.button("📜 Documents longs", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'generation_longue' else "secondary"):
+                st.session_state.current_view = 'generation_longue'
+                st.session_state.current_module = 'generation_longue'
         
         # Section Visualisation
         st.markdown("#### 📊 Visualisation")
@@ -830,7 +859,7 @@ def show_home_page():
     
     # Hero section avec recherche universelle
     st.markdown('<div class="universal-search-hero fade-in">', unsafe_allow_html=True)
-    st.markdown("## 🔍 Recherche Intelligente Universelle")
+    st.markdown("## 🔍 Recherche Intelligente Universelle avec IA")
     st.markdown("Décrivez ce que vous voulez faire en langage naturel")
     
     query = st.text_area(
@@ -852,13 +881,15 @@ def show_home_page():
     with col3:
         if st.button("🎲 Exemple", use_container_width=True):
             examples = [
-                "Rédige une plainte avec constitution de partie civile pour abus de biens sociaux",
+                "Rédige une plainte avec constitution de partie civile pour abus de biens sociaux de 50 pages",
+                "Explore tous les documents du dossier VINCI",
                 "Analyse les risques juridiques dans le dossier @VINCI2024",
                 "Trouve la jurisprudence sur la corruption dans le secteur public",
                 "Prépare un bordereau de communication pour l'audience du 15 janvier",
                 "Compare les témoignages de Martin et Dupont dans l'affaire ABC",
                 "Import tous les documents PDF du dossier Dupont",
-                "Sélectionne toutes les pièces importantes pour la communication"
+                "Sélectionne toutes les pièces importantes pour la communication",
+                "Export le bordereau en Word avec mise en forme juridique"
             ]
             import random
             st.session_state.universal_search = random.choice(examples)
@@ -869,86 +900,106 @@ def show_home_page():
     # Workflows principaux
     st.markdown("### 🎯 Workflows principaux")
     
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        with st.container():
-            st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
-            st.markdown("#### 📎 Gestion des pièces")
-            st.markdown("Organisez et sélectionnez vos pièces")
-            if st.button("Ouvrir", key="start_pieces", use_container_width=True):
-                st.session_state.current_view = "pieces"
-                st.session_state.current_module = "pieces_manager"
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col2:
-        with st.container():
-            st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
-            st.markdown("#### 📥 Import/Export")
-            st.markdown("Importez et exportez vos documents")
-            if st.button("Ouvrir", key="start_import_export", use_container_width=True):
-                st.session_state.current_view = "import_export"
-                st.session_state.current_module = "import_export"
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col3:
-        with st.container():
-            st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
-            st.markdown("#### 📊 Analyse IA")
-            st.markdown("Analysez vos documents avec l'IA")
-            if st.button("Ouvrir", key="start_analyse", use_container_width=True):
-                st.session_state.current_view = "analyse"
-                st.session_state.current_module = "analyse_ia"
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col4:
-        with st.container():
-            st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
-            st.markdown("#### ✍️ Rédaction")
-            st.markdown("Générez des actes juridiques")
-            if st.button("Ouvrir", key="start_redaction", use_container_width=True):
-                st.session_state.current_view = "redaction"
-                st.session_state.current_module = "redaction_unified"
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Accès rapide aux modules
-    st.markdown("### ⚡ Accès rapide")
-    
-    st.markdown('<div class="quick-access-grid">', unsafe_allow_html=True)
-    
-    modules_quick = [
-        ("🔍", "Recherche", "Recherche intelligente", "recherche"),
-        ("⚖️", "Jurisprudence", "Base de jurisprudence", "jurisprudence"),
-        ("📋", "Bordereau", "Créer un bordereau", "bordereau"),
-        ("📅", "Timeline", "Chronologie des événements", "timeline"),
-        ("🔄", "Comparaison", "Comparer des documents", "comparison"),
-        ("📧", "Emails", "Gestion des emails", "email"),
-        ("⚠️", "Risques", "Analyse des risques", "risques"),
-        ("🗂️", "Explorer", "Explorer les fichiers", "explorer"),
-        ("📂", "Dossiers", "Dossiers pénaux", "dossier_penal"),
+    workflows = [
+        {
+            'icon': '📁',
+            'title': 'Gestion documentaire',
+            'description': 'Import, organisation et exploration de vos documents',
+            'modules': ['pieces_manager', 'import_export', 'explorer'],
+            'primary': 'pieces_manager'
+        },
+        {
+            'icon': '🤖',
+            'title': 'Recherche & Analyse IA',
+            'description': 'Recherchez et analysez avec l\'intelligence artificielle',
+            'modules': ['recherche_analyse_unifiee', 'jurisprudence', 'risques'],
+            'primary': 'recherche_analyse_unifiee'
+        },
+        {
+            'icon': '✍️',
+            'title': 'Rédaction avancée',
+            'description': 'Rédigez des actes juridiques standards ou longs (25-50 pages)',
+            'modules': ['redaction_unified', 'generation_longue'],
+            'primary': 'redaction_unified'
+        },
+        {
+            'icon': '📊',
+            'title': 'Visualisation & Export',
+            'description': 'Créez des bordereaux, timelines et exportez dans tous les formats',
+            'modules': ['bordereau', 'timeline', 'export_manager'],
+            'primary': 'bordereau'
+        }
     ]
     
-    cols = st.columns(3)
-    for idx, (icon, title, desc, module) in enumerate(modules_quick):
-        if modules_disponibles.get(module):
-            with cols[idx % 3]:
-                with st.container():
-                    st.markdown('<div class="module-card">', unsafe_allow_html=True)
-                    st.markdown(f'<div class="module-card-header">', unsafe_allow_html=True)
-                    st.markdown(f'<div class="module-card-icon">{icon}</div>', unsafe_allow_html=True)
-                    st.markdown(f'<h3 class="module-card-title">{title}</h3>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    st.markdown(f'<p class="module-card-description">{desc}</p>', unsafe_allow_html=True)
-                    if st.button("Ouvrir", key=f"quick_{module}", use_container_width=True):
-                        st.session_state.current_module = module
+    cols = st.columns(4)
+    for idx, workflow in enumerate(workflows):
+        with cols[idx]:
+            with st.container():
+                st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
+                st.markdown(f"#### {workflow['icon']} {workflow['title']}")
+                st.markdown(workflow['description'])
+                
+                # Vérifier la disponibilité des modules
+                available = sum(1 for m in workflow['modules'] if modules_disponibles.get(m, False))
+                total = len(workflow['modules'])
+                
+                if available > 0:
+                    st.caption(f"✅ {available}/{total} modules actifs")
+                    if st.button("Commencer", key=f"start_{workflow['primary']}", use_container_width=True):
+                        st.session_state.current_module = workflow['primary']
                         st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.caption(f"❌ Modules non disponibles")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Accès rapide aux modules (réorganisé)
+    st.markdown("### ⚡ Accès rapide aux fonctionnalités")
+    
+    # Nouvelle organisation par catégories
+    categories = {
+        "Essentiels": [
+            ("📎", "Gestion des pièces", "Organisez vos pièces et documents", "pieces_manager"),
+            ("📥", "Import/Export", "Import/Export unifié de documents", "import_export"),
+            ("🗂️", "Explorateur", "Explorez vos fichiers et sources", "explorer"),
+        ],
+        "Intelligence Artificielle": [
+            ("🤖", "Recherche & Analyse IA", "Recherche et analyse unifiées par IA", "recherche_analyse_unifiee"),
+            ("⚖️", "Jurisprudence", "Base de jurisprudence", "jurisprudence"),
+            ("⚠️", "Risques", "Analyse des risques juridiques", "risques"),
+        ],
+        "Production": [
+            ("✍️", "Rédaction", "Rédaction d'actes juridiques", "redaction_unified"),
+            ("📜", "Documents longs", "Documents de 25-50+ pages", "generation_longue"),
+            ("📋", "Bordereau", "Création de bordereaux", "bordereau"),
+            ("📅", "Timeline", "Chronologies visuelles", "timeline"),
+        ],
+        "Communication": [
+            ("📧", "Emails", "Gestion des emails", "email"),
+            ("👥", "Préparation client", "Préparez vos rendez-vous", "preparation_client"),
+            ("🔄", "Comparaison", "Comparez des documents", "comparison"),
+            ("📂", "Dossiers", "Gestion des dossiers pénaux", "dossier_penal"),
+        ]
+    }
+    
+    for cat_name, modules in categories.items():
+        st.markdown(f"#### {cat_name}")
+        cols = st.columns(4)
+        
+        for idx, (icon, title, desc, module) in enumerate(modules):
+            if modules_disponibles.get(module):
+                with cols[idx % 4]:
+                    with st.container():
+                        st.markdown('<div class="module-card">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="module-card-header">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="module-card-icon">{icon}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<h3 class="module-card-title">{title}</h3>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="module-card-description">{desc}</p>', unsafe_allow_html=True)
+                        if st.button("Ouvrir", key=f"quick_{module}", use_container_width=True):
+                            st.session_state.current_module = module
+                            st.rerun()
+                        st.markdown('</div>', unsafe_allow_html=True)
 
 # ========== SECTION 6: GESTION DE LA RECHERCHE UNIVERSELLE ==========
 
@@ -956,7 +1007,16 @@ def handle_universal_search(query: str):
     """Traite la recherche universelle et redirige vers le bon module"""
     query_lower = query.lower()
     
-    # Analyse de l'intention avec des patterns plus sophistiqués
+    # Si le module recherche unifié est disponible, l'utiliser directement
+    if modules_disponibles.get('recherche_analyse_unifiee'):
+        st.session_state.current_view = 'recherche_analyse'
+        st.session_state.current_module = 'recherche_analyse_unifiee'
+        st.session_state.universal_search_query = query
+        st.session_state.pending_query = query
+        st.rerun()
+        return
+    
+    # Sinon, utiliser l'analyse de patterns comme fallback
     patterns = {
         'import': {
             'keywords': ['import', 'importer', 'charger', 'upload', 'télécharger', 'ajouter des documents', 'pdf', 'xlsx', 'csv'],
@@ -964,9 +1024,15 @@ def handle_universal_search(query: str):
             'view': 'import_export'
         },
         'export': {
-            'keywords': ['export', 'exporter', 'télécharger', 'sauvegarder', 'extraire', 'download'],
+            'keywords': ['export', 'exporter', 'télécharger', 'sauvegarder', 'extraire', 'download', 'word', 'excel'],
             'module': 'import_export',
-            'view': 'import_export'
+            'view': 'import_export',
+            'context': 'export'
+        },
+        'explorer': {
+            'keywords': ['explore', 'explorer', 'parcourir', 'naviguer', 'fichiers', 'dossiers', 'azure'],
+            'module': 'explorer',
+            'view': 'explorer'
         },
         'pieces': {
             'keywords': ['pièce', 'document', 'fichier', 'gérer les pièces', 'organiser', 'sélectionner', 'sélection', 'communication'],
@@ -978,10 +1044,10 @@ def handle_universal_search(query: str):
             'module': 'redaction_unified',
             'view': 'redaction'
         },
-        'analyse': {
-            'keywords': ['analyser', 'analyse', 'examiner', 'étudier', 'risque', 'identifier'],
-            'module': 'analyse_ia',
-            'view': 'analyse'
+        'redaction_longue': {
+            'keywords': ['long', 'longue', '50 pages', '40 pages', '30 pages', 'exhaustif', 'détaillé', 'complet'],
+            'module': 'generation_longue',
+            'view': 'generation_longue'
         },
         'jurisprudence': {
             'keywords': ['jurisprudence', 'arrêt', 'décision', 'cour de cassation', 'juridique'],
@@ -1030,14 +1096,21 @@ def handle_universal_search(query: str):
             best_score = score
             best_match = pattern_data
     
+    # Cas spécial : documents longs
+    if any(word in query_lower for word in ['50 pages', '40 pages', 'long', 'exhaustif']):
+        best_match = patterns['redaction_longue']
+        best_score = 10  # Force le match
+    
     if best_match and best_score > 0:
         st.session_state.current_view = best_match['view']
         st.session_state.current_module = best_match['module']
         st.session_state.search_context = query
+        if 'context' in best_match:
+            st.session_state.module_context = best_match['context']
     else:
-        # Par défaut, utiliser le module de recherche
-        st.session_state.current_view = 'recherche'
-        st.session_state.current_module = 'recherche'
+        # Par défaut, utiliser le module de recherche unifié s'il existe
+        st.session_state.current_view = 'recherche_analyse'
+        st.session_state.current_module = 'recherche_analyse_unifiee'
         st.session_state.search_query = query
     
     st.rerun()
@@ -1055,17 +1128,17 @@ def show_module_content():
     module_titles = {
         'pieces_manager': "📎 Gestion des pièces",
         'import_export': "📥📤 Import/Export",
-        'analyse_ia': "📊 Analyse IA",
+        'explorer': "🗂️ Explorateur de documents",
+        'recherche_analyse_unifiee': "🤖 Recherche & Analyse IA",
         'redaction_unified': "✍️ Rédaction d'actes",
+        'generation_longue': "📜 Génération de documents longs",
         'jurisprudence': "⚖️ Recherche de jurisprudence",
         'bordereau': "📋 Création de bordereau",
         'timeline': "📅 Timeline des événements",
         'comparison': "🔄 Comparaison de documents",
         'email': "📧 Gestion des emails",
         'risques': "⚠️ Analyse des risques",
-        'recherche': "🔍 Recherche avancée",
         'dossier_penal': "📂 Dossiers pénaux",
-        'explorer': "🗂️ Explorateur de fichiers",
         'configuration': "⚙️ Configuration",
         'template': "📋 Gestion des templates",
         'preparation_client': "👥 Préparation client"
@@ -1087,10 +1160,22 @@ def show_module_content():
             display_pieces_interface()
             
         elif module == 'import_export' and modules_disponibles.get('import_export'):
-            show_import_export_interface()
+            # Utiliser la nouvelle interface avec onglets si disponible
+            if 'show_import_export_tabs' in globals():
+                show_import_export_tabs()
+            elif 'show_import_export_interface' in globals():
+                show_import_export_interface()
+            else:
+                show_import_interface()
             
-        elif module == 'analyse_ia' and modules_disponibles.get('analyse_ia'):
-            show_analyse_ia()
+        elif module == 'explorer' and modules_disponibles.get('explorer'):
+            show_explorer_interface()
+            
+        elif module == 'generation_longue' and modules_disponibles.get('generation_longue'):
+            show_generation_longue_interface()
+            
+        elif module == 'recherche_analyse_unifiee' and modules_disponibles.get('recherche_analyse_unifiee'):
+            show_recherche_analyse_page()
             
         elif module == 'redaction_unified' and modules_disponibles.get('redaction_unified'):
             show_redaction_unified()
@@ -1099,7 +1184,19 @@ def show_module_content():
             show_jurisprudence_page()
             
         elif module == 'bordereau' and modules_disponibles.get('bordereau'):
-            show_bordereau_page()
+            # Vérifier s'il y a un bordereau à afficher
+            if st.session_state.get('current_bordereau'):
+                display_bordereau_interface(
+                    st.session_state['current_bordereau'], 
+                    st.session_state.get('selected_pieces', [])
+                )
+            elif 'show_bordereau_page' in globals():
+                show_bordereau_page()
+            else:
+                st.info("Aucun bordereau actif. Sélectionnez des pièces d'abord.")
+                if st.button("📎 Aller à la gestion des pièces"):
+                    st.session_state.current_module = 'pieces_manager'
+                    st.rerun()
             
         elif module == 'timeline' and modules_disponibles.get('timeline'):
             show_timeline_page()
@@ -1113,14 +1210,8 @@ def show_module_content():
         elif module == 'risques' and modules_disponibles.get('risques'):
             display_risques_interface()
             
-        elif module == 'recherche' and modules_disponibles.get('recherche'):
-            show_recherche_page()
-            
         elif module == 'dossier_penal' and modules_disponibles.get('dossier_penal'):
             display_dossier_penal_interface()
-            
-        elif module == 'explorer' and modules_disponibles.get('explorer'):
-            show_explorer_interface()
             
         elif module == 'configuration' and modules_disponibles.get('configuration'):
             show_configuration_page()
@@ -1130,9 +1221,6 @@ def show_module_content():
             
         elif module == 'generation' and modules_disponibles.get('generation'):
             show_generation()
-            
-        elif module == 'generation_longue' and modules_disponibles.get('generation_longue'):
-            show_generation_longue_interface()
             
         elif module == 'plaidoirie' and modules_disponibles.get('plaidoirie'):
             query = st.text_input("Décrivez la plaidoirie souhaitée")
@@ -1212,9 +1300,20 @@ def main():
                 st.write(f"- Azure Blob: {'✅' if st.session_state.get('azure_blob_manager') else '❌'}")
                 st.write(f"- Azure Search: {'✅' if st.session_state.get('azure_search_manager') else '❌'}")
                 st.write(f"- Multi-IA: {'✅' if st.session_state.get('multi_ia_active') else '❌'}")
+                st.write(f"- Export Manager: {'✅' if modules_disponibles.get('export_manager') else '❌'}")
+                st.write(f"- Recherche IA unifiée: {'✅' if modules_disponibles.get('recherche_analyse_unifiee') else '❌'}")
                 st.write(f"- Vue actuelle: {st.session_state.get('current_view', 'N/A')}")
                 st.write(f"- Module actuel: {st.session_state.get('current_module', 'N/A')}")
-                st.write(f"- Gestionnaire pièces: {'✅' if st.session_state.get('gestionnaire_pieces') else '❌'}")
+                
+                # Notes d'optimisation
+                st.write("\n**Notes d'optimisation:**")
+                st.info("""
+                ✅ recherche_analyse_unifiee remplace recherche + analyse_ia
+                ✅ export_manager remplace export_juridique
+                ✅ explorer unifie la navigation
+                ✅ generation_longue complète redaction_unified
+                ✅ import_export utilise export_manager
+                """)
 
 # Point d'entrée
 if __name__ == "__main__":
