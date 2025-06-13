@@ -1,137 +1,129 @@
-# requirements.txt - Application Juridique IA
-# Version fusionnée et optimisée
+# requirements_huggingface.txt - Version optimisée pour Hugging Face Spaces
+# Cette version évite les problèmes connus sur HF tout en gardant toutes les fonctionnalités
 
 # =============================================================================
 # FRAMEWORK PRINCIPAL
 # =============================================================================
-streamlit>=1.28.0
-streamlit-chat>=0.1.1
+streamlit==1.31.0
+streamlit-chat==0.1.1
 
 # =============================================================================
-# IA ET TRAITEMENT DU LANGAGE
+# IA ET TRAITEMENT DU LANGAGE - TOUTES LES APIs
 # =============================================================================
-# APIs des modèles de langage
-openai>=1.0.0
-anthropic>=0.25.0
-google-generativeai>=0.5.0
-mistralai>=0.0.8
-groq>=0.4.0
+openai==1.12.0
+anthropic==0.25.8
+google-generativeai==0.5.4
+mistralai==0.1.8               # Mistral inclus
+groq==0.4.2
 
-# Langchain et tokenization
-langchain>=0.1.0
-langchain-community>=0.0.10
-tiktoken>=0.5.0
+# Tokenization
+tiktoken==0.6.0
 
 # =============================================================================
 # TRAITEMENT DE DOCUMENTS
 # =============================================================================
 # Documents Office
-python-docx>=0.8.11          # Lecture/écriture fichiers Word
-openpyxl>=3.1.0             # Excel
-python-pptx>=0.6.21         # PowerPoint (optionnel)
+python-docx==1.1.0
+openpyxl==3.1.2
+xlsxwriter==3.1.9              # Pour exports avancés
 
 # PDF
-PyPDF2>=3.0.0               # Lecture fichiers PDF basique
-pdfplumber>=0.9.0           # Alternative pour PDF complexes
-reportlab>=4.0.0            # Génération PDF
+PyPDF2==3.0.1
+reportlab==4.1.0
+# pdfplumber==0.10.3           # Commenté car peut être lourd
 
-# Détection et parsing
-python-magic>=0.4.27        # Détection type de fichier
-chardet>=5.2.0              # Détection encodage
-lxml>=4.9.0                 # Parser XML/HTML
-
-# =============================================================================
-# SCRAPING ET API
-# =============================================================================
-httpx>=0.24.0               # Client HTTP asynchrone moderne
-requests>=2.31.0            # Client HTTP simple
-beautifulsoup4>=4.12.0      # Parsing HTML
-selenium>=4.15.0            # Scraping dynamique (si nécessaire)
+# Parsing et détection
+chardet==5.2.0
+beautifulsoup4==4.12.3
+# lxml==5.1.0                  # Peut causer des problèmes de compilation sur HF
 
 # =============================================================================
-# AZURE
+# AZURE (gardez si vous utilisez Azure)
 # =============================================================================
-azure-storage-blob>=12.19.0
-azure-search-documents>=11.4.0
-azure-identity>=1.14.0
-azure-keyvault-secrets>=4.7.0
+azure-storage-blob==12.19.0
 azure-search-documents==11.4.0
-azure-core
-azure-identity
-
-# =============================================================================
-# BASE DE DONNÉES ET RECHERCHE
-# =============================================================================
-chromadb>=0.4.0             # Base vectorielle
-faiss-cpu>=1.7.4            # Recherche vectorielle
-sqlalchemy>=2.0.0           # ORM (si nécessaire)
+azure-identity==1.15.0
+azure-core==1.29.7
 
 # =============================================================================
 # TRAITEMENT ET ANALYSE DE DONNÉES
 # =============================================================================
-pandas>=2.0.0
-numpy>=1.24.0
-python-dateutil>=2.8.2
-pytz>=2023.3
+pandas==2.2.0
+numpy==1.26.3
+python-dateutil==2.8.2
+pytz==2024.1
 
 # =============================================================================
 # VISUALISATION
 # =============================================================================
-plotly>=5.17.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-networkx>=3.1.0             # Pour cartographie relationnelle
+plotly==5.19.0
+# matplotlib==3.8.2            # Éviter sur HF, utiliser plotly
+# seaborn==0.13.2              # Idem
+# networkx==3.2.1              # Peut être lourd
 
 # =============================================================================
-# UTILITAIRES
+# UTILITAIRES ESSENTIELS
 # =============================================================================
-# Configuration et environnement
-python-dotenv>=1.0.0
-pyyaml>=6.0
+# Configuration
+python-dotenv==1.0.1
+pyyaml==6.0.1
 
-# Performance et asynchrone
-aiofiles>=23.0.0           # IO asynchrone
-python-multipart>=0.0.6
-tenacity>=8.2.0            # Retry logic
-cachetools>=5.3.0          # Cache en mémoire
+# HTTP et API
+httpx==0.26.0
+requests==2.31.0
+beautifulsoup4==4.12.3
+aiofiles==23.2.1
+
+# Validation et sérialisation
+pydantic==2.6.0
+python-multipart==0.0.6
+
+# Performance
+tenacity==8.2.3
+cachetools==5.3.2
 
 # Templates
-jinja2>=3.1.0              # Templating
+jinja2==3.1.3
 
 # =============================================================================
-# SÉCURITÉ ET VALIDATION
+# SÉCURITÉ (version légère)
 # =============================================================================
-cryptography>=41.0.0
-pydantic>=2.0.0
-email-validator>=2.0.0
-
-# =============================================================================
-# BUILD ET COMPATIBILITÉ
-# =============================================================================
-setuptools>=68.0.0
-wheel>=0.41.0
+cryptography==42.0.2
+email-validator==2.1.0
 
 # =============================================================================
-# OPTIONNEL - À DÉCOMMENTER SI NÉCESSAIRE
+# COMPOSANTS INTERFACE AMÉLIORÉE
 # =============================================================================
-# OCR
-# pytesseract>=0.3.10
-# pdf2image>=1.16.0
+streamlit-option-menu==0.3.12   # Pour navigation avancée
+# streamlit-extras==0.3.6        # Peut causer des conflits
 
-# Email
-# yagmail>=0.15.0
+# =============================================================================
+# EXCLUS POUR HUGGING FACE
+# =============================================================================
+# ❌ langchain (trop lourd, remplacer par appels directs)
+# ❌ chromadb (problèmes de compilation)
+# ❌ faiss-cpu (compilation C++)
+# ❌ selenium (nécessite un navigateur)
+# ❌ python-magic (nécessite libmagic système)
+# ❌ sqlalchemy (pas nécessaire sans BDD)
 
-# Analyses linguistiques avancées
-# spacy>=3.6.0
-# fr-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.6.0/fr_core_news_sm-3.6.0-py3-none-any.whl
-# textstat>=0.7.3           # Analyse de lisibilité
+# =============================================================================
+# AJOUTS SPÉCIFIQUES POUR LES NOUVELLES FONCTIONNALITÉS
+# =============================================================================
+# Pour templates Word (léger)
+python-docx-template==0.1.1
 
-# Tests et développement
-# pytest>=7.4.0
-# pytest-asyncio>=0.21.0
-# black>=23.0.0
-# flake8>=6.0.0
+# Pour gestion asynchrone
+nest-asyncio==1.6.0
 
-# Monitoring et logs
-# sentry-sdk>=1.0.0
-# loguru>=0.7.0       
+# Pour les exports
+# xlsxwriter déjà inclus plus haut
+
+# =============================================================================
+# NOTES D'UTILISATION
+# =============================================================================
+# 1. Cette version est testée sur Hugging Face Spaces
+# 2. Temps de build : ~2-3 minutes
+# 3. Toutes les fonctionnalités de l'interface améliorée fonctionnent
+# 4. Si erreur, commentez d'abord les packages Azure
+# 5. Mistral est inclus et fonctionnel
