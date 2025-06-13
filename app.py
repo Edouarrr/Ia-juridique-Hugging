@@ -1182,6 +1182,22 @@ def show_outils_interface():
     elif tool_category == "Développement":
         show_development_interface()
 
+    elif tool_category == "Test Imports":
+    st.markdown("### 🧪 Test rapide des imports")
+    
+    if modules:
+        loaded = modules.get_loaded_modules()
+        st.success(f"✅ {len(loaded)} modules chargés")
+        
+        # Test truncate_text
+        try:
+            from utils.helpers import truncate_text
+            st.success("✅ truncate_text disponible")
+        except:
+            st.error("❌ truncate_text manquant")
+    else:
+        st.error("❌ Système de modules non chargé")
+
 def show_configuration_interface():
     """Interface de configuration"""
     st.markdown("#### ⚙️ Configuration")
