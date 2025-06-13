@@ -14,7 +14,7 @@ import json
 from urllib.parse import quote, urlencode
 import streamlit as st
 
-from modules.dataclasses import (
+from models.dataclasses import (
     JurisprudenceReference, 
     JurisprudenceSearch,
     DocumentJuridique,
