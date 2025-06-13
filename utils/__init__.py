@@ -3,81 +3,18 @@
 Package utils - Fonctions utilitaires pour l'application juridique
 """
 
-# Import depuis helpers
-try:
-    from .helpers import (
-        init_session_state,
-        clean_key,
-        generate_document_id,
-        analyze_query_intent,
-        extract_query_entities,
-        extract_intent_details,
-        extract_entities,
-        extract_dates,
-        format_legal_date,
-        format_date,
-        calculate_text_similarity,
-        extract_section,
-        chunk_text,
-        sanitize_filename,
-        format_file_size,
-        is_valid_email,
-        generate_summary,
-        merge_documents,
-        extract_legal_references,
-        highlight_text,
-        create_breadcrumb,
-        calculate_read_time,
-        get_file_icon,
-        format_duration,
-        validate_reference,
-        extract_monetary_amounts,
-        normalize_whitespace,
-        truncate_text
-    )
-    
-    __all__ = [
-        'init_session_state',
-        'clean_key',
-        'generate_document_id',
-        'analyze_query_intent',
-        'extract_query_entities',
-        'extract_intent_details',
-        'extract_entities',
-        'extract_dates',
-        'format_legal_date',
-        'format_date',
-        'calculate_text_similarity',
-        'extract_section',
-        'chunk_text',
-        'sanitize_filename',
-        'format_file_size',
-        'is_valid_email',
-        'generate_summary',
-        'merge_documents',
-        'extract_legal_references',
-        'highlight_text',
-        'create_breadcrumb',
-        'calculate_read_time',
-        'get_file_icon',
-        'format_duration',
-        'validate_reference',
-        'extract_monetary_amounts',
-        'normalize_whitespace',
-        'truncate_text'
-    ]
-except ImportError as e:
-    print(f"Erreur lors de l'import des helpers: {e}")
-    __all__ = []
+# Imports simplifiés par module
+from .session import initialize_session_state
+from .text_processing import *
+from .date_time import *
+from .document_utils import *
+from .legal_utils import *
+from .file_utils import *
+from .cache_manager import CacheJuridique, get_cache, cache_result, cache_streamlit
+from .formatters import *
+from .styles import load_custom_css
 
-# Import depuis styles si disponible
-try:
-    from .styles import *
-except ImportError:
-    pass
+# Alias pour compatibilité
+init_session_state = initialize_session_state
 
-# Import depuis cache_juridique si disponible  
-try:
-    from .cache_juridique import *
-except ImportError:
-    pass
+__version__ = "1.0.0"
