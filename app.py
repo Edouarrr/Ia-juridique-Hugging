@@ -1,20 +1,16 @@
-"""Application principale avec Azure Blob Storage, Search et OpenAI - Version complète intégrée"""
+"""Application IA Juridique - Version complète optimisée avec toutes les fonctionnalités"""
 
 import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit.components.v1 as components
-import time
-import json
 import os
+import time
 import logging
-from typing import Dict, List, Optional, Tuple, Any
-import hashlib
+from datetime import datetime
+import json
+from typing import Dict, List, Optional, Tuple
 import uuid
-import asyncio
+import re
+from pathlib import Path
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -22,238 +18,276 @@ logger = logging.getLogger(__name__)
 
 # Configuration de la page
 st.set_page_config(
-    page_title="IA Juridique - Droit Pénal des Affaires",
+    page_title="IA Juridique - Analyse Intelligente",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ========== SECTION AZURE - IMPORTS ET VÉRIFICATIONS ==========
-
-# Azure Blob Storage
-AZURE_BLOB_AVAILABLE = False
-AZURE_BLOB_ERROR = None
-
-try:
-    from azure.storage.blob import BlobServiceClient, ContainerClient
-    from azure.core.exceptions import ResourceNotFoundError, ClientAuthenticationError
-    AZURE_BLOB_AVAILABLE = True
-    logger.info("✅ Azure Blob Storage disponible")
-except ImportError as e:
-    AZURE_BLOB_ERROR = str(e)
-    logger.error(f"❌ Azure Blob Storage non disponible: {AZURE_BLOB_ERROR}")
-
-# Azure Search
-AZURE_SEARCH_AVAILABLE = False
-AZURE_SEARCH_ERROR = None
-
-try:
-    from azure.search.documents import SearchClient
-    from azure.search.documents.indexes import SearchIndexClient
-    from azure.search.documents.models import VectorizedQuery
-    from azure.core.credentials import AzureKeyCredential
-    AZURE_SEARCH_AVAILABLE = True
-    logger.info("✅ Azure Search disponible")
-except ImportError as e:
-    AZURE_SEARCH_ERROR = str(e)
-    logger.warning(f"⚠️ Azure Search non disponible: {AZURE_SEARCH_ERROR}")
-
-# Azure OpenAI
-AZURE_OPENAI_AVAILABLE = False
-AZURE_OPENAI_ERROR = None
-
-try:
-    from openai import AzureOpenAI
-    AZURE_OPENAI_AVAILABLE = True
-    logger.info("✅ Azure OpenAI disponible")
-except ImportError as e:
-    AZURE_OPENAI_ERROR = str(e)
-    logger.warning(f"⚠️ Azure OpenAI non disponible: {AZURE_OPENAI_ERROR}")
-
-# ========== TYPES DE DOCUMENTS JURIDIQUES ==========
-
-DOCUMENT_TYPES = {
-    'pv': {
-        'name': 'Procès-verbaux',
-        'icon': '📝',
-        'patterns': ['pv', 'proces-verbal', 'audition', 'interrogatoire', 'garde-a-vue'],
-        'extensions': ['.pdf', '.docx'],
-        'color': '#e74c3c'
-    },
-    'expertise': {
-        'name': 'Expertises',
-        'icon': '🔬',
-        'patterns': ['expertise', 'expert', 'rapport', 'analyse', 'exp-'],
-        'extensions': ['.pdf', '.docx'],
-        'color': '#3498db'
-    },
-    'contrat': {
-        'name': 'Contrats',
-        'icon': '📄',
-        'patterns': ['contrat', 'convention', 'accord', 'avenant'],
-        'extensions': ['.pdf', '.docx'],
-        'color': '#2ecc71'
-    },
-    'facture': {
-        'name': 'Factures',
-        'icon': '🧾',
-        'patterns': ['facture', 'devis', 'bon-commande', 'bc', 'fact-'],
-        'extensions': ['.pdf', '.xlsx', '.xls'],
-        'color': '#f39c12'
-    },
-    'courrier': {
-        'name': 'Correspondances',
-        'icon': '✉️',
-        'patterns': ['lettre', 'courrier', 'mail', 'email', 'correspondance'],
-        'extensions': ['.pdf', '.docx', '.msg', '.eml'],
-        'color': '#9b59b6'
-    },
-    'piece_saisie': {
-        'name': 'Pièces saisies',
-        'icon': '🔍',
-        'patterns': ['scel', 'scelle', 'saisie', 'perquisition'],
-        'extensions': ['.pdf', '.jpg', '.png'],
-        'color': '#e67e22'
-    },
-    'procedure': {
-        'name': 'Procédures',
-        'icon': '⚖️',
-        'patterns': ['proc-', 'procedure', 'ordonnance', 'requisitoire', 'jugement', 'arret'],
-        'extensions': ['.pdf'],
-        'color': '#34495e'
-    },
-    'autre': {
-        'name': 'Autres',
-        'icon': '📁',
-        'patterns': [],
-        'extensions': [],
-        'color': '#7f8c8d'
+# ========== CSS PROFESSIONNEL TONS BLEUS ==========
+st.markdown("""
+<style>
+    /* Variables de couleur - tons bleus professionnels */
+    :root {
+        --primary-blue: #1e3a5f;
+        --secondary-blue: #2c5282;
+        --light-blue: #e6f2ff;
+        --accent-blue: #4299e1;
+        --success-green: #48bb78;
+        --warning-amber: #ed8936;
+        --danger-soft: #fc8181;
+        --text-primary: #2d3748;
+        --text-secondary: #718096;
+        --border-color: #cbd5e0;
+        --bg-light: #f7fafc;
+        --hover-blue: #2b6cb0;
     }
-}
+    
+    /* Typography - polices plus petites */
+    * { font-size: 0.875rem; }
+    h1 { font-size: 1.5rem !important; color: var(--primary-blue); }
+    h2 { font-size: 1.25rem !important; color: var(--primary-blue); }
+    h3 { font-size: 1.1rem !important; color: var(--secondary-blue); }
+    h4 { font-size: 1rem !important; color: var(--secondary-blue); }
+    .stButton button { font-size: 0.875rem; }
+    
+    /* Layout compact */
+    .block-container { 
+        padding-top: 2rem; 
+        max-width: 1400px;
+    }
+    
+    /* Azure Status Cards */
+    .azure-status {
+        padding: 0.75rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+        font-size: 0.875rem;
+        border-left: 4px solid;
+        background: var(--light-blue);
+    }
+    .azure-connected { 
+        border-left-color: var(--success-green);
+        background: #e6fffa;
+    }
+    .azure-optional {
+        border-left-color: var(--warning-amber);
+        background: #fffaf0;
+    }
+    .azure-error {
+        border-left-color: var(--danger-soft);
+        background: #fff5f5;
+    }
+    
+    /* Search area avec détection @client */
+    .search-container {
+        background: var(--bg-light);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--border-color);
+        margin: 1rem 0;
+    }
+    .search-container.client-active {
+        border-color: var(--accent-blue);
+        background: var(--light-blue);
+        box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.2);
+    }
+    
+    /* Document cards */
+    .doc-card {
+        background: white;
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+    .doc-card:hover {
+        border-color: var(--accent-blue);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .doc-type-badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-right: 0.5rem;
+    }
+    
+    /* Prompt suggestions */
+    .prompt-suggestion {
+        background: var(--light-blue);
+        border: 1px solid var(--accent-blue);
+        border-radius: 0.375rem;
+        padding: 0.5rem 0.75rem;
+        margin: 0.25rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .prompt-suggestion:hover {
+        background: var(--accent-blue);
+        color: white;
+    }
+    
+    /* Boutons personnalisés */
+    .stButton > button {
+        background: white;
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        transition: all 0.2s;
+    }
+    .stButton > button:hover {
+        background: var(--light-blue);
+        border-color: var(--accent-blue);
+        color: var(--primary-blue);
+    }
+    .stButton > button[kind="primary"] {
+        background: var(--accent-blue);
+        border-color: var(--accent-blue);
+        color: white;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: var(--hover-blue);
+        border-color: var(--hover-blue);
+    }
+    
+    /* Diagnostics */
+    .diagnostic-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    .diagnostic-card {
+        background: white;
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        font-size: 0.8rem;
+    }
+    .diagnostic-card.success {
+        border-left: 4px solid var(--success-green);
+    }
+    .diagnostic-card.warning {
+        border-left: 4px solid var(--warning-amber);
+    }
+    .diagnostic-card.error {
+        border-left: 4px solid var(--danger-soft);
+    }
+    
+    /* Sidebar optimisée */
+    section[data-testid="stSidebar"] {
+        background: var(--bg-light);
+    }
+    
+    /* Réduction espaces */
+    .stTextArea > div > div > textarea {
+        font-size: 0.875rem;
+    }
+    div[data-testid="stVerticalBlock"] > div {
+        padding-bottom: 0.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def detect_document_type(filename: str) -> str:
-    """Détecte le type de document basé sur le nom et l'extension"""
-    filename_lower = filename.lower()
-    
-    # Vérifier chaque type de document
-    for doc_type, config in DOCUMENT_TYPES.items():
-        if doc_type == 'autre':
-            continue
-            
-        # Vérifier les patterns dans le nom
-        for pattern in config['patterns']:
-            if pattern in filename_lower:
-                return doc_type
-        
-        # Vérifier l'extension si aucun pattern trouvé
-        for ext in config['extensions']:
-            if filename_lower.endswith(ext):
-                # Vérification secondaire sur le contenu du nom
-                for pattern in config['patterns']:
-                    if pattern in filename_lower:
-                        return doc_type
-    
-    return 'autre'
-
-def get_documents_by_type(documents: List[Dict]) -> Dict[str, List[Dict]]:
-    """Groupe les documents par type"""
-    documents_by_type = {doc_type: [] for doc_type in DOCUMENT_TYPES.keys()}
-    
-    for doc in documents:
-        # Déterminer le type basé sur le nom ou la catégorie existante
-        if isinstance(doc, dict):
-            if 'ref' in doc:  # Document fictif existant
-                # Mapper les catégories existantes
-                if any(cat in str(doc.get('ref', '')).upper() for cat in ['PV']):
-                    doc_type = 'pv'
-                elif any(cat in str(doc.get('ref', '')).upper() for cat in ['EXP']):
-                    doc_type = 'expertise'
-                elif any(cat in str(doc.get('ref', '')).upper() for cat in ['SCEL']):
-                    doc_type = 'piece_saisie'
-                elif any(cat in str(doc.get('ref', '')).upper() for cat in ['PROC']):
-                    doc_type = 'procedure'
-                else:
-                    doc_type = detect_document_type(doc.get('titre', ''))
-            else:  # Document Azure réel
-                doc_type = detect_document_type(doc.get('name', ''))
-            
-            doc['document_type'] = doc_type
-            documents_by_type[doc_type].append(doc)
-    
-    return documents_by_type
-
-# ========== GESTIONNAIRE AZURE BLOB STORAGE (CORRIGÉ) ==========
+# ========== GESTIONNAIRES AZURE OPTIMISÉS ==========
 
 class AzureBlobManager:
-    """Gestionnaire pour Azure Blob Storage avec correction de l'erreur max_results"""
-    
+    """Gestionnaire Azure Blob Storage avec cache et gestion versions"""
     def __init__(self):
         self.connected = False
-        self.blob_service_client = None
-        self.connection_error = None
-        
-        if not AZURE_BLOB_AVAILABLE:
-            self.connection_error = "Modules Azure Blob non disponibles"
-            return
-        
-        connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        
-        if not connection_string:
-            self.connection_error = "AZURE_STORAGE_CONNECTION_STRING non définie"
-            return
+        self.error = None
+        self.client = None
+        self._containers_cache = []
+        self._blobs_cache = {}
         
         try:
-            self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-            # Test de connexion sans max_results
-            try:
-                # Tenter de lister un conteneur pour vérifier la connexion
-                containers = list(self.blob_service_client.list_containers())
-                self.connected = True
-                logger.info(f"✅ Azure Blob connecté - {len(containers)} conteneurs trouvés")
-            except StopIteration:
-                # Pas de conteneurs mais connexion OK
-                self.connected = True
-                logger.info("✅ Azure Blob connecté - Aucun conteneur")
+            conn_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+            if conn_string:
+                from azure.storage.blob import BlobServiceClient
+                self.client = BlobServiceClient.from_connection_string(conn_string)
+                # Test connexion avec timeout
+                try:
+                    containers = list(self.client.list_containers(max_results=1))
+                    self.connected = True
+                    self._load_containers_cache()
+                    logger.info("✅ Azure Blob connecté")
+                except Exception as e:
+                    self.error = f"Erreur connexion: {str(e)[:100]}"
+            else:
+                self.error = "AZURE_STORAGE_CONNECTION_STRING non configurée"
+        except ImportError:
+            self.error = "Module azure-storage-blob non installé"
         except Exception as e:
-            self.connection_error = str(e)
-            logger.error(f"❌ Erreur connexion Azure Blob: {e}")
+            self.error = str(e)[:100]
     
-    def is_connected(self):
-        return self.connected
+    def _load_containers_cache(self):
+        """Charge la liste des conteneurs en cache"""
+        if self.connected:
+            try:
+                self._containers_cache = [c.name for c in self.client.list_containers()]
+            except:
+                self._containers_cache = []
     
     def list_containers(self):
-        """Liste tous les conteneurs sans utiliser max_results"""
-        if not self.connected:
-            return []
-        try:
-            containers = []
-            # Utiliser list() pour convertir l'itérateur en liste
-            for container in self.blob_service_client.list_containers():
-                containers.append(container.name)
-            return containers
-        except Exception as e:
-            logger.error(f"Erreur liste conteneurs: {e}")
-            return []
+        return self._containers_cache
     
-    def list_blobs(self, container_name: str, prefix: str = ""):
-        """Liste les blobs dans un conteneur"""
+    def list_blobs_with_versions(self, container_name: str, show_all_versions: bool = False):
+        """Liste les blobs avec gestion des versions Word"""
         if not self.connected:
             return []
+        
+        cache_key = f"{container_name}_{show_all_versions}"
+        if cache_key in self._blobs_cache:
+            return self._blobs_cache[cache_key]
+        
         try:
-            container_client = self.blob_service_client.get_container_client(container_name)
-            blobs = []
+            container = self.client.get_container_client(container_name)
+            all_blobs = []
             
-            # Utiliser name_starts_with au lieu de prefix
-            blob_list = container_client.list_blobs(name_starts_with=prefix) if prefix else container_client.list_blobs()
-            
-            for blob in blob_list:
-                blobs.append({
+            for blob in container.list_blobs():
+                all_blobs.append({
                     'name': blob.name,
                     'size': blob.size,
                     'last_modified': blob.last_modified,
                     'content_type': blob.content_settings.content_type if blob.content_settings else None
                 })
-            return blobs
+            
+            # Grouper les documents Word par nom de base
+            if not show_all_versions:
+                word_docs = {}
+                other_docs = []
+                
+                for blob in all_blobs:
+                    if blob['name'].endswith(('.docx', '.doc')):
+                        # Extraire le nom de base (sans date/version)
+                        base_name = re.sub(r'[-_]\d{8}[-_]\d{6}', '', blob['name'])
+                        base_name = re.sub(r'[-_]v\d+', '', base_name)
+                        base_name = re.sub(r'[-_](final|draft|version\d+)', '', base_name, re.I)
+                        
+                        if base_name not in word_docs:
+                            word_docs[base_name] = []
+                        word_docs[base_name].append(blob)
+                    else:
+                        other_docs.append(blob)
+                
+                # Garder seulement la version la plus récente
+                filtered_blobs = other_docs
+                for base_name, versions in word_docs.items():
+                    latest = max(versions, key=lambda x: x['last_modified'])
+                    latest['versions_count'] = len(versions)
+                    filtered_blobs.append(latest)
+                
+                self._blobs_cache[cache_key] = filtered_blobs
+                return filtered_blobs
+            else:
+                self._blobs_cache[cache_key] = all_blobs
+                return all_blobs
         except Exception as e:
             logger.error(f"Erreur liste blobs: {e}")
             return []
@@ -263,1533 +297,1018 @@ class AzureBlobManager:
         if not self.connected:
             return None
         try:
-            blob_client = self.blob_service_client.get_blob_client(
-                container=container_name, 
-                blob=blob_name
-            )
+            blob_client = self.client.get_blob_client(container=container_name, blob=blob_name)
             return blob_client.download_blob().readall()
         except Exception as e:
-            logger.error(f"Erreur téléchargement blob: {e}")
+            logger.error(f"Erreur téléchargement: {e}")
             return None
-    
-    def upload_blob(self, container_name: str, blob_name: str, data: bytes):
-        """Upload un blob"""
-        if not self.connected:
-            return False
-        try:
-            blob_client = self.blob_service_client.get_blob_client(
-                container=container_name,
-                blob=blob_name
-            )
-            blob_client.upload_blob(data, overwrite=True)
-            return True
-        except Exception as e:
-            logger.error(f"Erreur upload blob: {e}")
-            return False
-
-# ========== GESTIONNAIRE AZURE SEARCH ==========
 
 class AzureSearchManager:
-    """Gestionnaire pour Azure Cognitive Search"""
-    
+    """Gestionnaire Azure Cognitive Search"""
     def __init__(self):
         self.connected = False
+        self.error = None
         self.search_client = None
-        self.index_client = None
-        self.connection_error = None
-        self.index_name = "juridique-documents"
-        
-        if not AZURE_SEARCH_AVAILABLE:
-            self.connection_error = "Modules Azure Search non disponibles"
-            return
-        
-        endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-        key = os.getenv('AZURE_SEARCH_KEY')
-        
-        if not endpoint or not key:
-            self.connection_error = "Configuration Azure Search manquante"
-            return
         
         try:
-            credential = AzureKeyCredential(key)
-            self.search_client = SearchClient(
-                endpoint=endpoint,
-                index_name=self.index_name,
-                credential=credential
-            )
-            self.index_client = SearchIndexClient(
-                endpoint=endpoint,
-                credential=credential
-            )
-            self.connected = True
-            logger.info("✅ Azure Search connecté")
+            endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+            key = os.getenv('AZURE_SEARCH_KEY')
+            index_name = os.getenv('AZURE_SEARCH_INDEX', 'documents')
+            
+            if endpoint and key:
+                from azure.search.documents import SearchClient
+                from azure.core.credentials import AzureKeyCredential
+                
+                self.search_client = SearchClient(
+                    endpoint=endpoint,
+                    index_name=index_name,
+                    credential=AzureKeyCredential(key)
+                )
+                # Test connexion
+                try:
+                    self.search_client.get_document_count()
+                    self.connected = True
+                    logger.info("✅ Azure Search connecté")
+                except:
+                    self.error = "Erreur de connexion à l'index"
+            else:
+                self.error = "Configuration manquante (ENDPOINT/KEY)"
+        except ImportError:
+            self.error = "Module azure-search-documents non installé"
         except Exception as e:
-            self.connection_error = str(e)
-            logger.error(f"❌ Erreur connexion Azure Search: {e}")
+            self.error = str(e)[:100]
     
-    def is_connected(self):
-        return self.connected
-    
-    def search_documents(self, query: str, filters: Dict = None, top: int = 10):
-        """Recherche de documents avec support du type"""
+    def search(self, query: str, filter_type: str = None, top: int = 10):
+        """Recherche avec filtre optionnel par type"""
         if not self.connected:
             return []
         
         try:
-            search_results = self.search_client.search(
+            search_filter = None
+            if filter_type:
+                search_filter = f"document_type eq '{filter_type}'"
+            
+            results = self.search_client.search(
                 search_text=query,
-                filter=self._build_filter(filters) if filters else None,
+                filter=search_filter,
                 top=top,
                 include_total_count=True
             )
             
-            results = []
-            for result in search_results:
-                results.append({
-                    'id': result.get('id'),
-                    'title': result.get('title'),
-                    'content': result.get('content'),
-                    'container': result.get('container'),
-                    'blob_name': result.get('blob_name'),
-                    'document_type': result.get('document_type', 'autre'),
-                    'score': result.get('@search.score'),
-                    'highlights': result.get('@search.highlights', {})
-                })
-            
-            return results
+            return [
+                {
+                    'title': r.get('title', r.get('name', 'Sans titre')),
+                    'content': r.get('content', '')[:200],
+                    'type': r.get('document_type', 'autre'),
+                    'score': r.get('@search.score', 0),
+                    'path': r.get('path', '')
+                }
+                for r in results
+            ]
         except Exception as e:
             logger.error(f"Erreur recherche: {e}")
             return []
-    
-    def _build_filter(self, filters: Dict) -> str:
-        """Construit un filtre OData avec support du type de document"""
-        filter_parts = []
-        
-        if 'container' in filters:
-            filter_parts.append(f"container eq '{filters['container']}'")
-        
-        if 'document_type' in filters:
-            filter_parts.append(f"document_type eq '{filters['document_type']}'")
-        
-        if 'date_from' in filters:
-            filter_parts.append(f"last_modified ge {filters['date_from'].isoformat()}")
-        
-        if 'date_to' in filters:
-            filter_parts.append(f"last_modified le {filters['date_to'].isoformat()}")
-        
-        return " and ".join(filter_parts) if filter_parts else None
-
-# ========== GESTIONNAIRE AZURE OPENAI ==========
 
 class AzureOpenAIManager:
-    """Gestionnaire pour Azure OpenAI"""
-    
+    """Gestionnaire Azure OpenAI"""
     def __init__(self):
         self.connected = False
+        self.error = None
         self.client = None
-        self.connection_error = None
         self.deployment_name = None
         
-        if not AZURE_OPENAI_AVAILABLE:
-            self.connection_error = "Module OpenAI non disponible"
-            return
-        
-        endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
-        key = os.getenv('AZURE_OPENAI_KEY')
-        self.deployment_name = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4')
-        
-        if not endpoint or not key:
-            self.connection_error = "Configuration Azure OpenAI manquante"
-            return
+        try:
+            endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+            key = os.getenv('AZURE_OPENAI_KEY')
+            self.deployment_name = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4')
+            
+            if endpoint and key:
+                from openai import AzureOpenAI
+                
+                self.client = AzureOpenAI(
+                    azure_endpoint=endpoint,
+                    api_key=key,
+                    api_version="2024-02-01"
+                )
+                self.connected = True
+                logger.info("✅ Azure OpenAI configuré")
+            else:
+                self.error = "Configuration manquante (ENDPOINT/KEY)"
+        except ImportError:
+            self.error = "Module openai non installé"
+        except Exception as e:
+            self.error = str(e)[:100]
+    
+    def generate_prompts(self, documents: List[Dict], context: str = "") -> List[str]:
+        """Génère des prompts basés sur les documents"""
+        if not self.connected:
+            return self._generate_default_prompts(documents)
         
         try:
-            self.client = AzureOpenAI(
-                azure_endpoint=endpoint,
-                api_key=key,
-                api_version="2024-02-01"
+            docs_summary = "\n".join([f"- {d.get('name', 'Document')}" for d in documents[:10]])
+            
+            response = self.client.chat.completions.create(
+                model=self.deployment_name,
+                messages=[
+                    {"role": "system", "content": "Vous êtes un expert juridique. Générez 5 questions pertinentes pour analyser ces documents."},
+                    {"role": "user", "content": f"Documents:\n{docs_summary}\n\nContexte: {context}"}
+                ],
+                max_tokens=300,
+                temperature=0.7
             )
-            # Test simple sans appeler models.list()
-            self.connected = True
-            logger.info("✅ Azure OpenAI configuré")
-        except Exception as e:
-            self.connection_error = str(e)
-            logger.error(f"❌ Erreur configuration Azure OpenAI: {e}")
+            
+            prompts = response.choices[0].message.content.split('\n')
+            return [p.strip() for p in prompts if p.strip()][:5]
+        except:
+            return self._generate_default_prompts(documents)
     
-    def is_connected(self):
-        return self.connected
+    def _generate_default_prompts(self, documents: List[Dict]) -> List[str]:
+        """Prompts par défaut si IA non disponible"""
+        prompts = [
+            "Analyser les contradictions entre les documents",
+            "Identifier les éléments favorables à la défense",
+            "Créer une timeline des événements",
+            "Synthétiser les points clés",
+            "Proposer une stratégie juridique"
+        ]
+        
+        # Ajouter des prompts spécifiques aux types de documents
+        doc_types = set(d.get('type', '') for d in documents if d.get('type'))
+        if 'pv' in doc_types:
+            prompts.append("Analyser les incohérences dans les procès-verbaux")
+        if 'expertise' in doc_types:
+            prompts.append("Contester les conclusions des expertises")
+        if 'contrat' in doc_types:
+            prompts.append("Vérifier la validité des contrats")
+        
+        return prompts[:8]
     
-    async def analyze_document(self, content: str, prompt: str):
-        """Analyse un document avec Azure OpenAI"""
+    def categorize_document(self, filename: str, content_preview: str = "") -> str:
+        """Catégorise un document avec l'IA"""
         if not self.connected:
-            return None
+            return self._categorize_by_rules(filename)
         
         try:
             response = self.client.chat.completions.create(
                 model=self.deployment_name,
                 messages=[
-                    {"role": "system", "content": "Vous êtes un expert en droit pénal des affaires français."},
-                    {"role": "user", "content": f"{prompt}\n\nDocument:\n{content[:4000]}"}
+                    {"role": "system", "content": "Catégorisez ce document juridique. Répondez uniquement par: pv, expertise, contrat, facture, courrier, procedure, ou autre."},
+                    {"role": "user", "content": f"Nom: {filename}\nAperçu: {content_preview[:100]}"}
                 ],
-                temperature=0.7,
-                max_tokens=2000
+                max_tokens=10,
+                temperature=0.3
             )
             
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Erreur analyse Azure OpenAI: {e}")
-            return None
-
-# ========== CONFIGURATION DES IA DISPONIBLES ==========
-
-def get_available_ais():
-    """Retourne les IA disponibles selon la configuration"""
-    ais = {
-        "GPT-3.5": {"icon": "🤖", "description": "Analyse rapide des pièces procédurales"},
-        "GPT-4": {"icon": "🧠", "description": "Analyse approfondie et contradictions dans les pièces"},
-        "Claude Opus 4": {"icon": "🎭", "description": "Argumentation basée sur les pièces du dossier"},
-        "Gemini": {"icon": "✨", "description": "Recherche exhaustive dans toutes les pièces"},
-        "Mistral": {"icon": "🌟", "description": "Analyse juridique des pièces françaises"}
-    }
+            category = response.choices[0].message.content.strip().lower()
+            valid_categories = ['pv', 'expertise', 'contrat', 'facture', 'courrier', 'procedure', 'autre']
+            
+            return category if category in valid_categories else 'autre'
+        except:
+            return self._categorize_by_rules(filename)
     
-    # Ajouter Azure OpenAI si disponible et activé
-    if AZURE_OPENAI_AVAILABLE and st.session_state.get('azure_openai_enabled', False):
-        azure_openai_manager = st.session_state.get('azure_openai_manager')
-        if azure_openai_manager and azure_openai_manager.is_connected():
-            ais["Azure OpenAI"] = {
-                "icon": "☁️", 
-                "description": "IA sécurisée Microsoft", 
-            }
-    
-    return ais
+    def _categorize_by_rules(self, filename: str) -> str:
+        """Catégorisation par règles si IA non disponible"""
+        filename_lower = filename.lower()
+        
+        if any(term in filename_lower for term in ['pv', 'proces-verbal', 'audition']):
+            return 'pv'
+        elif any(term in filename_lower for term in ['expertise', 'expert', 'rapport']):
+            return 'expertise'
+        elif any(term in filename_lower for term in ['contrat', 'convention', 'accord']):
+            return 'contrat'
+        elif any(term in filename_lower for term in ['facture', 'devis', 'bon']):
+            return 'facture'
+        elif any(term in filename_lower for term in ['lettre', 'courrier', 'mail']):
+            return 'courrier'
+        elif any(term in filename_lower for term in ['procedure', 'jugement', 'ordonnance']):
+            return 'procedure'
+        else:
+            return 'autre'
 
-# Base de données enrichie avec les pièces du dossier (conservée)
-DOSSIERS_CLIENTS = {
-    "lesueur": {
-        "info": {
-            "nom": "M. Lesueur",
-            "affaire": "ABS SAS TechFinance", 
-            "qualification": "Abus de biens sociaux - Art. 314-1",
-            "statut": "Mis en examen",
-            "audience": "15/02/2024 - Tribunal correctionnel",
-            "montant": "450 000 €"
-        },
-        "pieces": {
-            "PV": [
-                {"ref": "PV-001", "titre": "PV audition garde à vue Lesueur", "date": "10/01/2024", "pages": 45},
-                {"ref": "PV-002", "titre": "PV perquisition siège social", "date": "08/01/2024", "pages": 23},
-                {"ref": "PV-003", "titre": "PV audition comptable société", "date": "12/01/2024", "pages": 18}
-            ],
-            "Expertises": [
-                {"ref": "EXP-001", "titre": "Rapport expertise comptable", "date": "20/01/2024", "pages": 156},
-                {"ref": "EXP-002", "titre": "Analyse flux financiers 2022-2023", "date": "22/01/2024", "pages": 89}
-            ],
-            "Documents_saisis": [
-                {"ref": "SCEL-001", "titre": "Relevés bancaires SAS TechFinance", "periode": "2022-2023", "pages": 234},
-                {"ref": "SCEL-002", "titre": "Factures litigieuses", "nombre": 47, "pages": 94},
-                {"ref": "SCEL-003", "titre": "Contrats prestations fictives", "nombre": 12, "pages": 156},
-                {"ref": "SCEL-004", "titre": "Emails direction", "nombre": 1247, "pages": 890}
-            ],
-            "Procedures": [
-                {"ref": "PROC-001", "titre": "Ordonnance de mise en examen", "date": "15/01/2024", "pages": 8},
-                {"ref": "PROC-002", "titre": "Réquisitoire supplétif", "date": "25/01/2024", "pages": 12}
-            ]
-        }
-    },
-    "martin": {
-        "info": {
-            "nom": "Mme Martin",
-            "affaire": "Blanchiment réseau crypto",
-            "qualification": "Blanchiment aggravé - Art. 324-1",
-            "statut": "Témoin assisté", 
-            "audience": "20/02/2024 - Juge d'instruction",
-            "montant": "2.3 M€"
-        },
-        "pieces": {
-            "PV": [
-                {"ref": "PV-101", "titre": "PV audition libre Martin", "date": "05/01/2024", "pages": 28},
-                {"ref": "PV-102", "titre": "PV exploitation données blockchain", "date": "15/01/2024", "pages": 167}
-            ],
-            "Expertises": [
-                {"ref": "EXP-101", "titre": "Rapport TRACFIN", "date": "01/12/2023", "pages": 43},
-                {"ref": "EXP-102", "titre": "Expertise crypto-actifs", "date": "18/01/2024", "pages": 78}
-            ],
-            "Documents_saisis": [
-                {"ref": "SCEL-101", "titre": "Wallets crypto identifiés", "nombre": 23, "pages": 145},
-                {"ref": "SCEL-102", "titre": "Virements SEPA suspects", "nombre": 156, "pages": 312}
-            ],
-            "Procedures": [
-                {"ref": "PROC-101", "titre": "Convocation témoin assisté", "date": "10/01/2024", "pages": 3}
-            ]
-        }
-    },
-    "dupont": {
-        "info": {
-            "nom": "M. Dupont", 
-            "affaire": "Corruption marché public BTP",
-            "qualification": "Corruption active agent public",
-            "statut": "Mis en examen",
-            "audience": "25/02/2024 - Chambre de l'instruction",
-            "montant": "1.8 M€"
-        },
-        "pieces": {
-            "PV": [
-                {"ref": "PV-201", "titre": "PV interpellation Dupont", "date": "03/01/2024", "pages": 15},
-                {"ref": "PV-202", "titre": "PV écoutes téléphoniques", "date": "Déc 2023", "pages": 456}
-            ],
-            "Expertises": [
-                {"ref": "EXP-201", "titre": "Analyse marchés publics truqués", "date": "20/01/2024", "pages": 234}
-            ],
-            "Documents_saisis": [
-                {"ref": "SCEL-201", "titre": "Cahiers des charges modifiés", "nombre": 8, "pages": 89},
-                {"ref": "SCEL-202", "titre": "Versements occultes", "nombre": 34, "pages": 67}
-            ],
-            "Procedures": [
-                {"ref": "PROC-201", "titre": "Commission rogatoire internationale", "date": "15/01/2024", "pages": 23}
-            ]
-        }
-    }
+# ========== TYPES DE DOCUMENTS ==========
+
+DOCUMENT_TYPES = {
+    'pv': {'name': 'Procès-verbaux', 'icon': '📝', 'color': '#2c5282'},
+    'expertise': {'name': 'Expertises', 'icon': '🔬', 'color': '#2d3748'},
+    'contrat': {'name': 'Contrats', 'icon': '📄', 'color': '#38a169'},
+    'facture': {'name': 'Factures', 'icon': '🧾', 'color': '#d69e2e'},
+    'courrier': {'name': 'Correspondances', 'icon': '✉️', 'color': '#805ad5'},
+    'procedure': {'name': 'Procédures', 'icon': '⚖️', 'color': '#e53e3e'},
+    'autre': {'name': 'Autres', 'icon': '📁', 'color': '#718096'}
 }
 
-# ========== FUSION DES DOCUMENTS AZURE ET FICTIFS ==========
+# ========== JAVASCRIPT POUR RECHERCHE NATURELLE ==========
 
-def get_merged_clients_data():
-    """Fusionne les dossiers clients fictifs avec les vrais dossiers Azure"""
-    merged_data = dict(DOSSIERS_CLIENTS)  # Copie des données fictives
-    
-    # Si Azure est connecté, ajouter les vrais dossiers
-    blob_manager = st.session_state.get('azure_blob_manager')
-    if blob_manager and blob_manager.is_connected():
-        containers = blob_manager.list_containers()
-        
-        for container in containers:
-            # Éviter les doublons
-            container_key = container.lower().replace('-', '_').replace(' ', '_')
-            if container_key not in merged_data:
-                # Récupérer les blobs
-                blobs = blob_manager.list_blobs(container)
+SEARCH_JAVASCRIPT = """
+<script>
+(function() {
+    // Fonction pour gérer la recherche avec @client et Entrée simple
+    function setupEnhancedSearch() {
+        const searchInterval = setInterval(() => {
+            const textarea = document.querySelector('textarea[aria-label="search_area"]');
+            if (!textarea) return;
+            
+            clearInterval(searchInterval);
+            
+            // Détection du @ et mise en évidence
+            textarea.addEventListener('input', function(e) {
+                const value = e.target.value;
                 
-                # Organiser par type
-                pieces_by_category = {}
-                for blob in blobs:
-                    doc_type = detect_document_type(blob['name'])
-                    category = DOCUMENT_TYPES[doc_type]['name']
-                    
-                    if category not in pieces_by_category:
-                        pieces_by_category[category] = []
-                    
-                    pieces_by_category[category].append({
-                        "ref": f"AZ-{len(pieces_by_category[category])+1:03d}",
-                        "titre": blob['name'],
-                        "date": blob['last_modified'].strftime("%d/%m/%Y") if blob['last_modified'] else "N/A",
-                        "pages": "N/A",
-                        "azure_path": f"{container}/{blob['name']}",
-                        "size": blob['size']
-                    })
-                
-                # Créer l'entrée du client
-                merged_data[container_key] = {
-                    "info": {
-                        "nom": container.title(),
-                        "affaire": f"Dossier Azure - {container}",
-                        "qualification": "À déterminer",
-                        "statut": "En cours",
-                        "audience": "Non définie",
-                        "montant": "N/A",
-                        "source": "azure"
-                    },
-                    "pieces": pieces_by_category
+                if (value.startsWith('@')) {
+                    textarea.style.borderColor = '#4299e1';
+                    textarea.style.borderWidth = '2px';
+                    textarea.style.backgroundColor = '#e6f2ff';
+                } else {
+                    textarea.style.borderColor = '';
+                    textarea.style.borderWidth = '';
+                    textarea.style.backgroundColor = '';
                 }
-    
-    return merged_data
-
-# Suggestions de prompts basées sur les pièces (conservée)
-def generate_piece_based_prompts(client_key, pieces):
-    """Génère des prompts basés sur les pièces du dossier"""
-    prompts = []
-    
-    # Adaptation pour gérer les deux formats (fictif et Azure)
-    for category, items in pieces.items():
-        if items and len(items) > 0:
-            # Prompts génériques basés sur la catégorie
-            if 'PV' in category or 'Procès' in category:
-                prompts.append(f"Analyser contradictions dans les procès-verbaux")
-                prompts.append(f"Identifier points faibles des PV")
-            elif 'Expert' in category:
-                prompts.append(f"Contester conclusions des expertises")
-                prompts.append(f"Extraire éléments favorables des rapports")
-            elif 'saisi' in category.lower():
-                prompts.append(f"Analyser pièces saisies pour éléments à décharge")
-                prompts.append(f"Vérifier authenticité des documents saisis")
-    
-    # Prompts spécifiques si pièces identifiées
-    for category, items in pieces.items():
-        if items:
-            for item in items[:2]:  # Limiter à 2 par catégorie
-                titre = item.get('titre', 'Document')
-                ref = item.get('ref', 'REF')
-                prompts.append(f"Analyser {titre} ({ref})")
-    
-    return prompts[:8]  # Limiter le nombre total
-
-# Questions basées sur les pièces pour la préparation (conservée et adaptée)
-def generate_piece_based_questions(module_theme, pieces, client_info):
-    """Génère des questions basées sur les pièces spécifiques du dossier"""
-    questions = []
-    
-    # Questions génériques adaptables
-    for category, items in pieces.items():
-        if items:
-            if 'PV' in category or 'procès' in category.lower():
-                for item in items[:2]:
-                    questions.append(f"❓ Dans {item.get('titre', 'le document')} ({item.get('ref', 'REF')}), comment expliquez-vous les faits mentionnés ?")
+            });
             
-            elif 'expert' in category.lower():
-                for item in items[:1]:
-                    questions.append(f"❓ Le rapport {item.get('titre', 'expertise')} soulève des questions. Quelle est votre position ?")
+            // Validation avec Entrée simple (pas Cmd+Entrée)
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    
+                    // Trouver et cliquer le bouton Analyser
+                    const buttons = document.querySelectorAll('button');
+                    for (const button of buttons) {
+                        if (button.textContent.includes('Analyser')) {
+                            button.click();
+                            break;
+                        }
+                    }
+                }
+            });
             
-            elif 'saisi' in category.lower():
-                for item in items[:1]:
-                    questions.append(f"❓ Les documents saisis ({item.get('ref', 'REF')}) nécessitent des explications. Qu'en dites-vous ?")
-    
-    return questions[:6]  # Limiter le nombre
-
-# ========== FONCTION CSS OPTIMISÉE ==========
-def load_custom_css():
-    st.markdown("""
-    <style>
-    /* Variables CSS adaptées au pénal des affaires */
-    :root {
-        --primary-color: #1a1a2e;
-        --secondary-color: #16213e;
-        --accent-color: #e94560;
-        --success-color: #0f3460;
-        --warning-color: #f39c12;
-        --danger-color: #c0392b;
-        --text-primary: #2c3e50;
-        --text-secondary: #7f8c8d;
-        --border-color: #bdc3c7;
-        --hover-color: #ecf0f1;
-        --background-light: #f8f9fa;
-        --ai-selected: #e94560;
-        --ai-hover: #c0392b;
-        --penal-bg: #fef5f5;
-        --client-bg: #e8f5e9;
-        --piece-bg: #fff3cd;
-        --azure-color: #0078d4;
+            // Focus automatique
+            if (document.activeElement !== textarea) {
+                textarea.focus();
+            }
+        }, 100);
     }
     
-    /* Services Azure */
-    .azure-service {
-        background: #f0f8ff;
-        border: 1px solid var(--azure-color);
-        border-radius: 8px;
-        padding: 12px;
-        margin: 8px 0;
-    }
+    // Lancer au chargement et à chaque mutation
+    setupEnhancedSearch();
     
-    .azure-service.connected {
-        border-left: 4px solid #28a745;
-    }
+    const observer = new MutationObserver(() => {
+        setupEnhancedSearch();
+    });
     
-    .azure-service.disconnected {
-        border-left: 4px solid #dc3545;
-    }
-    
-    .azure-service.optional {
-        border-left: 4px solid #ffc107;
-    }
-    
-    /* Pièces du dossier */
-    .piece-card {
-        background: var(--piece-bg);
-        border: 1px solid #ffc107;
-        border-radius: 6px;
-        padding: 10px;
-        margin: 5px 0;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .piece-card:hover {
-        background: #ffe69c;
-        transform: translateX(3px);
-        box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
-    }
-    
-    .piece-card.azure {
-        border-color: var(--azure-color);
-        background: #f0f8ff;
-    }
-    
-    .piece-card.azure:hover {
-        background: #e0f0ff;
-        box-shadow: 0 2px 8px rgba(0, 120, 212, 0.3);
-    }
-    
-    .piece-ref {
-        font-weight: 700;
-        color: var(--danger-color);
-        margin-right: 8px;
-    }
-    
-    .piece-pages {
-        float: right;
-        color: var(--text-secondary);
-        font-size: 0.8rem;
-    }
-    
-    /* Container pièces */
-    .pieces-container {
-        background: white;
-        border: 2px solid #ffc107;
-        border-radius: 8px;
-        padding: 15px;
-        margin: 10px 0;
-        max-height: 400px;
-        overflow-y: auto;
-    }
-    
-    .pieces-category {
-        font-weight: 600;
-        color: var(--accent-color);
-        margin: 10px 0 5px 0;
-        font-size: 0.9rem;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 3px;
-    }
-    
-    /* Type filters */
-    .type-filter-card {
-        text-align: center;
-        padding: 10px;
-        border-radius: 10px;
-        transition: all 0.2s ease;
-        cursor: pointer;
-    }
-    
-    .type-header {
-        margin: 20px 0 10px 0;
-        padding: 10px;
-        border-radius: 5px;
-    }
-    
-    /* Layout ultra-compact */
-    .block-container {
-        padding-top: 0.5rem !important;
-        max-width: 1600px !important;
-    }
-    
-    /* Typography compacte */
-    h1 { font-size: 1.4rem !important; margin-bottom: 0.3rem !important; }
-    h2 { font-size: 1.2rem !important; margin-bottom: 0.3rem !important; }
-    h3 { font-size: 1.05rem !important; margin-bottom: 0.3rem !important; }
-    h4 { font-size: 0.95rem !important; margin-bottom: 0.3rem !important; }
-    h5 { font-size: 0.85rem !important; margin-bottom: 0.3rem !important; }
-    </style>
-    """, unsafe_allow_html=True)
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+})();
+</script>
+"""
 
 # ========== ÉTAT GLOBAL ==========
+
 def init_session_state():
-    """Initialise les variables de session"""
+    """Initialisation de l'état global"""
     defaults = {
+        'initialized': False,
         'selected_ais': [],
-        'response_mode': 'fusion',
         'current_view': 'dashboard',
-        'search_query': "",
-        'current_client': None,
-        'selected_pieces': [],
+        'search_query': '',
+        'selected_client': None,
+        'selected_documents': [],
+        'show_all_versions': False,
+        'document_type_filter': 'tous',
         'azure_blob_manager': None,
         'azure_search_manager': None,
         'azure_openai_manager': None,
-        'azure_initialized': False,
-        'azure_openai_enabled': False,
-        'azure_search_enabled': True,
-        'document_type_filters': list(DOCUMENT_TYPES.keys()),
-        'merged_clients': {},
-        'search_results': []
+        'clients_cache': {},
+        'prompts_cache': [],
+        'folder_aliases': {}  # Cache des alias
     }
     
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
     
-    # Initialiser les services Azure
-    if not st.session_state.azure_initialized:
-        init_azure_services()
-
-def init_azure_services():
-    """Initialise tous les services Azure"""
-    # Blob Storage (obligatoire)
-    try:
-        st.session_state.azure_blob_manager = AzureBlobManager()
-        logger.info("Azure Blob Manager initialisé")
-    except Exception as e:
-        logger.error(f"Erreur init Azure Blob: {e}")
-    
-    # Search (optionnel)
-    if AZURE_SEARCH_AVAILABLE and st.session_state.azure_search_enabled:
-        try:
+    # Initialisation des services Azure une seule fois
+    if not st.session_state.initialized:
+        with st.spinner("Initialisation des services..."):
+            st.session_state.azure_blob_manager = AzureBlobManager()
             st.session_state.azure_search_manager = AzureSearchManager()
-            logger.info("Azure Search Manager initialisé")
-        except Exception as e:
-            logger.error(f"Erreur init Azure Search: {e}")
-    
-    # OpenAI (optionnel)
-    if AZURE_OPENAI_AVAILABLE and st.session_state.azure_openai_enabled:
-        try:
             st.session_state.azure_openai_manager = AzureOpenAIManager()
-            logger.info("Azure OpenAI Manager initialisé")
-        except Exception as e:
-            logger.error(f"Erreur init Azure OpenAI: {e}")
-    
-    # Mettre à jour les clients fusionnés
-    st.session_state.merged_clients = get_merged_clients_data()
-    st.session_state.azure_initialized = True
+            # Réinitialiser les alias après connexion
+            st.session_state.folder_aliases = {}
+            st.session_state.initialized = True
 
-# ========== AFFICHAGE STATUS AZURE ==========
+# ========== COMPOSANTS UI ==========
 
-def display_azure_services_status():
-    """Affiche le statut de tous les services Azure"""
-    st.markdown("### 🔌 Services Azure")
+def show_diagnostics():
+    """Affiche les diagnostics des services"""
+    st.markdown("### 🔧 Diagnostics des services")
     
-    # Blob Storage (obligatoire)
-    blob_manager = st.session_state.get('azure_blob_manager')
-    blob_status = blob_manager and blob_manager.is_connected()
+    services = [
+        {
+            'name': 'Azure Blob Storage',
+            'manager': st.session_state.azure_blob_manager,
+            'required': True,
+            'icon': '💾'
+        },
+        {
+            'name': 'Azure Search',
+            'manager': st.session_state.azure_search_manager,
+            'required': False,
+            'icon': '🔍'
+        },
+        {
+            'name': 'Azure OpenAI',
+            'manager': st.session_state.azure_openai_manager,
+            'required': False,
+            'icon': '🤖'
+        }
+    ]
     
-    st.markdown(f"""
-    <div class="azure-service {'connected' if blob_status else 'disconnected'}">
-        <strong>{'✅' if blob_status else '❌'} Azure Blob Storage</strong> (Obligatoire)<br>
-        <small>{blob_manager.connection_error if blob_manager and not blob_status else 'Connecté'}</small>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if not blob_status:
-        st.error("""
-        **Configuration requise :**
-        1. Définir `AZURE_STORAGE_CONNECTION_STRING` dans les secrets
-        2. Format : `DefaultEndpointsProtocol=https;AccountName=...`
-        """)
-    
-    # Azure Search (optionnel)
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        search_manager = st.session_state.get('azure_search_manager')
-        search_status = search_manager and search_manager.is_connected() if st.session_state.azure_search_enabled else False
-        
-        st.markdown(f"""
-        <div class="azure-service {'connected' if search_status else 'optional'}">
-            <strong>{'✅' if search_status else '⚠️'} Azure Search</strong> (Optionnel)<br>
-            <small>{'Connecté' if search_status else 'Non configuré ou désactivé'}</small>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        new_search_state = st.checkbox(
-            "Activer",
-            value=st.session_state.azure_search_enabled,
-            key="toggle_search"
-        )
-        if new_search_state != st.session_state.azure_search_enabled:
-            st.session_state.azure_search_enabled = new_search_state
-            st.session_state.azure_initialized = False
-            st.rerun()
-    
-    # Azure OpenAI (optionnel)
-    col3, col4 = st.columns([3, 1])
-    with col3:
-        openai_manager = st.session_state.get('azure_openai_manager')
-        openai_status = openai_manager and openai_manager.is_connected() if st.session_state.azure_openai_enabled else False
-        
-        st.markdown(f"""
-        <div class="azure-service {'connected' if openai_status else 'optional'}">
-            <strong>{'✅' if openai_status else '⚠️'} Azure OpenAI</strong> (Optionnel)<br>
-            <small>{'Connecté' if openai_status else 'Non configuré ou désactivé'}</small>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        new_openai_state = st.checkbox(
-            "Activer",
-            value=st.session_state.azure_openai_enabled,
-            key="toggle_openai"
-        )
-        if new_openai_state != st.session_state.azure_openai_enabled:
-            st.session_state.azure_openai_enabled = new_openai_state
-            st.session_state.azure_initialized = False
-            st.rerun()
-    
-    return blob_status
-
-# ========== AFFICHAGE DES PIÈCES AVEC FILTRES ==========
-
-def display_dossier_pieces_with_filters(client_key):
-    """Affiche les pièces disponibles dans le dossier avec filtres par type"""
-    clients_data = st.session_state.get('merged_clients', get_merged_clients_data())
-    
-    if client_key not in clients_data:
-        return
-    
-    pieces = clients_data[client_key]["pieces"]
-    client_info = clients_data[client_key]["info"]
-    
-    # Convertir les pièces en liste plate pour le filtrage
-    all_pieces = []
-    for category, items in pieces.items():
-        for item in items:
-            item['category'] = category
-            all_pieces.append(item)
-    
-    # Grouper par type de document
-    pieces_by_type = get_documents_by_type(all_pieces)
-    
-    # Stats des pièces
-    total_pieces = len(all_pieces)
-    total_pages = sum(p.get('pages', 0) if p.get('pages') != 'N/A' else 0 for p in all_pieces)
-    
-    # Stats par type
-    st.markdown(f"""
-    <div class="pieces-stats">
-        <span class="piece-stat">📁 {total_pieces} pièces</span>
-        <span class="piece-stat">📄 {total_pages} pages</span>
-        <span class="piece-stat">💰 {client_info['montant']}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Filtres par type
-    st.markdown("#### 🔍 Filtrer par type")
-    
-    filter_cols = st.columns(len([t for t, docs in pieces_by_type.items() if docs]))
-    active_types = []
-    
-    for idx, (doc_type, docs) in enumerate(pieces_by_type.items()):
-        if docs:
-            with filter_cols[idx % len(filter_cols)]:
-                config = DOCUMENT_TYPES[doc_type]
-                is_active = doc_type in st.session_state.document_type_filters
-                
-                if st.button(
-                    f"{config['icon']} {config['name']} ({len(docs)})",
-                    key=f"filter_{doc_type}_{client_key}",
-                    type="primary" if is_active else "secondary",
-                    use_container_width=True
-                ):
-                    if doc_type in st.session_state.document_type_filters:
-                        st.session_state.document_type_filters.remove(doc_type)
-                    else:
-                        st.session_state.document_type_filters.append(doc_type)
-                    st.rerun()
-            
-            if is_active:
-                active_types.append(doc_type)
-    
-    # Container des pièces filtrées
-    st.markdown('<div class="pieces-container">', unsafe_allow_html=True)
-    
-    # Affichage par type actif
-    displayed_count = 0
-    for doc_type in active_types:
-        if doc_type in pieces_by_type and pieces_by_type[doc_type]:
-            config = DOCUMENT_TYPES[doc_type]
-            
-            st.markdown(f"""
-            <div class="pieces-category" style="color: {config['color']};">
-                {config['icon']} {config['name']}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            for piece in pieces_by_type[doc_type]:
-                piece_id = f"{client_key}_{piece.get('ref', 'REF')}"
-                selected = piece_id in st.session_state.selected_pieces
-                is_azure = 'azure_path' in piece
-                
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    piece_class = "piece-card azure" if is_azure else "piece-card"
-                    st.markdown(f"""
-                    <div class="{piece_class}">
-                        <span class="piece-ref">{piece.get('ref', 'REF')}</span>
-                        {piece.get('titre', 'Document')}
-                        <span class="piece-pages">{piece.get('pages', 'N/A')} pages</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                with col2:
-                    unique_key = f"select_{piece_id}_{uuid.uuid4().hex[:8]}"
-                    if st.checkbox("", key=unique_key, value=selected):
-                        if piece_id not in st.session_state.selected_pieces:
-                            st.session_state.selected_pieces.append(piece_id)
-                    else:
-                        if piece_id in st.session_state.selected_pieces:
-                            st.session_state.selected_pieces.remove(piece_id)
-                
-                displayed_count += 1
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    if displayed_count == 0:
-        st.info("Aucune pièce ne correspond aux filtres sélectionnés")
-
-# ========== BARRE DE RECHERCHE AVEC AZURE SEARCH ==========
-
-def create_smart_search_with_pieces():
-    """Barre de recherche intégrant les pièces du dossier et Azure Search"""
-    
-    # JavaScript pour détection @client (conservé)
-    search_js = """
-    <script>
-    function setupPieceAwareSearch() {
-        const checkTextarea = setInterval(function() {
-            const textarea = document.querySelector('textarea[aria-label="main_search_pieces"]');
-            if (textarea) {
-                clearInterval(checkTextarea);
-                
-                let debounceTimer;
-                
-                textarea.addEventListener('input', function(event) {
-                    clearTimeout(debounceTimer);
-                    const value = textarea.value;
-                    
-                    if (value.startsWith('@')) {
-                        textarea.style.borderColor = '#ffc107';
-                        textarea.style.backgroundColor = '#fff3cd';
-                        textarea.style.borderWidth = '2px';
-                    } else {
-                        textarea.style.borderColor = '';
-                        textarea.style.backgroundColor = '';
-                        textarea.style.borderWidth = '';
-                    }
-                    
-                    debounceTimer = setTimeout(() => {
-                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                            window.HTMLTextAreaElement.prototype, 'value'
-                        ).set;
-                        nativeInputValueSetter.call(textarea, value);
-                        const inputEvent = new Event('input', { bubbles: true });
-                        textarea.dispatchEvent(inputEvent);
-                    }, 300);
-                });
-                
-                textarea.addEventListener('keydown', function(event) {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        const buttons = document.querySelectorAll('button');
-                        buttons.forEach(button => {
-                            if (button.textContent.includes('Analyser')) {
-                                button.click();
-                            }
-                        });
-                    }
-                });
-                
-                textarea.focus();
-            }
-        }, 100);
-    }
-    
-    setupPieceAwareSearch();
-    const observer = new MutationObserver(setupPieceAwareSearch);
-    observer.observe(document.body, { childList: true, subtree: true });
-    </script>
-    """
-    
-    # Azure Search si activé
-    search_manager = st.session_state.get('azure_search_manager')
-    if st.session_state.azure_search_enabled and search_manager and search_manager.is_connected():
-        st.markdown("### 🔍 Recherche avancée avec Azure Search")
-        
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            search_query = st.text_input(
-                "Rechercher dans tous les documents",
-                placeholder="Ex: contrat de vente, procès-verbal, expertise...",
-                key="azure_search_query"
-            )
-        
-        with col2:
-            if st.button("🔍 Rechercher", type="primary", use_container_width=True):
-                if search_query:
-                    with st.spinner("Recherche en cours..."):
-                        results = search_manager.search_documents(search_query)
-                        st.session_state.search_results = results
-                        
-                        if results:
-                            st.success(f"✅ {len(results)} résultats trouvés")
-                            # Afficher les résultats
-                            for result in results[:5]:
-                                st.markdown(f"""
-                                **📄 {result['title']}**  
-                                📁 {result['container']} | Score: {result['score']:.2f}  
-                                {result['content'][:200]}...
-                                """)
-                        else:
-                            st.warning("Aucun résultat trouvé")
-        
-        st.markdown("---")
-    
-    # Détection du client
-    query = st.session_state.get('search_query', '')
-    client_detected = False
-    client_key = None
-    
-    clients_data = st.session_state.get('merged_clients', get_merged_clients_data())
-    
-    if query.startswith("@"):
-        parts = query[1:].split(",", 1)
-        potential_client = parts[0].strip().lower()
-        if potential_client in clients_data:
-            client_detected = True
-            client_key = potential_client
-            st.session_state.current_client = client_key
-    
-    # Container avec style adaptatif
-    container_class = "search-container client-mode" if client_detected else "search-container"
-    st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
-    
-    # Affichage selon le mode
-    if client_detected:
-        client_info = clients_data[client_key]["info"]
-        st.markdown(f"### 📁 Dossier {client_info['nom']} - {client_info['affaire']}")
-        
-        # Affichage des pièces avec filtres
-        with st.expander("📂 Pièces du dossier", expanded=True):
-            display_dossier_pieces_with_filters(client_key)
-    else:
-        st.markdown("### 🔍 Recherche intelligente avec analyse des pièces")
-    
-    # Zone de recherche
-    col1, col2 = st.columns([4, 1])
-    
-    with col1:
-        # Liste des clients disponibles
-        available_clients = ", ".join([f"@{k}" for k in clients_data.keys()][:5])
-        
-        query = st.text_area(
-            "main_search_pieces",
-            placeholder=(
-                f"Clients disponibles : {available_clients}...\n\n"
-                "Exemples :\n"
-                "• @lesueur, analyser contradictions PV-001 vs EXP-001\n"
-                "• @martin, préparer défense sur SCEL-101\n"
-                "• Recherche générale dans tous les documents"
-            ),
-            height=80,
-            key="search_query",
-            label_visibility="hidden"
-        )
-    
-    with col2:
-        st.write("")
-        if st.button("🤖 Analyser", type="primary", use_container_width=True):
-            if query:
-                st.session_state.current_view = "analyze_with_pieces"
-                st.rerun()
-    
-    # Suggestions basées sur les pièces
-    if client_detected and client_key:
-        pieces = clients_data[client_key]["pieces"]
-        
-        st.markdown("#### 💡 Analyses suggérées basées sur les pièces")
-        
-        # Générer des prompts basés sur les pièces
-        piece_prompts = generate_piece_based_prompts(client_key, pieces)
-        
-        prompt_key_counter = 0
-        for prompt in piece_prompts[:5]:
-            prompt_key_counter += 1
-            unique_key = f"pp_{client_key}_{prompt_key_counter}_{uuid.uuid4().hex[:8]}"
-            if st.button(f"→ {prompt}", key=unique_key, use_container_width=True):
-                st.session_state.search_query = f"@{client_key}, {prompt}"
-                st.rerun()
-        
-        # Actions rapides sur pièces sélectionnées
-        if st.session_state.selected_pieces:
-            st.markdown("#### ⚡ Actions sur pièces sélectionnées")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("🔍 Analyser contradictions", use_container_width=True):
-                    st.session_state.search_query = f"@{client_key}, analyser contradictions dans {', '.join(st.session_state.selected_pieces)}"
-                    st.session_state.current_view = "analyze_with_pieces"
-                    st.rerun()
-            with col2:
-                if st.button("📋 Synthétiser", use_container_width=True):
-                    st.session_state.search_query = f"@{client_key}, synthétiser {', '.join(st.session_state.selected_pieces)}"
-                    st.session_state.current_view = "analyze_with_pieces"
-                    st.rerun()
-            with col3:
-                if st.button("⚖️ Stratégie défense", use_container_width=True):
-                    st.session_state.search_query = f"@{client_key}, stratégie défense basée sur {', '.join(st.session_state.selected_pieces)}"
-                    st.session_state.current_view = "analyze_with_pieces"
-                    st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Injecter JavaScript
-    components.html(search_js, height=0)
-    
-    return query
-
-# ========== MODULE DE PRÉPARATION (conservé et adapté) ==========
-
-def show_preparation_with_pieces():
-    """Préparation client basée sur les pièces du dossier"""
-    if not st.session_state.current_client:
-        st.warning("Aucun client sélectionné")
-        return
-    
-    client_key = st.session_state.current_client
-    clients_data = st.session_state.get('merged_clients', get_merged_clients_data())
-    
-    if client_key not in clients_data:
-        st.error("Client non trouvé")
-        return
-    
-    client = clients_data[client_key]["info"]
-    pieces = clients_data[client_key]["pieces"]
-    
-    st.markdown(f"## 👔 Préparation de {client['nom']} - Basée sur les pièces")
-    
-    # Rappel du dossier
-    st.markdown(f"""
-    <div class="preparation-card">
-        <strong>📁 Affaire :</strong> {client['affaire']}<br>
-        <strong>⚖️ Qualification :</strong> {client['qualification']}<br>
-        <strong>📅 Audience :</strong> {client['audience']}<br>
-        <strong>💰 Enjeu :</strong> {client['montant']}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Sélection IA
-    create_ai_selector_mini()
-    
-    st.markdown("---")
-    
-    # Modules de préparation
-    modules = {
-        "questions_pieces": "Questions sur les pièces du dossier",
-        "contradictions": "Contradictions entre pièces", 
-        "elements_defense": "Éléments favorables dans les pièces",
-        "strategie_pieces": "Stratégie basée sur les pièces"
-    }
-    
-    for module_key, module_title in modules.items():
-        with st.expander(f"📋 {module_title}", expanded=module_key=="questions_pieces"):
-            
-            if st.button(f"🤖 Générer avec IA", key=f"gen_{module_key}"):
-                if not st.session_state.selected_ais:
-                    st.warning("Sélectionnez au moins une IA")
-                else:
-                    with st.spinner(f"Analyse des pièces par {len(st.session_state.selected_ais)} IA..."):
-                        time.sleep(1.5)
-                    
-                    if module_key == "questions_pieces":
-                        # Questions basées sur les vraies pièces
-                        questions = generate_piece_based_questions("questions sur pièces", pieces, client)
-                        
-                        for q in questions[:6]:
-                            st.markdown(f"""
-                            <div class="question-with-piece">
-                                {q}
-                            </div>
-                            """, unsafe_allow_html=True)
-                        
-                        # Conseils spécifiques
-                        st.success("""
-                        💡 **Conseils pour répondre sur les pièces :**
-                        • Relisez les passages cités avant l'audience
-                        • Préparez des explications cohérentes avec l'ensemble du dossier
-                        • N'hésitez pas à demander à consulter la pièce pendant l'audience
-                        • Restez cohérent avec vos déclarations antérieures
-                        """)
-                    
-                    elif module_key == "contradictions":
-                        st.markdown("""
-                        <div class="ai-response-container">
-                            <h4>⚠️ Contradictions identifiées</h4>
-                            <p>Analyse basée sur les documents du dossier...</p>
-                            <p><strong>Stratégie :</strong> Préparer des explications cohérentes pour chaque contradiction</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    elif module_key == "elements_defense":
-                        st.markdown(f"""
-                        <div class="ai-response-container">
-                            <h4>✅ Éléments favorables identifiés</h4>
-                            <p>Analyse des pièces en cours...</p>
-                            <p><strong>À exploiter :</strong> Insister sur ces éléments pendant l'audience</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-            
-            # Notes sur les pièces
-            notes = st.text_area(
-                f"Notes sur les pièces ({module_key})",
-                key=f"notes_{module_key}",
-                placeholder="Points clés des pièces à retenir...",
-                height=80
-            )
-    
-    # Actions
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("📄 Générer mémo pièces", type="primary", use_container_width=True):
-            st.success("Mémo des pièces clés généré")
-    
-    with col2:
-        if st.button("🎯 Simulation avec pièces", use_container_width=True):
-            st.info("Simulation basée sur les pièces...")
-    
-    with col3:
-        if st.button("⬅️ Retour", use_container_width=True):
-            st.session_state.current_view = 'dashboard'
-            st.rerun()
-
-# ========== ANALYSE AVEC AZURE OPENAI ==========
-
-def analyze_query_with_pieces():
-    """Analyse une requête en se basant sur les pièces du dossier"""
-    query = st.session_state.search_query
-    
-    if not st.session_state.selected_ais:
-        st.warning("Sélectionnez au moins une IA")
-        return
-    
-    # Extraire le client et la commande
-    client_key = st.session_state.current_client
-    clients_data = st.session_state.get('merged_clients', get_merged_clients_data())
-    
-    if not client_key and query.startswith("@"):
-        parts = query[1:].split(",", 1)
-        potential_client = parts[0].strip().lower()
-        if potential_client in clients_data:
-            client_key = potential_client
-    
-    if not client_key:
-        st.error("Client non identifié")
-        return
-    
-    client = clients_data[client_key]["info"]
-    pieces = clients_data[client_key]["pieces"]
-    
-    st.markdown(f"### 🤖 Analyse pour {client['nom']}")
-    st.markdown(f"**Requête :** {query}")
-    st.markdown(f"**IA actives :** {', '.join(st.session_state.selected_ais)}")
-    
-    # Vérifier si Azure OpenAI est sélectionné et actif
-    use_azure_openai = "Azure OpenAI" in st.session_state.selected_ais and st.session_state.azure_openai_enabled
-    openai_manager = st.session_state.get('azure_openai_manager')
-    
-    if use_azure_openai and openai_manager and openai_manager.is_connected():
-        # Analyse réelle avec Azure OpenAI
-        with st.spinner(f"Analyse par Azure OpenAI..."):
-            # Préparer le contenu des pièces sélectionnées
-            selected_content = []
-            for piece_id in st.session_state.selected_pieces[:3]:  # Limiter à 3
-                # Extraire le contenu si c'est un document Azure
-                for cat, items in pieces.items():
-                    for item in items:
-                        if f"{client_key}_{item.get('ref', '')}" == piece_id:
-                            if 'azure_path' in item:
-                                # Document Azure réel
-                                container, blob_name = item['azure_path'].split('/', 1)
-                                content = st.session_state.azure_blob_manager.download_blob(container, blob_name)
-                                if content:
-                                    selected_content.append({
-                                        'ref': item['ref'],
-                                        'titre': item['titre'],
-                                        'content': content.decode('utf-8', errors='ignore')[:2000]
-                                    })
-                            else:
-                                # Document fictif
-                                selected_content.append({
-                                    'ref': item['ref'],
-                                    'titre': item['titre'],
-                                    'content': f"[Contenu fictif de {item['titre']}]"
-                                })
-            
-            # Analyser avec Azure OpenAI
-            if selected_content:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                for doc in selected_content:
-                    result = loop.run_until_complete(
-                        openai_manager.analyze_document(doc['content'], query)
-                    )
-                    
-                    if result:
-                        st.markdown(f"""
-                        <div class="ai-response-container">
-                            <h4>📄 Analyse de {doc['titre']} ({doc['ref']})</h4>
-                            <p>{result}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-    else:
-        # Analyse simulée
-        with st.spinner(f"Analyse des pièces du dossier par {len(st.session_state.selected_ais)} IA..."):
-            time.sleep(2)
-        
-        # Réponse basée sur les pièces
-        st.markdown(f"""
-        <div class="ai-response-container">
-            <h4>🔄 Analyse multi-IA basée sur les pièces</h4>
-            
-            <h5>📁 Pièces analysées :</h5>
-            <ul>
-        """, unsafe_allow_html=True)
-        
-        # Lister les pièces analysées
-        for piece_id in st.session_state.selected_pieces[:5]:
-            st.markdown(f"<li>{piece_id}</li>", unsafe_allow_html=True)
-        
-        st.markdown("""
-            </ul>
-            
-            <h5>🔍 Analyse :</h5>
-            <p>Configuration des APIs LLM requise pour une analyse réelle.</p>
-            
-            <h5>⚖️ Stratégie recommandée :</h5>
-            <ol>
-                <li>Analyser les contradictions identifiées</li>
-                <li>Exploiter les éléments favorables</li>
-                <li>Préparer les réponses aux points faibles</li>
-            </ol>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Actions post-analyse
-    st.markdown("---")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("📑 Tableau contradictions", use_container_width=True):
-            st.info("Génération tableau...")
-    
-    with col2:
-        if st.button("📊 Graphique timeline", use_container_width=True):
-            st.info("Création timeline...")
-    
-    with col3:
-        if st.button("✍️ Rédiger conclusions", use_container_width=True):
-            st.session_state.current_view = "redaction"
-            st.rerun()
-    
-    with col4:
-        if st.button("⬅️ Nouvelle analyse", use_container_width=True):
-            st.session_state.current_view = "dashboard"
-            st.rerun()
-
-# ========== SÉLECTEUR IA ==========
-
-def create_ai_selector_mini():
-    """Sélecteur d'IA compact"""
-    st.markdown("#### 🤖 Sélection des IA")
-    
-    available_ais = get_available_ais()
+    st.markdown('<div class="diagnostic-grid">', unsafe_allow_html=True)
     
     cols = st.columns(3)
-    for idx, (ai_name, ai_info) in enumerate(available_ais.items()):
-        with cols[idx % 3]:
-            selected = ai_name in st.session_state.selected_ais
-            unique_key = f"ai_{ai_name.replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
+    for idx, service in enumerate(services):
+        with cols[idx]:
+            manager = service['manager']
+            is_connected = manager and hasattr(manager, 'connected') and manager.connected
             
-            if st.checkbox(
-                f"{ai_info['icon']} {ai_name}",
-                value=selected,
-                key=unique_key,
-                help=ai_info['description']
-            ):
-                if ai_name not in st.session_state.selected_ais:
-                    st.session_state.selected_ais.append(ai_name)
+            if is_connected:
+                status_class = 'success'
+                status_text = '✅ Connecté'
+                status_color = '#48bb78'
+            elif service['required']:
+                status_class = 'error'
+                status_text = '❌ Erreur'
+                status_color = '#fc8181'
             else:
-                if ai_name in st.session_state.selected_ais:
-                    st.session_state.selected_ais.remove(ai_name)
+                status_class = 'warning'
+                status_text = '⚠️ Optionnel'
+                status_color = '#ed8936'
+            
+            st.markdown(f"""
+            <div class="diagnostic-card {status_class}">
+                <h4 style="margin: 0; color: {status_color};">{service['icon']} {service['name']}</h4>
+                <p style="margin: 0.5rem 0; font-weight: 500;">{status_text}</p>
+                <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary);">
+                    {manager.error if manager and hasattr(manager, 'error') and manager.error else 'Fonctionnel'}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
     
-    # Mode
-    if st.session_state.selected_ais:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🔄 Fusion", key="mode_fusion", use_container_width=True,
-                        type="primary" if st.session_state.response_mode == "fusion" else "secondary"):
-                st.session_state.response_mode = "fusion"
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def show_ai_selector():
+    """Sélecteur d'IA avec design professionnel"""
+    st.markdown("### 🤖 Sélection des IA")
+    
+    available_ais = {
+        'GPT-3.5': {'icon': '🚀', 'desc': 'Analyse rapide', 'color': '#4299e1'},
+        'GPT-4': {'icon': '🧠', 'desc': 'Analyse approfondie', 'color': '#2c5282'},
+        'ChatGPT o1': {'icon': '💬', 'desc': 'Raisonnement avancé', 'color': '#10a37f'},
+        'Claude': {'icon': '🎭', 'desc': 'Argumentation', 'color': '#805ad5'},
+        'Gemini': {'icon': '✨', 'desc': 'Recherche exhaustive', 'color': '#38a169'},
+        'Perplexity': {'icon': '🔮', 'desc': 'Recherche web temps réel', 'color': '#6366f1'},
+        'Mistral': {'icon': '🌟', 'desc': 'Spécialiste français', 'color': '#d69e2e'}
+    }
+    
+    # Ajouter Azure OpenAI si disponible
+    if st.session_state.azure_openai_manager and st.session_state.azure_openai_manager.connected:
+        available_ais['Azure OpenAI'] = {'icon': '☁️', 'desc': 'IA Microsoft', 'color': '#0078d4'}
+    
+    # Adapter le nombre de colonnes
+    num_ais = len(available_ais)
+    cols_per_row = 4
+    rows = (num_ais + cols_per_row - 1) // cols_per_row
+    
+    ai_list = list(available_ais.items())
+    
+    for row in range(rows):
+        cols = st.columns(min(cols_per_row, num_ais - row * cols_per_row))
+        
+        for col_idx in range(len(cols)):
+            ai_idx = row * cols_per_row + col_idx
+            if ai_idx < num_ais:
+                ai_name, ai_info = ai_list[ai_idx]
+                
+                with cols[col_idx]:
+                    selected = ai_name in st.session_state.selected_ais
+                    
+                    if st.checkbox(
+                        f"{ai_info['icon']} {ai_name}",
+                        key=f"ai_{ai_name}",
+                        value=selected,
+                        help=ai_info['desc']
+                    ):
+                        if ai_name not in st.session_state.selected_ais:
+                            st.session_state.selected_ais.append(ai_name)
+                    else:
+                        if ai_name in st.session_state.selected_ais:
+                            st.session_state.selected_ais.remove(ai_name)
+
+def generate_folder_alias(folder_name: str) -> str:
+    """Génère un alias court pour un dossier"""
+    # Supprimer les caractères spéciaux
+    clean_name = re.sub(r'[^a-zA-Z0-9]', '', folder_name.lower())
+    
+    # Stratégies pour créer l'alias
+    if len(clean_name) <= 3:
+        return clean_name
+    elif len(clean_name) <= 6:
+        return clean_name[:3]
+    else:
+        # Prendre les premières lettres des mots principaux
+        words = re.findall(r'[A-Z][a-z]*|[a-z]+|\d+', folder_name)
+        if len(words) > 1:
+            return ''.join(w[0].lower() for w in words[:3])
+        else:
+            return clean_name[:3]
+
+def get_folder_aliases() -> Dict[str, str]:
+    """Retourne un mapping alias -> nom réel du dossier"""
+    if 'folder_aliases' not in st.session_state:
+        st.session_state.folder_aliases = {}
+        
+        if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected:
+            containers = st.session_state.azure_blob_manager.list_containers()
+            
+            # Générer des alias uniques
+            used_aliases = set()
+            for container in containers:
+                base_alias = generate_folder_alias(container)
+                alias = base_alias
+                counter = 1
+                
+                # S'assurer que l'alias est unique
+                while alias in used_aliases:
+                    alias = f"{base_alias}{counter}"
+                    counter += 1
+                
+                used_aliases.add(alias)
+                st.session_state.folder_aliases[alias] = container
+    
+    return st.session_state.folder_aliases
+
+def extract_client_and_query(query: str) -> Tuple[Optional[str], str]:
+    """Extrait le client et la requête depuis la recherche en utilisant les alias"""
+    if query.startswith('@'):
+        match = re.match(r'@(\w+)\s*,?\s*(.*)', query)
+        if match:
+            alias = match.group(1).lower()
+            rest = match.group(2)
+            
+            # Chercher dans les alias
+            aliases = get_folder_aliases()
+            if alias in aliases:
+                return aliases[alias], rest
+            
+            # Chercher correspondance partielle
+            for a, folder in aliases.items():
+                if a.startswith(alias) or alias in a:
+                    return folder, rest
+            
+            # Si pas trouvé dans les alias, chercher dans les noms réels
+            if st.session_state.azure_blob_manager:
+                containers = st.session_state.azure_blob_manager.list_containers()
+                for container in containers:
+                    if container.lower().startswith(alias) or alias in container.lower():
+                        return container, rest
+    
+    return None, query
+
+def show_search_interface():
+    """Interface de recherche avec support @client et prompts IA"""
+    st.markdown("### 🔍 Recherche intelligente")
+    
+    # Détection du client actuel
+    query = st.session_state.get('search_query', '')
+    client, clean_query = extract_client_and_query(query)
+    
+    # Container avec style adaptatif
+    container_class = "search-container client-active" if client else "search-container"
+    st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
+    
+    # Si client détecté, afficher ses infos
+    if client and st.session_state.azure_blob_manager and client in st.session_state.azure_blob_manager.list_containers():
+        st.info(f"📁 Analyse du dossier : **{client}**")
+        
+        # Toggle versions
+        col1, col2 = st.columns([3, 1])
         with col2:
-            if st.button("📊 Comparaison", key="mode_comp", use_container_width=True,
-                        type="primary" if st.session_state.response_mode == "comparaison" else "secondary"):
-                st.session_state.response_mode = "comparaison"
-        with col3:
-            if st.button("📝 Synthèse", key="mode_synth", use_container_width=True,
-                        type="primary" if st.session_state.response_mode == "synthèse" else "secondary"):
-                st.session_state.response_mode = "synthèse"
+            st.session_state.show_all_versions = st.checkbox(
+                "Toutes versions",
+                key="version_toggle",
+                help="Afficher toutes les versions des documents Word"
+            )
+        
+        # Afficher les documents du client
+        with st.expander("📄 Documents disponibles", expanded=True):
+            display_client_documents(client)
+    
+    # Afficher les alias disponibles
+    aliases = get_folder_aliases()
+    if aliases and not client:
+        alias_examples = []
+        for alias, folder in list(aliases.items())[:5]:
+            alias_examples.append(f"@{alias} ({folder})")
+        alias_text = " • ".join(alias_examples)
+        st.caption(f"💡 Dossiers disponibles : {alias_text}...")
+    
+    # Zone de recherche - 3 lignes
+    search_text = st.text_area(
+        "search_area",
+        value=query,
+        placeholder=(
+            "Tapez @ suivi de l'indicateur du dossier, puis votre demande\n"
+            "Exemple : @mar, analyser les contradictions dans les PV\n"
+            "Appuyez sur Entrée pour lancer l'analyse"
+        ),
+        height=100,  # 3 lignes
+        key="search_query",
+        label_visibility="hidden"
+    )
+    
+    # Boutons d'action
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col2:
+        if st.session_state.azure_search_manager and st.session_state.azure_search_manager.connected:
+            if st.button("🔍 Rechercher", use_container_width=True):
+                perform_azure_search(clean_query if client else search_text)
+    
+    with col3:
+        if st.button("🤖 Analyser", type="primary", use_container_width=True):
+            if search_text and st.session_state.selected_ais:
+                process_analysis(search_text)
+            else:
+                st.warning("Sélectionnez des IA et entrez une requête")
+    
+    # Prompts suggérés basés sur les documents
+    if client and st.session_state.azure_openai_manager:
+        show_ai_prompts(client)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ========== SIDEBAR ==========
+def display_client_documents(client: str):
+    """Affiche les documents d'un client avec tri par type"""
+    blobs = st.session_state.azure_blob_manager.list_blobs_with_versions(
+        client, 
+        st.session_state.show_all_versions
+    )
+    
+    if not blobs:
+        st.warning("Aucun document trouvé")
+        return
+    
+    # Catégoriser les documents
+    categorized = {}
+    openai_manager = st.session_state.azure_openai_manager
+    
+    for blob in blobs:
+        # Utiliser l'IA pour catégoriser si disponible
+        doc_type = openai_manager.categorize_document(blob['name']) if openai_manager else 'autre'
+        
+        if doc_type not in categorized:
+            categorized[doc_type] = []
+        categorized[doc_type].append(blob)
+    
+    # Filtre par type
+    st.markdown("**Filtrer par type :**")
+    type_options = ['tous'] + list(categorized.keys())
+    selected_type = st.selectbox(
+        "Type de document",
+        options=type_options,
+        format_func=lambda x: DOCUMENT_TYPES.get(x, {'name': 'Tous'})['name'],
+        key="doc_type_filter",
+        label_visibility="collapsed"
+    )
+    
+    # Affichage des documents filtrés
+    total_shown = 0
+    for doc_type, docs in categorized.items():
+        if selected_type != 'tous' and doc_type != selected_type:
+            continue
+        
+        if docs:
+            type_info = DOCUMENT_TYPES.get(doc_type, {'name': 'Autres', 'icon': '📁', 'color': '#718096'})
+            st.markdown(f"**{type_info['icon']} {type_info['name']} ({len(docs)})**")
+            
+            for doc in docs[:10]:  # Limiter l'affichage
+                col1, col2 = st.columns([4, 1])
+                
+                with col1:
+                    # Badge de version si applicable
+                    version_badge = ""
+                    if doc.get('versions_count', 0) > 1:
+                        version_badge = f"<span style='color: var(--warning-amber); font-size: 0.7rem;'> ({doc['versions_count']} versions)</span>"
+                    
+                    st.markdown(f"""
+                    <div class="doc-card">
+                        <span class="doc-type-badge" style="background: {type_info['color']}20; color: {type_info['color']};">
+                            {type_info['icon']}
+                        </span>
+                        {doc['name']}{version_badge}
+                        <span style="float: right; color: var(--text-secondary); font-size: 0.7rem;">
+                            {doc['size'] // 1024} KB
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if st.checkbox("Sélectionner", key=f"sel_{doc['name']}", label_visibility="hidden"):
+                        if doc['name'] not in st.session_state.selected_documents:
+                            st.session_state.selected_documents.append(doc['name'])
+                    else:
+                        if doc['name'] in st.session_state.selected_documents:
+                            st.session_state.selected_documents.remove(doc['name'])
+                
+                total_shown += 1
+    
+    if total_shown == 0:
+        st.info("Aucun document ne correspond au filtre")
 
-def create_sidebar():
-    """Sidebar avec accès rapide aux dossiers"""
-    with st.sidebar:
-        # Header
-        st.markdown("""
-        <div style="text-align: center; padding: 10px; background: linear-gradient(135deg, #1a1a2e, #e94560); 
-                    margin: -35px -35px 15px -35px; border-radius: 0 0 10px 10px;">
-            <h3 style="color: white; margin: 0; font-size: 1.1rem;">⚖️ IA Pénal - Pièces</h3>
+def show_ai_prompts(client: str):
+    """Affiche les prompts générés par l'IA"""
+    st.markdown("**💡 Suggestions d'analyse (générées par IA) :**")
+    
+    # Récupérer les documents du client
+    blobs = st.session_state.azure_blob_manager.list_blobs_with_versions(client, False)
+    
+    # Trouver l'alias du client
+    aliases = get_folder_aliases()
+    client_alias = None
+    for alias, folder in aliases.items():
+        if folder == client:
+            client_alias = alias
+            break
+    
+    # Générer ou récupérer les prompts
+    cache_key = f"prompts_{client}_{len(blobs)}"
+    if cache_key not in st.session_state.prompts_cache:
+        prompts = st.session_state.azure_openai_manager.generate_prompts(blobs, client)
+        st.session_state.prompts_cache = prompts
+    else:
+        prompts = st.session_state.prompts_cache
+    
+    # Afficher les prompts
+    cols = st.columns(2)
+    for idx, prompt in enumerate(prompts[:6]):
+        with cols[idx % 2]:
+            if st.button(
+                f"→ {prompt}",
+                key=f"prompt_{idx}",
+                use_container_width=True,
+                help="Cliquez pour utiliser ce prompt"
+            ):
+                # Utiliser l'alias si disponible
+                prefix = f"@{client_alias}" if client_alias else f"@{client}"
+                st.session_state.search_query = f"{prefix}, {prompt}"
+                st.rerun()
+
+def perform_azure_search(query: str):
+    """Effectue une recherche Azure Search"""
+    with st.spinner("Recherche en cours..."):
+        results = st.session_state.azure_search_manager.search(
+            query,
+            filter_type=st.session_state.get('doc_type_filter') if st.session_state.get('doc_type_filter') != 'tous' else None
+        )
+        
+        if results:
+            st.success(f"✅ {len(results)} résultats trouvés")
+            
+            for result in results[:5]:
+                st.markdown(f"""
+                <div class="doc-card">
+                    <strong>{result['title']}</strong> (Score: {result['score']:.2f})<br>
+                    <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                        {result['content']}...
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.warning("Aucun résultat trouvé")
+
+def process_analysis(query: str):
+    """Traite l'analyse avec les IA sélectionnées"""
+    with st.spinner(f"Analyse par {len(st.session_state.selected_ais)} IA..."):
+        # Simulation de traitement
+        progress = st.progress(0)
+        for i in range(100):
+            progress.progress(i + 1)
+            time.sleep(0.01)
+    
+    st.success("✅ Analyse terminée")
+    
+    # Résultats
+    client, clean_query = extract_client_and_query(query)
+    
+    # Trouver l'alias utilisé
+    alias_used = None
+    if client and query.startswith('@'):
+        match = re.match(r'@(\w+)', query)
+        if match:
+            alias_used = match.group(1)
+    
+    if 'Azure OpenAI' in st.session_state.selected_ais and st.session_state.azure_openai_manager.connected:
+        st.info("🤖 Analyse réelle avec Azure OpenAI disponible")
+    else:
+        st.markdown(f"""
+        <div class="diagnostic-card success">
+            <h4>📊 Résultats de l'analyse</h4>
+            <p><strong>Dossier :</strong> {f'@{alias_used} ({client})' if alias_used else client or 'Général'}</p>
+            <p><strong>Requête :</strong> {clean_query}</p>
+            <p><strong>IA utilisées :</strong> {', '.join(st.session_state.selected_ais)}</p>
+            <hr>
+            <p style="font-size: 0.8rem;">
+                Pour une analyse réelle, configurez les API des IA sélectionnées.
+            </p>
         </div>
         """, unsafe_allow_html=True)
+
+def show_sidebar():
+    """Sidebar avec navigation et infos"""
+    with st.sidebar:
+        st.markdown("## ⚖️ IA Juridique")
         
-        # Statut Azure
-        blob_status = st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.is_connected()
-        if blob_status:
-            st.success("✅ Azure connecté")
-        else:
-            st.warning("⚠️ Azure non connecté")
+        # Statut rapide
+        blob_ok = st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected
+        search_ok = st.session_state.azure_search_manager and st.session_state.azure_search_manager.connected
+        ai_ok = st.session_state.azure_openai_manager and st.session_state.azure_openai_manager.connected
         
-        # IA actives
-        if st.session_state.selected_ais:
-            st.markdown("#### 🤖 IA actives")
-            available_ais = get_available_ais()
-            ia_list = " • ".join([available_ais[ai]['icon'] for ai in st.session_state.selected_ais if ai in available_ais])
-            st.markdown(f"<div style='text-align: center; font-size: 1.2rem;'>{ia_list}</div>", unsafe_allow_html=True)
+        status_icons = []
+        if blob_ok:
+            status_icons.append("💾✅")
+        if search_ok:
+            status_icons.append("🔍✅")
+        if ai_ok:
+            status_icons.append("🤖✅")
         
-        # Dossiers clients avec stats pièces
-        st.markdown("---")
-        st.markdown("#### 📁 Dossiers actifs")
-        
-        clients_data = st.session_state.get('merged_clients', get_merged_clients_data())
-        
-        for client_key, client_data in list(clients_data.items())[:10]:  # Limiter l'affichage
-            client = client_data["info"]
-            pieces = client_data["pieces"]
-            total_pieces = sum(len(items) for items in pieces.values())
-            
-            # Indicateur Azure
-            is_azure = client.get('source') == 'azure'
-            icon = "☁️" if is_azure else "📁"
-            
-            unique_key = f"sidebar_{client_key}_{uuid.uuid4().hex[:8]}"
-            
-            if st.button(
-                f"{icon} {client['nom']} ({total_pieces} pièces)",
-                key=unique_key,
-                use_container_width=True,
-                type="primary" if st.session_state.current_client == client_key else "secondary"
-            ):
-                st.session_state.search_query = f"@{client_key}, analyser dossier"
-                st.session_state.current_client = client_key
-                st.session_state.current_view = "dashboard"
-                st.rerun()
+        if status_icons:
+            st.success(" ".join(status_icons))
         
         # Navigation
-        st.markdown("---")
-        st.markdown("#### 📊 Modules")
+        st.markdown("### Navigation")
         
-        modules = [
-            ("🏠 Accueil", "dashboard"),
-            ("👔 Préparation", "preparation"),
-            ("🔍 Analyse pièces", "analyze_pieces"),
-            ("✍️ Rédaction", "redaction"),
-            ("📊 Statistiques", "stats"),
-            ("⚙️ Configuration", "config")
+        menu = [
+            ("🏠 Tableau de bord", "dashboard"),
+            ("🔍 Recherche avancée", "search"),
+            ("📊 Analyses", "analyses"),
+            ("⚙️ Configuration", "config"),
+            ("❓ Aide", "help")
         ]
         
-        for label, view in modules:
-            if st.button(label, key=f"nav_{view}", use_container_width=True):
+        for label, view in menu:
+            if st.button(
+                label,
+                key=f"nav_{view}",
+                use_container_width=True,
+                type="primary" if st.session_state.current_view == view else "secondary"
+            ):
                 st.session_state.current_view = view
                 st.rerun()
         
-        # Alertes
-        st.markdown("---")
-        st.markdown("#### ⚠️ Alertes")
-        if blob_status:
+        # Dossiers disponibles avec alias
+        if blob_ok:
+            st.markdown("---")
+            st.markdown("### 📁 Dossiers")
+            
+            aliases = get_folder_aliases()
             containers = st.session_state.azure_blob_manager.list_containers()
-            st.info(f"☁️ {len(containers)} dossiers Azure")
-        else:
-            st.warning("📄 Mode local uniquement")
+            
+            # Afficher avec alias
+            for container in containers[:10]:
+                # Trouver l'alias correspondant
+                alias = None
+                for a, c in aliases.items():
+                    if c == container:
+                        alias = a
+                        break
+                
+                display_name = f"@{alias} - {container}" if alias else f"📂 {container}"
+                
+                if st.button(
+                    display_name,
+                    key=f"folder_{container}",
+                    use_container_width=True
+                ):
+                    st.session_state.search_query = f"@{alias}, " if alias else f"@{container}, "
+                    st.session_state.current_view = "dashboard"
+                    st.rerun()
+        
+        # IA actives
+        if st.session_state.selected_ais:
+            st.markdown("---")
+            st.markdown("### 🤖 IA actives")
+            for ai in st.session_state.selected_ais:
+                st.markdown(f"• {ai}")
 
-# ========== DASHBOARD PRINCIPAL ==========
+# ========== VUES PRINCIPALES ==========
 
 def show_dashboard():
-    """Dashboard avec focus sur les pièces et intégration Azure"""
-    
+    """Tableau de bord principal"""
     # Header
-    st.markdown("""
-    <h1 style="text-align: center; margin: 5px 0;">⚖️ IA Juridique - Analyse des Pièces</h1>
-    <p style="text-align: center; color: var(--text-secondary); font-size: 0.85rem;">
-        Analyse intelligente basée sur les pièces du dossier • 6 IA spécialisées
-    </p>
-    """, unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("# ⚖️ IA Juridique")
+        st.markdown("*Analyse intelligente multi-IA de documents juridiques*")
     
-    # Statut Azure si connecté
-    blob_manager = st.session_state.get('azure_blob_manager')
-    if blob_manager and blob_manager.is_connected():
-        containers = blob_manager.list_containers()
-        st.info(f"☁️ Azure Blob Storage connecté - {len(containers)} dossiers disponibles")
+    # Diagnostics
+    show_diagnostics()
     
-    # Sélecteur IA
-    create_ai_selector_mini()
-    
+    # Sélection IA
     st.markdown("---")
+    show_ai_selector()
     
-    # Barre de recherche avec pièces
-    query = create_smart_search_with_pieces()
+    # Interface de recherche
+    st.markdown("---")
+    show_search_interface()
     
-    # Stats globales des pièces
-    if not st.session_state.current_client:
-        st.markdown("### 📊 Vue d'ensemble des dossiers")
+    # Actions rapides si des documents sont sélectionnés
+    if st.session_state.selected_documents:
+        st.markdown("### ⚡ Actions sur documents sélectionnés")
         
-        clients_data = st.session_state.get('merged_clients', get_merged_clients_data())
-        
-        # Séparer dossiers locaux et Azure
-        local_clients = {k: v for k, v in clients_data.items() if v['info'].get('source') != 'azure'}
-        azure_clients = {k: v for k, v in clients_data.items() if v['info'].get('source') == 'azure'}
-        
-        # Afficher les dossiers locaux
-        if local_clients:
-            st.markdown("#### 📁 Dossiers locaux")
-            cols = st.columns(min(len(local_clients), 3))
-            for idx, (client_key, client_data) in enumerate(list(local_clients.items())[:6]):
-                with cols[idx % 3]:
-                    client = client_data["info"]
-                    pieces = client_data["pieces"]
-                    total_pieces = sum(len(items) for items in pieces.values())
-                    total_pages = sum(p.get('pages', 0) if p.get('pages') != 'N/A' else 0 for cat in pieces.values() for p in cat)
-                    
-                    st.markdown(f"""
-                    <div class="module-card">
-                        <h4>{client['nom']}</h4>
-                        <p style="font-size: 0.8rem; margin: 5px 0;">{client['affaire']}</p>
-                        <div class="pieces-stats" style="justify-content: center;">
-                            <span class="piece-stat" style="font-size: 0.7rem;">📁 {total_pieces}</span>
-                            <span class="piece-stat" style="font-size: 0.7rem;">📄 {total_pages}p</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"Analyser", key=f"analyze_{client_key}", use_container_width=True):
-                        st.session_state.search_query = f"@{client_key}, vue d'ensemble"
-                        st.session_state.current_client = client_key
-                        st.rerun()
-        
-        # Afficher les dossiers Azure
-        if azure_clients:
-            st.markdown("#### ☁️ Dossiers Azure")
-            cols = st.columns(min(len(azure_clients), 3))
-            for idx, (client_key, client_data) in enumerate(list(azure_clients.items())[:6]):
-                with cols[idx % 3]:
-                    client = client_data["info"]
-                    pieces = client_data["pieces"]
-                    total_pieces = sum(len(items) for items in pieces.values())
-                    
-                    st.markdown(f"""
-                    <div class="module-card" style="border: 2px solid #0078d4;">
-                        <h4>☁️ {client['nom']}</h4>
-                        <p style="font-size: 0.8rem; margin: 5px 0;">{client['affaire']}</p>
-                        <div class="pieces-stats" style="justify-content: center;">
-                            <span class="piece-stat" style="font-size: 0.7rem;">📁 {total_pieces}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"Explorer", key=f"explore_{client_key}", use_container_width=True):
-                        st.session_state.search_query = f"@{client_key}, explorer"
-                        st.session_state.current_client = client_key
-                        st.rerun()
-    
-    # Actions rapides basées sur les pièces
-    if st.session_state.current_client:
-        st.markdown("### ⚡ Actions rapides sur les pièces")
-        
-        quick_cols = st.columns(5)
+        cols = st.columns(4)
         actions = [
-            ("🔍 Contradictions", "identifier contradictions entre pièces"),
-            ("📊 Timeline", "créer timeline avec pièces"),
-            ("✅ Éléments favorables", "extraire éléments favorables"),
-            ("⚠️ Points faibles", "identifier risques dans pièces"),
-            ("📑 Synthèse", "synthétiser toutes les pièces")
+            ("🔍 Contradictions", "analyser les contradictions"),
+            ("📊 Timeline", "créer une timeline"),
+            ("✅ Points favorables", "identifier les points favorables"),
+            ("📑 Synthèse", "synthétiser les documents")
         ]
         
         for idx, (label, action) in enumerate(actions):
-            with quick_cols[idx]:
-                unique_key = f"quick_{action[:10]}_{uuid.uuid4().hex[:8]}"
-                if st.button(label, key=unique_key, use_container_width=True):
-                    st.session_state.search_query = f"@{st.session_state.current_client}, {action}"
-                    st.session_state.current_view = "analyze_with_pieces"
-                    st.rerun()
-
-# ========== PAGE DE CONFIGURATION ==========
+            with cols[idx]:
+                if st.button(label, key=f"quick_{idx}", use_container_width=True):
+                    docs = ", ".join(st.session_state.selected_documents[:3])
+                    st.session_state.search_query = f"{action} dans {docs}"
+                    process_analysis(st.session_state.search_query)
 
 def show_config():
-    """Page de configuration des services Azure"""
-    st.markdown("## ⚙️ Configuration")
+    """Page de configuration détaillée"""
+    st.markdown("# ⚙️ Configuration")
     
-    # Afficher le statut des services
-    display_azure_services_status()
+    # Diagnostics détaillés
+    show_diagnostics()
     
     st.markdown("---")
     
-    # Instructions de configuration
-    with st.expander("📋 Instructions de configuration Azure"):
+    # Instructions par service
+    tabs = st.tabs(["💾 Blob Storage", "🔍 Search", "🤖 OpenAI"])
+    
+    with tabs[0]:
         st.markdown("""
-        ### Azure Blob Storage (Obligatoire)
-        ```
-        AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
-        ```
+        ### Configuration Azure Blob Storage (Obligatoire)
         
-        ### Azure Search (Optionnel)
-        ```
-        AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
-        AZURE_SEARCH_KEY=your-api-key
-        ```
+        1. Créez un compte de stockage Azure
+        2. Récupérez la chaîne de connexion
+        3. Ajoutez dans les secrets Hugging Face :
         
-        ### Azure OpenAI (Optionnel)
         ```
-        AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.com/
-        AZURE_OPENAI_KEY=your-api-key
-        AZURE_OPENAI_DEPLOYMENT=gpt-4
+        AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=votrecompte;AccountKey=votrecle;EndpointSuffix=core.windows.net
+        ```
+        """)
+        
+        if st.button("🔄 Tester la connexion Blob"):
+            st.session_state.azure_blob_manager = AzureBlobManager()
+            st.rerun()
+    
+    with tabs[1]:
+        st.markdown("""
+        ### Configuration Azure Search (Optionnel)
+        
+        1. Créez un service Azure Cognitive Search
+        2. Créez un index pour vos documents
+        3. Ajoutez dans les secrets :
+        
+        ```
+        AZURE_SEARCH_ENDPOINT=https://votre-search.search.windows.net
+        AZURE_SEARCH_KEY=votre-cle-api
+        AZURE_SEARCH_INDEX=nom-de-votre-index
         ```
         """)
     
-    # Bouton de réinitialisation
-    if st.button("🔄 Réinitialiser toutes les connexions", type="primary"):
-        st.session_state.azure_initialized = False
-        init_azure_services()
-        st.success("✅ Services réinitialisés")
-        time.sleep(1)
-        st.rerun()
+    with tabs[2]:
+        st.markdown("""
+        ### Configuration Azure OpenAI (Optionnel)
+        
+        1. Déployez un modèle dans Azure OpenAI
+        2. Récupérez l'endpoint et la clé
+        3. Ajoutez dans les secrets :
+        
+        ```
+        AZURE_OPENAI_ENDPOINT=https://votre-openai.openai.azure.com/
+        AZURE_OPENAI_KEY=votre-cle-api
+        AZURE_OPENAI_DEPLOYMENT=nom-du-deploiement
+        ```
+        """)
 
-# ========== ROUTER PRINCIPAL ==========
+def show_help():
+    """Page d'aide"""
+    st.markdown("# ❓ Aide")
+    
+    st.markdown("""
+    ### 🚀 Utilisation de la recherche @indicateur
+    
+    1. **Tapez @** suivi de l'indicateur du dossier (3-4 lettres)
+    2. **Ajoutez une virgule** puis votre requête
+    3. **Appuyez sur Entrée** pour lancer l'analyse
+    
+    **Exemple :** `@mar, analyser les contradictions dans les PV`
+    
+    Les indicateurs sont générés automatiquement :
+    - Noms courts : les 3 premières lettres
+    - Noms longs : initiales des mots principaux
+    - Les indicateurs sont affichés dans la sidebar
+    
+    ### 🤖 IA disponibles
+    
+    - **GPT-3.5** : Analyse rapide et efficace
+    - **GPT-4** : Analyse approfondie et nuancée
+    - **ChatGPT o1** : Raisonnement complexe et structuré
+    - **Claude** : Argumentation juridique détaillée
+    - **Gemini** : Recherche exhaustive multi-sources
+    - **Perplexity** : Recherche web en temps réel
+    - **Mistral** : Expertise en droit français
+    - **Azure OpenAI** : IA sécurisée Microsoft (si configurée)
+    
+    ### 🤖 Génération de prompts par IA
+    
+    - L'IA analyse vos documents et suggère des analyses pertinentes
+    - Cliquez sur une suggestion pour l'utiliser
+    - Les prompts s'adaptent aux types de documents présents
+    
+    ### 📄 Gestion des versions
+    
+    - Par défaut, seule la dernière version des documents Word est affichée
+    - Activez "Toutes versions" pour voir l'historique complet
+    - Les documents sont groupés intelligemment par nom de base
+    
+    ### 🎨 Interface optimisée
+    
+    - Design professionnel en tons bleus
+    - Polices réduites pour plus d'information
+    - Validation rapide avec Entrée (pas Cmd+Entrée)
+    - Zone de recherche sur 3 lignes pour plus de confort
+    """)
+    
+    # Afficher la table des alias si connecté
+    if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected:
+        aliases = get_folder_aliases()
+        if aliases:
+            st.markdown("### 📁 Table des indicateurs de dossiers")
+            
+            # Créer un tableau des alias
+            alias_data = []
+            for alias, folder in sorted(aliases.items()):
+                alias_data.append({
+                    "Indicateur": f"@{alias}",
+                    "Dossier": folder
+                })
+            
+            # Afficher en colonnes pour économiser l'espace
+            cols = st.columns(2)
+            half = len(alias_data) // 2
+            
+            with cols[0]:
+                for item in alias_data[:half]:
+                    st.markdown(f"**{item['Indicateur']}** → {item['Dossier']}")
+            
+            with cols[1]:
+                for item in alias_data[half:]:
+                    st.markdown(f"**{item['Indicateur']}** → {item['Dossier']}")
+
+# ========== FONCTION PRINCIPALE ==========
 
 def main():
     """Point d'entrée principal"""
-    
     # Initialisation
     init_session_state()
-    load_custom_css()
+    
+    # Injection du JavaScript pour la recherche
+    components.html(SEARCH_JAVASCRIPT, height=0)
     
     # Sidebar
-    create_sidebar()
+    show_sidebar()
     
     # Router
     views = {
-        "dashboard": show_dashboard,
-        "preparation": show_preparation_with_pieces,
-        "analyze_with_pieces": analyze_query_with_pieces,
-        "analyze_pieces": lambda: st.info("🔍 Module d'analyse approfondie des pièces en développement"),
-        "redaction": lambda: st.info("✍️ Module de rédaction basée sur les pièces en développement"),
-        "stats": lambda: st.info("📊 Module de statistiques des pièces en développement"),
-        "config": show_config
+        'dashboard': show_dashboard,
+        'search': show_dashboard,  # Même vue pour l'instant
+        'analyses': lambda: st.info("📊 Module d'analyses en développement"),
+        'config': show_config,
+        'help': show_help
     }
     
-    # Affichage
-    current_view = st.session_state.current_view
+    current_view = st.session_state.get('current_view', 'dashboard')
     if current_view in views:
         views[current_view]()
     else:
         show_dashboard()
     
-    # Footer
+    # Footer discret
     st.markdown("---")
     st.markdown(
-        """<p style='text-align: center; color: #95a5a6; font-size: 0.7rem;'>
-        ⚖️ IA Juridique Pénal • Analyse basée sur les pièces • Azure Integration • RGPD
+        """<p style='text-align: center; color: var(--text-secondary); font-size: 0.7rem;'>
+        IA Juridique v3.0 • Analyse intelligente avec IA • Azure Integration
         </p>""",
         unsafe_allow_html=True
     )
