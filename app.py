@@ -299,8 +299,12 @@ class AzureBlobManager:
         """Charge la liste des conteneurs en cache"""
         if self.connected:
             try:
-                self._containers_cache = [c.name for c in self.client.list_containers()]
-            except:
+                self._containers_cache = []
+                for container in self.client.list_containers():
+                    self._containers_cache.append(container.name)
+                logger.info(f"Cache conteneurs : {len(self._containers_cache)} trouvés")
+            except Exception as e:
+                logger.error(f"Erreur chargement conteneurs : {e}")
                 self._containers_cache = []
     
     def list_containers(self):
@@ -656,6 +660,7 @@ def init_session_state():
         'selected_client': None,
         'selected_documents': [],
         'show_all_versions': False,
+        'show_documents': False,
         'document_type_filter': 'tous',
         'azure_blob_manager': None,
         'azure_search_manager': None,
@@ -1519,6 +1524,297 @@ def show_sidebar():
         if st.button("⚙️ Configuration", key="nav_config", use_container_width=True):
             st.session_state.current_view = "config"
             st.rerun()
+
+def show_compare_module():
+    """Module de comparaison de documents"""
+    st.markdown("# 📊 Comparaison de documents")
+    st.markdown("Analysez les différences et contradictions entre plusieurs documents")
+    
+    # Sélection des documents à comparer
+    if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected:
+        containers = st.session_state.azure_blob_manager.list_containers()
+        
+        if containers:
+            selected_container = st.selectbox(
+                "Sélectionnez un dossier",
+                options=containers,
+                key="compare_container"
+            )
+            
+            if selected_container:
+                docs = st.session_state.azure_blob_manager.list_blobs_with_versions(selected_container, False)
+                
+                if docs:
+                    st.multiselect(
+                        "Sélectionnez les documents à comparer (minimum 2)",
+                        options=[d['name'] for d in docs],
+                        key="docs_to_compare"
+                    )
+                    
+                    if st.session_state.get('docs_to_compare') and len(st.session_state.docs_to_compare) >= 2:
+                        if st.button("🔍 Lancer la comparaison", type="primary"):
+                            with st.spinner("Analyse comparative en cours..."):
+                                time.sleep(2)
+                            
+                            st.success("✅ Comparaison terminée")
+                            
+                            # Résultats simulés
+                            st.markdown("### 📋 Résultats de la comparaison")
+                            
+                            tabs = st.tabs(["🔍 Contradictions", "✅ Concordances", "📊 Synthèse"])
+                            
+                            with tabs[0]:
+                                st.warning("**3 contradictions majeures identifiées**")
+                                st.markdown("""
+                                1. **Dates divergentes** : Document 1 mentionne le 15/01, Document 2 le 17/01
+                                2. **Montants différents** : 45,000€ vs 47,500€
+                                3. **Témoignages contradictoires** sur la présence du client
+                                """)
+                            
+                            with tabs[1]:
+                                st.success("**Points de concordance**")
+                                st.markdown("""
+                                - Lieu de l'incident confirmé
+                                - Personnes présentes (sauf client)
+                                - Chronologie générale des événements
+                                """)
+                            
+                            with tabs[2]:
+                                st.info("**Synthèse comparative**")
+                                st.markdown("Les documents présentent 78% de cohérence globale")
+                    else:
+                        st.info("Sélectionnez au moins 2 documents pour comparer")
+    else:
+        st.warning("Azure Blob Storage non connecté")
+
+def show_timeline_module():
+    """Module de création de timeline"""
+    st.markdown("# 📅 Timeline juridique")
+    st.markdown("Créez une chronologie visuelle des événements")
+    
+    if st.session_state.selected_documents or st.session_state.search_query:
+        source = "documents sélectionnés" if st.session_state.selected_documents else "recherche actuelle"
+        st.info(f"📄 Source : {source}")
+        
+        if st.button("🚀 Générer la timeline", type="primary"):
+            with st.spinner("Extraction des dates et événements..."):
+                progress = st.progress(0)
+                for i in range(100):
+                    progress.progress(i + 1)
+                    time.sleep(0.01)
+            
+            st.success("✅ Timeline générée")
+            
+            # Timeline simulée
+            st.markdown("### 📅 Chronologie des événements")
+            
+            events = [
+                ("2024-01-15", "🔍", "Perquisition au siège social"),
+                ("2024-01-17", "📝", "Première audition"),
+                ("2024-01-22", "📄", "Remise des documents"),
+                ("2024-02-01", "⚖️", "Mise en examen"),
+                ("2024-02-15", "📊", "Rapport d'expertise")
+            ]
+            
+            for date, icon, event in events:
+                st.markdown(f"""
+                <div class="doc-card" style="border-left: 4px solid var(--accent-blue);">
+                    <strong>{date}</strong> {icon} {event}
+                </div>
+                """, unsafe_allow_html=True)
+                
+            if st.button("💾 Exporter la timeline"):
+                st.success("Timeline exportée")
+    else:
+        st.info("Sélectionnez des documents ou effectuez une recherche pour créer une timeline")
+
+def show_extract_module():
+    """Module d'extraction d'informations"""
+    st.markdown("# 📑 Extraction intelligente")
+    st.markdown("Extrayez automatiquement les informations clés")
+    
+    extraction_type = st.radio(
+        "Que souhaitez-vous extraire ?",
+        ["Points favorables", "Éléments à charge", "Informations clés", "Personnalisé"],
+        horizontal=True
+    )
+    
+    if extraction_type == "Personnalisé":
+        custom_query = st.text_input("Décrivez ce que vous cherchez")
+    
+    if st.button("🔍 Lancer l'extraction", type="primary"):
+        with st.spinner(f"Extraction des {extraction_type.lower()}..."):
+            time.sleep(1.5)
+        
+        st.success("✅ Extraction terminée")
+        
+        # Résultats selon le type
+        if extraction_type == "Points favorables":
+            st.markdown("### ✅ Points favorables identifiés")
+            st.success("""
+            1. **Absence de préméditation** - Aucun élément ne suggère une planification
+            2. **Coopération totale** - Le client a fourni tous les documents demandés
+            3. **Témoignages favorables** - 3 témoins confirment la version du client
+            4. **Expertises contradictoires** - Les conclusions ne sont pas unanimes
+            """)
+        elif extraction_type == "Éléments à charge":
+            st.markdown("### ⚠️ Éléments à charge")
+            st.warning("""
+            1. **Signatures sur documents** - Présence confirmée du client
+            2. **Mouvements financiers** - Transferts identifiés
+            3. **Chronologie défavorable** - Dates coïncidentes
+            """)
+        else:
+            st.markdown("### 📋 Informations clés extraites")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Documents analysés", "47")
+                st.metric("Personnes identifiées", "12")
+            with col2:
+                st.metric("Dates clés", "8")
+                st.metric("Montants cumulés", "2.3M€")
+
+def show_strategy_module():
+    """Module de stratégie juridique"""
+    st.markdown("# ⚖️ Stratégie juridique")
+    st.markdown("Recommandations IA pour votre défense")
+    
+    # Contexte
+    st.text_area(
+        "Contexte de l'affaire",
+        placeholder="Décrivez brièvement l'affaire et les enjeux...",
+        key="strategy_context"
+    )
+    
+    strategy_focus = st.multiselect(
+        "Axes d'analyse prioritaires",
+        ["Contestation des preuves", "Procédure", "Fond du dossier", "Négociation", "Témoignages"],
+        default=["Fond du dossier"]
+    )
+    
+    if st.button("🎯 Générer la stratégie", type="primary"):
+        with st.spinner("Analyse stratégique par les IA..."):
+            time.sleep(2)
+        
+        st.success("✅ Stratégie générée")
+        
+        # Stratégie détaillée
+        st.markdown("### 🎯 Stratégie recommandée")
+        
+        tabs = st.tabs(["📍 Priorités", "⚠️ Risques", "💪 Forces", "📋 Plan d'action"])
+        
+        with tabs[0]:
+            st.markdown("""
+            **Axes prioritaires :**
+            1. Contester la régularité de la procédure
+            2. Démontrer l'absence d'intention frauduleuse
+            3. Mettre en avant la coopération du client
+            """)
+        
+        with tabs[1]:
+            st.warning("""
+            **Points de vigilance :**
+            - Cohérence des déclarations à maintenir
+            - Documents compromettants à expliquer
+            - Témoins adverses à anticiper
+            """)
+        
+        with tabs[2]:
+            st.success("""
+            **Atouts du dossier :**
+            - Expertises contradictoires exploitables
+            - Procédure contestable sur plusieurs points
+            - Profil du client sans antécédents
+            """)
+        
+        with tabs[3]:
+            st.info("""
+            **Plan d'action :**
+            1. Phase 1 : Contester la procédure
+            2. Phase 2 : Démontrer la bonne foi
+            3. Phase 3 : Négocier si nécessaire
+            """)
+
+def show_report_module():
+    """Module de génération de rapports"""
+    st.markdown("# 📄 Génération de rapports")
+    st.markdown("Créez des documents juridiques automatisés")
+    
+    report_type = st.selectbox(
+        "Type de document à générer",
+        ["Synthèse d'analyse", "Note de plaidoirie", "Mémo juridique", "Conclusions", "Rapport d'expertise"]
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        tone = st.select_slider(
+            "Ton du document",
+            options=["Très formel", "Formel", "Neutre", "Accessible"],
+            value="Formel"
+        )
+    
+    with col2:
+        length = st.select_slider(
+            "Longueur",
+            options=["Concis", "Standard", "Détaillé", "Exhaustif"],
+            value="Standard"
+        )
+    
+    include_elements = st.multiselect(
+        "Éléments à inclure",
+        ["Chronologie", "Analyse des preuves", "Jurisprudence", "Recommandations", "Annexes"],
+        default=["Chronologie", "Analyse des preuves"]
+    )
+    
+    if st.button("📝 Générer le document", type="primary"):
+        with st.spinner(f"Génération du {report_type.lower()}..."):
+            progress = st.progress(0)
+            status = st.empty()
+            
+            steps = [
+                "Analyse du contexte...",
+                "Structuration du document...",
+                "Rédaction du contenu...",
+                "Mise en forme...",
+                "Finalisation..."
+            ]
+            
+            for i, step in enumerate(steps):
+                status.text(step)
+                progress.progress((i + 1) / len(steps))
+                time.sleep(0.5)
+        
+        st.success("✅ Document généré")
+        
+        # Aperçu du document
+        st.markdown(f"### 📄 {report_type}")
+        
+        with st.expander("Aperçu du document", expanded=True):
+            st.markdown(f"""
+            **{report_type.upper()}**
+            
+            *Date : {datetime.now().strftime('%d/%m/%Y')}*
+            
+            **I. Introduction**
+            [Contenu généré selon le contexte]
+            
+            **II. Analyse factuelle**
+            [Chronologie et faits établis]
+            
+            **III. Analyse juridique**
+            [Points de droit applicables]
+            
+            **IV. Conclusions**
+            [Recommandations et stratégie]
+            """)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.button("📥 Télécharger PDF")
+        with col2:
+            st.button("📧 Envoyer par email")
+        with col3:
+            st.button("✏️ Modifier")
 
 # ========== VUES PRINCIPALES ==========
 
