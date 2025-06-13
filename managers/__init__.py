@@ -1,44 +1,105 @@
 # managers/__init__.py
 """
-Centralisation des imports des managers de l'application
+Package managers - Gestionnaires pour l'application juridique
 """
-from managers.llm_manager import LLMManager, get_llm_manager
-from managers.multi_llm_manager import MultiLLMManager
-from managers.azure_blob_manager import AzureBlobManager
-from managers.azure_search_manager import AzureSearchManager
-from managers.document_manager import DocumentManager
-from managers.style_analyzer import StyleAnalyzer
-from managers.dynamic_generators import generate_dynamic_search_prompts, generate_dynamic_templates
-from managers.jurisprudence_verifier import JurisprudenceVerifier
-from managers.legal_search import LegalSearchManager
-from managers.company_info_manager import CompanyInfoManager, get_company_info_manager
-from managers.universal_search_service import UniversalSearchService
 
-__all__ = [
-    'LLMManager',
-    'get_llm_manager',
-    'MultiLLMManager',
-    'AzureBlobManager', 
-    'AzureSearchManager',
-    'DocumentManager',
-    'StyleAnalyzer',
-    'generate_dynamic_search_prompts',
-    'generate_dynamic_templates',
-    'JurisprudenceVerifier',
-    'LegalSearchManager',
-    'CompanyInfoManager',
-    'get_company_info_manager',
-    'UniversalSearchService'  # Ajout du service de recherche universelle
-]
+# Import conditionnel des managers disponibles
+__all__ = []
 
-# Initialisation optionnelle des managers singleton
-universal_search_service = None
+# Azure Blob Manager
+try:
+    from .azure_blob_manager import AzureBlobManager
+    __all__.append('AzureBlobManager')
+except ImportError:
+    pass
 
-def get_universal_search_service():
-    """
-    Retourne une instance singleton du service de recherche universelle
-    """
-    global universal_search_service
-    if universal_search_service is None:
-        universal_search_service = UniversalSearchService()
-    return universal_search_service
+# Azure Search Manager  
+try:
+    from .azure_search_manager import AzureSearchManager
+    __all__.append('AzureSearchManager')
+except ImportError:
+    pass
+
+# Company Info Manager
+try:
+    from .company_info_manager import CompanyInfoManager
+    __all__.append('CompanyInfoManager')
+except ImportError:
+    pass
+
+# Document Manager
+try:
+    from .document_manager import DocumentManager
+    __all__.append('DocumentManager')
+except ImportError:
+    pass
+
+# Dynamic Generators
+try:
+    from .dynamic_generators import DynamicGenerators
+    __all__.append('DynamicGenerators')
+except ImportError:
+    pass
+
+# Export Manager
+try:
+    from .export_manager import ExportManager
+    __all__.append('ExportManager')
+except ImportError:
+    pass
+
+# Jurisprudence Verifier
+try:
+    from .jurisprudence_verifier import JurisprudenceVerifier
+    __all__.append('JurisprudenceVerifier')
+except ImportError:
+    pass
+
+# Legal Search
+try:
+    from .legal_search import LegalSearchManager
+    __all__.append('LegalSearchManager')
+except ImportError:
+    pass
+
+# LLM Manager
+try:
+    from .llm_manager import LLMManager
+    __all__.append('LLMManager')
+except ImportError:
+    pass
+
+# Multi LLM Manager
+try:
+    from .multi_llm_manager import MultiLLMManager
+    __all__.append('MultiLLMManager')
+except ImportError:
+    pass
+
+# Style Analyzer
+try:
+    from .style_analyzer import StyleAnalyzer
+    __all__.append('StyleAnalyzer')
+except ImportError:
+    pass
+
+# Template Manager
+try:
+    from .template_manager import TemplateManager
+    __all__.append('TemplateManager')
+except ImportError:
+    pass
+
+# Universal Search Interface
+try:
+    from .UniversalSearchInterface import UniversalSearchInterface
+    __all__.append('UniversalSearchInterface')
+except ImportError:
+    pass
+
+# Universal Search Service
+try:
+    from .universal_search_service import UniversalSearchService
+    __all__.append('UniversalSearchService')
+except ImportError:
+    pass
