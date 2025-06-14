@@ -14,28 +14,21 @@ from typing import Any, Dict, List, Optional, Tuple
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Import conditionnel d'Azure Search
-try:
-    from azure.core.credentials import AzureKeyCredential
-    from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
-    from azure.search.documents import SearchClient
-    from azure.search.documents.indexes import SearchIndexClient
-    from azure.search.documents.indexes.models import (
-        HnswAlgorithmConfiguration, ScoringProfile, SearchableField,
-        SearchField, SearchFieldDataType, SearchIndex, SemanticConfiguration,
-        SemanticField, SemanticPrioritizedFields, SemanticSearch, SimpleField,
-        TextWeights, VectorSearch, VectorSearchProfile)
-    from azure.search.documents.models import (QueryAnswerType,
-                                               QueryCaptionType, QueryType,
-                                               VectorizedQuery)
-    AZURE_SEARCH_AVAILABLE = True
-except ImportError as e:
-    logger.error(f"Azure Search SDK non disponible: {e}")
-    AZURE_SEARCH_AVAILABLE = False
-    # Classes de substitution pour éviter les erreurs
-    SearchClient = None
-    SearchIndexClient = None
-    AzureKeyCredential = None
+from azure.core.credentials import AzureKeyCredential
+from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
+from azure.search.documents import SearchClient
+from azure.search.documents.indexes import SearchIndexClient
+from azure.search.documents.indexes.models import (
+    HnswAlgorithmConfiguration, ScoringProfile, SearchableField,
+    SearchField, SearchFieldDataType, SearchIndex, SemanticConfiguration,
+    SemanticField, SemanticPrioritizedFields, SemanticSearch, SimpleField,
+    TextWeights, VectorSearch, VectorSearchProfile)
+from azure.search.documents.models import (
+    QueryAnswerType,
+    QueryCaptionType,
+    QueryType,
+    VectorizedQuery,
+)
 
 @dataclass
 class SearchResult:
@@ -62,11 +55,6 @@ class AzureSearchManager:
         
         logger.info(f"Initialisation Azure Search - Index: {self.index_name}")
         
-        if not AZURE_SEARCH_AVAILABLE:
-            self.connection_error = "SDK Azure Search non disponible. Installez azure-search-documents."
-            logger.error(self.connection_error)
-            return
-            
         if not self.endpoint or not self.key:
             self.connection_error = "Variables d'environnement AZURE_SEARCH_ENDPOINT et AZURE_SEARCH_KEY requises"
             logger.error(self.connection_error)
@@ -122,7 +110,7 @@ class AzureSearchManager:
     
     def _create_index(self):
         """Crée l'index avec le schéma approprié"""
-        if not AZURE_SEARCH_AVAILABLE or not self.index_client:
+        if not self.index_client:
             return
             
         try:

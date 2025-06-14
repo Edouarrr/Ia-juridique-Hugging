@@ -11,34 +11,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Imports conditionnels pour les différents formats
-try:
-    from docx import Document
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.shared import Inches, Pt, RGBColor
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
-    logging.warning("python-docx non installé - Export DOCX non disponible")
-
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
-    logging.warning("pandas non installé - Export Excel limité")
-
-try:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, letter
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import inch
-    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer,
-                                    Table, TableStyle)
-    REPORTLAB_AVAILABLE = True
-except ImportError:
-    REPORTLAB_AVAILABLE = False
-    logging.warning("reportlab non installé - Export PDF non disponible")
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt, RGBColor
+import pandas as pd
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +137,6 @@ class ExportManager:
     
     def _export_docx(self, content: Any, metadata: Optional[Dict]) -> Tuple[bytes, str]:
         """Export au format DOCX"""
-        if not DOCX_AVAILABLE:
-            # Fallback sur format texte
-            logger.warning("Export DOCX non disponible, fallback sur TXT")
-            return self._export_txt(content, metadata)
-        
         doc = Document()
         
         # Ajouter le titre
@@ -213,11 +189,6 @@ class ExportManager:
     
     def _export_pdf(self, content: Any, metadata: Optional[Dict]) -> Tuple[bytes, str]:
         """Export au format PDF"""
-        if not REPORTLAB_AVAILABLE:
-            # Fallback sur format texte
-            logger.warning("Export PDF non disponible, fallback sur TXT")
-            return self._export_txt(content, metadata)
-        
         # Créer le PDF en mémoire
         pdf_io = io.BytesIO()
         doc = SimpleDocTemplate(pdf_io, pagesize=A4)
@@ -474,6 +445,4 @@ class ExportManager:
             'total_exports': self.export_count,
             'last_export': self.last_export,
             'supported_formats': self.SUPPORTED_FORMATS,
-            'pdf_available': REPORTLAB_AVAILABLE,
-            'docx_available': DOCX_AVAILABLE
         }

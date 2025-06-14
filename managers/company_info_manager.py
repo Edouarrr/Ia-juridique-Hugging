@@ -9,21 +9,13 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+import httpx
+from bs4 import BeautifulSoup
+
 logger = logging.getLogger(__name__)
 
-try:
-    import httpx
-    HTTPX_AVAILABLE = True
-except ImportError:
-    HTTPX_AVAILABLE = False
-    logger.warning("Module httpx non disponible")
-
-try:
-    from bs4 import BeautifulSoup
-    BS4_AVAILABLE = True
-except ImportError:
-    BS4_AVAILABLE = False
-    logger.warning("Module beautifulsoup4 non disponible")
+import httpx
+from bs4 import BeautifulSoup
 
 import streamlit as st
 
@@ -41,16 +33,12 @@ class CompanyInfoManager:
         self.cache_duration = timedelta(days=7)  # Cache valide 7 jours
         
         # Session HTTP
-        if HTTPX_AVAILABLE:
-            self.session = httpx.AsyncClient(
-                timeout=30.0,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            )
-        else:
-            self.session = None
-            logger.error("httpx non disponible - fonctionnalités limitées")
+        self.session = httpx.AsyncClient(
+            timeout=30.0,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        )
     
     async def __aenter__(self):
         """Contexte manager pour usage async"""
@@ -75,10 +63,6 @@ class CompanyInfoManager:
         Returns:
             InformationEntreprise ou None si non trouvé
         """
-        if not HTTPX_AVAILABLE:
-            logger.error("httpx requis pour la récupération d'informations")
-            return None
-        
         # Vérifier le cache
         cache_key = f"{company_name.lower()}_{source_preference.value}"
         if not force_refresh and cache_key in self.cache:
@@ -92,12 +76,12 @@ class CompanyInfoManager:
         try:
             if source_preference == SourceEntreprise.PAPPERS and self.pappers_api_key:
                 info = await self._fetch_from_pappers(company_name)
-            elif source_preference == SourceEntreprise.SOCIETE_COM and BS4_AVAILABLE:
+            elif source_preference == SourceEntreprise.SOCIETE_COM:
                 info = await self._fetch_from_societe_com(company_name)
             
             # Si échec, essayer l'autre source
             if not info:
-                if source_preference == SourceEntreprise.PAPPERS and BS4_AVAILABLE:
+                if source_preference == SourceEntreprise.PAPPERS:
                     logger.info(f"Pappers échoué, essai sur Societe.com pour {company_name}")
                     info = await self._fetch_from_societe_com(company_name)
                 elif source_preference == SourceEntreprise.SOCIETE_COM and self.pappers_api_key:
@@ -216,10 +200,6 @@ class CompanyInfoManager:
     
     async def _fetch_from_societe_com(self, company_name: str) -> Optional[InformationEntreprise]:
         """Récupère depuis Societe.com par scraping"""
-        if not BS4_AVAILABLE:
-            logger.error("BeautifulSoup4 requis pour Societe.com")
-            return None
-        
         try:
             # Recherche sur societe.com
             search_url = f"https://www.societe.com/cgi-bin/search"
@@ -350,7 +330,7 @@ class CompanyInfoManager:
         """Recherche multiple d'entreprises"""
         results = []
         
-        if self.pappers_api_key and HTTPX_AVAILABLE:
+        if self.pappers_api_key:
             try:
                 search_url = "https://api.pappers.fr/v2/recherche"
                 params = {

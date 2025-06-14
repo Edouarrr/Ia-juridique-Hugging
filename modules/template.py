@@ -1778,13 +1778,11 @@ def format_final_document(content: str, output_format: str) -> str:
 
 def export_to_word(content: str) -> bytes:
     """Exporte en format Word"""
-    # Utiliser python-docx si disponible
-    try:
-        from io import BytesIO
+    from io import BytesIO
 
-        from docx import Document
-        
-        doc = Document()
+    from docx import Document
+
+    doc = Document()
         
         # Styles
         for line in content.split('\n'):
@@ -1798,14 +1796,10 @@ def export_to_word(content: str) -> bytes:
         
         # Sauvegarder en mémoire
         doc_io = BytesIO()
-        doc.save(doc_io)
-        doc_io.seek(0)
-        
-        return doc_io.read()
-        
-    except ImportError:
-        # Fallback : retourner le texte brut
-        return content.encode('utf-8')
+    doc.save(doc_io)
+    doc_io.seek(0)
+
+    return doc_io.read()
 
 def export_to_pdf(content: str) -> bytes:
     """Exporte en format PDF"""
