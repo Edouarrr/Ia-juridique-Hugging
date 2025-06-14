@@ -6,6 +6,8 @@ import io
 import json
 import re
 import time
+import zipfile
+import mimetypes
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -191,8 +193,14 @@ def show_enhanced_import_interface():
     with col1:
         import_source = st.radio(
             "Source des documents",
-            ["📁 Fichiers locaux", "☁️ Azure Storage", "🔗 URL", "📋 Presse-papier"],
-            horizontal=True
+            [
+                "📁 Fichiers locaux",
+                "📁 Dossier local",
+                "☁️ Azure Storage",
+                "🔗 URL",
+                "📋 Presse-papier",
+            ],
+            horizontal=True,
         )
     
     with col2:
@@ -204,6 +212,8 @@ def show_enhanced_import_interface():
     # Interface selon la source
     if import_source == "📁 Fichiers locaux":
         show_file_upload_interface(auto_analyze, validate_format)
+    elif import_source == "📁 Dossier local":
+        show_folder_upload_interface(auto_analyze, validate_format)
     elif import_source == "☁️ Azure Storage":
         show_azure_import_interface(auto_analyze, validate_format)
     elif import_source == "🔗 URL":
@@ -290,6 +300,25 @@ def show_file_upload_interface(auto_analyze: bool, validate_format: bool):
             if st.button("❌ Annuler", use_container_width=True):
                 st.session_state.import_export_state['imported_documents'] = []
                 st.rerun()
+
+def show_folder_upload_interface(auto_analyze: bool, validate_format: bool):
+    """Interface d'upload de dossiers compressés"""
+    uploaded_zips = st.file_uploader(
+        "Glissez vos dossiers compressés (.zip)",
+        type=["zip"],
+        accept_multiple_files=True,
+        help="Les dossiers seront extraits pour conserver la structure"
+    )
+
+    if uploaded_zips:
+        st.markdown(f"#### {len(uploaded_zips)} dossier(s) sélectionné(s)")
+
+        if st.button(
+            f"🚀 Importer {len(uploaded_zips)} dossier(s)",
+            type="primary",
+            use_container_width=True,
+        ):
+            process_folder_import(uploaded_zips, auto_analyze)
 
 def show_ai_analysis_interface():
     """Interface d'analyse IA avec sélection de modèles"""
@@ -952,6 +981,36 @@ def process_file_import(files, auto_analyze: bool):
     
     status.text(f"✅ {len(files)} fichiers importés avec succès!")
     
+    if auto_analyze:
+        st.session_state.import_export_state['ai_analysis_queue'].extend(imported_docs)
+        st.info("🤖 Les fichiers ont été ajoutés à la file d'analyse IA")
+
+def process_folder_import(zip_files, auto_analyze: bool):
+    """Traite l'import de dossiers compressés"""
+    imported_docs = []
+
+    for zip_file in zip_files:
+        with zipfile.ZipFile(zip_file) as archive:
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                data = archive.read(info.filename)
+                mime_type, _ = mimetypes.guess_type(info.filename)
+                doc = {
+                    'name': Path(info.filename).name,
+                    'path': info.filename,
+                    'type': mime_type or 'application/octet-stream',
+                    'size': len(data),
+                    'content': data,
+                    'imported_at': datetime.now(),
+                }
+                st.session_state.imported_documents[info.filename] = doc
+                imported_docs.append(doc)
+
+    st.session_state.import_export_state['imported_documents'].extend(imported_docs)
+
+    st.success(f"✅ {len(imported_docs)} fichier(s) importé(s)")
+
     if auto_analyze:
         st.session_state.import_export_state['ai_analysis_queue'].extend(imported_docs)
         st.info("🤖 Les fichiers ont été ajoutés à la file d'analyse IA")
