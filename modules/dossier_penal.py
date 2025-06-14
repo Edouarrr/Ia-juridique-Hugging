@@ -32,10 +32,6 @@ from utils import (
 from config.ai_models import AI_MODELS
 from utils.decorators import decorate_public_functions
 
-# Enregistrement automatique des fonctions publiques pour le module
-decorate_public_functions(sys.modules[__name__])
-
-
 # Configuration des modèles IA importée depuis config.ai_models
 
 from utils import (clean_key, format_legal_date, truncate_text,
@@ -45,6 +41,9 @@ from config.ai_models import AI_MODELS
 # Configuration des modèles IA importée depuis config.ai_models
 
 from modules.dataclasses import EmailConfig
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # Fonctions helper intégrées importées de utils
 

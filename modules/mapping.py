@@ -22,12 +22,11 @@ from utils.decorators import decorate_public_functions
 import networkx as nx
 import plotly.graph_objects as go
 import pandas as pd
+from managers.multi_llm_manager import MultiLLMManager
+from modules.dataclasses import Document, Entity, Relationship
 
 # Enregistrement automatique des fonctions publiques pour le module
 decorate_public_functions(sys.modules[__name__])
-
-from managers.multi_llm_manager import MultiLLMManager
-from modules.dataclasses import Document, Entity, Relationship
 
 
 def run():

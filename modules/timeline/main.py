@@ -20,12 +20,10 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from utils.decorators import decorate_public_functions
 from .models import AIModel, TimelineEvent
+from llm_manager import LLMManager
 
 # Enregistrement automatique des fonctions publiques pour le module
 decorate_public_functions(sys.modules[__name__])
-
-# Import du manager multi-LLM
-from llm_manager import LLMManager
 
 class TimelineModule:
     """Module de création de timeline juridique avec IA multi-modèles pour le droit pénal des affaires"""
