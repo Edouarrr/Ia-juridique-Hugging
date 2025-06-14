@@ -444,6 +444,7 @@ def show_dashboard():
     st.markdown('<h1 class="main-header">⚖️ IA Juridique - Droit Pénal des Affaires</h1>', unsafe_allow_html=True)
 
     # Barre de recherche
+    st.markdown("Utilisez la recherche pour activer un module ou interroger un dossier.")
     search_query = st.text_input(
         "🔍 Recherche de dossier ou commande",
         placeholder="Ex: @DOSSIER123",
