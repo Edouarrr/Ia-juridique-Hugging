@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+from utils.prompt_rewriter import rewrite_prompt
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -168,17 +169,20 @@ class MultiLLMManager:
         }
         
         provider_key = provider_mapping.get(provider_key, provider_key)
-        
+
         if provider_key not in self.clients:
             return {
                 'success': False,
                 'provider': provider_name,
                 'error': f"Provider {provider_name} non disponible. Providers disponibles: {list(self.clients.keys())}"
             }
-        
+
         try:
             start_time = time.time()
-            
+
+            # Rewrite prompt for clarity
+            prompt = rewrite_prompt(prompt)
+
             if provider_key == "openai" or provider_key == "azure_openai":
                 response = self._query_openai(provider_key, prompt, system_prompt, temperature, max_tokens)
             elif provider_key == "anthropic":
