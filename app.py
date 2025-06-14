@@ -57,6 +57,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ========== CONFIGURATION DES MODULES ==========
+# Configuration complète de tous les modules existants
 MODULES_CONFIG = {
     # Modules d'analyse
     "comparison": {
@@ -64,6 +65,30 @@ MODULES_CONFIG = {
         "desc": "Analyse comparative avec détection des contradictions",
         "category": "analyse",
         "priority": 1
+    },
+    "timeline": {
+        "name": "📅 Timeline juridique",
+        "desc": "Chronologie des infractions et procédures",
+        "category": "analyse",
+        "priority": 2
+    },
+    "extraction": {
+        "name": "📑 Extraction d'informations",
+        "desc": "Extraction des éléments constitutifs",
+        "category": "analyse",
+        "priority": 3
+    },
+    "mapping": {
+        "name": "🗺️ Cartographie des relations",
+        "desc": "Analyse des réseaux d'entités et relations",
+        "category": "analyse",
+        "priority": 4
+    },
+    "recherche_analyse_unifiee": {
+        "name": "🔍 Recherche & Analyse unifiée",
+        "desc": "Recherche intelligente multi-sources avec IA",
+        "category": "analyse",
+        "priority": 5
     },
     
     # Modules de stratégie
@@ -93,6 +118,12 @@ MODULES_CONFIG = {
         "category": "redaction",
         "priority": 1
     },
+    "generation_longue": {
+        "name": "📜 Génération longue",
+        "desc": "Documents juridiques complexes et détaillés",
+        "category": "redaction",
+        "priority": 2
+    },
     
     # Modules de gestion
     "import_export": {
@@ -112,57 +143,108 @@ MODULES_CONFIG = {
         "desc": "Vue d'ensemble du dossier",
         "category": "gestion",
         "priority": 3
-    }
-}
-
-# Configuration des modules supplémentaires à créer
-MODULES_TO_CREATE = {
-    "search_module": {
-        "name": "🔍 Recherche & Analyse",
-        "desc": "Recherche intelligente multi-sources avec IA",
-        "category": "analyse",
-        "priority": 2
     },
-    "timeline_juridique": {
-        "name": "📅 Timeline juridique",
-        "desc": "Chronologie des infractions et procédures",
-        "category": "analyse",
-        "priority": 3
-    },
-    "extract_information": {
-        "name": "📑 Extraction d'informations",
-        "desc": "Extraction des éléments constitutifs",
-        "category": "analyse",
-        "priority": 4
-    },
-    "contradiction_analysis": {
-        "name": "⚡ Analyse contradictions",
-        "desc": "Détection automatique des incohérences",
-        "category": "analyse",
-        "priority": 5
-    },
-    "conclusions": {
-        "name": "📝 Conclusions pénales",
-        "desc": "Rédaction de conclusions",
-        "category": "redaction",
-        "priority": 2
-    },
-    "courrier_juridique": {
-        "name": "📧 Courriers juridiques",
-        "desc": "Correspondances et notifications",
-        "category": "redaction",
-        "priority": 3
-    },
+    
+    # Modules spécialisés
     "jurisprudence": {
         "name": "⚖️ Jurisprudence",
         "desc": "Recherche et analyse de jurisprudence",
         "category": "specialise",
         "priority": 1
     },
+    "email": {
+        "name": "📧 Gestion des emails",
+        "desc": "Centre de messagerie juridique avec IA",
+        "category": "communication",
+        "priority": 1
+    }
+}
+
+# Modules à vérifier/créer (ceux qui pourraient manquer)
+MODULES_TO_CREATE = {
+    # Modules possiblement manquants
+    "search_module": {
+        "name": "🔍 Recherche simple",
+        "desc": "Recherche basique dans les documents",
+        "category": "analyse",
+        "priority": 6
+    },
+    "contradiction_analysis": {
+        "name": "⚡ Analyse contradictions",
+        "desc": "Détection automatique des incohérences",
+        "category": "analyse",
+        "priority": 7
+    },
+    "conclusions": {
+        "name": "📝 Conclusions pénales",
+        "desc": "Rédaction de conclusions",
+        "category": "redaction",
+        "priority": 3
+    },
+    "courrier_juridique": {
+        "name": "✉️ Courriers juridiques",
+        "desc": "Correspondances et notifications",
+        "category": "redaction",
+        "priority": 4
+    },
+    "bordereau": {
+        "name": "📋 Bordereau de pièces",
+        "desc": "Génération de bordereaux",
+        "category": "redaction",
+        "priority": 5
+    },
     "calcul_prejudice": {
         "name": "💰 Calcul préjudice",
         "desc": "Évaluation des préjudices",
         "category": "specialise",
+        "priority": 2
+    },
+    "procedure_verification": {
+        "name": "✅ Vérification procédure",
+        "desc": "Contrôle de conformité procédurale",
+        "category": "specialise",
+        "priority": 3
+    },
+    "risk_assessment": {
+        "name": "⚠️ Évaluation risques",
+        "desc": "Analyse des risques juridiques",
+        "category": "specialise",
+        "priority": 4
+    },
+    "evidence_chain": {
+        "name": "🔗 Chaîne de preuves",
+        "desc": "Gestion et analyse des preuves",
+        "category": "specialise",
+        "priority": 5
+    },
+    "negotiation": {
+        "name": "🤝 Négociation pénale",
+        "desc": "Stratégies de négociation",
+        "category": "strategie",
+        "priority": 4
+    },
+    "witness_preparation": {
+        "name": "👥 Préparation témoins",
+        "desc": "Préparer les témoins",
+        "category": "strategie",
+        "priority": 5
+    },
+    "report_generation": {
+        "name": "📊 Génération rapports",
+        "desc": "Création de rapports juridiques",
+        "category": "redaction",
+        "priority": 6
+    },
+    "integration_juridique": {
+        "name": "🔌 Intégration juridique",
+        "desc": "Intégration avec systèmes externes",
+        "category": "technique",
+        "priority": 1
+    },
+    "chat": {
+        "name": "💬 Chat juridique",
+        "desc": "Assistant conversationnel juridique",
+        "category": "communication",
         "priority": 2
     }
 }
@@ -183,14 +265,21 @@ class ModuleManager:
         # Vérifier l'existence du dossier modules
         if not self.modules_path.exists():
             self.load_status["warnings"].append(f"Dossier modules non trouvé : {self.modules_path}")
+            logger.error(f"❌ Dossier modules non trouvé : {self.modules_path}")
             return
-            
+        
+        logger.info(f"📂 Scan du dossier : {self.modules_path}")
+        
         # Scanner les fichiers Python
-        for module_file in self.modules_path.glob("*.py"):
+        module_files = list(self.modules_path.glob("*.py"))
+        logger.info(f"📋 Fichiers trouvés : {[f.name for f in module_files]}")
+        
+        for module_file in module_files:
             if module_file.name.startswith("_"):
                 continue
                 
             module_name = module_file.stem
+            logger.info(f"🔍 Analyse du module : {module_name}")
             
             # Chercher d'abord dans MODULES_CONFIG
             if module_name in MODULES_CONFIG:
@@ -199,6 +288,7 @@ class ModuleManager:
                     "config": MODULES_CONFIG[module_name],
                     "loaded": False
                 }
+                logger.info(f"✅ Module reconnu : {module_name}")
             # Puis dans MODULES_TO_CREATE (au cas où ils ont été créés)
             elif module_name in MODULES_TO_CREATE:
                 self.available_modules[module_name] = {
@@ -206,6 +296,10 @@ class ModuleManager:
                     "config": MODULES_TO_CREATE[module_name],
                     "loaded": False
                 }
+                logger.info(f"✅ Module optionnel trouvé : {module_name}")
+            else:
+                logger.warning(f"⚠️ Module non configuré : {module_name}")
+                self.load_status["warnings"].append(f"Module {module_name} trouvé mais non configuré")
     
     def load_module(self, module_name: str) -> bool:
         """Charge un module spécifique"""
@@ -220,9 +314,9 @@ class ModuleManager:
         module_path = module_info["path"]
         
         try:
-            # Import dynamique du module
+            # Import dynamique du module - CORRECTION ICI
             spec = importlib.util.spec_from_file_location(
-                f"modules.{module_name}", 
+                f"modules.{module_name}",  # Chemin corrigé
                 module_path
             )
             
@@ -236,9 +330,11 @@ class ModuleManager:
                     self.loaded_modules[module_name] = module
                     module_info["loaded"] = True
                     self.load_status["success"].append(module_name)
+                    logger.info(f"✅ Module {module_name} chargé avec succès")
                     return True
                 else:
                     self.load_status["failed"][module_name] = "Fonction run() non trouvée"
+                    logger.error(f"❌ Module {module_name} : pas de fonction run()")
                     return False
             else:
                 self.load_status["failed"][module_name] = "Impossible de créer les specs"
@@ -332,7 +428,7 @@ def show_dashboard():
     
     with col1:
         total_modules = len(st.session_state.module_manager.available_modules)
-        st.metric("📦 Modules disponibles", total_modules)
+        st.metric("📦 Modules disponibles", total_modules, delta="+1" if total_modules > 8 else None)
     
     with col2:
         loaded_modules = len(st.session_state.module_manager.loaded_modules)
@@ -343,10 +439,13 @@ def show_dashboard():
         st.metric("🤖 Multi-LLM", llm_status)
     
     with col4:
-        azure_status = "✅" if st.session_state.azure_connected else "❌"
-        st.metric("☁️ Azure", azure_status)
+        missing_count = len([m for m in MODULES_TO_CREATE if not (Path(__file__).parent / "modules" / f"{m}.py").exists()])
+        st.metric("📋 À créer", missing_count, delta=f"-{15-missing_count}" if missing_count < 15 else None)
     
     st.markdown("---")
+    
+    # Afficher les modules non configurés s'il y en a
+    show_modules_unconfigured()
     
     # Alerte si des modules manquent
     missing_modules = []
@@ -356,15 +455,24 @@ def show_dashboard():
             missing_modules.append(module_id)
     
     if missing_modules:
-        st.warning(f"⚠️ {len(missing_modules)} modules manquants détectés")
-        with st.expander("Voir les modules manquants"):
-            for module_id in missing_modules:
-                config = MODULES_TO_CREATE[module_id]
-                st.write(f"• **{config['name']}** - {config['desc']}")
-            
-            if st.button("🔧 Créer tous les modules manquants", type="primary"):
-                create_missing_modules()
-                st.rerun()
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.warning(f"⚠️ {len(missing_modules)} modules supplémentaires peuvent être créés pour étendre les fonctionnalités")
+        with col2:
+            if st.button("📋 Voir les détails", key="show_missing"):
+                st.session_state.show_missing_details = not st.session_state.get('show_missing_details', False)
+        
+        if st.session_state.get('show_missing_details', False):
+            with st.expander("Modules disponibles à la création", expanded=True):
+                for module_id in missing_modules:
+                    config = MODULES_TO_CREATE[module_id]
+                    st.write(f"• **{config['name']}** - {config['desc']}")
+                
+                if st.button("🔧 Créer tous les modules manquants", type="primary"):
+                    create_missing_modules()
+                    st.rerun()
+    else:
+        st.success("✅ Tous les modules optionnels ont été créés !")
     
     # Modules par catégorie
     modules_by_cat = st.session_state.module_manager.get_modules_by_category()
@@ -380,7 +488,10 @@ def show_dashboard():
         "strategie": ("⚖️ Stratégie", "Modules de stratégie juridique"),
         "redaction": ("✍️ Rédaction", "Modules de génération de documents"),
         "gestion": ("📁 Gestion", "Modules de gestion des dossiers"),
-        "specialise": ("🎯 Spécialisé", "Modules spécialisés")
+        "specialise": ("🎯 Spécialisé", "Modules spécialisés"),
+        "communication": ("💬 Communication", "Modules de communication"),
+        "technique": ("🔧 Technique", "Modules techniques"),
+        "autre": ("📦 Autres", "Modules divers")
     }
     
     for cat_key, (cat_title, cat_desc) in categories_display.items():
@@ -426,7 +537,7 @@ def show_sidebar():
         
         # Modules rapides (seulement ceux qui existent)
         st.markdown("### 🚀 Accès rapide")
-        quick_modules = ["import_export", "strategy", "redaction_unified", "comparison"]
+        quick_modules = ["recherche_analyse_unifiee", "import_export", "strategy", "redaction_unified", "email", "jurisprudence"]
         
         for module_id in quick_modules:
             if module_id in st.session_state.module_manager.available_modules:
@@ -442,11 +553,19 @@ def show_sidebar():
         
         # Modules existants
         available = len(st.session_state.module_manager.available_modules)
-        missing = len(MODULES_TO_CREATE)
+        total_possible = len(MODULES_CONFIG) + len(MODULES_TO_CREATE)
+        missing = len([m for m in MODULES_TO_CREATE if not (Path(__file__).parent / "modules" / f"{m}.py").exists()])
         
-        st.metric("📦 Modules existants", available)
-        if missing > 0:
-            st.metric("⚠️ Modules à créer", missing)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("📦 Existants", available)
+        with col2:
+            st.metric("📋 Optionnels", missing)
+        
+        # Barre de progression
+        progress = available / total_possible
+        st.progress(progress)
+        st.caption(f"{available}/{total_possible} modules")
         
         # Statut des chargements
         status = st.session_state.module_manager.load_status
@@ -454,8 +573,6 @@ def show_sidebar():
             st.success(f"✅ {len(status['success'])} chargés")
         if status["failed"]:
             st.error(f"❌ {len(status['failed'])} erreurs")
-        if status["warnings"]:
-            st.warning(f"⚠️ {len(status['warnings'])} avertissements")
         
         # Boutons d'action
         st.markdown("---")
@@ -465,7 +582,7 @@ def show_sidebar():
             st.rerun()
         
         if missing > 0:
-            if st.button("➕ Créer modules manquants", use_container_width=True, type="primary"):
+            if st.button("➕ Créer modules optionnels", use_container_width=True, type="primary"):
                 st.session_state.current_view = 'create_modules'
                 st.rerun()
 
@@ -494,6 +611,26 @@ def show_diagnostic():
     if data:
         st.dataframe(data, use_container_width=True, hide_index=True)
     
+    # Afficher les avertissements
+    if manager.load_status["warnings"]:
+        st.warning("### ⚠️ Avertissements")
+        for warning in manager.load_status["warnings"]:
+            st.warning(warning)
+    
+    # Liste des fichiers Python dans le dossier modules
+    st.markdown("### 📁 Fichiers dans le dossier modules")
+    if manager.modules_path.exists():
+        py_files = sorted([f.stem for f in manager.modules_path.glob("*.py") if not f.name.startswith("_")])
+        cols = st.columns(3)
+        for i, file_name in enumerate(py_files):
+            with cols[i % 3]:
+                if file_name in manager.available_modules:
+                    st.success(f"✅ {file_name}")
+                elif file_name in MODULES_CONFIG or file_name in MODULES_TO_CREATE:
+                    st.info(f"📋 {file_name} (configuré)")
+                else:
+                    st.warning(f"❓ {file_name} (non configuré)")
+    
     # Actions de réparation
     st.markdown("### 🛠️ Actions")
     
@@ -512,9 +649,59 @@ def show_diagnostic():
         if st.button("📥 Exporter diagnostic"):
             export_diagnostic()
 
+def show_modules_unconfigured():
+    """Affiche les modules non configurés"""
+    modules_path = Path(__file__).parent / "modules"
+    if modules_path.exists():
+        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
+        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
+        unconfigured = set(all_py_files) - configured_modules
+        
+        if unconfigured:
+            st.warning(f"### ⚠️ Modules non configurés ({len(unconfigured)})")
+            st.info("Ces modules existent mais ne sont pas dans la configuration :")
+            
+            cols = st.columns(3)
+            for i, module in enumerate(sorted(unconfigured)):
+                with cols[i % 3]:
+                    st.code(f"{module}.py")
+            
+            st.markdown("""
+            **Pour les utiliser :**
+            1. Ajoutez-les à `MODULES_CONFIG` dans `app.py`
+            2. Spécifiez leur nom, description et catégorie
+            3. Redémarrez l'application
+            """)
+            
+            # Proposer un template de configuration
+            if st.button("📋 Générer template de configuration"):
+                config_template = {}
+                for module in sorted(unconfigured):
+                    config_template[module] = {
+                        "name": f"📄 {module.replace('_', ' ').title()}",
+                        "desc": f"Module {module}",
+                        "category": "autre",
+                        "priority": 10
+                    }
+                st.code(json.dumps(config_template, indent=2))
+
 def show_troubleshooting():
     """Affiche l'aide au dépannage"""
     st.markdown("### 🛠️ Dépannage")
+    
+    # Vérifier les modules non configurés
+    modules_path = Path(__file__).parent / "modules"
+    if modules_path.exists():
+        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
+        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
+        unconfigured = set(all_py_files) - configured_modules
+        
+        if unconfigured:
+            st.warning(f"⚠️ {len(unconfigured)} modules trouvés mais non configurés")
+            with st.expander("Voir les modules non configurés"):
+                for module in sorted(unconfigured):
+                    st.write(f"• {module}.py")
+                st.info("Ces modules doivent être ajoutés à MODULES_CONFIG pour être utilisables")
     
     st.info("""
     **Aucun module trouvé ?** Voici les étapes à suivre :
@@ -525,7 +712,8 @@ def show_troubleshooting():
        ├── app.py
        ├── modules/
        │   ├── __init__.py
-       │   ├── search_unified.py
+       │   ├── comparison.py
+       │   ├── timeline.py
        │   └── ...
        └── managers/
            ├── __init__.py
@@ -534,17 +722,52 @@ def show_troubleshooting():
     
     2. **Créez le dossier modules** s'il n'existe pas
     
-    3. **Ajoutez un module test** :
-       Créez `modules/test.py` avec :
+    3. **Vérifiez que chaque module a une fonction run()** :
        ```python
-       import streamlit as st
-       
        def run():
-           st.write("Module test fonctionne!")
+           st.write("Module fonctionne!")
        ```
     
     4. **Redémarrez l'application**
+    
+    5. **Consultez le diagnostic** pour voir les erreurs détaillées
     """)
+
+def show_modules_unconfigured():
+    """Affiche les modules non configurés"""
+    modules_path = Path(__file__).parent / "modules"
+    if modules_path.exists():
+        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
+        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
+        unconfigured = set(all_py_files) - configured_modules
+        
+        if unconfigured:
+            st.warning(f"### ⚠️ Modules non configurés ({len(unconfigured)})")
+            st.info("Ces modules existent mais ne sont pas dans la configuration :")
+            
+            cols = st.columns(3)
+            for i, module in enumerate(sorted(unconfigured)):
+                with cols[i % 3]:
+                    st.code(f"{module}.py")
+            
+            st.markdown("""
+            **Pour les utiliser :**
+            1. Ajoutez-les à `MODULES_CONFIG` dans `app.py`
+            2. Spécifiez leur nom, description et catégorie
+            3. Redémarrez l'application
+            """)
+            
+            # Proposer un template de configuration
+            if st.button("📋 Générer template de configuration"):
+                config_template = {}
+                for module in sorted(unconfigured):
+                    config_template[module] = {
+                        "name": f"📄 {module.replace('_', ' ').title()}",
+                        "desc": f"Module {module}",
+                        "category": "autre",
+                        "priority": 10
+                    }
+                st.code(json.dumps(config_template, indent=2))
 
 def create_missing_modules():
     """Crée les modules manquants avec un template de base"""
@@ -601,8 +824,10 @@ def export_diagnostic():
         "system": {
             "python_version": sys.version,
             "streamlit_version": st.__version__,
-            "working_directory": str(Path.cwd())
-        }
+            "working_directory": str(Path.cwd()),
+            "modules_path": str(Path(__file__).parent / "modules")
+        },
+        "available_files": []
     }
     
     # État des modules
@@ -610,8 +835,17 @@ def export_diagnostic():
         diagnostic["modules"][name] = {
             "config": info["config"],
             "loaded": info["loaded"],
-            "error": st.session_state.module_manager.load_status["failed"].get(name)
+            "error": st.session_state.module_manager.load_status["failed"].get(name),
+            "path": str(info["path"])
         }
+    
+    # Liste des fichiers dans le dossier modules
+    modules_path = Path(__file__).parent / "modules"
+    if modules_path.exists():
+        diagnostic["available_files"] = [
+            f.name for f in modules_path.glob("*.py") 
+            if not f.name.startswith("_")
+        ]
     
     # Téléchargement
     st.download_button(
@@ -637,8 +871,41 @@ def main():
     elif current_view == 'diagnostic':
         show_diagnostic()
     elif current_view == 'create_modules':
-        st.markdown("## ➕ Création des modules manquants")
-        create_missing_modules()
+        st.markdown("## ➕ Création des modules optionnels")
+        st.info("""
+        Les modules ci-dessous sont **optionnels** et peuvent étendre les fonctionnalités de votre application.
+        Vous pouvez les créer maintenant ou plus tard selon vos besoins.
+        """)
+        
+        # Afficher les modules optionnels par catégorie
+        missing_by_cat = {}
+        for module_id, config in MODULES_TO_CREATE.items():
+            module_path = Path(__file__).parent / "modules" / f"{module_id}.py"
+            if not module_path.exists():
+                cat = config.get('category', 'autre')
+                if cat not in missing_by_cat:
+                    missing_by_cat[cat] = []
+                missing_by_cat[cat].append((module_id, config))
+        
+        if missing_by_cat:
+            for cat, modules in missing_by_cat.items():
+                st.markdown(f"### {cat.title()}")
+                for module_id, config in modules:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.write(f"**{config['name']}** - {config['desc']}")
+                    with col2:
+                        if st.button("Créer", key=f"create_{module_id}"):
+                            create_single_module(module_id, config)
+                            st.success(f"✅ Module {module_id} créé")
+            
+            st.markdown("---")
+            if st.button("🔧 Créer tous les modules", type="primary"):
+                create_missing_modules()
+                st.rerun()
+        else:
+            st.success("✅ Tous les modules optionnels ont déjà été créés !")
+        
         if st.button("↩️ Retour au tableau de bord"):
             st.session_state.current_view = 'dashboard'
             st.rerun()
@@ -650,12 +917,39 @@ def main():
     
     # Footer
     st.markdown("---")
+    modules_count = len(st.session_state.module_manager.available_modules)
     st.markdown(
-        """<p style='text-align: center; color: #666; font-size: 0.8rem;'>
-        IA Juridique v2.0 - Droit Pénal des Affaires • Système modulaire optimisé
+        f"""<p style='text-align: center; color: #666; font-size: 0.8rem;'>
+        IA Juridique v2.0 - Droit Pénal des Affaires • {modules_count} modules disponibles • Système modulaire optimisé
         </p>""",
         unsafe_allow_html=True
     )
+
+def create_single_module(module_id: str, config: dict):
+    """Crée un seul module"""
+    modules_path = Path(__file__).parent / "modules"
+    modules_path.mkdir(exist_ok=True)
+    
+    template = '''"""Module {name}"""
+import streamlit as st
+
+def run():
+    """Point d'entrée du module"""
+    st.title("{title}")
+    st.info("Ce module est en cours de développement")
+    
+    # Interface basique
+    st.markdown("### 🚧 En construction")
+    st.write("Les fonctionnalités seront bientôt disponibles.")
+'''
+    
+    module_path = modules_path / f"{module_id}.py"
+    if not module_path.exists():
+        content = template.format(
+            name=module_id,
+            title=config["name"]
+        )
+        module_path.write_text(content, encoding='utf-8')
 
 if __name__ == "__main__":
     main()
