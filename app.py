@@ -63,27 +63,28 @@ st.markdown("""
     
     /* Barre latérale stylisée */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1e3a8a 0%, #0a1628 100%);
+        background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
     }
     
-    /* Texte blanc dans la sidebar */
+    /* Texte foncé dans la sidebar pour meilleure lisibilité */
     section[data-testid="stSidebar"] .stMarkdown {
-        color: white !important;
+        color: #0a1628 !important;
     }
     
     section[data-testid="stSidebar"] label {
-        color: white !important;
+        color: #0a1628 !important;
     }
     
-    /* Conteneur principal avec gradient bleu marine */
+    /* Conteneur principal avec gradient plus clair */
     .search-container {
-        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #3b82f6 100%);
+        background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 50%, #93c5fd 100%);
         border-radius: 20px;
         padding: 3rem;
         margin-bottom: 2rem;
-        box-shadow: 0 8px 32px rgba(10, 22, 40, 0.3);
+        box-shadow: 0 8px 32px rgba(30, 58, 138, 0.15);
         position: relative;
         overflow: hidden;
+        border: 1px solid rgba(30, 58, 138, 0.1);
     }
     
     .search-container::before {
@@ -93,7 +94,7 @@ st.markdown("""
         right: -50%;
         width: 200%;
         height: 200%;
-        background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
         animation: pulse-bg 10s ease-in-out infinite;
     }
     
@@ -106,10 +107,12 @@ st.markdown("""
     .main-title {
         font-size: 3.5rem;
         font-weight: 700;
-        color: white;
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         text-align: center;
         margin-bottom: 1rem;
-        text-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        text-shadow: none;
         letter-spacing: 2px;
         position: relative;
         z-index: 1;
@@ -117,10 +120,10 @@ st.markdown("""
     
     .subtitle {
         font-size: 1.4rem;
-        color: rgba(255, 255, 255, 0.9);
+        color: #1e3a8a;
         text-align: center;
         margin-bottom: 2rem;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        font-weight: 500;
         position: relative;
         z-index: 1;
     }
@@ -129,18 +132,19 @@ st.markdown("""
     .stTextArea textarea {
         min-height: 120px !important;
         font-size: 16px !important;
-        border: 2px solid rgba(255, 255, 255, 0.3) !important;
+        border: 2px solid #e2e8f0 !important;
         border-radius: 12px !important;
         padding: 1rem !important;
-        background: rgba(255, 255, 255, 0.95) !important;
+        background: rgba(255, 255, 255, 0.98) !important;
         transition: all 0.3s ease !important;
         line-height: 1.6 !important;
-        box-shadow: 0 4px 16px rgba(10, 22, 40, 0.1) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+        color: #1e293b !important;
     }
     
     .stTextArea textarea:focus {
         border-color: #3b82f6 !important;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 4px 16px rgba(10, 22, 40, 0.2) !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 2px 8px rgba(0, 0, 0, 0.05) !important;
         background: white !important;
     }
     
@@ -158,29 +162,31 @@ st.markdown("""
     .doc-count-item {
         text-align: center;
         padding: 1.5rem;
-        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
         border-radius: 12px;
-        border: 1px solid rgba(59, 130, 246, 0.3);
+        border: 2px solid #3b82f6;
         cursor: pointer;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(10, 22, 40, 0.2);
+        box-shadow: 0 2px 8px rgba(30, 58, 138, 0.1);
     }
     
     .doc-count-item:hover {
         transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(10, 22, 40, 0.3);
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        box-shadow: 0 8px 24px rgba(30, 58, 138, 0.2);
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border-color: #1e3a8a;
     }
     
     .doc-count-number {
         font-size: 2.5rem;
         font-weight: 700;
-        color: white;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     
     .doc-count-label {
-        color: rgba(255, 255, 255, 0.9);
+        color: #1e3a8a;
         font-size: 0.95rem;
         margin-top: 0.5rem;
         font-weight: 500;
@@ -190,19 +196,19 @@ st.markdown("""
     .mode-badge {
         display: inline-block;
         padding: 0.5rem 1rem;
-        background: linear-gradient(135deg, rgba(30, 58, 138, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
-        border: 1px solid #1e3a8a;
+        background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
+        border: 2px solid #3b82f6;
         border-radius: 20px;
-        color: #0a1628;
+        color: #1e3a8a;
         font-weight: 600;
         margin: 0.25rem;
     }
     
     .mode-badge.active {
-        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
-        border-color: #0a1628;
-        box-shadow: 0 2px 8px rgba(10, 22, 40, 0.3);
+        border-color: #2563eb;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
     }
     
     /* Cartes de modules */
@@ -322,19 +328,21 @@ st.markdown("""
     
     /* Historique de recherche */
     .search-history-item {
-        background: linear-gradient(135deg, white 0%, #f0f9ff 100%);
-        border: 1px solid rgba(30, 58, 138, 0.2);
+        background: linear-gradient(135deg, white 0%, #f8fafc 100%);
+        border: 1px solid #e2e8f0;
         border-radius: 10px;
         padding: 1rem;
         margin-bottom: 0.5rem;
         cursor: pointer;
         transition: all 0.2s ease;
+        color: #1e293b;
     }
     
     .search-history-item:hover {
         background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-        border-color: #1e3a8a;
+        border-color: #3b82f6;
         transform: translateX(4px);
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
     }
     
     /* Instructions de recherche */
@@ -347,9 +355,9 @@ st.markdown("""
         backdrop-filter: blur(10px);
     }
     
-    /* Criticalité avec dégradés de bleu marine */
+    /* Criticalité avec dégradés de bleu plus clairs */
     .criticality-high {
-        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
         color: white;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
@@ -359,7 +367,7 @@ st.markdown("""
     }
     
     .criticality-medium {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
@@ -369,12 +377,13 @@ st.markdown("""
     }
     
     .criticality-low {
-        background: linear-gradient(135deg, #93c5fd 0%, #dbeafe 100%);
-        color: #0a1628;
+        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        color: #1e3a8a;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
         font-size: 0.85rem;
         display: inline-block;
+        font-weight: 500;
     }
     
     /* Modèles IA */
@@ -415,32 +424,32 @@ st.markdown("""
     
     /* Boutons personnalisés */
     .stButton > button {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
         border: none;
         padding: 0.75rem 1.5rem;
         border-radius: 8px;
         font-weight: 600;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
     }
     
     .stButton > button:hover {
-        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(10, 22, 40, 0.4);
+        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
     }
     
     /* Bouton primary */
     .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
-        box-shadow: 0 4px 16px rgba(10, 22, 40, 0.4);
+        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        box-shadow: 0 4px 16px rgba(30, 58, 138, 0.3);
     }
     
     .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
         transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(10, 22, 40, 0.5);
+        box-shadow: 0 6px 20px rgba(30, 58, 138, 0.4);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1380,3 +1389,4 @@ document.addEventListener('DOMContentLoaded', function() {
 # Initialisation complète différée
 if not st.session_state.initialized:
     st.session_state.initialized = True
+    
