@@ -275,6 +275,8 @@ def create_search_interface():
                 key="multi_models_select"
             )
 
+            st.session_state.selected_module = None
+
             merge_option = st.radio(
                 "Fusion des réponses",
                 ["synthétique", "exhaustive"],
@@ -291,6 +293,9 @@ def create_search_interface():
                     modules,
                     key="module_select"
                 )
+                st.session_state.selected_module = selected_module
+            else:
+                st.session_state.selected_module = None
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Espacement
@@ -336,9 +341,11 @@ def create_modern_sidebar():
             <p style="color: #5f6368; margin: 5px 0;">Assistant Juridique Intelligent</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         st.markdown("---")
-        
+        st.markdown(f"📌 Dossier courant : @{st.session_state.selected_folder}")
+        st.markdown(f"📌 Module courant : #{st.session_state.selected_module}")
+
         # Navigation principale avec icônes
         st.markdown("### 🧭 Navigation")
         
@@ -580,6 +587,7 @@ def enhanced_main_interface():
                     manager.discover_modules()
                     if module_name in manager.available_modules:
                         manager.run_module(module_name)
+                        st.session_state.selected_module = module_name
                 st.success("✅ Traitement terminé")
         
         # Dashboard principal
