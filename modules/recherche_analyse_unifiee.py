@@ -23,6 +23,10 @@ except ImportError:
     # Les utilitaires ne sont pas disponibles
     pass
 from utils import clean_key, format_legal_date, truncate_text
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # ========================= LAZY LOADING & IMPORTS =========================
 

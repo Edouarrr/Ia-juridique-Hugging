@@ -5,6 +5,7 @@ import asyncio
 import io
 import json
 import re
+import sys
 import time
 import zipfile
 import mimetypes
@@ -26,6 +27,10 @@ try:
     from utils import clean_key, format_legal_date, truncate_text
 except Exception:  # pragma: no cover - fallback for standalone use
     from utils.fallback import clean_key, format_legal_date, truncate_text
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # Configuration des modèles IA importée depuis config.ai_models
 

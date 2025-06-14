@@ -16,6 +16,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 
 # Configuration du lazy loading

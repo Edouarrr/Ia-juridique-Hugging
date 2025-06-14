@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+import sys
 import time
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
@@ -19,6 +20,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # Configuration des modèles d'IA pour le droit pénal des affaires
 class AIModel(Enum):
