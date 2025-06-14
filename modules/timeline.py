@@ -1,23 +1,24 @@
 """Module de génération de chronologies (timelines) juridiques avec IA multi-modèles"""
 
-import streamlit as st
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple, Union
-import re
-from collections import defaultdict, OrderedDict
-import logging
-import time
-import json
 import hashlib
+import json
+import logging
+import re
+import time
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import streamlit as st
 
 logger = logging.getLogger(__name__)
 
 # Imports optionnels
 try:
-    import plotly.graph_objects as go
     import plotly.express as px
+    import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     PLOTLY_AVAILABLE = True
 except ImportError:
@@ -3466,7 +3467,7 @@ Document à analyser :
     def _create_relationship_graph(self, events: List[TimelineEvent], config: Dict[str, Any]) -> go.Figure:
         """Graphe de relations entre événements"""
         import networkx as nx
-        
+
         # Créer le graphe
         G = nx.Graph()
         
@@ -4610,7 +4611,7 @@ Document à analyser :
             return None
         
         import numpy as np
-        
+
         # Calculer les positions en spirale
         n_events = len(events)
         theta = np.linspace(0, 8 * np.pi, n_events)

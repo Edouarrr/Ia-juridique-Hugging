@@ -2,12 +2,13 @@
 """Modèles de données pour l'application juridique - Version réorganisée et améliorée"""
 
 from __future__ import annotations
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Union, Tuple, Set, TYPE_CHECKING
-from enum import Enum
+
 import re
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 # Imports conditionnels pour éviter les imports circulaires
 if TYPE_CHECKING:

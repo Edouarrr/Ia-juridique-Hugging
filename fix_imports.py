@@ -6,6 +6,7 @@ Script de correction des imports pour Hugging Face
 
 import os
 
+
 def add_truncate_text_to_helpers():
     """Ajoute la fonction truncate_text à utils/helpers.py"""
     

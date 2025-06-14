@@ -4,7 +4,8 @@ Gestionnaire de modules pour l'application IA Juridique
 
 import importlib
 import logging
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
 import streamlit as st
 
 logger = logging.getLogger(__name__)

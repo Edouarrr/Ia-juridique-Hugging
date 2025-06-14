@@ -1,10 +1,11 @@
 # config/app_config.py
 """Configuration principale de l'application juridique"""
 
-from enum import Enum
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
 import os
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 
 # Énumérations
 class SearchMode(Enum):

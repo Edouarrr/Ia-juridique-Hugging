@@ -5,198 +5,85 @@ Package utils - Fonctions utilitaires pour l'application juridique
 
 # Import des fonctions principales de chaque module
 
-# Session
-from .session import (
-    initialize_session_state,
-    get_session_value,
-    set_session_value,
-    update_session_values,
-    clear_session_results,
-    add_to_history,
-    toggle_favorite,
-    is_favorite,
-    get_user_preference,
-    set_user_preference,
-    reset_session
-)
-
-# Text Processing
-from .text_processing import (
-    clean_text,
-    process_text,
-    fix_punctuation,
-    normalize_quotes,
-    extract_sentences,
-    extract_paragraphs,
-    count_words,
-    extract_keywords,
-    highlight_text,
-    remove_html_tags,
-    normalize_whitespace,
-    split_into_chunks
-)
-
-# Date Time
-from .date_time import (
-    format_date,
-    format_legal_date,
-    format_date_juridique,
-    format_duration,
-    extract_dates,
-    parse_date,
-    get_date_range,
-    is_business_day,
-    get_next_business_day,
-    calculate_business_days,
-    add_business_days,
-    format_relative_date,
-    get_quarter,
-    get_week_number,
-    MOIS_FR,
-    JOURS_FR,
-    MONTHS_FR
-)
-
-# Document Utils
-from .document_utils import (
-    generate_document_id,
-    merge_documents,
-    split_document,
-    extract_document_metadata,
-    create_document_index,
-    compare_documents,
-    create_document_summary,
-    get_document_statistics,
-    create_breadcrumb
-)
-
-# Legal Utils
-from .legal_utils import (
-    extract_legal_references,
-    analyze_query_intent,
-    extract_query_entities,
-    extract_intent_details,
-    extract_legal_terms,
-    format_legal_amount,
-    validate_reference,
-    categorize_legal_document,
-    extract_parties,
-    highlight_legal_terms
-)
-
-# File Utils
-from .file_utils import (
-    sanitize_filename,
-    format_file_size,
-    get_file_icon,
-    get_file_extension,
-    is_valid_filename,
-    get_mime_type,
-    is_text_file,
-    is_document_file,
-    is_image_file,
-    create_unique_filename,
-    organize_files_by_type,
-    get_file_info,
-    split_path,
-    is_valid_email
-)
-
 # Cache Manager
-from .cache_manager import (
-    CacheJuridique,
-    get_cache,
-    cache_result,
-    cache_streamlit,
-    CacheActesJuridiques,
-    show_cache_management,
-    CACHE_DIR,
-    CACHE_DURATION
-)
-
-# Formatters
-from .formatters import (
-    format_date as format_date_formatter,  # Éviter le conflit avec date_time
-    format_date_long,
-    format_datetime,
-    format_currency,
-    format_percentage,
-    format_phone,
-    format_case_number,
-    format_name,
-    format_address,
-    format_duration as format_duration_formatter,  # Éviter le conflit
-    format_file_path,
-    format_list_items,
-    format_legal_reference
-)
-
-# Styles
-from .styles import (
-    load_custom_css,
-    apply_button_style,
-    create_card,
-    create_timeline_item,
-    create_search_result,
-    create_progress_bar,
-    create_alert,
-    create_breadcrumb as create_breadcrumb_styled  # Éviter le conflit
-)
-
-# Validators
-from .validators import (
-    validate_siren,
-    validate_siret,
-    validate_iban,
-    validate_phone_number,
-    validate_postal_code,
-    validate_legal_form,
-    validate_case_number,
-    validate_infraction_code,
-    validate_lawyer_bar_number,
-    validate_document_reference,
-    validate_date_range,
-    validate_amount,
-    validate_percentage,
-    validate_juridiction_name,
-    validate_fields
-)
-
+from .cache_manager import (CACHE_DIR, CACHE_DURATION, CacheActesJuridiques,
+                            CacheJuridique, cache_result, cache_streamlit,
+                            get_cache, show_cache_management)
 # Constants
-from .constants import (
-    DOCUMENT_TYPES,
-    PHASES_PROCEDURE,
-    JURIDICTIONS,
-    INFRACTIONS_COURANTES,
-    FORMES_JURIDIQUES,
-    QUALITES_PARTIES,
-    BARREAUX,
-    CURRENCIES,
-    LIMITS,
-    ACCEPTED_FILE_TYPES,
-    ERROR_MESSAGES,
-    REGEX_PATTERNS,
-    ICONS,
-    COLORS,
-    DEPARTEMENTS
-)
-
+from .constants import (ACCEPTED_FILE_TYPES, BARREAUX, COLORS, CURRENCIES,
+                        DEPARTEMENTS, DOCUMENT_TYPES, ERROR_MESSAGES,
+                        FORMES_JURIDIQUES, ICONS, INFRACTIONS_COURANTES,
+                        JURIDICTIONS, LIMITS, PHASES_PROCEDURE,
+                        QUALITES_PARTIES, REGEX_PATTERNS)
+# Date Time
+from .date_time import (JOURS_FR, MOIS_FR, MONTHS_FR, add_business_days,
+                        calculate_business_days, extract_dates, format_date,
+                        format_date_juridique, format_duration,
+                        format_legal_date, format_relative_date,
+                        get_date_range, get_next_business_day, get_quarter,
+                        get_week_number, is_business_day, parse_date)
+# Document Utils
+from .document_utils import (compare_documents, create_breadcrumb,
+                             create_document_index, create_document_summary,
+                             extract_document_metadata, generate_document_id,
+                             get_document_statistics, merge_documents,
+                             split_document)
+# File Utils
+from .file_utils import (create_unique_filename, format_file_size,
+                         get_file_extension, get_file_icon, get_file_info,
+                         get_mime_type, is_document_file, is_image_file,
+                         is_text_file, is_valid_email, is_valid_filename,
+                         organize_files_by_type, sanitize_filename, split_path)
+# Formatters
+from .formatters import format_address, format_case_number, format_currency
+from .formatters import \
+    format_date as format_date_formatter  # Éviter le conflit avec date_time
+from .formatters import format_date_long, format_datetime
+from .formatters import \
+    format_duration as format_duration_formatter  # Éviter le conflit
+from .formatters import (format_file_path, format_legal_reference,
+                         format_list_items, format_name, format_percentage,
+                         format_phone)
 # Helper functions from helpers.py (si ce fichier existe)
-from .helpers import (
-    truncate_text,
-    clean_key,
-    generate_unique_id,
-    extract_date_from_filename,
-    normalize_document_type,
-    calculate_document_hash,
-    parse_search_query,
-    estimate_reading_time,
-    generate_document_summary,
-    validate_container_name,
-    merge_document_metadata,
-    format_error_message,
-    create_error_report
-)
+from .helpers import (calculate_document_hash, clean_key, create_error_report,
+                      estimate_reading_time, extract_date_from_filename,
+                      format_error_message, generate_document_summary,
+                      generate_unique_id, merge_document_metadata,
+                      normalize_document_type, parse_search_query,
+                      truncate_text, validate_container_name)
+# Legal Utils
+from .legal_utils import (analyze_query_intent, categorize_legal_document,
+                          extract_intent_details, extract_legal_references,
+                          extract_legal_terms, extract_parties,
+                          extract_query_entities, format_legal_amount,
+                          highlight_legal_terms, validate_reference)
+# Session
+from .session import (add_to_history, clear_session_results, get_session_value,
+                      get_user_preference, initialize_session_state,
+                      is_favorite, reset_session, set_session_value,
+                      set_user_preference, toggle_favorite,
+                      update_session_values)
+# Styles
+from .styles import apply_button_style, create_alert
+from .styles import \
+    create_breadcrumb as create_breadcrumb_styled  # Éviter le conflit
+from .styles import (create_card, create_progress_bar, create_search_result,
+                     create_timeline_item, load_custom_css)
+# Text Processing
+from .text_processing import (clean_text, count_words, extract_keywords,
+                              extract_paragraphs, extract_sentences,
+                              fix_punctuation, highlight_text,
+                              normalize_quotes, normalize_whitespace,
+                              process_text, remove_html_tags,
+                              split_into_chunks)
+# Validators
+from .validators import (validate_amount, validate_case_number,
+                         validate_date_range, validate_document_reference,
+                         validate_fields, validate_iban,
+                         validate_infraction_code, validate_juridiction_name,
+                         validate_lawyer_bar_number, validate_legal_form,
+                         validate_percentage, validate_phone_number,
+                         validate_postal_code, validate_siren, validate_siret)
 
 # Alias pour compatibilité
 init_session_state = initialize_session_state

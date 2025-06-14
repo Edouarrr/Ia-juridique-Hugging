@@ -1,27 +1,28 @@
 # modules/email.py
 """Module de gestion des emails pour l'application juridique avec intégration IA"""
 
-import streamlit as st
-from datetime import datetime
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
-from typing import Dict, List, Any, Optional
-import re
-import json
+import asyncio
 import io
+import json
+import re
+import smtplib
 import sys
 import time
-from pathlib import Path
-from dataclasses import dataclass, field
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
 
 # Configuration des modèles IA
 AI_MODELS = {

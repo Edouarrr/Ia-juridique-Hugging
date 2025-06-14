@@ -1,8 +1,9 @@
 """Script de test pour vérifier l'intégration du module juridique"""
 
-import streamlit as st
-import sys
 import os
+import sys
+
+import streamlit as st
 
 # Ajouter le répertoire parent au path si nécessaire
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,21 +16,16 @@ def test_imports():
     
     # Test du cahier des charges
     try:
-        from config.cahier_des_charges import (
-            CABINET_INFO, 
-            STRUCTURES_ACTES,
-            validate_acte
-        )
+        from config.cahier_des_charges import (CABINET_INFO, STRUCTURES_ACTES,
+                                               validate_acte)
         imports_status['config.cahier_des_charges'] = "✅ OK"
     except ImportError as e:
         imports_status['config.cahier_des_charges'] = f"❌ Erreur: {str(e)}"
     
     # Test du module de génération
     try:
-        from modules.generation_juridique import (
-            GenerateurActesJuridiques,
-            ActeJuridique
-        )
+        from modules.generation_juridique import (ActeJuridique,
+                                                  GenerateurActesJuridiques)
         imports_status['modules.generation_juridique'] = "✅ OK"
     except ImportError as e:
         imports_status['modules.generation_juridique'] = f"❌ Erreur: {str(e)}"
@@ -37,9 +33,7 @@ def test_imports():
     # Test du module d'intégration
     try:
         from modules.integration_juridique import (
-            AnalyseurRequeteJuridique,
-            enhance_search_with_generation
-        )
+            AnalyseurRequeteJuridique, enhance_search_with_generation)
         imports_status['modules.integration_juridique'] = "✅ OK"
     except ImportError as e:
         imports_status['modules.integration_juridique'] = f"❌ Erreur: {str(e)}"
@@ -161,7 +155,7 @@ def test_validation():
     
     try:
         from config.cahier_des_charges import validate_acte
-        
+
         # Créer un contenu test
         contenu_test = "Test " * 500  # 500 mots
         

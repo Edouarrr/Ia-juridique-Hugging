@@ -1,20 +1,22 @@
 # modules/mapping.py
 """Module de cartographie des relations et entités juridiques avec multi-IA"""
 
-import streamlit as st
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple, Set
-import re
-from collections import defaultdict, Counter
-import time
 import json
 import os
+import re
 import sys
+import time
+from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils.helpers import extract_entities, clean_key, truncate_text, format_legal_date
+from utils.helpers import (clean_key, extract_entities, format_legal_date,
+                           truncate_text)
 
 try:
     import networkx as nx
@@ -34,8 +36,9 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
-from modules.dataclasses import Entity, Relationship, Document
 from managers.multi_llm_manager import MultiLLMManager
+from modules.dataclasses import Document, Entity, Relationship
+
 
 def run():
     """Fonction principale du module - Point d'entrée pour le lazy loading"""

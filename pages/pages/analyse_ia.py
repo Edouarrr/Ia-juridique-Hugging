@@ -1,11 +1,14 @@
 # pages/analyse_ia.py
 """Page d'analyse par IA"""
 
-import streamlit as st
 import asyncio
 
-from config.app_config import InfractionAffaires, ANALYSIS_PROMPTS_AFFAIRES, LLMProvider
+import streamlit as st
+
+from config.app_config import (ANALYSIS_PROMPTS_AFFAIRES, InfractionAffaires,
+                               LLMProvider)
 from managers.multi_llm_manager import MultiLLMManager
+
 
 def show_page():
     """Affiche la page d'analyse IA"""

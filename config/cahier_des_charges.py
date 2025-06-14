@@ -1,7 +1,7 @@
 """Configuration complète du cahier des charges pour la génération d'actes juridiques"""
 
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 # ========================= CONFIGURATION GÉNÉRALE =========================
 

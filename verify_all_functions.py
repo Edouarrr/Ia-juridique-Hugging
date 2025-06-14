@@ -4,13 +4,14 @@ Vérificateur d'intégration des fonctions
 Ce module vérifie que toutes les fonctions sont correctement intégrées
 """
 
-import streamlit as st
 import importlib
 import inspect
-import traceback
-from typing import Dict, List, Tuple
 import os
 import sys
+import traceback
+from typing import Dict, List, Tuple
+
+import streamlit as st
 
 # SUPPRIMÉ : st.set_page_config() car déjà appelé dans app.py
 
@@ -201,7 +202,7 @@ def verify_recherche_integration(results: Dict):
     
     try:
         from modules import recherche
-        
+
         # Vérifier la classe UniversalSearchInterface
         if hasattr(recherche, 'UniversalSearchInterface'):
             st.success("✅ Classe UniversalSearchInterface trouvée")

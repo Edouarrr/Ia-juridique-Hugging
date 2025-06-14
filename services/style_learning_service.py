@@ -2,13 +2,14 @@
 
 import re
 import statistics
-from typing import List, Dict, Any, Optional, Tuple
+from collections import Counter
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 import docx
 import PyPDF2
-from collections import Counter
 import streamlit as st
-from dataclasses import dataclass, field
 
 # ========================= STRUCTURES DE DONNÉES =========================
 

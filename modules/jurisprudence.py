@@ -1,34 +1,30 @@
 # modules/jurisprudence.py
 """Module de recherche et gestion de la jurisprudence avec API réelles et IA multiples"""
 
-import streamlit as st
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
-import re
-import os
-import sys
-import json
 import asyncio
-import aiohttp
-from collections import Counter
+import json
 import logging
-from pathlib import Path
+import os
+import re
+import sys
 import time
+from collections import Counter
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import aiohttp
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
-
-# Import des modèles après ajout du chemin
-from models.dataclasses import (
-    JurisprudenceReference,
-    VerificationResult,
-    SourceJurisprudence,
-    TypeJuridiction,
-    get_all_juridictions
-)
 from managers.jurisprudence_verifier import JurisprudenceVerifier
 from managers.legal_search import LegalSearchManager
+# Import des modèles après ajout du chemin
+from models.dataclasses import (JurisprudenceReference, SourceJurisprudence,
+                                TypeJuridiction, VerificationResult,
+                                get_all_juridictions)
+from utils import clean_key, format_legal_date, truncate_text
 from utils.helpers import highlight_text
 
 logger = logging.getLogger(__name__)
@@ -1109,32 +1105,21 @@ def generate_demo_suggestions(count, relevance_level):
 # Ajouter à la fin les fonctions existantes qui ne sont pas redéfinies
 
 # Import des fonctions originales nécessaires
-from jurisprudence import (
-    JurisprudenceAPIManager,
-    api_manager,
-    process_jurisprudence_request,
-    extract_jurisprudence_criteria,
-    show_jurisprudence_search_interface,
-    show_search_tab,
-    show_verification_tab,
-    show_local_database_tab,
-    show_statistics_tab,
-    show_configuration_tab,
-    save_to_favorites,
-    show_decision_details,
-    show_related_decisions,
-    show_commentaries,
-    save_to_database,
-    show_enhanced_verification_tab,
-    show_enhanced_local_database_tab,
-    show_enhanced_configuration_tab,
-    show_temporal_evolution_chart,
-    show_geographic_distribution,
-    show_jurisdiction_breakdown,
-    show_thematic_heatmap,
-    show_list_view,
-    show_table_view
-)
+from jurisprudence import (JurisprudenceAPIManager, api_manager,
+                           extract_jurisprudence_criteria,
+                           process_jurisprudence_request, save_to_database,
+                           save_to_favorites, show_commentaries,
+                           show_configuration_tab, show_decision_details,
+                           show_enhanced_configuration_tab,
+                           show_enhanced_local_database_tab,
+                           show_enhanced_verification_tab,
+                           show_geographic_distribution,
+                           show_jurisdiction_breakdown,
+                           show_jurisprudence_search_interface, show_list_view,
+                           show_local_database_tab, show_related_decisions,
+                           show_search_tab, show_statistics_tab,
+                           show_table_view, show_temporal_evolution_chart,
+                           show_thematic_heatmap, show_verification_tab)
 
 # Point d'entrée pour compatibilité
 if __name__ == "__main__":

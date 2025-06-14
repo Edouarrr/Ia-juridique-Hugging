@@ -4,23 +4,26 @@ Gestionnaire de vérification et validation des jurisprudences
 Vérifie automatiquement sur Judilibre et Légifrance
 """
 
-import re
 import asyncio
-import aiohttp
-from typing import List, Dict, Optional, Tuple, Set
+import json
+import logging
+import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-import logging
+from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import quote, urlencode
-import json
-from bs4 import BeautifulSoup
-import streamlit as st
-from tenacity import retry, stop_after_attempt, wait_exponential
-from cachetools import TTLCache
-import os
 
-from modules.jurisprudence_models import JurisprudenceReference, VerificationResult, SourceJurisprudence
+import aiohttp
+import streamlit as st
+from bs4 import BeautifulSoup
+from cachetools import TTLCache
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from config.app_config import LEGAL_APIS
+from modules.jurisprudence_models import (JurisprudenceReference,
+                                          SourceJurisprudence,
+                                          VerificationResult)
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)

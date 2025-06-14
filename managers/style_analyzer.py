@@ -1,20 +1,18 @@
 # managers/style_analyzer.py
 """Analyseur de style pour documents juridiques avec apprentissage"""
 
+import json
 import re
-import streamlit as st
-from typing import Dict, List, Optional, Tuple, Any
+import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
-import statistics
+from typing import Any, Dict, List, Optional, Tuple
 
-from modules.dataclasses import (
-    StylePattern,
-    StyleLearningResult,
-    Document
-)
+import streamlit as st
+
+from modules.dataclasses import Document, StyleLearningResult, StylePattern
+
 
 class StyleAnalyzer:
     """Analyse et apprend le style des documents juridiques"""

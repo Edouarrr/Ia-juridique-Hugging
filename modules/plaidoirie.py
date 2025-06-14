@@ -1,23 +1,26 @@
 # modules/plaidoirie.py
 """Module de génération et gestion des plaidoiries avec IA multiple et mode fusion"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import time
 import re
-from collections import defaultdict
-from typing import List, Dict, Any, Optional, Tuple
 import sys
+import time
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
 
 # Ajouter le chemin parent pour les imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from config.app_config import LLMProvider, REDACTION_STYLES
+from config.app_config import REDACTION_STYLES, LLMProvider
 from managers.multi_llm_manager import MultiLLMManager
-from models.dataclasses import PlaidoirieResult, Document
-from utils.helpers import extract_section, format_duration, truncate_text, clean_key, format_legal_date
+from models.dataclasses import Document, PlaidoirieResult
+from utils.helpers import (clean_key, extract_section, format_duration,
+                           format_legal_date, truncate_text)
+
 
 def run():
     """Fonction principale du module pour le lazy loading"""

@@ -1,18 +1,19 @@
 """Application IA Juridique - Droit Pénal des Affaires - Version optimisée"""
 
-import streamlit as st
-import streamlit.components.v1 as components
+import importlib
+import importlib.util
+import json
+import logging
 import os
 import sys
 import time
-import logging
 import traceback
-import importlib
-import importlib.util
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-import json
+from typing import Any, Dict, List, Optional
+
+import streamlit as st
+import streamlit.components.v1 as components
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)

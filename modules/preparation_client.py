@@ -1,21 +1,22 @@
 """Module de préparation des clients pour auditions et interrogatoires - Version améliorée"""
 
-import streamlit as st
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
-import re
-from collections import defaultdict
 import json
-from dataclasses import dataclass, asdict
-import plotly.graph_objects as go
-import plotly.express as px
-import time
+import re
 import sys
+import time
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
 
 # Import des managers si disponibles
 try:

@@ -4,8 +4,8 @@ Validateurs et fonctions de vérification
 """
 
 import re
-from typing import Dict, List, Tuple, Optional, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def validate_siren(siren: str) -> Tuple[bool, Optional[str]]:

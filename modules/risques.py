@@ -3,27 +3,28 @@ Module de gestion des risques en droit pénal des affaires
 Utilise le manager multi-LLM existant avec ChatGPT-4, Claude Opus 4, Perplexity, Gemini et Mistral
 """
 
-import streamlit as st
-from datetime import datetime, timedelta
 import json
-from typing import Dict, List, Optional, Any, Tuple
-import uuid
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from dataclasses import dataclass, field
-from enum import Enum
-import time
 import os
 import sys
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # Import du manager multi-LLM existant dans le projet
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from modules.multi_llm_manager import MultiLLMManager, LLMModel
-    from utils import truncate_text, clean_key, format_legal_date
+    from modules.multi_llm_manager import LLMModel, MultiLLMManager
+    from utils import clean_key, format_legal_date, truncate_text
 except ImportError:
     # Fallback si les imports échouent
     def truncate_text(text, max_length=100):

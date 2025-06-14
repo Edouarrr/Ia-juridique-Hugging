@@ -4,24 +4,19 @@ Test simple du générateur unifié de documents
 À placer dans le dossier racine de votre application Hugging Face
 """
 
-import streamlit as st
 import asyncio
 from datetime import datetime
 
-# Import des dataclasses
-from modules.dataclasses import (
-    TypeDocument,
-    Partie,
-    InfractionIdentifiee,
-    StyleRedaction
-)
+import streamlit as st
 
 # Import du générateur unifié
-from managers.unified_document_generator import (
-    UnifiedDocumentGenerator,
-    UnifiedGenerationRequest,
-    DocumentLength
-)
+from managers.unified_document_generator import (DocumentLength,
+                                                 UnifiedDocumentGenerator,
+                                                 UnifiedGenerationRequest)
+# Import des dataclasses
+from modules.dataclasses import (InfractionIdentifiee, Partie, StyleRedaction,
+                                 TypeDocument)
+
 
 def main():
     st.title("🧪 Test du Générateur Unifié")

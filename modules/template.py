@@ -1,21 +1,22 @@
 """Module de gestion des templates de documents juridiques - Version améliorée avec multi-IA"""
 
-import streamlit as st
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
 import json
-import re
-import time
 import os
+import re
 import sys
-from pathlib import Path
+import time
 from collections import defaultdict
-import plotly.graph_objects as go
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
 
 # Icons pour les catégories
 CATEGORY_ICONS = {
@@ -1779,8 +1780,9 @@ def export_to_word(content: str) -> bytes:
     """Exporte en format Word"""
     # Utiliser python-docx si disponible
     try:
-        from docx import Document
         from io import BytesIO
+
+        from docx import Document
         
         doc = Document()
         

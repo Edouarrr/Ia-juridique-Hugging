@@ -1,14 +1,15 @@
 # managers/multi_llm_manager.py
 """Gestionnaire unifié pour plusieurs LLMs"""
 
-import os
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any
-from enum import Enum
-import streamlit as st
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+import streamlit as st
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +25,7 @@ except ImportError:
 
 try:
     import openai
-    from openai import OpenAI, AzureOpenAI
+    from openai import AzureOpenAI, OpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False

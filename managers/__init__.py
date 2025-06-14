@@ -2,11 +2,11 @@
 Gestionnaires Azure et IA - Initialisation et imports dynamiques
 """
 
+import importlib
 import logging
 import os
 import sys
-from typing import Dict, Any, Optional
-import importlib
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

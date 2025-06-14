@@ -1,17 +1,15 @@
 # managers/dynamic_generators.py
 """Générateurs dynamiques pour créer des templates et contenus à la volée"""
 
-import streamlit as st
-from typing import Dict, List, Optional, Any
-from datetime import datetime
 import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from modules.dataclasses import (
-    DocumentTemplate,
-    TypeDocument,
-    StyleRedaction
-)
+import streamlit as st
+
 from config.app_config import DOCUMENT_TEMPLATES, LEGAL_PHRASES
+from modules.dataclasses import DocumentTemplate, StyleRedaction, TypeDocument
+
 
 def generate_dynamic_templates(document_type: str, context: Dict[str, Any]) -> Dict[str, Any]:
     """

@@ -1,16 +1,17 @@
 """Service unifié pour la récupération et l'enrichissement des informations d'entreprises"""
 
-import os
-import json
-import re
 import asyncio
-import requests
-import httpx
-from typing import Optional, Dict, Any, List, Union
-from datetime import datetime, timedelta
+import json
+import os
+import re
 from dataclasses import dataclass
-from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Union
+
+import httpx
+import requests
 import streamlit as st
+from bs4 import BeautifulSoup
 
 # Configuration
 PAPPERS_API_KEY = os.getenv('PAPPERS_API_KEY') or st.secrets.get("PAPPERS_API_KEY", "")

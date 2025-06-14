@@ -1,10 +1,11 @@
 """Interface de recherche universelle compatible avec UniversalSearchService existant"""
 
-import streamlit as st
-from typing import Dict, List, Optional, Any
 import asyncio
-from datetime import datetime
 import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import streamlit as st
 
 # Import des classes du service existant - pas d'import direct pour éviter les erreurs circulaires
 # Les classes seront importées depuis universal_search_service lors de l'utilisation

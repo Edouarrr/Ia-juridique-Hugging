@@ -1,10 +1,12 @@
 # models/configurations.py
 """Configurations pour les templates de génération de documents"""
 
-from typing import Dict, List, Any
 import json
-from modules.dataclasses import StyleConfig, DocumentTemplate, TypeDocument, StyleRedaction, LetterheadTemplate
 from datetime import datetime
+from typing import Any, Dict, List
+
+from modules.dataclasses import (DocumentTemplate, LetterheadTemplate,
+                                 StyleConfig, StyleRedaction, TypeDocument)
 
 # ========== PAPIERS EN-TÊTE PAR DÉFAUT ==========
 

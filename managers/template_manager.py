@@ -1,20 +1,18 @@
 # managers/template_manager.py
 """Gestionnaire des templates de documents juridiques"""
 
-import streamlit as st
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
-from datetime import datetime
 import json
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from modules.dataclasses import (
-    DocumentTemplate, 
-    TemplateDocument,
-    TypeDocument,
-    StyleRedaction
-)
+import streamlit as st
+
 from config.app_config import DOCUMENT_TEMPLATES, LEGAL_PHRASES
+from modules.dataclasses import (DocumentTemplate, StyleRedaction,
+                                 TemplateDocument, TypeDocument)
+
 
 class TemplateManager:
     """Gestionnaire centralisé des templates de documents"""

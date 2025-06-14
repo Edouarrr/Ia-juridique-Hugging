@@ -3,8 +3,9 @@
 Styles CSS personnalisés pour l'application juridique
 """
 
-import streamlit as st
 from typing import Dict, Optional
+
+import streamlit as st
 
 
 def load_custom_css():

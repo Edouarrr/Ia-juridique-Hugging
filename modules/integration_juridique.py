@@ -1,19 +1,21 @@
 """Module de génération juridique avancé avec support multi-IA et lazy loading"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import os
-import sys
-from pathlib import Path
-import time
 import asyncio
-from typing import Dict, List, Optional, Any, Tuple
-import re
 import json
+import os
+import re
+import sys
+import time
+from datetime import datetime
 from functools import lru_cache
-import plotly.graph_objects as go
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
 
 # Configuration du lazy loading
 def lazy_load_components():

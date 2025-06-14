@@ -4,6 +4,7 @@ import ast
 import os
 from collections import defaultdict
 
+
 def extract_imports(file_path):
     """Extrait tous les imports d'un fichier Python"""
     imports = set()

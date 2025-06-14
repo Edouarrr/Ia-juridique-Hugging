@@ -3,12 +3,13 @@ Page de diagnostic pour l'application juridique
 Créez un dossier 'pages' et mettez ce fichier dedans
 """
 
-import streamlit as st
+import importlib
 import os
 import sys
-import importlib
 import traceback
 from datetime import datetime
+
+import streamlit as st
 
 st.set_page_config(
     page_title="Diagnostic Import",
@@ -36,8 +37,8 @@ with col1:
 # Test Azure
 with col2:
     try:
-        import azure.storage.blob
         import azure.search.documents
+        import azure.storage.blob
         st.metric("Azure SDK", "Disponible", "✅")
     except:
         st.metric("Azure SDK", "Manquant", "❌")
@@ -107,7 +108,7 @@ st.header("3️⃣ État des modules")
 if 'modules' in sys.modules:
     try:
         import modules
-        
+
         # Utiliser tabs pour organiser
         tab1, tab2, tab3 = st.tabs(["✅ Modules OK", "⚠️ Modules Stub", "❌ Modules en erreur"])
         

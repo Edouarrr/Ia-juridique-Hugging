@@ -7,6 +7,7 @@ et s'assurer que tout est cohérent
 import os
 import re
 
+
 def check_llm_usage():
     """Vérifie l'utilisation des managers LLM dans le projet"""
     

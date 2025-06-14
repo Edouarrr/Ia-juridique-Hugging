@@ -2,10 +2,10 @@
 Modules de l'application IA Juridique - Initialisation
 """
 
+import importlib
 import logging
 import sys
-import importlib
-from typing import Dict, Any
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 

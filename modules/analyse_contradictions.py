@@ -1,17 +1,19 @@
 """Module d'analyse des contradictions dans les documents juridiques"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
+import json
 import os
 import sys
-from pathlib import Path
-import json
 import time
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
+
 
 def run():
     """Fonction principale du module"""

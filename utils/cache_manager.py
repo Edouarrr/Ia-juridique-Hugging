@@ -3,13 +3,14 @@
 Système de cache pour optimiser les performances du module juridique
 """
 
-import os
-import json
 import hashlib
+import json
+import os
 import pickle
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Union, List, Callable
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Union
+
 import streamlit as st
 
 # Configuration du cache

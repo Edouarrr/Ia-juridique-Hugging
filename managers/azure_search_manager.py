@@ -2,13 +2,13 @@
 Gestionnaire Azure Cognitive Search pour la recherche de documents juridiques
 """
 
-import os
-import logging
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
 import json
+import logging
+import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -16,32 +16,18 @@ logger = logging.getLogger(__name__)
 
 # Import conditionnel d'Azure Search
 try:
+    from azure.core.credentials import AzureKeyCredential
+    from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
     from azure.search.documents import SearchClient
     from azure.search.documents.indexes import SearchIndexClient
     from azure.search.documents.indexes.models import (
-        SearchIndex,
-        SimpleField,
-        SearchableField,
-        SearchField,
-        SearchFieldDataType,
-        VectorSearch,
-        HnswAlgorithmConfiguration,
-        VectorSearchProfile,
-        SemanticConfiguration,
-        SemanticPrioritizedFields,
-        SemanticField,
-        SemanticSearch,
-        ScoringProfile,
-        TextWeights
-    )
-    from azure.search.documents.models import (
-        VectorizedQuery,
-        QueryType,
-        QueryCaptionType,
-        QueryAnswerType
-    )
-    from azure.core.credentials import AzureKeyCredential
-    from azure.core.exceptions import ResourceNotFoundError, HttpResponseError
+        HnswAlgorithmConfiguration, ScoringProfile, SearchableField,
+        SearchField, SearchFieldDataType, SearchIndex, SemanticConfiguration,
+        SemanticField, SemanticPrioritizedFields, SemanticSearch, SimpleField,
+        TextWeights, VectorSearch, VectorSearchProfile)
+    from azure.search.documents.models import (QueryAnswerType,
+                                               QueryCaptionType, QueryType,
+                                               VectorizedQuery)
     AZURE_SEARCH_AVAILABLE = True
 except ImportError as e:
     logger.error(f"Azure Search SDK non disponible: {e}")

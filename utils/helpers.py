@@ -1,12 +1,13 @@
 # utils/helpers.py
 """Fonctions utilitaires générales pour l'application IA Juridique"""
 
-import re
-import unicodedata
-from typing import Optional, Dict, List, Any
 import hashlib
 import json
+import re
+import unicodedata
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 
 def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
     """

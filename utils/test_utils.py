@@ -3,8 +3,8 @@
 Tests simples pour vérifier le bon fonctionnement des utils
 """
 
-import sys
 import os
+import sys
 from datetime import datetime
 
 # Ajouter le répertoire parent au path
@@ -15,11 +15,10 @@ def test_text_processing():
     """Test des fonctions de traitement de texte"""
     print("\n=== TEST TEXT PROCESSING ===")
     
-    from utils.text_processing import (
-        clean_key, normalize_whitespace, truncate_text,
-        calculate_text_similarity, extract_monetary_amounts
-    )
-    
+    from utils.text_processing import (calculate_text_similarity, clean_key,
+                                       extract_monetary_amounts,
+                                       normalize_whitespace, truncate_text)
+
     # Test clean_key
     assert clean_key("Test String 123!") == "test_string_123"
     print("✓ clean_key")
@@ -53,11 +52,9 @@ def test_date_time():
     """Test des fonctions de date/temps"""
     print("\n=== TEST DATE TIME ===")
     
-    from utils.date_time import (
-        format_date, format_legal_date, format_duration,
-        extract_dates, is_business_day
-    )
-    
+    from utils.date_time import (extract_dates, format_date, format_duration,
+                                 format_legal_date, is_business_day)
+
     # Test format_date
     date = datetime(2024, 1, 15)
     assert format_date(date) == "15/01/2024"
@@ -91,11 +88,10 @@ def test_legal_utils():
     """Test des fonctions juridiques"""
     print("\n=== TEST LEGAL UTILS ===")
     
-    from utils.legal_utils import (
-        extract_legal_references, format_legal_amount,
-        extract_parties, categorize_legal_document
-    )
-    
+    from utils.legal_utils import (categorize_legal_document,
+                                   extract_legal_references, extract_parties,
+                                   format_legal_amount)
+
     # Test extract_legal_references
     text = """
     Vu l'article 1382 du Code civil et l'article L.241-3 du Code de commerce,
@@ -122,11 +118,10 @@ def test_file_utils():
     """Test des fonctions fichiers"""
     print("\n=== TEST FILE UTILS ===")
     
-    from utils.file_utils import (
-        sanitize_filename, format_file_size, get_file_icon,
-        get_file_extension, is_valid_email
-    )
-    
+    from utils.file_utils import (format_file_size, get_file_extension,
+                                  get_file_icon, is_valid_email,
+                                  sanitize_filename)
+
     # Test sanitize_filename
     unsafe = "fichier<>:|?*.txt"
     safe = sanitize_filename(unsafe)
@@ -158,11 +153,9 @@ def test_validators():
     """Test des validateurs"""
     print("\n=== TEST VALIDATORS ===")
     
-    from utils.validators import (
-        validate_siren, validate_phone_number,
-        validate_postal_code, validate_iban
-    )
-    
+    from utils.validators import (validate_iban, validate_phone_number,
+                                  validate_postal_code, validate_siren)
+
     # Test SIREN (Amazon France)
     valid, error = validate_siren("487773327")
     assert valid == True
@@ -192,7 +185,7 @@ def test_cache_manager():
     """Test du système de cache"""
     print("\n=== TEST CACHE MANAGER ===")
     
-    from utils.cache_manager import get_cache, cache_result
+    from utils.cache_manager import cache_result, get_cache
     
     cache = get_cache()
     
@@ -224,11 +217,9 @@ def test_formatters():
     """Test des formatters"""
     print("\n=== TEST FORMATTERS ===")
     
-    from utils.formatters import (
-        apply_legal_numbering, _to_roman,
-        format_legal_list, format_signature_block
-    )
-    
+    from utils.formatters import (_to_roman, apply_legal_numbering,
+                                  format_legal_list, format_signature_block)
+
     # Test numérotation romaine
     assert _to_roman(1) == "I"
     assert _to_roman(4) == "IV"
