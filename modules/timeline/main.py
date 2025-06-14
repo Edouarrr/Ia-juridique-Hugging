@@ -7,9 +7,7 @@ import re
 import sys
 import time
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import streamlit as st
@@ -21,40 +19,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 from utils.decorators import decorate_public_functions
+from .models import AIModel, TimelineEvent
 
 # Enregistrement automatique des fonctions publiques pour le module
 decorate_public_functions(sys.modules[__name__])
 
-# Configuration des modèles d'IA pour le droit pénal des affaires
-class AIModel(Enum):
-    CHAT_GPT_4 = "ChatGPT 4"
-    CLAUDE_OPUS_4 = "Claude Opus 4"
-    PERPLEXITY = "Perplexity"
-    GEMINI = "Gemini"
-    MISTRAL = "Mistral"
-    FUSION = "🔥 Mode Fusion"
-
 # Import du manager multi-LLM
 from llm_manager import LLMManager
-
-@dataclass
-class TimelineEvent:
-    """Structure d'un événement de la timeline"""
-    date: datetime
-    description: str
-    importance: int = 5
-    category: str = "autre"
-    actors: List[str] = None
-    source: str = ""
-    confidence: float = 0.8
-    ai_extracted: bool = False
-    metadata: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.actors is None:
-            self.actors = []
-        if self.metadata is None:
-            self.metadata = {}
 
 class TimelineModule:
     """Module de création de timeline juridique avec IA multi-modèles pour le droit pénal des affaires"""
