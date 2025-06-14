@@ -330,11 +330,29 @@ Fournissez une analyse structurée avec des pourcentages et recommandations conc
             # Probabilité de poursuites consensus
             prob_poursuites = []
             prob_condamnation = []
-            
+
             for model in successful_models:
                 # Extraire les probabilités de chaque modèle
                 # (À adapter selon le format de réponse)
-                pass
+                model_result = results.get(model, {})
+
+                # Les probabilités peuvent être à la racine ou dans une clé
+                # ``analysis`` retournée par le manager multi-LLM. On gère
+                # grâce à plusieurs niveaux d'accès pour éviter les KeyError.
+                eval_risks = model_result.get("evaluation_risques")
+                if not eval_risks and isinstance(model_result.get("analysis"), dict):
+                    eval_risks = model_result["analysis"].get("evaluation_risques")
+
+                poursuite = None
+                condamnation = None
+                if isinstance(eval_risks, dict):
+                    poursuite = eval_risks.get("probabilite_poursuites")
+                    condamnation = eval_risks.get("probabilite_condamnation")
+
+                if poursuite is not None:
+                    prob_poursuites.append(float(poursuite))
+                if condamnation is not None:
+                    prob_condamnation.append(float(condamnation))
             
             aggregated["evaluation_risques"]["probabilite_poursuites"] = np.mean(prob_poursuites) if prob_poursuites else 0.7
             aggregated["evaluation_risques"]["probabilite_condamnation"] = np.mean(prob_condamnation) if prob_condamnation else 0.6
