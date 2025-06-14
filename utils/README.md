@@ -44,7 +44,7 @@ from utils import (
 ```python
 # Import de modules spécifiques
 from utils.text_processing import extract_entities, calculate_text_similarity
-from utils.date_time import format_duration, is_business_day
+from utils import format_duration, is_business_day
 from utils.legal_utils import extract_legal_references, analyze_query_intent
 from utils.validators import validate_siren, validate_iban
 ```

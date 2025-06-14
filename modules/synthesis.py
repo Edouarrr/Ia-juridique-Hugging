@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
-from utils.formatters import format_date
+from utils import format_date_formatter as format_date
 # Import des utilitaires depuis le package utils
 try:
     from utils import clean_key, truncate_text
