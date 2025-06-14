@@ -16,7 +16,7 @@ from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
 from services.universal_search_service import UniversalSearchService
 from managers.document_manager import DocumentManager
-from utils import LEGAL_SUGGESTIONS
+from utils import LEGAL_SUGGESTIONS, log_search, log_module_usage, set_dossier_summary
 from module_loader import get_available_modules
 
 import streamlit as st
@@ -365,6 +365,7 @@ class ModuleManager:
         try:
             # Exécuter le module
             self.loaded_modules[module_name].run()
+            log_module_usage(module_name, st.session_state.get('selected_folder'))
         except Exception as e:
             st.error(f"❌ Erreur lors de l'exécution du module {module_name}")
             st.error(str(e))
@@ -468,6 +469,7 @@ def show_dashboard():
 
     if search_query:
         query_to_use = search_query
+        log_search(search_query)
 
         if search_query.startswith("@"):
             folder = search_query[1:].split()[0]
@@ -481,6 +483,7 @@ def show_dashboard():
 
             folder_summary = doc_manager.get_summary(folder)
             if folder_summary:
+                set_dossier_summary(folder, folder_summary)
                 query_to_use = f"Contexte dossier : {folder_summary}\n\n{search_query}"
 
         if not search_query.startswith("#"):
@@ -629,7 +632,21 @@ def show_sidebar():
                 if st.button(config["name"], use_container_width=True, key=f"quick_{module_id}"):
                     st.session_state.current_view = module_id
                     st.rerun()
-        
+
+        st.markdown("---")
+
+        # Historique recent
+        st.markdown("### 🕘 Historique")
+        history = st.session_state.get('history', {'searches': [], 'modules': []})
+        if history['searches'] or history['modules']:
+            for h in history['searches'][:3]:
+                st.caption(f"🔍 {h['query']}")
+            for h in history['modules'][:3]:
+                dossier = f" @{h['dossier']}" if h.get('dossier') else ''
+                st.caption(f"📦 {h['module']}{dossier}")
+        else:
+            st.caption("Aucune activité récente")
+
         st.markdown("---")
         
         # Statut système
