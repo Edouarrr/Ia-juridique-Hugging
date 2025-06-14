@@ -910,29 +910,29 @@ def show_global_statistics(documents: Dict[str, Document]):
     import plotly.express as px
     import plotly.graph_objects as go
 
-        # Répartition par type
-        fig1 = px.pie(
-            df.groupby('Type').size().reset_index(name='count'),
-            values='count',
-            names='Type',
-            title="Répartition par type de document"
-        )
-        st.plotly_chart(fig1, use_container_width=True)
-        
-        # Distribution des tailles
-        fig2 = px.histogram(
-            df,
-            x='Taille',
-            nbins=30,
-            title="Distribution des tailles de documents",
-            labels={'Taille': 'Taille (octets)', 'count': 'Nombre de documents'}
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-        
-        # Top 10 des plus gros documents
-        top_docs = df.nlargest(10, 'Taille')[['Titre', 'Taille', 'Mots']]
-        st.markdown("### 📊 Top 10 des documents les plus volumineux")
-        st.dataframe(top_docs, use_container_width=True)
+    # Répartition par type
+    fig1 = px.pie(
+        df.groupby('Type').size().reset_index(name='count'),
+        values='count',
+        names='Type',
+        title="Répartition par type de document"
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Distribution des tailles
+    fig2 = px.histogram(
+        df,
+        x='Taille',
+        nbins=30,
+        title="Distribution des tailles de documents",
+        labels={'Taille': 'Taille (octets)', 'count': 'Nombre de documents'}
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Top 10 des plus gros documents
+    top_docs = df.nlargest(10, 'Taille')[['Titre', 'Taille', 'Mots']]
+    st.markdown("### 📊 Top 10 des documents les plus volumineux")
+    st.dataframe(top_docs, use_container_width=True)
 
 def show_kanban_view(documents: Dict[str, Document]):
     """Affiche une vue Kanban des documents"""
