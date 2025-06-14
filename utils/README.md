@@ -24,6 +24,10 @@ utils/
 └── README.md            # Cette documentation
 ```
 
+> **Note** : toutes les fonctions exportées sont désormais accessibles
+> directement via `utils`. L'ancien fichier `utils/exports.py` a été
+> supprimé.
+
 ## Utilisation
 
 ### Import simple
