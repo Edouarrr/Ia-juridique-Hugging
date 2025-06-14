@@ -14,6 +14,7 @@ from email.mime.text import MIMEText
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+from utils import format_file_size, is_valid_email
 
 
 # Dataclasses intégrées
@@ -36,19 +37,7 @@ class EmailConfig:
             'mimetype': mimetype
         })
 
-# Fonctions helper intégrées
-def is_valid_email(email: str) -> bool:
-    """Vérifie si une adresse email est valide"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
 
-def format_file_size(size_bytes: int) -> str:
-    """Formate la taille d'un fichier"""
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
 
 # Types MIME pour les pièces jointes
 ATTACHMENT_MIME_TYPES = {
