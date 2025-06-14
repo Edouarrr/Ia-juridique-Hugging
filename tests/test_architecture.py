@@ -8,7 +8,7 @@ def test_basic_imports():
     from modules.dataclasses import Document, Partie  # noqa: F401
     from managers.multi_llm_manager import MultiLLMManager  # noqa: F401
     from managers.unified_document_generator import UnifiedDocumentGenerator  # noqa: F401
-    from utils.helpers import initialize_session_state  # noqa: F401
+    from utils.session import initialize_session_state  # noqa: F401
 
 
 def test_session_state_initialization(monkeypatch):
@@ -31,7 +31,7 @@ def test_session_state_initialization(monkeypatch):
             return key in self.data
 
     monkeypatch.setattr(st, "session_state", MockSessionState())
-    from utils.helpers import initialize_session_state
+    from utils.session import initialize_session_state
 
     initialize_session_state()
     assert "initialized" in st.session_state.data

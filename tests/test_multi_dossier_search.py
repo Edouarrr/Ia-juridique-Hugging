@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("streamlit")
 import streamlit as st
 
-from utils.helpers import initialize_session_state
+from utils.session import initialize_session_state
 from services.universal_search_service import UniversalSearchService
 
 

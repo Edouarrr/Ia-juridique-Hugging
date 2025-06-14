@@ -15,7 +15,7 @@ import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils.helpers import extract_entities
+from utils.text_processing import extract_entities
 from utils import clean_key, format_legal_date, truncate_text
 
 import networkx as nx
