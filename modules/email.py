@@ -599,8 +599,7 @@ def prepare_email_content_and_attachments(email_config: EmailConfig, analysis: d
 def compress_email_attachments(email_config: EmailConfig):
     """Compresse les pièces jointes en un fichier ZIP"""
     
-    try:
-        import zipfile
+    import zipfile
 
         # Créer un buffer pour le ZIP
         zip_buffer = io.BytesIO()
@@ -620,9 +619,6 @@ def compress_email_attachments(email_config: EmailConfig):
         }]
         
         st.success(f"✅ Fichiers compressés dans {zip_filename}")
-        
-    except ImportError:
-        st.warning("⚠️ Module zipfile non disponible")
 
 def get_available_attachments() -> Dict[str, Any]:
     """Récupère les documents disponibles pour attachement"""
@@ -746,86 +742,13 @@ def create_pdf_attachment(content: Any, doc_type: str) -> bytes:
         
         return buffer.getvalue()
         
-    except ImportError:
-        # Fallback : créer un PDF simple en texte
-        pdf_content = f"""%%PDF-1.4
-1 0 obj
-
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-
-2 0 obj
-
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-
-3 0 obj
-
-/Type /Page
-/Parent 2 0 R
-/Resources 
-/Font 
-/F1 4 0 R
->>
->>
-/MediaBox [0 0 612 792]
-/Contents 5 0 R
->>
-endobj
-
-4 0 obj
-
-/Type /Font
-/Subtype /Type1
-/BaseFont /Helvetica
->>
-endobj
-
-5 0 obj
-
-/Length {len(str(content))}
->>
-stream
-BT
-/F1 12 Tf
-50 750 Td
-({doc_type.title()}) Tj
-0 -20 Td
-({str(content)[:100]}...) Tj
-ET
-endstream
-endobj
-
-xref
-0 6
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000262 00000 n
-0000000341 00000 n
-trailer
-
-/Size 6
-/Root 1 0 R
->>
-startxref
-{500 + len(str(content))}
-%%EOF"""
-        
         return pdf_content.encode('latin-1')
 
 def create_docx_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe DOCX"""
-    try:
-        from docx import Document
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.shared import Inches, Pt
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
         
         doc = Document()
         
@@ -884,10 +807,6 @@ def create_docx_attachment(content: Any, doc_type: str) -> bytes:
         buffer.seek(0)
         
         return buffer.getvalue()
-        
-    except ImportError:
-        # Fallback texte
-        return create_txt_attachment(content, doc_type)
 
 def create_html_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe HTML"""
@@ -2323,9 +2242,6 @@ def export_email_history(history: List[Dict[str, Any]], format: str = 'json'):
                 key="download_email_history_excel"
             )
             
-        except ImportError:
-            st.error("❌ pandas/xlsxwriter requis pour l'export Excel")
-            # Fallback vers CSV
             export_email_history(history, format='csv')
 
 def show_email_configuration_interface():
