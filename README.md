@@ -22,7 +22,7 @@ Application spécialisée dans l'assistance juridique en droit pénal des affair
 - Analyse de risques spécialisée (ABS, corruption, etc.)
 
 ### 🤖 IA Multi-LLM
-- **5 LLMs intégrés** : Azure OpenAI, Claude Opus 4, ChatGPT 4o, Gemini, Perplexity
+- **LLMs intégrés** : OpenAI/Azure OpenAI (GPT‑4), Claude, Gemini, Mistral et Groq
 - Interrogation simple ou multiple avec comparaison
 - Fusion intelligente des réponses pour une analyse complète
 - Templates de prompts juridiques pré-configurés
@@ -53,7 +53,8 @@ Pour utiliser toutes les fonctionnalités, configurez vos clés API dans les Set
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 - `GOOGLE_API_KEY`
-- `PERPLEXITY_API_KEY`
+- `MISTRAL_API_KEY`
+- `GROQ_API_KEY`
 
 ## 📚 Guide d'Utilisation
 
