@@ -18,6 +18,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.text_processing import extract_entities
 from utils import clean_key, format_legal_date, truncate_text
 from utils.decorators import decorate_public_functions
+from utils.session import initialize_session_state
 
 import networkx as nx
 import plotly.graph_objects as go
@@ -48,6 +49,7 @@ def run():
     
     # Initialisation des variables de session
     initialize_session_state()
+    initialize_mapping_state()
     
     # Vérification des dépendances
     check_dependencies()
@@ -219,8 +221,8 @@ def apply_custom_styling():
     </style>
     """, unsafe_allow_html=True)
 
-def initialize_session_state():
-    """Initialise les variables de session pour le module"""
+def initialize_mapping_state():
+    """Initialise les variables de session spécifiques au module"""
     if 'mapping_state' not in st.session_state:
         st.session_state.mapping_state = {
             'initialized': True,

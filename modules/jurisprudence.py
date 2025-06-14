@@ -26,6 +26,7 @@ from models.dataclasses import (JurisprudenceReference, SourceJurisprudence,
                                 get_all_juridictions)
 from utils import clean_key, format_legal_date, truncate_text
 from utils.text_processing import highlight_text
+from utils.session import initialize_session_state
 from config.ai_models import AI_MODELS
 from utils.decorators import decorate_public_functions
 
@@ -94,6 +95,7 @@ def run():
     
     # Initialisation des variables de session
     initialize_session_state()
+    initialize_jurisprudence_state()
     
     # Métriques en temps réel
     show_realtime_metrics()
@@ -107,8 +109,8 @@ def run():
     # Footer avec informations
     show_footer()
 
-def initialize_session_state():
-    """Initialise les variables de session pour le module"""
+def initialize_jurisprudence_state():
+    """Initialise les variables de session spécifiques au module"""
     
     defaults = {
         'jurisprudence_search_active': False,
