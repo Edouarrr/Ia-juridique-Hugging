@@ -44,16 +44,7 @@ try:
     UTILS_AVAILABLE = True
 except ImportError:
     UTILS_AVAILABLE = False
-    logger.warning("utils non disponible - utilisation de fonctions intégrées")
-    
-    def truncate_text(text: str, max_length: int = 100) -> str:
-        return text[:max_length] + "..." if len(text) > max_length else text
-    
-    def clean_key(key: str) -> str:
-        return re.sub(r'[^a-zA-Z0-9_]', '_', str(key))
-    
-    def format_legal_date(date_str: str) -> str:
-        return date_str
+    logger.warning("utils non disponible - certaines fonctionnalités seront limitées")
 
 # ============= CONFIGURATION DES MODÈLES IA =============
 
