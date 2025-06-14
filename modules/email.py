@@ -5,7 +5,6 @@ import io
 import json
 import re
 import smtplib
-from dataclasses import dataclass, field
 from datetime import datetime
 from email import encoders
 from email.mime.base import MIMEBase
@@ -16,25 +15,7 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 
 
-# Dataclasses intégrées
-@dataclass
-class EmailConfig:
-    """Configuration d'un email"""
-    to: List[str]
-    subject: str
-    body: str
-    cc: List[str] = field(default_factory=list)
-    bcc: List[str] = field(default_factory=list)
-    attachments: List[Dict[str, Any]] = field(default_factory=list)
-    priority: str = "normal"
-    
-    def add_attachment(self, filename: str, data: bytes, mimetype: str):
-        """Ajoute une pièce jointe"""
-        self.attachments.append({
-            'filename': filename,
-            'data': data,
-            'mimetype': mimetype
-        })
+from modules.dataclasses import EmailConfig
 
 # Fonctions helper intégrées
 def is_valid_email(email: str) -> bool:
