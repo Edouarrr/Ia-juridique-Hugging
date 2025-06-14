@@ -32,8 +32,8 @@ def main():
     
     # Via modules
     check_import("modules.dataclasses", [
-        "TypeDocument",
-        "Partie", 
+        "DocumentType",
+        "Partie",
         "InfractionIdentifiee",
         "StyleRedaction",
         "DocumentJuridique"
@@ -41,7 +41,7 @@ def main():
     
     # Via models (redirection)
     check_import("models.dataclasses", [
-        "TypeDocument",
+        "DocumentType",
         "Partie"
     ])
     

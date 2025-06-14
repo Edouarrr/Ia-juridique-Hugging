@@ -5,8 +5,9 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List
 
+from config.app_config import DocumentType
 from modules.dataclasses import (DocumentTemplate, LetterheadTemplate,
-                                 StyleConfig, StyleRedaction, TypeDocument)
+                                 StyleConfig, StyleRedaction)
 
 # ========== PAPIERS EN-TÊTE PAR DÉFAUT ==========
 
@@ -315,7 +316,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="plainte_simple",
         name="Plainte simple",
-        type=TypeDocument.PLAINTE,
+        type=DocumentType.PLAINTE,
         structure=[
             "Monsieur le Procureur de la République,",
             "",
@@ -346,7 +347,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="plainte_cpc",
         name="Plainte avec constitution de partie civile",
-        type=TypeDocument.PLAINTE_CPC,
+        type=DocumentType.PLAINTE_CPC,
         structure=[
             "Monsieur le Doyen des Juges d\'Instruction,",
             "",
@@ -392,7 +393,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="conclusions_demandeur",
         name="Conclusions pour demandeur",
-        type=TypeDocument.CONCLUSIONS,
+        type=DocumentType.CONCLUSIONS,
         structure=[
             "TRIBUNAL [TYPE] DE [VILLE]",
             "",
@@ -445,7 +446,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="assignation",
         name="Assignation devant le Tribunal",
-        type=TypeDocument.ASSIGNATION,
+        type=DocumentType.ASSIGNATION,
         structure=[
             "L\'AN [ANNÉE] ET LE [DATE]",
             "",
@@ -489,7 +490,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="mise_en_demeure",
         name="Mise en demeure",
-        type=TypeDocument.MISE_EN_DEMEURE,
+        type=DocumentType.MISE_EN_DEMEURE,
         structure=[
             "[EN-TÊTE]",
             "",
@@ -526,7 +527,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="contrat_simple",
         name="Contrat type",
-        type=TypeDocument.CONTRAT,
+        type=DocumentType.CONTRAT,
         structure=[
             "CONTRAT DE [TYPE]",
             "",
@@ -577,7 +578,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="memoire_defense",
         name="Mémoire en défense",
-        type=TypeDocument.MEMOIRE,
+        type=DocumentType.MEMOIRE,
         structure=[
             "MÉMOIRE EN DÉFENSE",
             "",
@@ -623,7 +624,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="requete_simple",
         name="Requête",
-        type=TypeDocument.REQUETE,
+        type=DocumentType.REQUETE,
         structure=[
             "REQUÊTE AUX FINS DE [OBJET]",
             "",
@@ -654,7 +655,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="courrier_adversaire",
         name="Courrier à confrère",
-        type=TypeDocument.COURRIER,
+        type=DocumentType.COURRIER,
         structure=[
             "[EN-TÊTE CABINET]",
             "",
@@ -683,7 +684,7 @@ BUILTIN_DOCUMENT_TEMPLATES = [
     DocumentTemplate(
         id="note_analyse",
         name="Note d\'analyse juridique",
-        type=TypeDocument.NOTE,
+        type=DocumentType.NOTE,
         structure=[
             "NOTE D\'ANALYSE",
             "",
