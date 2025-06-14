@@ -81,16 +81,28 @@ from .legal_utils import (analyze_query_intent, categorize_legal_document,
                           highlight_legal_terms, validate_reference)
 # Session (peut dépendre de Streamlit)
 try:
-    from .session import (add_to_history, clear_session_results, get_session_value,
-                          get_user_preference, initialize_session_state,
-                          is_favorite, reset_session, set_session_value,
-                          set_user_preference, toggle_favorite,
-                          update_session_values)
+    from .session import (
+        add_to_history,
+        clear_session_results,
+        get_session_value,
+        get_user_preference,
+        initialize_session_state,
+        is_favorite,
+        log_module_usage,
+        log_search,
+        reset_session,
+        set_dossier_summary,
+        set_session_value,
+        set_user_preference,
+        toggle_favorite,
+        update_session_values,
+    )
 except Exception:
     add_to_history = clear_session_results = get_session_value = lambda *a, **k: None
     get_user_preference = initialize_session_state = lambda *a, **k: None
     is_favorite = reset_session = set_session_value = lambda *a, **k: None
     set_user_preference = toggle_favorite = update_session_values = lambda *a, **k: None
+    log_search = log_module_usage = set_dossier_summary = lambda *a, **k: None
 
 # Styles (peut dépendre de Streamlit)
 try:
