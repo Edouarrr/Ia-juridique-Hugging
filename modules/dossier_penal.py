@@ -29,34 +29,10 @@ from utils.file_utils import (
     format_file_size,
     ATTACHMENT_MIME_TYPES,
 )
+from config.ai_models import AI_MODELS
 
-# Configuration des modèles IA
-AI_MODELS = {
-    "gpt-4": {
-        "name": "GPT-4 Turbo",
-        "description": "Modèle le plus avancé pour la rédaction juridique",
-        "icon": "🧠",
-        "strengths": ["Rédaction complexe", "Analyse approfondie", "Créativité"]
-    },
-    "gpt-3.5": {
-        "name": "GPT-3.5 Turbo", 
-        "description": "Modèle rapide et efficace",
-        "icon": "⚡",
-        "strengths": ["Rapidité", "Efficacité", "Coût réduit"]
-    },
-    "claude-3": {
-        "name": "Claude 3 Opus",
-        "description": "Excellence en analyse et synthèse",
-        "icon": "🎯",
-        "strengths": ["Précision", "Synthèse", "Contexte long"]
-    },
-    "llama-2": {
-        "name": "Llama 2 70B",
-        "description": "Modèle open source performant",
-        "icon": "🦙",
-        "strengths": ["Open source", "Personnalisable", "Confidentialité"]
-    }
-}
+
+# Configuration des modèles IA importée depuis config.ai_models
 
 
 

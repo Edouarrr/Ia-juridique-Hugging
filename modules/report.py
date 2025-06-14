@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
+from config.ai_models import AI_MODELS
 
 # Configuration du logger
 logger = logging.getLogger(__name__)
@@ -188,56 +189,7 @@ REPORT_TEMPLATES = {
 }
 
 # Modèles d'IA disponibles
-AI_MODELS = {
-    'GPT-4': {
-        'name': 'GPT-4 Turbo',
-        'provider': 'OpenAI',
-        'strengths': ['Créativité', 'Raisonnement complexe', 'Multilinguisme'],
-        'icon': '🧠',
-        'speed': 'Rapide',
-        'quality': 5
-    },
-    'Claude': {
-        'name': 'Claude 3',
-        'provider': 'Anthropic',
-        'strengths': ['Analyse approfondie', 'Éthique', 'Précision juridique'],
-        'icon': '🎓',
-        'speed': 'Très rapide',
-        'quality': 5
-    },
-    'Gemini': {
-        'name': 'Gemini Pro',
-        'provider': 'Google',
-        'strengths': ['Multimodal', 'Recherche', 'Synthèse'],
-        'icon': '💎',
-        'speed': 'Rapide',
-        'quality': 4
-    },
-    'GPT-3.5': {
-        'name': 'GPT-3.5 Turbo',
-        'provider': 'OpenAI',
-        'strengths': ['Rapidité', 'Efficacité', 'Coût'],
-        'icon': '⚡',
-        'speed': 'Ultra rapide',
-        'quality': 3
-    },
-    'Mistral': {
-        'name': 'Mistral Large',
-        'provider': 'Mistral AI',
-        'strengths': ['Open source', 'Personnalisable', 'Français'],
-        'icon': '🌟',
-        'speed': 'Rapide',
-        'quality': 4
-    },
-    'Llama': {
-        'name': 'Llama 2',
-        'provider': 'Meta',
-        'strengths': ['Open source', 'Efficace', 'Adaptable'],
-        'icon': '🦙',
-        'speed': 'Moyen',
-        'quality': 3
-    }
-}
+# Modèles IA importés depuis config.ai_models
 
 def run():
     """Fonction principale du module - Point d'entrée pour le lazy loading"""

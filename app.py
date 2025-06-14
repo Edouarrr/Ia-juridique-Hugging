@@ -587,7 +587,9 @@ def show_sidebar():
     """Affiche la barre latérale"""
     with st.sidebar:
         st.markdown("## ⚖️ Navigation")
-        
+        st.markdown(f"📌 Dossier courant : @{st.session_state.selected_folder}")
+        st.markdown(f"📌 Module courant : #{st.session_state.selected_module}")
+
         # Bouton Accueil
         if st.button("🏠 Tableau de bord", use_container_width=True):
             st.session_state.current_view = 'dashboard'

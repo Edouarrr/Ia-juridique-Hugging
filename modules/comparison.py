@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import streamlit as st
+from config.ai_models import AI_MODELS
 
 # Configuration du logger
 logger = logging.getLogger(__name__)
@@ -38,69 +39,12 @@ except ImportError:
     logger.warning("plotly non disponible - les graphiques seront désactivés")
 
 # Gestion des imports de modules locaux
-try:
-    sys.path.append(str(Path(__file__).parent.parent))
-    from utils import clean_key, format_legal_date, truncate_text
-    UTILS_AVAILABLE = True
-except ImportError:
-    UTILS_AVAILABLE = False
-    logger.warning("utils non disponible - utilisation de fonctions intégrées")
-    
-    def truncate_text(text: str, max_length: int = 100) -> str:
-        return text[:max_length] + "..." if len(text) > max_length else text
-    
-    def clean_key(key: str) -> str:
-        return re.sub(r'[^a-zA-Z0-9_]', '_', str(key))
-    
-    def format_legal_date(date_str: str) -> str:
-        return date_str
+sys.path.append(str(Path(__file__).parent.parent))
+from utils import clean_key, format_legal_date, truncate_text
 
 # ============= CONFIGURATION DES MODÈLES IA =============
 
-AI_MODELS = {
-    "gpt-4": {
-        "name": "GPT-4",
-        "icon": "🧠",
-        "description": "Modèle le plus puissant d'OpenAI",
-        "strengths": ["Analyse approfondie", "Raisonnement complexe", "Contexte long"],
-        "provider": "openai"
-    },
-    "gpt-3.5-turbo": {
-        "name": "GPT-3.5 Turbo",
-        "icon": "⚡",
-        "description": "Rapide et efficace",
-        "strengths": ["Rapidité", "Coût réduit", "Bonnes performances"],
-        "provider": "openai"
-    },
-    "claude-3-opus": {
-        "name": "Claude 3 Opus",
-        "icon": "🎭",
-        "description": "Excellence en analyse juridique",
-        "strengths": ["Analyse juridique", "Nuances", "Éthique"],
-        "provider": "anthropic"
-    },
-    "claude-3-sonnet": {
-        "name": "Claude 3 Sonnet",
-        "icon": "📝",
-        "description": "Équilibre performance/coût",
-        "strengths": ["Polyvalence", "Créativité", "Rapidité"],
-        "provider": "anthropic"
-    },
-    "gemini-pro": {
-        "name": "Gemini Pro",
-        "icon": "💎",
-        "description": "IA multimodale de Google",
-        "strengths": ["Multimodal", "Analyse visuelle", "Innovation"],
-        "provider": "google"
-    },
-    "mixtral-8x7b": {
-        "name": "Mixtral 8x7B",
-        "icon": "🔀",
-        "description": "Open source performant",
-        "strengths": ["Open source", "Multilangue", "Customisable"],
-        "provider": "mistral"
-    }
-}
+# Modèles IA importés depuis config.ai_models
 
 # ============= FONCTION PRINCIPALE (OBLIGATOIRE POUR LAZY LOADING) =============
 

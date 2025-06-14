@@ -9,6 +9,8 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from utils.prompt_rewriter import rewrite_prompt
+
 # Import du gestionnaire multi-LLM
 try:
     from managers.multi_llm_manager import MultiLLMManager
@@ -104,6 +106,8 @@ class LLMManager:
         Returns:
             La réponse générée
         """
+        prompt = MultiLLMManager._prepend_prioritized_pieces(prompt)
+
         try:
             # Utiliser MultiLLMManager si disponible
             if self.multi_llm and (provider in self.multi_llm.get_available_providers() or not provider):
@@ -139,6 +143,7 @@ class LLMManager:
     def _generate_groq(self, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> str:
         """Génère avec Groq en direct"""
         try:
+            prompt = rewrite_prompt(prompt)
             response = self.groq_client.chat.completions.create(
                 model="mixtral-8x7b-32768",  # ou "llama3-70b-8192"
                 messages=[
@@ -156,6 +161,7 @@ class LLMManager:
     def _generate_openai(self, prompt: str, system_prompt: str, temperature: float, max_tokens: int) -> str:
         """Génère avec OpenAI en direct"""
         try:
+            prompt = rewrite_prompt(prompt)
             response = self.openai_client.chat.completions.create(
                 model="gpt-4-turbo-preview",  # ou "gpt-3.5-turbo"
                 messages=[

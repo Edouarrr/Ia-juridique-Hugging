@@ -8,10 +8,14 @@ import time
 from datetime import datetime
 
 import streamlit as st
+from utils.prompt_rewriter import rewrite_prompt
 import streamlit.components.v1 as components
 
 from app import ModuleManager
 from managers.multi_llm_manager import MultiLLMManager
+import export_manager
+import azure_indexer
+import timeline_generator
 
 # Configuration de la page avec un design moderne
 st.set_page_config(
@@ -208,6 +212,29 @@ def load_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
+def handle_command(command: str, selected_folder: str) -> bool:
+    """Execute une commande spéciale de l'interface.
+
+    Args:
+        command: La chaîne saisie commençant par '#'.
+        selected_folder: Dossier cible pour les opérations.
+
+    Returns:
+        True si la commande est reconnue et exécutée, False sinon.
+    """
+
+    cmd = command.strip()[1:].split()[0].lower()
+    if cmd == "export":
+        export_manager.export(selected_folder)
+    elif cmd == "index":
+        azure_indexer.index_folder(selected_folder)
+    elif cmd == "timeline":
+        timeline_generator.generate(selected_folder)
+    else:
+        st.error(f"Commande inconnue : {cmd}")
+        return False
+    return True
+
 def create_search_interface():
     """Crée une interface de recherche améliorée avec soumission sur Entrée"""
     
@@ -255,6 +282,10 @@ def create_search_interface():
             help="Appuyez sur Entrée pour lancer la recherche"
         )
 
+        if query:
+            rewritten = rewrite_prompt(query)
+            st.markdown(f"*Reformulation :* {rewritten}")
+
         search_mode = st.selectbox(
             "Mode",
             ["Recherche multi-IA", "Exécuter un module"],
@@ -265,6 +296,13 @@ def create_search_interface():
         selected_module = None
         merge_option = "synthétique"
 
+        # Pièces à mettre en avant
+        liste_pieces = [
+            "PV de perquisition",
+            "plainte pénale",
+            "rapport d’expertise"
+        ]
+
         if search_mode == "Recherche multi-IA":
             llm_manager = MultiLLMManager()
             providers = llm_manager.get_available_providers()
@@ -274,6 +312,8 @@ def create_search_interface():
                 default=providers,
                 key="multi_models_select"
             )
+
+            st.session_state.selected_module = None
 
             merge_option = st.radio(
                 "Fusion des réponses",
@@ -291,6 +331,18 @@ def create_search_interface():
                     modules,
                     key="module_select"
                 )
+
+                st.session_state.selected_module = selected_module
+            else:
+                st.session_state.selected_module = None
+
+        # Sélection des pièces prioritaires
+        pieces_selection = st.multiselect(
+            "Pièces prioritaires :",
+            options=liste_pieces,
+            key="pieces_prioritaires"
+        )
+        st.session_state.pieces_prioritaires = pieces_selection
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Espacement
@@ -300,6 +352,11 @@ def create_search_interface():
             use_container_width=True,
             type="primary"
         )
+
+    selected_folder = st.session_state.get("selected_folder", ".")
+    if search_clicked and isinstance(query, str) and query.strip().startswith("#"):
+        if handle_command(query, selected_folder):
+            search_clicked = False
     
     # Suggestions rapides
     st.markdown("**Suggestions rapides :**")
@@ -336,9 +393,11 @@ def create_modern_sidebar():
             <p style="color: #5f6368; margin: 5px 0;">Assistant Juridique Intelligent</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         st.markdown("---")
-        
+        st.markdown(f"📌 Dossier courant : @{st.session_state.selected_folder}")
+        st.markdown(f"📌 Module courant : #{st.session_state.selected_module}")
+
         # Navigation principale avec icônes
         st.markdown("### 🧭 Navigation")
         
@@ -580,6 +639,7 @@ def enhanced_main_interface():
                     manager.discover_modules()
                     if module_name in manager.available_modules:
                         manager.run_module(module_name)
+                        st.session_state.selected_module = module_name
                 st.success("✅ Traitement terminé")
         
         # Dashboard principal

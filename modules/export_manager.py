@@ -7,7 +7,6 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,65 +20,10 @@ import streamlit as st
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
+from config.ai_models import AI_MODELS
 
 # ========================= CONFIGURATION =========================
 
-@dataclass
-class AIModel:
-    """Configuration d'un modèle d'IA"""
-    name: str
-    display_name: str
-    description: str
-    icon: str
-    strengths: List[str]
-    api_key: Optional[str] = None
-    max_tokens: int = 4096
-    temperature: float = 0.7
-    capabilities: List[str] = field(default_factory=list)
-    
-# Modèles d'IA disponibles
-AI_MODELS = {
-    "gpt4": AIModel(
-        name="gpt4",
-        display_name="GPT-4 Turbo",
-        description="Modèle OpenAI le plus avancé pour l'analyse complexe",
-        icon="🧠",
-        strengths=["Raisonnement complexe", "Analyse juridique", "Créativité"],
-        capabilities=["text", "analysis", "reasoning", "code"]
-    ),
-    "claude3": AIModel(
-        name="claude3",
-        display_name="Claude 3 Opus",
-        description="IA Anthropic spécialisée en analyse détaillée",
-        icon="🎭",
-        strengths=["Analyse approfondie", "Éthique", "Nuance"],
-        capabilities=["text", "analysis", "ethics", "long_context"]
-    ),
-    "gemini": AIModel(
-        name="gemini",
-        display_name="Gemini Pro",
-        description="Modèle Google multimodal performant",
-        icon="✨",
-        strengths=["Multimodal", "Rapidité", "Précision"],
-        capabilities=["text", "analysis", "multimodal", "speed"]
-    ),
-    "mistral": AIModel(
-        name="mistral",
-        display_name="Mistral Large",
-        description="IA française optimisée pour le juridique",
-        icon="🇫🇷",
-        strengths=["Droit français", "Efficacité", "Open Source"],
-        capabilities=["text", "legal_fr", "efficiency"]
-    ),
-    "llama": AIModel(
-        name="llama",
-        display_name="Llama 3",
-        description="Modèle Meta open source performant",
-        icon="🦙",
-        strengths=["Open Source", "Personnalisation", "Performance"],
-        capabilities=["text", "customization", "local"]
-    )
-}
 
 # Thèmes de couleurs
 THEMES = {
@@ -686,7 +630,7 @@ def render_ai_models_tab():
                 card_class = "model-card selected" if is_selected else "model-card"
                 
                 if st.button(
-                    f"{model.icon} {model.display_name}",
+                    f"{model['icon']} {model['display_name']}",
                     key=f"model_{model_id}",
                     use_container_width=True,
                     type="primary" if is_selected else "secondary"
@@ -702,12 +646,12 @@ def render_ai_models_tab():
                 st.markdown(f"""
                 <div class="{card_class}">
                     <p style="margin: 0.5rem 0; font-size: 0.9rem; color: var(--text); opacity: 0.8;">
-                        {model.description}
+                        {model['description']}
                     </p>
                     <div style="margin-top: 0.5rem;">
                 """, unsafe_allow_html=True)
                 
-                for strength in model.strengths:
+                for strength in model['strengths']:
                     st.markdown(f"""
                         <span class="badge badge-success">{strength}</span>
                     """, unsafe_allow_html=True)
@@ -735,7 +679,7 @@ def render_ai_models_tab():
         
         for model_id in recommendations:
             model = AI_MODELS[model_id]
-            st.markdown(f"- **{model.icon} {model.display_name}** : {model.description}")
+            st.markdown(f"- **{model['icon']} {model['display_name']}** : {model['description']}")
         
         if st.button("Utiliser ces modèles", type="primary", key="use_recommendations"):
             st.session_state.module_state['selected_models'] = recommendations
@@ -761,7 +705,7 @@ def render_ai_models_tab():
         profile_models = profiles[selected_profile]
         for model_id in profile_models:
             model = AI_MODELS[model_id]
-            st.markdown(f"- {model.icon} {model.display_name}")
+            st.markdown(f"- {model['icon']} {model['display_name']}")
         
         if st.button(f"Utiliser le profil {selected_profile}", type="primary", key="use_profile"):
             st.session_state.module_state['selected_models'] = profile_models
@@ -775,7 +719,7 @@ def render_ai_models_tab():
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            model_tags = " ".join([f"{AI_MODELS[m].icon} {AI_MODELS[m].display_name}" for m in selected_models])
+            model_tags = " ".join([f"{AI_MODELS[m]['icon']} {AI_MODELS[m]['display_name']}" for m in selected_models])
             st.markdown(f"<div class='fade-in'>{model_tags}</div>", unsafe_allow_html=True)
         
         with col2:
@@ -868,13 +812,13 @@ def render_configuration_tab():
     for model_id in selected_models:
         model = AI_MODELS[model_id]
         
-        with st.expander(f"{model.icon} {model.display_name}", expanded=False):
+        with st.expander(f"{model['icon']} {model['display_name']}", expanded=False):
             col1, col2 = st.columns(2)
             
             with col1:
                 temp = st.slider(
                     "Température (créativité)",
-                    0.0, 1.0, model.temperature,
+                    0.0, 1.0, model.get('temperature', 0.7),
                     step=0.1,
                     key=f"temp_{model_id}",
                     help="0 = Déterministe, 1 = Très créatif"
@@ -882,7 +826,7 @@ def render_configuration_tab():
                 
                 tokens = st.number_input(
                     "Tokens maximum",
-                    100, 8000, model.max_tokens,
+                    100, 8000, model.get('max_tokens', 4096),
                     step=100,
                     key=f"tokens_{model_id}"
                 )
@@ -992,10 +936,10 @@ def render_analysis_tab():
             col1, col2, col3 = st.columns([1, 3, 1])
             
             with col1:
-                st.markdown(f"<div style='font-size: 2rem; text-align: center;'>{model.icon}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 2rem; text-align: center;'>{model['icon']}</div>", unsafe_allow_html=True)
             
             with col2:
-                st.markdown(f"**{model.display_name}**")
+                st.markdown(f"**{model['display_name']}**")
                 progress_bars[model_id] = st.progress(0)
                 model_placeholders[model_id] = st.empty()
             
@@ -1064,7 +1008,7 @@ def render_analysis_tab():
         st.markdown("#### 👀 Aperçu des résultats")
         
         # Graphique de comparaison des scores
-        scores = {AI_MODELS[m].display_name: np.random.uniform(0.7, 0.95) for m in selected_models}
+        scores = {AI_MODELS[m]['display_name']: np.random.uniform(0.7, 0.95) for m in selected_models}
         
         fig = go.Figure(data=[
             go.Bar(
@@ -1226,8 +1170,8 @@ def render_detailed_view(results):
     
     for model_id in selected_models:
         model = AI_MODELS[model_id]
-        
-        with st.expander(f"{model.icon} Analyse de {model.display_name}", expanded=True):
+
+        with st.expander(f"{model['icon']} Analyse de {model['display_name']}", expanded=True):
             # Tabs pour chaque section
             tabs = st.tabs(["Résumé", "Points clés", "Risques", "Recommandations"])
             
@@ -1420,7 +1364,7 @@ def render_sidebar():
             for model_id, count in sorted_models:
                 if count > 0:
                     model = AI_MODELS[model_id]
-                    st.markdown(f"{model.icon} {model.display_name}: **{count}** utilisations")
+                    st.markdown(f"{model['icon']} {model['display_name']}: **{count}** utilisations")
         
         # Raccourcis
         st.markdown("### ⌨️ Raccourcis")
@@ -1505,7 +1449,7 @@ async def process_with_model(model_id: str, content: str, config: Dict) -> Dict:
     # Résultat simulé
     return {
         'model_id': model_id,
-        'response': f"Analyse par {AI_MODELS[model_id].display_name}",
+        'response': f"Analyse par {AI_MODELS[model_id]['display_name']}",
         'confidence': np.random.uniform(0.7, 0.95),
         'tokens_used': np.random.randint(500, 2000),
         'processing_time': np.random.uniform(1, 3)

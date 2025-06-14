@@ -26,6 +26,7 @@ from models.dataclasses import (JurisprudenceReference, SourceJurisprudence,
                                 get_all_juridictions)
 from utils import clean_key, format_legal_date, truncate_text
 from utils.helpers import highlight_text
+from config.ai_models import AI_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -68,49 +69,7 @@ SOURCE_CONFIGS = {
     }
 }
 
-# Configuration des modèles d'IA
-AI_MODELS = {
-    'gpt-4-turbo': {
-        'name': 'GPT-4 Turbo',
-        'icon': '🤖',
-        'provider': 'OpenAI',
-        'capabilities': ['jurisprudence', 'analyse', 'synthèse'],
-        'speed': 'fast',
-        'accuracy': 'high'
-    },
-    'claude-3': {
-        'name': 'Claude 3 Opus',
-        'icon': '🧠',
-        'provider': 'Anthropic',
-        'capabilities': ['jurisprudence', 'raisonnement', 'contexte'],
-        'speed': 'medium',
-        'accuracy': 'very_high'
-    },
-    'llama-3': {
-        'name': 'Llama 3',
-        'icon': '🦙',
-        'provider': 'Meta',
-        'capabilities': ['jurisprudence', 'multilingue'],
-        'speed': 'very_fast',
-        'accuracy': 'medium'
-    },
-    'mistral-large': {
-        'name': 'Mistral Large',
-        'icon': '🌟',
-        'provider': 'Mistral AI',
-        'capabilities': ['jurisprudence', 'précision'],
-        'speed': 'fast',
-        'accuracy': 'high'
-    },
-    'gemini-pro': {
-        'name': 'Gemini Pro',
-        'icon': '💎',
-        'provider': 'Google',
-        'capabilities': ['jurisprudence', 'analyse_profonde'],
-        'speed': 'medium',
-        'accuracy': 'high'
-    }
-}
+# Configuration des modèles d'IA importée depuis config.ai_models
 
 def run():
     """Fonction principale du module - Point d'entrée pour le lazy loading"""

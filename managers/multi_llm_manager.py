@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+from utils.prompt_rewriter import rewrite_prompt
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +72,19 @@ class MultiLLMManager:
     def __init__(self):
         self.clients = {}
         self._initialize_clients()
+
+    @staticmethod
+    def _prepend_prioritized_pieces(prompt: str) -> str:
+        """Ajoute les pièces prioritaires au début du prompt si présent."""
+        pieces = st.session_state.get("pieces_prioritaires")
+        if pieces:
+            prefix = (
+                "Les documents suivants doivent être considérés comme prioritaires : "
+                + ", ".join(pieces)
+                + ".\n\n"
+            )
+            return prefix + prompt
+        return prompt
     
     def _initialize_clients(self):
         """Initialise les clients pour chaque LLM disponible"""
@@ -139,7 +153,7 @@ class MultiLLMManager:
     def query_single_llm(
         self, 
         provider: Any,  # Peut être string ou enum
-        prompt: str, 
+        prompt: str,
         system_prompt: str = "Tu es un assistant juridique expert en droit pénal des affaires français.",
         temperature: float = 0.7,
         max_tokens: int = 4000
@@ -168,7 +182,7 @@ class MultiLLMManager:
         }
         
         provider_key = provider_mapping.get(provider_key, provider_key)
-        
+
         if provider_key not in self.clients:
             return {
                 'success': False,
@@ -176,9 +190,14 @@ class MultiLLMManager:
                 'error': f"Provider {provider_name} non disponible. Providers disponibles: {list(self.clients.keys())}"
             }
         
+        prompt = self._prepend_prioritized_pieces(prompt)
+
         try:
             start_time = time.time()
-            
+
+            # Rewrite prompt for clarity
+            prompt = rewrite_prompt(prompt)
+
             if provider_key == "openai" or provider_key == "azure_openai":
                 response = self._query_openai(provider_key, prompt, system_prompt, temperature, max_tokens)
             elif provider_key == "anthropic":
@@ -308,6 +327,8 @@ class MultiLLMManager:
         parallel: bool = True
     ) -> List[Dict[str, Any]]:
         """Interroge plusieurs LLMs"""
+
+        prompt = self._prepend_prioritized_pieces(prompt)
         
         # Normaliser les providers
         normalized_providers = []

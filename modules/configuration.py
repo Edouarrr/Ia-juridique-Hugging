@@ -6,7 +6,7 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
+from config.ai_models import AI_MODELS
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,64 +21,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
 
 
-# Configuration des modèles IA disponibles
-@dataclass
-class AIModel:
-    name: str
-    id: str
-    description: str
-    strengths: List[str]
-    icon: str
-    color: str
-    performance_score: float
-
-AI_MODELS = {
-    "gpt4": AIModel(
-        name="GPT-4 Turbo",
-        id="gpt4",
-        description="Modèle le plus puissant pour l'analyse complexe",
-        strengths=["Raisonnement juridique", "Synthèse", "Créativité"],
-        icon="🧠",
-        color="#10a37f",
-        performance_score=0.95
-    ),
-    "claude": AIModel(
-        name="Claude 3 Opus",
-        id="claude",
-        description="Excellent pour l'analyse détaillée et la rédaction",
-        strengths=["Analyse approfondie", "Rédaction", "Nuance"],
-        icon="🤖",
-        color="#6b46c1",
-        performance_score=0.93
-    ),
-    "mistral": AIModel(
-        name="Mistral Large",
-        id="mistral",
-        description="Rapide et efficace pour les tâches courantes",
-        strengths=["Vitesse", "Efficacité", "Multilingue"],
-        icon="⚡",
-        color="#ff6b6b",
-        performance_score=0.88
-    ),
-    "llama": AIModel(
-        name="Llama 3 70B",
-        id="llama",
-        description="Open source performant pour l'analyse technique",
-        strengths=["Technique", "Open source", "Personnalisable"],
-        icon="🦙",
-        color="#4285f4",
-        performance_score=0.85
-    ),
-    "gemini": AIModel(
-        name="Gemini Pro",
-        id="gemini",
-        description="Multimodal avec capacités d'analyse avancées",
-        strengths=["Multimodal", "Analyse visuelle", "Innovation"],
-        icon="💎",
-        color="#ea4335",
-        performance_score=0.91
-    )
-}
+# Configuration des modèles IA disponibles importée depuis config.ai_models
 
 def run():
     """Fonction principale du module avec amélioration UX et IA multi-modèles"""
@@ -336,7 +279,7 @@ def run():
         for idx, (model_id, model) in enumerate(AI_MODELS.items()):
             with cols[idx % 3]:
                 selected = st.checkbox(
-                    f"{model.icon} **{model.name}**",
+                    f"{model['icon']} **{model['name']}**",
                     value=model_id in st.session_state.module_state.get('selected_models', []),
                     key=f"model_{model_id}"
                 )
@@ -349,18 +292,18 @@ def run():
                 # Card avec infos détaillées
                 st.markdown(
                     f"""
-                    <div class="model-card" style="border-top: 3px solid {model.color}">
-                        <p style="font-size: 14px; color: #666;">{model.description}</p>
+                    <div class="model-card" style="border-top: 3px solid {model['color']}">
+                        <p style="font-size: 14px; color: #666;">{model['description']}</p>
                         <div style="margin: 10px 0;">
                             <strong>Points forts:</strong><br>
-                            {'<br>'.join([f'• {s}' for s in model.strengths])}
+                            {'<br>'.join([f'• {s}' for s in model['strengths']])}
                         </div>
                         <div style="margin-top: 10px;">
                             <strong>Performance:</strong>
                             <div style="background: #e0e0e0; border-radius: 5px; height: 10px; margin-top: 5px;">
-                                <div style="background: {model.color}; width: {model.performance_score*100}%; height: 100%; border-radius: 5px;"></div>
+                                <div style="background: {model['color']}; width: {model['performance_score']*100}%; height: 100%; border-radius: 5px;"></div>
                             </div>
-                            <small>{model.performance_score*100:.0f}%</small>
+                            <small>{model['performance_score']*100:.0f}%</small>
                         </div>
                     </div>
                     """,
@@ -974,7 +917,7 @@ async def process_with_model(model_id: str, documents: List[Dict], config: Dict)
     model = AI_MODELS[model_id]
     results = {
         'model_id': model_id,
-        'model_name': model.name,
+        'model_name': model['name'],
         'documents_processed': len(documents),
         'confidence_scores': [],
         'extracted_data': [],
@@ -996,7 +939,7 @@ async def process_with_model(model_id: str, documents: List[Dict], config: Dict)
             'risks': ['Clause abusive', 'Délai court']
         })
         
-        results['confidence_scores'].append(0.85 + (model.performance_score - 0.85))
+        results['confidence_scores'].append(0.85 + (model['performance_score'] - 0.85))
     
     results['processing_time'] = time.time() - start_time
     return results
@@ -1006,7 +949,7 @@ def fusion_results(model_results: List[Dict], fusion_mode: str, threshold: float
     
     if fusion_mode == 'weighted':
         # Fusion pondérée selon la performance
-        weights = [AI_MODELS[r['model_id']].performance_score for r in model_results]
+        weights = [AI_MODELS[r['model_id']]['performance_score'] for r in model_results]
         total_weight = sum(weights)
         weights = [w/total_weight for w in weights]
         
