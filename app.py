@@ -37,30 +37,50 @@ st.set_page_config(
 # CSS personnalisé
 st.markdown("""
 <style>
+    :root {
+        --primary-text: #2C3E50;
+        --section-bg: #F5F7FA;
+        --button-bg: #1F77B4;
+        --button-hover: #123b69;
+        --separator: #D0D6DD;
+    }
+    body {
+        color: var(--primary-text);
+    }
     .main-header {
         font-size: 2.5rem;
         font-weight: 700;
-        background: linear-gradient(90deg, #1a237e 0%, #3949ab 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: white;
         text-align: center;
         padding: 1rem 0;
+        background-color: var(--primary-text);
+        border-radius: 5px;
     }
     .module-card {
-        background: #f8f9fa;
+        background: var(--section-bg);
         border-radius: 10px;
         padding: 1.5rem;
         margin: 0.5rem 0;
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--separator);
         transition: all 0.3s ease;
     }
     .module-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
+    .stButton > button {
+        background-color: var(--button-bg);
+        color: white;
+    }
+    .stButton > button:hover {
+        background-color: var(--button-hover);
+    }
     .status-ok { color: #4caf50; }
     .status-error { color: #f44336; }
     .status-warning { color: #ff9800; }
+    hr {
+        border-color: var(--separator);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -443,15 +463,30 @@ def init_session_state():
 # ========== INTERFACE PRINCIPALE ==========
 def show_dashboard():
     """Affiche le tableau de bord principal"""
-    st.markdown('<h1 class="main-header">⚖️ IA Juridique - Droit Pénal des Affaires</h1>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style='background-color:#2C3E50;padding:10px;border-radius:5px'>
+        <h1 style='color:white;text-align:center'>STERU BARATTE AARPI ⚖️</h1>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Barre de recherche
-    st.markdown("Utilisez la recherche pour activer un module ou interroger un dossier.")
+    st.markdown(
+        "Bienvenue sur la plateforme d'assistance juridique IA de STERU BARATTE AARPI. "
+        "Accédez à vos dossiers, modules de traitement, ou interrogez un cas en langage naturel."
+    )
+
+    st.markdown(
+        "<div style='background-color:#F5F7FA;padding:20px;border-radius:5px'>",
+        unsafe_allow_html=True,
+    )
     search_query = st.text_input(
         "🔍 Recherche de dossier ou commande",
         placeholder="Ex: @DOSSIER123",
         key="dashboard_search",
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if search_query.startswith("@"):
         st.info(f"Recherche dossier : {search_query[1:]}")
@@ -549,7 +584,7 @@ def show_dashboard():
         show_troubleshooting()
         return
     
-    # Afficher les modules par catégorie
+    # Afficher les modules par catégorie dans un encart
     categories_display = {
         "analyse": ("📊 Analyse", "Modules d'analyse et extraction"),
         "strategie": ("⚖️ Stratégie", "Modules de stratégie juridique"),
@@ -560,33 +595,34 @@ def show_dashboard():
         "technique": ("🔧 Technique", "Modules techniques"),
         "autre": ("📦 Autres", "Modules divers")
     }
-    
-    for cat_key, (cat_title, cat_desc) in categories_display.items():
-        if cat_key in modules_by_cat:
-            st.markdown(f"### {cat_title}")
-            st.caption(cat_desc)
-            
-            cols = st.columns(3)
-            for idx, module in enumerate(modules_by_cat[cat_key]):
-                with cols[idx % 3]:
-                    # Carte de module
-                    status_icon = "✅" if module["loaded"] else "⚠️"
-                    
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="module-card">
-                            <h4>{status_icon} {module['name']}</h4>
-                            <p style="color: #666; font-size: 0.9em;">{module['desc']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        if st.button(
-                            "Ouvrir", 
-                            key=f"open_{module['id']}", 
-                            use_container_width=True
-                        ):
-                            st.session_state.current_view = module['id']
-                            st.rerun()
+
+    with st.expander("Modules disponibles", expanded=True):
+        for cat_key, (cat_title, cat_desc) in categories_display.items():
+            if cat_key in modules_by_cat:
+                st.markdown(f"### {cat_title}")
+                st.caption(cat_desc)
+
+                cols = st.columns(3)
+                for idx, module in enumerate(modules_by_cat[cat_key]):
+                    with cols[idx % 3]:
+                        # Carte de module
+                        status_icon = "✅" if module["loaded"] else "⚠️"
+
+                        with st.container():
+                            st.markdown(f"""
+                            <div class="module-card">
+                                <h4>{status_icon} {module['name']}</h4>
+                                <p style=\"color: #666; font-size: 0.9em;\">{module['desc']}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            if st.button(
+                                "Ouvrir",
+                                key=f"open_{module['id']}",
+                                use_container_width=True
+                            ):
+                                st.session_state.current_view = module['id']
+                                st.rerun()
             
 
     # --- Affichage dynamique des modules disponibles ---
@@ -999,10 +1035,10 @@ def main():
     st.markdown("---")
     modules_count = len(st.session_state.module_manager.available_modules)
     st.markdown(
-        f"""<p style='text-align: center; color: #666; font-size: 0.8rem;'>
-        IA Juridique v2.0 - Droit Pénal des Affaires • {modules_count} modules disponibles • Système modulaire optimisé
+        """<p style='text-align:center; color:#2C3E50; font-size:0.8rem;'>
+        © STERU BARATTE AARPI – Assistant IA Juridique – Paris, 2025
         </p>""",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 def create_single_module(module_id: str, config: dict):
