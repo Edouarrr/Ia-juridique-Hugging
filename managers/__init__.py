@@ -8,6 +8,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from utils.class_factory import create_placeholder_class
+
 from utils.logging import decorate_public_functions, setup_logger
 
 logger = setup_logger(__name__)
@@ -56,36 +58,26 @@ for module_name, class_name in AVAILABLE_MANAGERS.items():
         error_msg = f"Module non disponible : {str(e)}"
         _import_status['failed'][class_name] = error_msg
         logger.warning(f"⚠️ {class_name} - {error_msg}")
-        
+
         # Créer une classe placeholder
-        exec(f"""
-class {class_name}:
-    '''Placeholder pour {class_name} non disponible'''
-    def __init__(self, *args, **kwargs):
-        self.connected = False
-        self.error = "{error_msg}"
-        self.available = False
-        logger.warning("Utilisation du placeholder pour {class_name}")
-    
-    def __getattr__(self, name):
-        logger.warning(f"Tentative d'accès à {{name}} sur {class_name} non disponible")
-        return lambda *args, **kwargs: None
-""", globals())
+        globals()[class_name] = create_placeholder_class(
+            class_name,
+            error_msg,
+            logger,
+            warn_on_attr=True,
+        )
         
     except Exception as e:
         error_msg = f"Erreur inattendue : {str(e)}"
         _import_status['failed'][class_name] = error_msg
         logger.error(f"❌ {class_name} - {error_msg}")
-        
+
         # Créer une classe placeholder pour l'erreur
-        exec(f"""
-class {class_name}:
-    '''Placeholder pour {class_name} avec erreur'''
-    def __init__(self, *args, **kwargs):
-        self.connected = False
-        self.error = "{error_msg}"
-        self.available = False
-""", globals())
+        globals()[class_name] = create_placeholder_class(
+            class_name,
+            error_msg,
+            logger,
+        )
 
 def get_managers_status() -> Dict[str, Any]:
     """Retourne le statut des managers"""
