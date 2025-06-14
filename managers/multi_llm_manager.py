@@ -43,6 +43,19 @@ class MultiLLMManager:
         self.clients = {}
         self._initialize_clients()
 
+    def register_model(self, name: str, client: Any) -> None:
+        """Enregistre dynamiquement un client LLM."""
+        self.clients[name] = client
+
+    def chat(self, model: str, messages: List[str]) -> str:
+        """Envoie des messages au modèle spécifié et renvoie la réponse."""
+        client = self.clients.get(model)
+        if client is None:
+            raise ValueError(f"Model {model} not registered")
+        if hasattr(client, "chat"):
+            return client.chat(messages)
+        raise AttributeError("Client does not support chat")
+
     @staticmethod
     def _prepend_prioritized_pieces(prompt: str) -> str:
         """Ajoute les pièces prioritaires au début du prompt si présent."""
