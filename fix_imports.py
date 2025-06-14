@@ -70,7 +70,7 @@ def add_classes_to_dataclasses():
             content = f.read()
         
         # Vérifier si les classes existent déjà
-        if 'class Relationship' in content:
+        if 'class Relationship' in content and 'class PlaidoirieResult' in content and 'class PreparationClientResult' in content:
             print("✅ Les classes supplémentaires existent déjà dans models/dataclasses.py")
             return
 
@@ -112,11 +112,12 @@ class PreparationClientResult:
 
 # Mettre à jour __all__ si nécessaire
 try:
-        __all__.extend([
-            'Relationship',
-            'PlaidoirieResult',
-            'PreparationClientResult'
-        ])
+    __all__.extend([
+        'Relationship',
+        'PlaidoirieResult',
+        'PreparationClientResult'
+    ])
+    
 except:
     pass
 '''
