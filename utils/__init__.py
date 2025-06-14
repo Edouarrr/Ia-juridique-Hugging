@@ -66,6 +66,21 @@ from .formatters import \
 from .formatters import (format_file_path, format_legal_reference,
                          format_list_items, format_name, format_percentage,
                          format_phone)
+from .formatters import (
+    _to_roman,
+    apply_legal_numbering,
+    format_legal_list,
+    format_signature_block,
+    format_annex_reference,
+    create_document_footer,
+    create_document_header,
+    create_table_of_contents,
+    split_into_pages,
+    add_page_numbers,
+    format_party_designation,
+    create_letterhead_from_template,
+    create_formatted_docx,
+)
 # Helper functions from helpers.py (si ce fichier existe)
 from .helpers import (calculate_document_hash, clean_key, create_error_report,
                       estimate_reading_time, extract_date_from_filename,
@@ -173,7 +188,22 @@ __all__ = [
     'generate_document_id',
     'merge_documents',
     'split_document',
-    
+
+    # Formatters
+    '_to_roman',
+    'apply_legal_numbering',
+    'format_legal_list',
+    'format_signature_block',
+    'format_annex_reference',
+    'create_document_footer',
+    'create_document_header',
+    'create_table_of_contents',
+    'split_into_pages',
+    'add_page_numbers',
+    'format_party_designation',
+    'create_letterhead_from_template',
+    'create_formatted_docx',
+
     # Legal Utils
     'extract_legal_references',
     'analyze_query_intent',
