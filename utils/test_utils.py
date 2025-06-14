@@ -134,6 +134,7 @@ def test_file_utils():
         get_file_extension,
         get_file_icon,
         is_valid_email,
+        validate_uploaded_file,
         sanitize_filename,
     )
 
@@ -162,6 +163,33 @@ def test_file_utils():
     assert is_valid_email("test@example.com") == True
     assert is_valid_email("invalid.email") == False
     print("✓ is_valid_email")
+
+    class DummyFile:
+        def __init__(self, name, data, type=None):
+            self.name = name
+            self._data = data
+            self.size = len(data)
+            self.type = type or "text/plain"
+
+        def getvalue(self):
+            return self._data
+
+    # Fichier texte valide
+    valid, msg = validate_uploaded_file(DummyFile("test.txt", b"hello"))
+    assert valid
+
+    # Fichier vide
+    valid, msg = validate_uploaded_file(DummyFile("empty.txt", b""))
+    assert not valid
+
+    # Fichier trop volumineux (limite 1 MB pour le test)
+    big_data = b"a" * (2 * 1024 * 1024)
+    valid, msg = validate_uploaded_file(DummyFile("big.txt", big_data), max_size_mb=1)
+    assert not valid
+
+    # Fichier non texte
+    valid, msg = validate_uploaded_file(DummyFile("image.png", b"\x89PNG\r\n"))
+    assert not valid
 
 
 def test_validators():
