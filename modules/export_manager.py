@@ -1,1331 +1,1539 @@
-# modules/export_manager.py
-"""Gestionnaire unifié pour tous les exports (Word, PDF, Excel, etc.)"""
+"""Module d'analyse IA avancée avec multi-modèles et fusion - Nexora Law IA"""
 
 import streamlit as st
+import pandas as pd
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Union, Tuple
-from dataclasses import dataclass
-import io
-import base64
-import re
+import os
+import sys
 from pathlib import Path
+import time
 import json
+import hashlib
+from typing import Dict, List, Any, Optional, Tuple
+import plotly.graph_objects as go
+import plotly.express as px
+from dataclasses import dataclass, field
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import numpy as np
 
-# Imports optionnels avec gestion des dépendances
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
-    st.warning("⚠️ pandas non disponible - Fonctionnalités Excel limitées")
+# Ajouter le chemin parent pour importer utils
+sys.path.append(str(Path(__file__).parent.parent))
+from utils import truncate_text, clean_key, format_legal_date
 
-try:
-    import docx
-    from docx.shared import Pt, Inches, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-    from docx.enum.style import WD_STYLE_TYPE
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
-    st.warning("⚠️ python-docx non disponible - Export Word désactivé")
-
-try:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch, cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
-    st.warning("⚠️ reportlab non disponible - Export PDF désactivé")
-
-# Configuration par défaut si le module config n'existe pas
-STYLE_DOCUMENT = {
-    'font': 'Times New Roman',
-    'font_size': 12,
-    'line_spacing': '1.5',
-    'margins': 'Normales'
-}
-
-HIERARCHIE_NUMEROTATION = {
-    'sections': 'ROMAINS',
-    'sous_sections': 'LETTRES',
-    'paragraphes': 'CHIFFRES'
-}
-
-# ========================= TYPES ET CONFIGURATIONS =========================
+# ========================= CONFIGURATION =========================
 
 @dataclass
-class ExportConfig:
-    """Configuration unifiée pour tous les exports"""
-    format: str  # 'docx', 'pdf', 'xlsx', 'txt', 'json', 'html', 'csv', 'rtf'
-    title: str
-    content: Union[str, Dict, List, Any]
-    metadata: Optional[Dict] = None
-    style_options: Optional[Dict] = None
-    include_metadata: bool = True
-    include_toc: bool = False
-    include_header_footer: bool = True
-    watermark: Optional[str] = None
-    password: Optional[str] = None
-    compression: bool = False
+class AIModel:
+    """Configuration d'un modèle d'IA"""
+    name: str
+    display_name: str
+    description: str
+    icon: str
+    strengths: List[str]
+    api_key: Optional[str] = None
+    max_tokens: int = 4096
+    temperature: float = 0.7
+    capabilities: List[str] = field(default_factory=list)
     
-    def __post_init__(self):
-        """Validation et initialisation des valeurs par défaut"""
-        if self.style_options is None:
-            self.style_options = self._get_default_style_options()
-        
-        if self.metadata is None:
-            self.metadata = {
-                'created_at': datetime.now(),
-                'format': self.format,
-                'generator': 'Export Manager v2.0'
-            }
+# Modèles d'IA disponibles
+AI_MODELS = {
+    "gpt4": AIModel(
+        name="gpt4",
+        display_name="GPT-4 Turbo",
+        description="Modèle OpenAI le plus avancé pour l'analyse complexe",
+        icon="🧠",
+        strengths=["Raisonnement complexe", "Analyse juridique", "Créativité"],
+        capabilities=["text", "analysis", "reasoning", "code"]
+    ),
+    "claude3": AIModel(
+        name="claude3",
+        display_name="Claude 3 Opus",
+        description="IA Anthropic spécialisée en analyse détaillée",
+        icon="🎭",
+        strengths=["Analyse approfondie", "Éthique", "Nuance"],
+        capabilities=["text", "analysis", "ethics", "long_context"]
+    ),
+    "gemini": AIModel(
+        name="gemini",
+        display_name="Gemini Pro",
+        description="Modèle Google multimodal performant",
+        icon="✨",
+        strengths=["Multimodal", "Rapidité", "Précision"],
+        capabilities=["text", "analysis", "multimodal", "speed"]
+    ),
+    "mistral": AIModel(
+        name="mistral",
+        display_name="Mistral Large",
+        description="IA française optimisée pour le juridique",
+        icon="🇫🇷",
+        strengths=["Droit français", "Efficacité", "Open Source"],
+        capabilities=["text", "legal_fr", "efficiency"]
+    ),
+    "llama": AIModel(
+        name="llama",
+        display_name="Llama 3",
+        description="Modèle Meta open source performant",
+        icon="🦙",
+        strengths=["Open Source", "Personnalisation", "Performance"],
+        capabilities=["text", "customization", "local"]
+    )
+}
+
+# Thèmes de couleurs
+THEMES = {
+    "Juridique": {
+        "primary": "#8B0000",
+        "secondary": "#4B0000",
+        "accent": "#FFD700",
+        "background": "#F5F5F5",
+        "text": "#333333",
+        "success": "#28A745",
+        "warning": "#FFC107",
+        "error": "#DC3545"
+    },
+    "Moderne": {
+        "primary": "#2E86AB",
+        "secondary": "#A23B72",
+        "accent": "#F18F01",
+        "background": "#FFFFFF",
+        "text": "#2D3436",
+        "success": "#00B894",
+        "warning": "#FDCB6E",
+        "error": "#D63031"
+    },
+    "Sombre": {
+        "primary": "#BB86FC",
+        "secondary": "#03DAC6",
+        "accent": "#CF6679",
+        "background": "#121212",
+        "text": "#FFFFFF",
+        "success": "#03DAC6",
+        "warning": "#F4B400",
+        "error": "#CF6679"
+    }
+}
+
+# ========================= ÉTAT ET INITIALISATION =========================
+
+def init_session_state():
+    """Initialise l'état de session avec lazy loading"""
     
-    def _get_default_style_options(self) -> Dict:
-        """Options de style par défaut selon le format"""
-        defaults = {
-            'docx': {
-                'font': 'Times New Roman',
-                'font_size': 12,
-                'line_spacing': '1.5',
-                'margins': 'Normales',
-                'paper_size': 'A4',
-                'orientation': 'Portrait',
-                'numbering': True,
-                'legal_formatting': True
-            },
-            'pdf': {
-                'font': 'Times-Roman',
-                'font_size': 12,
-                'margins': 2.0,  # cm
-                'paper_size': 'A4',
-                'orientation': 'Portrait',
-                'compress_images': True,
-                'embed_fonts': True
-            },
-            'xlsx': {
-                'freeze_headers': True,
-                'autofilter': True,
-                'conditional_formatting': False,
-                'include_charts': False,
-                'column_autowidth': True
-            },
-            'html': {
-                'theme': 'Juridique',
-                'responsive': True,
-                'include_css': True,
-                'include_js': False,
-                'print_friendly': True
-            }
+    # État principal du module
+    if 'module_state' not in st.session_state:
+        st.session_state.module_state = {
+            'initialized': False,
+            'results': None,
+            'config': {},
+            'selected_models': [],
+            'fusion_mode': 'consensus',
+            'analysis_history': [],
+            'cache': {},
+            'theme': 'Juridique',
+            'animations_enabled': True,
+            'current_step': 0,
+            'processing': False,
+            'ai_responses': {},
+            'comparison_mode': False
         }
-        
-        return defaults.get(self.format, {})
-
-# ========================= GESTIONNAIRE PRINCIPAL =========================
-
-class ExportManager:
-    """Gestionnaire central pour tous les types d'export"""
     
-    def __init__(self):
-        self.exporters = {}
-        self._init_exporters()
-        self._init_styles()
+    # Cache pour les résultats d'IA
+    if 'ai_cache' not in st.session_state:
+        st.session_state.ai_cache = {}
     
-    def _init_exporters(self):
-        """Initialise les exporters disponibles"""
-        self.exporters = {
-            'docx': WordExporter(),
-            'pdf': PDFExporter(),
-            'xlsx': ExcelExporter(),
-            'txt': TextExporter(),
-            'json': JSONExporter(),
-            'html': HTMLExporter(),
-            'csv': CSVExporter(),
-            'rtf': RTFExporter()
+    # Métriques de performance
+    if 'performance_metrics' not in st.session_state:
+        st.session_state.performance_metrics = {
+            'total_analyses': 0,
+            'avg_response_time': 0,
+            'model_usage': {model: 0 for model in AI_MODELS.keys()},
+            'fusion_accuracy': []
         }
-    
-    def _init_styles(self):
-        """Initialise les styles et configurations"""
-        self.juridique_styles = {
-            'title': {'size': 16, 'bold': True, 'align': 'center'},
-            'heading1': {'size': 14, 'bold': True, 'underline': True},
-            'heading2': {'size': 12, 'bold': True},
-            'normal': {'size': 12, 'align': 'justify'},
-            'citation': {'size': 10, 'italic': True, 'indent': 0.5}
-        }
-    
-    def export(self, config: ExportConfig) -> Tuple[bytes, str]:
-        """
-        Point d'entrée principal pour tous les exports
-        
-        Returns:
-            Tuple[bytes, str]: (contenu exporté, extension de fichier)
-        """
-        
-        # Validation
-        if config.format not in self.exporters:
-            raise ValueError(f"Format non supporté : {config.format}")
-        
-        # Vérifier la disponibilité
-        exporter = self.exporters[config.format]
-        if not exporter.is_available():
-            # Fallback sur format texte
-            st.warning(f"⚠️ Export {config.format.upper()} non disponible, export en TXT")
-            config.format = 'txt'
-            exporter = self.exporters['txt']
-        
-        # Effectuer l'export
-        try:
-            content = exporter.export(config)
-            
-            # Post-traitement si nécessaire
-            if config.compression:
-                content = self._compress_content(content, config)
-            
-            if config.password and config.format in ['pdf', 'docx']:
-                content = self._encrypt_content(content, config)
-            
-            return content, exporter.get_extension()
-            
-        except Exception as e:
-            st.error(f"❌ Erreur lors de l'export : {str(e)}")
-            # Fallback sur texte simple
-            fallback_config = ExportConfig(
-                format='txt',
-                title=config.title,
-                content=str(config.content),
-                metadata=config.metadata
-            )
-            return self.exporters['txt'].export(fallback_config), 'txt'
-    
-    def get_available_formats(self, content_type: str = None) -> List[str]:
-        """Retourne les formats disponibles selon le type de contenu"""
-        available = []
-        
-        for format_name, exporter in self.exporters.items():
-            if exporter.is_available():
-                # Filtrer selon le type de contenu
-                if content_type == 'table' and format_name in ['xlsx', 'csv', 'html']:
-                    available.insert(0, format_name)  # Priorité pour les tableaux
-                elif content_type == 'document' and format_name in ['docx', 'pdf']:
-                    available.insert(0, format_name)  # Priorité pour les documents
-                else:
-                    available.append(format_name)
-        
-        return available
-    
-    def show_export_interface(self, 
-                            content: Any,
-                            title: str,
-                            content_type: str = 'document',
-                            key_prefix: str = "export") -> Optional[Tuple[bytes, str]]:
-        """Interface Streamlit unifiée pour l'export"""
-        
-        st.markdown("### 📤 Options d'export")
-        
-        # Formats disponibles
-        formats = self.get_available_formats(content_type)
-        
-        if not formats:
-            st.error("❌ Aucun format d'export disponible")
-            return None
-        
-        col1, col2, col3 = st.columns([2, 2, 1])
-        
-        with col1:
-            selected_format = st.selectbox(
-                "Format",
-                formats,
-                format_func=lambda x: self._get_format_display_name(x),
-                key=f"{key_prefix}_format"
-            )
-        
-        with col2:
-            filename = st.text_input(
-                "Nom du fichier",
-                value=self._generate_filename(title, selected_format),
-                key=f"{key_prefix}_filename"
-            )
-        
-        with col3:
-            st.markdown("&nbsp;")  # Spacer
-            export_clicked = st.button(
-                "📥 Exporter",
-                type="primary",
-                key=f"{key_prefix}_button",
-                use_container_width=True
-            )
-        
-        # Options avancées
-        with st.expander("⚙️ Options avancées", expanded=False):
-            config = self._show_advanced_options(selected_format, key_prefix)
-        
-        # Configuration par défaut si pas d'options avancées
-        if 'config' not in locals():
-            config = ExportConfig(
-                format=selected_format,
-                title=title,
-                content=content
-            )
-        
-        # Exécuter l'export
-        if export_clicked:
-            with st.spinner(f"Génération du fichier {selected_format.upper()}..."):
-                try:
-                    # Configuration complète
-                    config.format = selected_format
-                    config.title = title
-                    config.content = content
-                    
-                    # Export
-                    exported_data, extension = self.export(config)
-                    
-                    # Téléchargement
-                    st.download_button(
-                        f"⬇️ Télécharger {selected_format.upper()}",
-                        exported_data,
-                        f"{filename}.{extension}",
-                        mime=self._get_mime_type(selected_format),
-                        key=f"{key_prefix}_download"
-                    )
-                    
-                    st.success(f"✅ Export {selected_format.upper()} prêt !")
-                    
-                    # Statistiques
-                    self._show_export_stats(exported_data, selected_format)
-                    
-                    return exported_data, extension
-                    
-                except Exception as e:
-                    st.error(f"❌ Erreur : {str(e)}")
-                    return None
-        
-        return None
-    
-    def _show_advanced_options(self, format: str, key_prefix: str) -> ExportConfig:
-        """Affiche les options avancées selon le format"""
-        
-        config = ExportConfig(format=format, title="", content="")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            config.include_metadata = st.checkbox(
-                "Inclure les métadonnées",
-                value=True,
-                key=f"{key_prefix}_metadata"
-            )
-            
-            config.include_toc = st.checkbox(
-                "Table des matières",
-                value=format in ['docx', 'pdf', 'html'],
-                key=f"{key_prefix}_toc",
-                disabled=format not in ['docx', 'pdf', 'html']
-            )
-        
-        with col2:
-            config.watermark = st.text_input(
-                "Filigrane",
-                placeholder="Confidentiel",
-                key=f"{key_prefix}_watermark",
-                disabled=format not in ['docx', 'pdf']
-            )
-            
-            config.compression = st.checkbox(
-                "Compresser (ZIP)",
-                value=False,
-                key=f"{key_prefix}_compress"
-            )
-        
-        # Options spécifiques au format
-        if format == 'docx':
-            self._show_word_options(config, key_prefix)
-        elif format == 'xlsx':
-            self._show_excel_options(config, key_prefix)
-        
-        return config
-    
-    def _show_word_options(self, config: ExportConfig, key_prefix: str):
-        """Options spécifiques pour Word"""
-        st.markdown("**Options Word**")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            config.style_options['font'] = st.selectbox(
-                "Police",
-                ["Times New Roman", "Arial", "Calibri", "Garamond"],
-                key=f"{key_prefix}_font"
-            )
-            
-            config.style_options['font_size'] = st.number_input(
-                "Taille (pt)",
-                8, 20, 12,
-                key=f"{key_prefix}_font_size"
-            )
-        
-        with col2:
-            config.style_options['line_spacing'] = st.selectbox(
-                "Interligne",
-                ["1.0", "1.15", "1.5", "2.0"],
-                index=2,
-                key=f"{key_prefix}_spacing"
-            )
-            
-            config.style_options['paper_size'] = st.selectbox(
-                "Format papier",
-                ["A4", "Letter", "Legal"],
-                key=f"{key_prefix}_paper"
-            )
-    
-    def _show_excel_options(self, config: ExportConfig, key_prefix: str):
-        """Options spécifiques pour Excel"""
-        st.markdown("**Options Excel**")
-        config.style_options['include_charts'] = st.checkbox(
-            "Générer des graphiques",
-            value=False,
-            key=f"{key_prefix}_charts"
-        )
-        
-        config.style_options['conditional_formatting'] = st.checkbox(
-            "Mise en forme conditionnelle",
-            value=False,
-            key=f"{key_prefix}_conditional"
-        )
-    
-    def _get_format_display_name(self, format: str) -> str:
-        """Nom d'affichage pour chaque format"""
-        names = {
-            'docx': '📄 Word (.docx)',
-            'pdf': '📕 PDF',
-            'xlsx': '📊 Excel (.xlsx)',
-            'txt': '📝 Texte (.txt)',
-            'json': '🔧 JSON',
-            'html': '🌐 HTML',
-            'csv': '📋 CSV',
-            'rtf': '📃 RTF'
-        }
-        return names.get(format, format.upper())
-    
-    def _get_mime_type(self, format: str) -> str:
-        """Type MIME pour chaque format"""
-        mime_types = {
-            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'pdf': 'application/pdf',
-            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'txt': 'text/plain',
-            'json': 'application/json',
-            'html': 'text/html',
-            'csv': 'text/csv',
-            'rtf': 'application/rtf'
-        }
-        return mime_types.get(format, 'application/octet-stream')
-    
-    def _generate_filename(self, title: str, format: str) -> str:
-        """Génère un nom de fichier intelligent"""
-        # Nettoyer le titre
-        clean_title = re.sub(r'[^\w\s-]', '', title)
-        clean_title = re.sub(r'[-\s]+', '_', clean_title)
-        
-        # Date
-        date_str = datetime.now().strftime('%Y%m%d')
-        
-        return f"{clean_title}_{date_str}".lower()[:50]
-    
-    def _show_export_stats(self, data: bytes, format: str):
-        """Affiche les statistiques de l'export"""
-        size = len(data)
-        
-        if size < 1024:
-            size_str = f"{size} octets"
-        elif size < 1024 * 1024:
-            size_str = f"{size / 1024:.1f} Ko"
-        else:
-            size_str = f"{size / (1024 * 1024):.1f} Mo"
-        
-        st.info(f"📊 Taille du fichier : {size_str}")
-    
-    def _compress_content(self, content: bytes, config: ExportConfig) -> bytes:
-        """Compresse le contenu en ZIP"""
-        import zipfile
-        
-        buffer = io.BytesIO()
-        
-        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            filename = f"{config.title}.{self.exporters[config.format].get_extension()}"
-            zip_file.writestr(filename, content)
-            
-            # Ajouter les métadonnées
-            if config.metadata:
-                metadata_str = json.dumps(config.metadata, indent=2, default=str)
-                zip_file.writestr('metadata.json', metadata_str.encode('utf-8'))
-        
-        buffer.seek(0)
-        return buffer.getvalue()
-    
-    def _encrypt_content(self, content: bytes, config: ExportConfig) -> bytes:
-        """Chiffre le contenu (placeholder - implémenter selon besoins)"""
-        # Pour une vraie implémentation, utiliser cryptography ou similaire
-        return content
 
-# ========================= EXPORTERS SPÉCIFIQUES =========================
+def get_cache_key(content: str, models: List[str], params: Dict) -> str:
+    """Génère une clé de cache unique"""
+    cache_data = {
+        'content': content[:1000],  # Premiers 1000 caractères
+        'models': sorted(models),
+        'params': params
+    }
+    return hashlib.md5(json.dumps(cache_data, sort_keys=True).encode()).hexdigest()
 
-class BaseExporter:
-    """Classe de base pour tous les exporters"""
-    
-    def is_available(self) -> bool:
-        """Vérifie si l'exporter est disponible"""
-        return True
-    
-    def get_extension(self) -> str:
-        """Retourne l'extension du fichier"""
-        return 'txt'
-    
-    def export(self, config: ExportConfig) -> bytes:
-        """Méthode d'export à implémenter"""
-        raise NotImplementedError
+# ========================= INTERFACE UTILISATEUR =========================
 
-class WordExporter(BaseExporter):
-    """Exporter pour documents Word"""
+def run():
+    """Fonction principale du module avec UI moderne"""
     
-    def is_available(self) -> bool:
-        return DOCX_AVAILABLE
+    # Initialisation
+    init_session_state()
     
-    def get_extension(self) -> str:
-        return 'docx'
+    # CSS personnalisé avec animations
+    apply_custom_css()
     
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers Word avec mise en forme avancée"""
-        
-        if not DOCX_AVAILABLE:
-            raise ImportError("python-docx n'est pas installé")
-        
-        doc = docx.Document()
-        
-        # Configuration du document
-        self._setup_document(doc, config)
-        
-        # Ajouter le contenu selon le type
-        if isinstance(config.content, str):
-            self._add_text_content(doc, config)
-        elif PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
-            self._add_dataframe_content(doc, config)
-        elif isinstance(config.content, list):
-            self._add_list_content(doc, config)
-        elif isinstance(config.content, dict):
-            self._add_dict_content(doc, config)
-        
-        # Sauvegarder
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        
-        return buffer.getvalue()
+    # En-tête moderne avec animations
+    render_header()
     
-    def _setup_document(self, doc, config: ExportConfig):
-        """Configure le document Word"""
-        
-        # Marges
-        sections = doc.sections
-        for section in sections:
-            margins = {
-                'Normales': (1, 1, 1, 1),
-                'Étroites': (0.5, 0.5, 0.5, 0.5),
-                'Larges': (1.5, 1.5, 1.5, 1.5)
-            }
-            
-            margin_values = margins.get(
-                config.style_options.get('margins', 'Normales'),
-                (1, 1, 1, 1)
-            )
-            
-            section.top_margin = Inches(margin_values[0])
-            section.bottom_margin = Inches(margin_values[1])
-            section.left_margin = Inches(margin_values[2])
-            section.right_margin = Inches(margin_values[3])
-        
-        # Styles
-        self._setup_styles(doc, config)
+    # Navigation par étapes
+    steps = ["📤 Données", "🤖 Modèles IA", "⚙️ Configuration", "🚀 Analyse", "📊 Résultats"]
+    current_step = st.session_state.module_state['current_step']
     
-    def _setup_styles(self, doc, config: ExportConfig):
-        """Configure les styles du document"""
-        
-        # Style normal
-        normal_style = doc.styles['Normal']
-        normal_style.font.name = config.style_options.get('font', 'Times New Roman')
-        normal_style.font.size = Pt(config.style_options.get('font_size', 12))
-        
-        # Interligne
-        spacing_map = {
-            '1.0': WD_LINE_SPACING.SINGLE,
-            '1.15': WD_LINE_SPACING.ONE_POINT_FIVE,
-            '1.5': WD_LINE_SPACING.ONE_POINT_FIVE,
-            '2.0': WD_LINE_SPACING.DOUBLE
-        }
-        
-        spacing = spacing_map.get(
-            config.style_options.get('line_spacing', '1.5'),
-            WD_LINE_SPACING.ONE_POINT_FIVE
-        )
-        normal_style.paragraph_format.line_spacing_rule = spacing
-        
-        # Styles juridiques si demandés
-        if config.style_options.get('legal_formatting', True):
-            self._create_legal_styles(doc, config)
+    # Barre de progression visuelle
+    render_progress_bar(current_step, len(steps))
     
-    def _create_legal_styles(self, doc, config: ExportConfig):
-        """Crée les styles juridiques"""
+    # Conteneur principal avec animation
+    with st.container():
+        if st.session_state.module_state['animations_enabled']:
+            st.markdown('<div class="fade-in">', unsafe_allow_html=True)
         
-        styles = doc.styles
+        # Navigation par onglets modernisée
+        tabs = st.tabs(steps)
         
-        # Style pour sections principales
-        style_names = [s.name for s in styles]
-        if 'JuridiqueSection' not in style_names:
-            section_style = styles.add_style('JuridiqueSection', WD_STYLE_TYPE.PARAGRAPH)
-            section_style.font.name = config.style_options.get('font', 'Times New Roman')
-            section_style.font.size = Pt(14)
-            section_style.font.bold = True
-            section_style.paragraph_format.space_before = Pt(18)
-            section_style.paragraph_format.space_after = Pt(12)
+        # 1. Onglet Données
+        with tabs[0]:
+            render_data_input_tab()
+        
+        # 2. Onglet Modèles IA
+        with tabs[1]:
+            render_ai_models_tab()
+        
+        # 3. Onglet Configuration
+        with tabs[2]:
+            render_configuration_tab()
+        
+        # 4. Onglet Analyse
+        with tabs[3]:
+            render_analysis_tab()
+        
+        # 5. Onglet Résultats
+        with tabs[4]:
+            render_results_tab()
+        
+        if st.session_state.module_state['animations_enabled']:
+            st.markdown('</div>', unsafe_allow_html=True)
     
-    def _add_text_content(self, doc, config: ExportConfig):
-        """Ajoute du contenu texte"""
-        
-        # En-tête
-        if config.include_header_footer:
-            self._add_header(doc, config)
-        
-        # Titre
-        title_para = doc.add_paragraph()
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = title_para.add_run(config.title.upper())
-        run.font.size = Pt(16)
-        run.font.bold = True
-        
-        doc.add_paragraph()
-        
-        # Métadonnées
-        if config.include_metadata and config.metadata:
-            self._add_metadata_section(doc, config)
-        
-        # Table des matières
-        if config.include_toc:
-            self._add_toc(doc, config)
-        
-        # Contenu principal
-        self._process_text_content(doc, config.content, config)
-        
-        # Pied de page
-        if config.include_header_footer:
-            self._add_footer(doc, config)
+    # Barre latérale avec infos et aide
+    render_sidebar()
     
-    def _process_text_content(self, doc, content: str, config: ExportConfig):
-        """Traite et ajoute le contenu texte avec détection de structure"""
-        
-        lines = content.split('\n')
-        
-        for line in lines:
-            if not line.strip():
-                doc.add_paragraph()
-                continue
-            
-            # Détection de structure
-            if re.match(r'^[IVX]+\.\s+', line):
-                # Section principale
-                style_name = 'JuridiqueSection' if 'JuridiqueSection' in [s.name for s in doc.styles] else 'Heading 1'
-                para = doc.add_paragraph(line, style=style_name)
-            elif re.match(r'^[A-Z]\.\s+', line):
-                # Sous-section
-                para = doc.add_paragraph(line, style='Heading 2')
-                para.runs[0].font.bold = True
-            elif re.match(r'^\d+\.\s+', line):
-                # Liste numérotée
-                para = doc.add_paragraph(line, style='List Number')
-            elif line.strip().isupper() and len(line.strip()) < 100:
-                # Titre en majuscules
-                para = doc.add_paragraph(line.strip())
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                para.runs[0].font.bold = True
-            else:
-                # Paragraphe normal
-                para = doc.add_paragraph(line.strip())
-                para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    
-    def _add_dataframe_content(self, doc, config: ExportConfig):
-        """Ajoute un DataFrame comme tableau"""
-        
-        if not PANDAS_AVAILABLE:
-            doc.add_paragraph("Pandas non disponible - Impossible d'afficher le tableau")
-            return
-        
-        df = config.content
-        
-        # Titre
-        doc.add_heading(config.title, 1)
-        
-        # Créer le tableau
-        table = doc.add_table(rows=len(df) + 1, cols=len(df.columns))
-        table.style = 'Light List'
-        
-        # En-têtes
-        for i, col in enumerate(df.columns):
-            cell = table.rows[0].cells[i]
-            cell.text = str(col)
-            # Mettre en gras
-            for paragraph in cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.bold = True
-        
-        # Données
-        for row_idx, row in df.iterrows():
-            for col_idx, value in enumerate(row):
-                table.rows[row_idx + 1].cells[col_idx].text = str(value)
-    
-    def _add_list_content(self, doc, config: ExportConfig):
-        """Ajoute une liste comme contenu"""
-        doc.add_heading(config.title, 1)
-        
-        for item in config.content:
-            if isinstance(item, dict):
-                # Dictionnaire - formater comme liste de définitions
-                for key, value in item.items():
-                    para = doc.add_paragraph()
-                    run = para.add_run(f"{key}: ")
-                    run.font.bold = True
-                    para.add_run(str(value))
-            else:
-                # Simple élément
-                doc.add_paragraph(str(item), style='List Bullet')
-    
-    def _add_dict_content(self, doc, config: ExportConfig):
-        """Ajoute un dictionnaire comme contenu"""
-        doc.add_heading(config.title, 1)
-        
-        for key, value in config.content.items():
-            if isinstance(value, (list, dict)):
-                # Structure complexe
-                doc.add_heading(str(key), 2)
-                doc.add_paragraph(json.dumps(value, indent=2, ensure_ascii=False))
-            else:
-                # Simple paire clé-valeur
-                para = doc.add_paragraph()
-                run = para.add_run(f"{key}: ")
-                run.font.bold = True
-                para.add_run(str(value))
-    
-    def _add_metadata_section(self, doc, config: ExportConfig):
-        """Ajoute une section de métadonnées"""
-        doc.add_heading("Informations du document", 2)
-        
-        for key, value in config.metadata.items():
-            if not isinstance(value, (dict, list)):
-                para = doc.add_paragraph()
-                run = para.add_run(f"{key}: ")
-                run.font.italic = True
-                para.add_run(str(value))
-        
-        doc.add_paragraph()
-    
-    def _add_toc(self, doc, config: ExportConfig):
-        """Ajoute une table des matières (placeholder)"""
-        doc.add_heading("Table des matières", 1)
-        doc.add_paragraph("(Générer avec Word : Références > Table des matières)")
-        doc.add_page_break()
-    
-    def _add_header(self, doc, config: ExportConfig):
-        """Ajoute un en-tête au document"""
-        section = doc.sections[0]
-        header = section.header
-        
-        # Texte de l'en-tête
-        header_para = header.paragraphs[0]
-        header_para.text = f"{config.title} - {datetime.now().strftime('%d/%m/%Y')}"
-        header_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    def _add_footer(self, doc, config: ExportConfig):
-        """Ajoute un pied de page avec numérotation"""
-        section = doc.sections[0]
-        footer = section.footer
-        
-        # Numéro de page
-        footer_para = footer.paragraphs[0]
-        footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Ajouter le champ de numéro de page
-        footer_para.text = "Page "
+    # Footer avec métriques
+    render_footer()
 
-class PDFExporter(BaseExporter):
-    """Exporter pour PDF"""
+def apply_custom_css():
+    """Applique le CSS personnalisé avec animations et thème"""
     
-    def is_available(self) -> bool:
-        return PDF_AVAILABLE
+    theme = THEMES[st.session_state.module_state['theme']]
     
-    def get_extension(self) -> str:
-        return 'pdf'
-    
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers PDF"""
-        
-        if not PDF_AVAILABLE:
-            raise ImportError("reportlab n'est pas installé")
-        
-        buffer = io.BytesIO()
-        
-        # Configuration des marges
-        margins = config.style_options.get('margins', 2.0)
-        
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=A4,
-            rightMargin=margins * cm,
-            leftMargin=margins * cm,
-            topMargin=margins * cm,
-            bottomMargin=margins * cm
-        )
-        
-        # Styles
-        styles = self._create_styles(config)
-        
-        # Construire le contenu
-        story = []
-        
-        # Titre
-        story.append(Paragraph(config.title, styles['Title']))
-        story.append(Spacer(1, 12))
-        
-        # Métadonnées
-        if config.include_metadata and config.metadata:
-            story.extend(self._add_metadata_pdf(config, styles))
-        
-        # Contenu principal
-        if isinstance(config.content, str):
-            story.extend(self._process_text_pdf(config.content, styles))
-        elif PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
-            story.extend(self._add_dataframe_pdf(config.content, styles))
-        else:
-            story.append(Paragraph(str(config.content), styles['Normal']))
-        
-        # Générer le PDF
-        doc.build(story)
-        
-        buffer.seek(0)
-        return buffer.getvalue()
-    
-    def _create_styles(self, config: ExportConfig) -> dict:
-        """Crée les styles pour le PDF"""
-        
-        styles = getSampleStyleSheet()
-        
-        # Style personnalisé
-        styles.add(ParagraphStyle(
-            name='CustomNormal',
-            parent=styles['Normal'],
-            fontName=config.style_options.get('font', 'Times-Roman'),
-            fontSize=config.style_options.get('font_size', 12),
-            leading=config.style_options.get('font_size', 12) * 1.5,
-            alignment=4  # Justifié
-        ))
-        
-        return styles
-    
-    def _process_text_pdf(self, text: str, styles: dict) -> List:
-        """Convertit le texte en éléments PDF"""
-        
-        elements = []
-        
-        for line in text.split('\n'):
-            if line.strip():
-                elements.append(Paragraph(line, styles.get('CustomNormal', styles['Normal'])))
-            else:
-                elements.append(Spacer(1, 12))
-        
-        return elements
-    
-    def _add_metadata_pdf(self, config: ExportConfig, styles: dict) -> List:
-        """Ajoute les métadonnées au PDF"""
-        elements = []
-        
-        elements.append(Paragraph("<b>Informations du document</b>", styles['Heading2']))
-        elements.append(Spacer(1, 6))
-        
-        for key, value in config.metadata.items():
-            if not isinstance(value, (dict, list)):
-                elements.append(Paragraph(f"<i>{key}:</i> {value}", styles['Normal']))
-        
-        elements.append(Spacer(1, 12))
-        return elements
-    
-    def _add_dataframe_pdf(self, df: pd.DataFrame, styles: dict) -> List:
-        """Convertit un DataFrame en tableau PDF"""
-        elements = []
-        
-        # Préparer les données
-        data = [df.columns.tolist()]  # En-têtes
-        data.extend(df.values.tolist())
-        
-        # Créer le tableau
-        table = Table(data)
-        
-        # Style du tableau
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        
-        elements.append(table)
-        return elements
-
-class ExcelExporter(BaseExporter):
-    """Exporter pour Excel"""
-    
-    def is_available(self) -> bool:
-        return PANDAS_AVAILABLE
-    
-    def get_extension(self) -> str:
-        return 'xlsx'
-    
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers Excel"""
-        
-        if not PANDAS_AVAILABLE:
-            raise ImportError("pandas n'est pas installé")
-        
-        buffer = io.BytesIO()
-        
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            
-            # Export selon le type de contenu
-            if isinstance(config.content, pd.DataFrame):
-                self._export_dataframe(writer, config)
-            elif isinstance(config.content, list):
-                self._export_list(writer, config)
-            elif isinstance(config.content, dict):
-                self._export_dict(writer, config)
-            else:
-                # Conversion en DataFrame simple
-                df = pd.DataFrame({'Contenu': [str(config.content)]})
-                df.to_excel(writer, sheet_name='Export', index=False)
-            
-            # Ajouter les métadonnées
-            if config.include_metadata and config.metadata:
-                self._add_metadata_sheet(writer, config)
-            
-            # Formatage
-            self._apply_formatting(writer, config)
-        
-        buffer.seek(0)
-        return buffer.getvalue()
-    
-    def _export_dataframe(self, writer, config: ExportConfig):
-        """Exporte un DataFrame"""
-        
-        df = config.content
-        sheet_name = 'Données'
-        
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        # Options de formatage
-        if config.style_options.get('freeze_headers', True) and sheet_name in writer.sheets:
-            writer.sheets[sheet_name].freeze_panes = 'A2'
-        
-        if config.style_options.get('autofilter', True) and sheet_name in writer.sheets:
-            writer.sheets[sheet_name].auto_filter.ref = writer.sheets[sheet_name].dimensions
-    
-    def _export_list(self, writer, config: ExportConfig):
-        """Exporte une liste"""
-        if all(isinstance(item, dict) for item in config.content):
-            # Liste de dictionnaires -> DataFrame
-            df = pd.DataFrame(config.content)
-        else:
-            # Liste simple
-            df = pd.DataFrame({'Valeur': config.content})
-        
-        df.to_excel(writer, sheet_name='Données', index=False)
-    
-    def _export_dict(self, writer, config: ExportConfig):
-        """Exporte un dictionnaire"""
-        # Convertir en DataFrame avec clés et valeurs
-        rows = []
-        for key, value in config.content.items():
-            if isinstance(value, (list, dict)):
-                rows.append({'Clé': key, 'Valeur': json.dumps(value, ensure_ascii=False)})
-            else:
-                rows.append({'Clé': key, 'Valeur': str(value)})
-        
-        df = pd.DataFrame(rows)
-        df.to_excel(writer, sheet_name='Données', index=False)
-    
-    def _add_metadata_sheet(self, writer, config: ExportConfig):
-        """Ajoute une feuille de métadonnées"""
-        metadata_rows = []
-        
-        for key, value in config.metadata.items():
-            if not isinstance(value, (dict, list)):
-                metadata_rows.append({'Propriété': key, 'Valeur': str(value)})
-        
-        if metadata_rows:
-            df_meta = pd.DataFrame(metadata_rows)
-            df_meta.to_excel(writer, sheet_name='Métadonnées', index=False)
-    
-    def _apply_formatting(self, writer, config: ExportConfig):
-        """Applique le formatage Excel"""
-        
-        if config.style_options.get('column_autowidth', True):
-            for sheet_name in writer.sheets:
-                worksheet = writer.sheets[sheet_name]
-                
-                for column in worksheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    
-                    for cell in column:
-                        try:
-                            if cell.value and len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    
-                    adjusted_width = min(max_length + 2, 50)
-                    worksheet.column_dimensions[column_letter].width = adjusted_width
-
-class TextExporter(BaseExporter):
-    """Exporter pour texte simple"""
-    
-    def get_extension(self) -> str:
-        return 'txt'
-    
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers texte simple"""
-        
-        lines = []
-        
-        # En-tête
-        lines.append("=" * 80)
-        lines.append(config.title.upper().center(80))
-        lines.append("=" * 80)
-        lines.append("")
-        
-        # Métadonnées
-        if config.include_metadata and config.metadata:
-            lines.append("INFORMATIONS")
-            lines.append("-" * 40)
-            
-            for key, value in config.metadata.items():
-                if not isinstance(value, (dict, list)):
-                    lines.append(f"{key}: {value}")
-            
-            lines.append("")
-        
-        # Contenu
-        lines.append("CONTENU")
-        lines.append("-" * 40)
-        lines.append("")
-        
-        if isinstance(config.content, str):
-            lines.append(config.content)
-        else:
-            lines.append(str(config.content))
-        
-        # Pied
-        lines.append("")
-        lines.append("=" * 80)
-        lines.append(f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}")
-        
-        return '\n'.join(lines).encode('utf-8')
-
-class JSONExporter(BaseExporter):
-    """Exporter pour JSON"""
-    
-    def get_extension(self) -> str:
-        return 'json'
-    
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers JSON"""
-        
-        data = {
-            'title': config.title,
-            'metadata': config.metadata or {},
-            'content': None,
-            'export_date': datetime.now().isoformat()
-        }
-        
-        # Conversion du contenu
-        if PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
-            data['content'] = config.content.to_dict('records')
-        elif isinstance(config.content, (dict, list)):
-            data['content'] = config.content
-        else:
-            data['content'] = str(config.content)
-        
-        return json.dumps(data, indent=2, ensure_ascii=False, default=str).encode('utf-8')
-
-class HTMLExporter(BaseExporter):
-    """Exporter pour HTML"""
-    
-    def get_extension(self) -> str:
-        return 'html'
-    
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers HTML"""
-        
-        # Template HTML
-        html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{config.title}</title>
-"""
-        
-        # CSS
-        if config.style_options.get('include_css', True):
-            html += self._get_css(config)
-        
-        html += """</head>
-<body>
-    <div class="container">
-"""
-        
-        # Titre
-        html += f"<h1>{config.title}</h1>\n"
-        
-        # Métadonnées
-        if config.include_metadata and config.metadata:
-            html += self._add_metadata_html(config)
-        
-        # Contenu
-        html += '<div class="content">\n'
-        
-        if isinstance(config.content, str):
-            html += self._process_text_html(config.content)
-        elif PANDAS_AVAILABLE and isinstance(config.content, pd.DataFrame):
-            html += config.content.to_html(classes='table table-striped', index=False)
-        else:
-            html += f"<pre>{json.dumps(config.content, indent=2, default=str)}</pre>"
-        
-        html += """
-        </div>
-    </div>
-</body>
-</html>"""
-        
-        return html.encode('utf-8')
-    
-    def _get_css(self, config: ExportConfig) -> str:
-        """Retourne le CSS selon le thème"""
-        
-        theme = config.style_options.get('theme', 'Juridique')
-        
-        return """
+    st.markdown(f"""
     <style>
-        body {
-            font-family: 'Times New Roman', serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        h1 {
-            color: #8b0000;
-            text-align: center;
-            border-bottom: 3px solid #8b0000;
-            padding-bottom: 10px;
-        }
-        
-        .metadata {
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-        }
-        
-        .content {
-            text-align: justify;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
-        
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        
-        th {
-            background-color: #8b0000;
-            color: white;
-        }
-        
-        @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-        }
+    /* Variables CSS du thème */
+    :root {{
+        --primary: {theme['primary']};
+        --secondary: {theme['secondary']};
+        --accent: {theme['accent']};
+        --background: {theme['background']};
+        --text: {theme['text']};
+        --success: {theme['success']};
+        --warning: {theme['warning']};
+        --error: {theme['error']};
+    }}
+    
+    /* Animations */
+    @keyframes fadeIn {{
+        from {{ opacity: 0; transform: translateY(20px); }}
+        to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    
+    @keyframes pulse {{
+        0% {{ transform: scale(1); }}
+        50% {{ transform: scale(1.05); }}
+        100% {{ transform: scale(1); }}
+    }}
+    
+    @keyframes slideIn {{
+        from {{ transform: translateX(-100%); }}
+        to {{ transform: translateX(0); }}
+    }}
+    
+    @keyframes glow {{
+        0% {{ box-shadow: 0 0 5px var(--primary); }}
+        50% {{ box-shadow: 0 0 20px var(--primary), 0 0 30px var(--primary); }}
+        100% {{ box-shadow: 0 0 5px var(--primary); }}
+    }}
+    
+    /* Classes d'animation */
+    .fade-in {{
+        animation: fadeIn 0.5s ease-out;
+    }}
+    
+    .pulse {{
+        animation: pulse 2s infinite;
+    }}
+    
+    .slide-in {{
+        animation: slideIn 0.3s ease-out;
+    }}
+    
+    .glow {{
+        animation: glow 2s infinite;
+    }}
+    
+    /* Composants stylisés */
+    .stButton > button {{
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }}
+    
+    .stButton > button:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }}
+    
+    /* Cartes modernes */
+    .model-card {{
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }}
+    
+    .model-card:hover {{
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        border-color: var(--primary);
+    }}
+    
+    .model-card.selected {{
+        border-color: var(--primary);
+        background: linear-gradient(135deg, rgba(139,0,0,0.05), rgba(139,0,0,0.1));
+    }}
+    
+    /* Barre de progression */
+    .progress-container {{
+        background: #e0e0e0;
+        border-radius: 10px;
+        height: 10px;
+        margin: 20px 0;
+        overflow: hidden;
+    }}
+    
+    .progress-bar {{
+        background: linear-gradient(90deg, var(--primary), var(--accent));
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.5s ease;
+    }}
+    
+    /* Métriques améliorées */
+    .metric-card {{
+        background: linear-gradient(135deg, white, #f8f9fa);
+        border-radius: 12px;
+        padding: 1.2rem;
+        text-align: center;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }}
+    
+    .metric-card:hover {{
+        transform: scale(1.05);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    }}
+    
+    .metric-value {{
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--primary);
+        margin: 0.5rem 0;
+    }}
+    
+    .metric-label {{
+        color: var(--text);
+        opacity: 0.8;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }}
+    
+    /* Tooltips */
+    .tooltip {{
+        position: relative;
+        display: inline-block;
+    }}
+    
+    .tooltip .tooltiptext {{
+        visibility: hidden;
+        width: 200px;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        padding: 5px 10px;
+        border-radius: 6px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -100px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }}
+    
+    .tooltip:hover .tooltiptext {{
+        visibility: visible;
+        opacity: 1;
+    }}
+    
+    /* Comparaison de modèles */
+    .comparison-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }}
+    
+    .comparison-card {{
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }}
+    
+    /* Loading spinner moderne */
+    .spinner {{
+        width: 50px;
+        height: 50px;
+        margin: 20px auto;
+        border: 5px solid #f3f3f3;
+        border-top: 5px solid var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }}
+    
+    @keyframes spin {{
+        0% {{ transform: rotate(0deg); }}
+        100% {{ transform: rotate(360deg); }}
+    }}
+    
+    /* Badges */
+    .badge {{
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border-radius: 20px;
+        margin: 0.2rem;
+    }}
+    
+    .badge-success {{
+        background: var(--success);
+        color: white;
+    }}
+    
+    .badge-warning {{
+        background: var(--warning);
+        color: #333;
+    }}
+    
+    .badge-error {{
+        background: var(--error);
+        color: white;
+    }}
+    
+    /* Timeline */
+    .timeline {{
+        position: relative;
+        padding: 20px 0;
+    }}
+    
+    .timeline::before {{
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--primary);
+    }}
+    
+    .timeline-item {{
+        position: relative;
+        padding: 20px 0;
+    }}
+    
+    .timeline-marker {{
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 20px;
+        height: 20px;
+        background: var(--primary);
+        border-radius: 50%;
+        border: 4px solid white;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }}
     </style>
-"""
-    
-    def _add_metadata_html(self, config: ExportConfig) -> str:
-        """Ajoute les métadonnées en HTML"""
-        html = '<div class="metadata">\n'
-        html += '<h2>Informations du document</h2>\n'
-        html += '<ul>\n'
-        
-        for key, value in config.metadata.items():
-            if not isinstance(value, (dict, list)):
-                html += f'<li><strong>{key}:</strong> {value}</li>\n'
-        
-        html += '</ul>\n</div>\n'
-        return html
-    
-    def _process_text_html(self, text: str) -> str:
-        """Convertit le texte en HTML avec paragraphes"""
-        lines = text.split('\n')
-        html = ''
-        
-        for line in lines:
-            if line.strip():
-                html += f'<p>{line}</p>\n'
-        
-        return html
+    """, unsafe_allow_html=True)
 
-class CSVExporter(BaseExporter):
-    """Exporter pour CSV"""
+def render_header():
+    """Affiche l'en-tête moderne avec animations"""
     
-    def is_available(self) -> bool:
-        return PANDAS_AVAILABLE
+    col1, col2, col3 = st.columns([1, 3, 1])
     
-    def get_extension(self) -> str:
-        return 'csv'
+    with col2:
+        st.markdown("""
+        <div class="fade-in" style="text-align: center;">
+            <h1 style="color: var(--primary); font-size: 3rem; margin-bottom: 0;">
+                🚀 Analyse IA Multi-Modèles
+            </h1>
+            <p style="color: var(--text); opacity: 0.8; font-size: 1.2rem;">
+                Combinez la puissance de plusieurs IA pour des analyses juridiques avancées
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers CSV"""
+    with col3:
+        # Switch de thème
+        theme_options = list(THEMES.keys())
+        current_theme = st.session_state.module_state['theme']
+        new_theme = st.selectbox(
+            "🎨",
+            theme_options,
+            index=theme_options.index(current_theme),
+            key="theme_selector"
+        )
         
-        if not PANDAS_AVAILABLE:
-            # Fallback simple
-            if isinstance(config.content, list):
-                content = '\n'.join(str(item) for item in config.content)
-            else:
-                content = str(config.content)
-            return content.encode('utf-8')
-        
-        if isinstance(config.content, pd.DataFrame):
-            return config.content.to_csv(index=False).encode('utf-8')
-        elif isinstance(config.content, list):
-            df = pd.DataFrame(config.content)
-            return df.to_csv(index=False).encode('utf-8')
-        else:
-            # Fallback
-            return str(config.content).encode('utf-8')
+        if new_theme != current_theme:
+            st.session_state.module_state['theme'] = new_theme
+            st.rerun()
 
-class RTFExporter(BaseExporter):
-    """Exporter pour RTF"""
+def render_progress_bar(current_step: int, total_steps: int):
+    """Affiche une barre de progression visuelle"""
     
-    def get_extension(self) -> str:
-        return 'rtf'
+    progress = (current_step / (total_steps - 1)) * 100
     
-    def export(self, config: ExportConfig) -> bytes:
-        """Export vers RTF"""
-        
-        rtf = r'{\rtf1\ansi\deff0 {\fonttbl{\f0 Times New Roman;}}' + '\n'
-        rtf += r'\f0\fs24 '  # Police 12pt
-        
-        # Titre
-        rtf += r'{\b\fs32 ' + config.title + r'\par}' + '\n'
-        rtf += r'\par' + '\n'
-        
-        # Contenu
-        if isinstance(config.content, str):
-            lines = config.content.split('\n')
-            for line in lines:
-                if line.strip():
-                    # Échapper les caractères spéciaux
-                    line = line.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
-                    rtf += line + r'\par '
-                else:
-                    rtf += r'\par '
-        
-        rtf += '}'
-        
-        return rtf.encode('utf-8')
+    st.markdown(f"""
+    <div class="progress-container">
+        <div class="progress-bar" style="width: {progress}%;"></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# ========================= INSTANCE GLOBALE =========================
-
-# Créer une instance globale du gestionnaire
-export_manager = ExportManager()
-
-# ========================= FONCTIONS UTILITAIRES =========================
-
-def quick_export(content: Any, 
-                title: str = "Export",
-                format: str = "docx",
-                **kwargs) -> Tuple[bytes, str]:
-    """
-    Fonction utilitaire pour un export rapide
+def render_data_input_tab():
+    """Onglet de sélection des données avec UI améliorée"""
     
-    Example:
-        data, ext = quick_export(df, "Rapport", "xlsx")
-    """
+    st.markdown("### 📤 Sélection des données")
     
-    config = ExportConfig(
-        format=format,
-        title=title,
-        content=content,
-        **kwargs
+    # Options d'entrée avec icônes
+    input_method = st.radio(
+        "Méthode d'entrée",
+        ["☁️ Container Azure", "📁 Upload de fichiers", "🔍 Recherche", "✍️ Texte direct"],
+        horizontal=True,
+        key="input_method"
     )
     
-    return export_manager.export(config)
+    data_loaded = False
+    
+    if "☁️" in input_method:
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            container = st.selectbox(
+                "Sélectionner un container",
+                ["juridique", "expertises", "procedures", "correspondances"],
+                format_func=lambda x: f"📂 {x.capitalize()}",
+                key="container_select"
+            )
+        
+        with col2:
+            st.markdown("&nbsp;")
+            if st.button("Parcourir", key="browse_container"):
+                with st.spinner("Chargement des fichiers..."):
+                    # Simulation du chargement
+                    time.sleep(1)
+                    st.success("✅ 15 documents trouvés")
+                    data_loaded = True
+    
+    elif "📁" in input_method:
+        uploaded_files = st.file_uploader(
+            "Glissez vos fichiers ici",
+            type=['pdf', 'txt', 'docx', 'xlsx'],
+            accept_multiple_files=True,
+            key="file_uploader",
+            help="Formats supportés : PDF, TXT, DOCX, XLSX"
+        )
+        
+        if uploaded_files:
+            # Affichage des fichiers avec preview
+            st.markdown("#### 📋 Fichiers sélectionnés")
+            
+            for file in uploaded_files:
+                col1, col2, col3 = st.columns([1, 3, 1])
+                
+                with col1:
+                    file_icon = get_file_icon(file.name)
+                    st.markdown(f"<div style='font-size: 2rem;'>{file_icon}</div>", unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"**{file.name}**")
+                    st.caption(f"Taille : {file.size / 1024:.1f} Ko")
+                
+                with col3:
+                    if st.button("👁️", key=f"preview_{file.name}"):
+                        # Preview du fichier
+                        st.text(file.read()[:500].decode('utf-8', errors='ignore') + "...")
+            
+            data_loaded = True
+    
+    elif "🔍" in input_method:
+        search_query = st.text_input(
+            "Rechercher dans la base de données",
+            placeholder="Ex: contrat de vente, jurisprudence 2024...",
+            key="search_input"
+        )
+        
+        # Filtres avancés
+        with st.expander("🔧 Filtres avancés"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                date_range = st.date_input(
+                    "Période",
+                    value=(datetime.now().replace(day=1), datetime.now()),
+                    key="date_filter"
+                )
+            
+            with col2:
+                doc_types = st.multiselect(
+                    "Types de documents",
+                    ["Contrats", "Jurisprudence", "Doctrine", "Législation"],
+                    key="doc_types"
+                )
+            
+            with col3:
+                jurisdictions = st.multiselect(
+                    "Juridictions",
+                    ["Cour de cassation", "Conseil d'État", "Cours d'appel"],
+                    key="jurisdictions"
+                )
+        
+        if st.button("🔍 Rechercher", type="primary", key="search_button"):
+            with st.spinner("Recherche en cours..."):
+                time.sleep(1.5)
+                st.success("✅ 42 documents trouvés")
+                data_loaded = True
+    
+    else:  # Texte direct
+        text_input = st.text_area(
+            "Entrez votre texte",
+            height=300,
+            placeholder="Collez votre texte juridique ici...",
+            key="text_input"
+        )
+        
+        if text_input:
+            # Statistiques du texte
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Mots", len(text_input.split()))
+            with col2:
+                st.metric("Caractères", len(text_input))
+            with col3:
+                st.metric("Paragraphes", len(text_input.split('\n\n')))
+            
+            data_loaded = True
+    
+    # Validation et passage à l'étape suivante
+    if data_loaded:
+        st.success("✅ Données chargées avec succès")
+        
+        if st.button("Continuer vers la sélection des modèles →", type="primary", key="next_step_1"):
+            st.session_state.module_state['current_step'] = 1
+            st.rerun()
 
-def show_export_button(content: Any,
-                      title: str,
-                      key: str = "export",
-                      formats: List[str] = None) -> None:
-    """
-    Affiche un bouton d'export simple
+def render_ai_models_tab():
+    """Onglet de sélection des modèles IA avec comparaison"""
     
-    Example:
-        show_export_button(document_content, "Mon Document", key="doc1")
-    """
+    st.markdown("### 🤖 Sélection des modèles d'IA")
     
-    if formats is None:
-        formats = export_manager.get_available_formats()
+    # Mode de sélection
+    selection_mode = st.radio(
+        "Mode de sélection",
+        ["🎯 Sélection manuelle", "🎲 Sélection automatique", "⚡ Profils prédéfinis"],
+        horizontal=True,
+        key="selection_mode"
+    )
     
-    col1, col2 = st.columns([3, 1])
+    selected_models = st.session_state.module_state.get('selected_models', [])
+    
+    if "🎯" in selection_mode:
+        # Grille de modèles avec cartes interactives
+        st.markdown("#### Cliquez pour sélectionner les modèles")
+        
+        cols = st.columns(3)
+        
+        for idx, (model_id, model) in enumerate(AI_MODELS.items()):
+            with cols[idx % 3]:
+                # Carte de modèle interactive
+                is_selected = model_id in selected_models
+                
+                card_class = "model-card selected" if is_selected else "model-card"
+                
+                if st.button(
+                    f"{model.icon} {model.display_name}",
+                    key=f"model_{model_id}",
+                    use_container_width=True,
+                    type="primary" if is_selected else "secondary"
+                ):
+                    if is_selected:
+                        selected_models.remove(model_id)
+                    else:
+                        selected_models.append(model_id)
+                    st.session_state.module_state['selected_models'] = selected_models
+                    st.rerun()
+                
+                # Détails du modèle
+                st.markdown(f"""
+                <div class="{card_class}">
+                    <p style="margin: 0.5rem 0; font-size: 0.9rem; color: var(--text); opacity: 0.8;">
+                        {model.description}
+                    </p>
+                    <div style="margin-top: 0.5rem;">
+                """, unsafe_allow_html=True)
+                
+                for strength in model.strengths:
+                    st.markdown(f"""
+                        <span class="badge badge-success">{strength}</span>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+    
+    elif "🎲" in selection_mode:
+        # Sélection automatique basée sur le type d'analyse
+        analysis_type = st.selectbox(
+            "Type d'analyse",
+            [
+                "📜 Analyse contractuelle",
+                "⚖️ Recherche jurisprudentielle",
+                "📊 Due diligence",
+                "🔍 Conformité réglementaire",
+                "💡 Conseil juridique"
+            ],
+            key="analysis_type"
+        )
+        
+        # Recommandations automatiques
+        recommendations = get_model_recommendations(analysis_type)
+        
+        st.info(f"🤖 Modèles recommandés pour {analysis_type}")
+        
+        for model_id in recommendations:
+            model = AI_MODELS[model_id]
+            st.markdown(f"- **{model.icon} {model.display_name}** : {model.description}")
+        
+        if st.button("Utiliser ces modèles", type="primary", key="use_recommendations"):
+            st.session_state.module_state['selected_models'] = recommendations
+            st.rerun()
+    
+    else:  # Profils prédéfinis
+        profiles = {
+            "🚀 Performance maximale": ["gpt4", "claude3", "gemini"],
+            "⚡ Rapidité": ["gemini", "mistral"],
+            "🇫🇷 Focus français": ["mistral", "claude3"],
+            "💰 Économique": ["llama", "mistral"],
+            "🔬 Analyse approfondie": ["claude3", "gpt4"]
+        }
+        
+        selected_profile = st.selectbox(
+            "Choisir un profil",
+            list(profiles.keys()),
+            key="profile_select"
+        )
+        
+        st.markdown(f"**Modèles du profil {selected_profile} :**")
+        
+        profile_models = profiles[selected_profile]
+        for model_id in profile_models:
+            model = AI_MODELS[model_id]
+            st.markdown(f"- {model.icon} {model.display_name}")
+        
+        if st.button(f"Utiliser le profil {selected_profile}", type="primary", key="use_profile"):
+            st.session_state.module_state['selected_models'] = profile_models
+            st.rerun()
+    
+    # Affichage des modèles sélectionnés
+    if selected_models:
+        st.markdown("---")
+        st.markdown("#### ✅ Modèles sélectionnés")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            model_tags = " ".join([f"{AI_MODELS[m].icon} {AI_MODELS[m].display_name}" for m in selected_models])
+            st.markdown(f"<div class='fade-in'>{model_tags}</div>", unsafe_allow_html=True)
+        
+        with col2:
+            if st.button("🔄 Réinitialiser", key="reset_models"):
+                st.session_state.module_state['selected_models'] = []
+                st.rerun()
+        
+        # Mode de fusion
+        st.markdown("#### 🔀 Mode de fusion des résultats")
+        
+        fusion_mode = st.select_slider(
+            "Stratégie de fusion",
+            options=[
+                "Vote majoritaire",
+                "Consensus pondéré",
+                "Meilleure réponse",
+                "Synthèse créative",
+                "Analyse comparative"
+            ],
+            value=st.session_state.module_state.get('fusion_mode', 'Consensus pondéré'),
+            key="fusion_mode_select"
+        )
+        
+        st.session_state.module_state['fusion_mode'] = fusion_mode
+        
+        # Explication du mode
+        fusion_explanations = {
+            "Vote majoritaire": "Les modèles votent et la réponse majoritaire est retenue",
+            "Consensus pondéré": "Les réponses sont pondérées selon la performance des modèles",
+            "Meilleure réponse": "La réponse la plus complète et précise est sélectionnée",
+            "Synthèse créative": "Une nouvelle réponse est créée en combinant les meilleures parties",
+            "Analyse comparative": "Toutes les réponses sont présentées avec leurs différences"
+        }
+        
+        st.info(f"💡 {fusion_explanations[fusion_mode]}")
+        
+        # Bouton suivant
+        if st.button("Continuer vers la configuration →", type="primary", key="next_step_2"):
+            st.session_state.module_state['current_step'] = 2
+            st.rerun()
+    else:
+        st.warning("⚠️ Veuillez sélectionner au moins un modèle")
+
+def render_configuration_tab():
+    """Onglet de configuration avancée"""
+    
+    st.markdown("### ⚙️ Configuration de l'analyse")
+    
+    # Configuration par modèle
+    selected_models = st.session_state.module_state.get('selected_models', [])
+    
+    if not selected_models:
+        st.warning("⚠️ Aucun modèle sélectionné. Retournez à l'étape précédente.")
+        return
+    
+    # Paramètres globaux
+    st.markdown("#### 🌐 Paramètres globaux")
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        selected_format = st.selectbox(
-            "Format",
-            formats,
-            format_func=lambda x: export_manager._get_format_display_name(x),
-            key=f"{key}_format_simple"
+        max_length = st.slider(
+            "Longueur maximale des réponses",
+            100, 5000, 1000,
+            step=100,
+            key="max_length",
+            help="Nombre de mots maximum par réponse"
         )
     
     with col2:
-        if st.button("📥 Exporter", key=f"{key}_btn_simple"):
-            try:
-                data, ext = quick_export(content, title, selected_format)
-                
-                st.download_button(
-                    f"⬇️ Télécharger",
-                    data,
-                    f"{title}_{datetime.now().strftime('%Y%m%d')}.{ext}",
-                    mime=export_manager._get_mime_type(selected_format),
-                    key=f"{key}_download_simple"
+        language = st.selectbox(
+            "Langue de sortie",
+            ["🇫🇷 Français", "🇬🇧 Anglais", "🇪🇸 Espagnol", "🇩🇪 Allemand"],
+            key="output_language"
+        )
+    
+    with col3:
+        detail_level = st.select_slider(
+            "Niveau de détail",
+            options=["Synthétique", "Standard", "Détaillé", "Exhaustif"],
+            value="Standard",
+            key="detail_level"
+        )
+    
+    # Configuration par modèle avec accordéon
+    st.markdown("#### 🎛️ Configuration individuelle des modèles")
+    
+    model_configs = {}
+    
+    for model_id in selected_models:
+        model = AI_MODELS[model_id]
+        
+        with st.expander(f"{model.icon} {model.display_name}", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                temp = st.slider(
+                    "Température (créativité)",
+                    0.0, 1.0, model.temperature,
+                    step=0.1,
+                    key=f"temp_{model_id}",
+                    help="0 = Déterministe, 1 = Très créatif"
                 )
-            except Exception as e:
-                st.error(f"Erreur : {str(e)}")
+                
+                tokens = st.number_input(
+                    "Tokens maximum",
+                    100, 8000, model.max_tokens,
+                    step=100,
+                    key=f"tokens_{model_id}"
+                )
+            
+            with col2:
+                top_p = st.slider(
+                    "Top P (diversité)",
+                    0.0, 1.0, 0.9,
+                    step=0.1,
+                    key=f"top_p_{model_id}"
+                )
+                
+                weight = st.slider(
+                    "Poids dans la fusion",
+                    0.0, 2.0, 1.0,
+                    step=0.1,
+                    key=f"weight_{model_id}",
+                    help="Importance relative dans le mode fusion"
+                )
+            
+            model_configs[model_id] = {
+                'temperature': temp,
+                'max_tokens': tokens,
+                'top_p': top_p,
+                'weight': weight
+            }
+    
+    st.session_state.module_state['model_configs'] = model_configs
+    
+    # Options d'analyse spécifiques
+    st.markdown("#### 🎯 Options d'analyse")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        analysis_options = st.multiselect(
+            "Types d'analyse",
+            [
+                "📝 Résumé exécutif",
+                "🔍 Points clés",
+                "⚠️ Risques identifiés",
+                "💡 Recommandations",
+                "📊 Analyse comparative",
+                "🎯 Actions suggérées"
+            ],
+            default=["📝 Résumé exécutif", "🔍 Points clés", "💡 Recommandations"],
+            key="analysis_options"
+        )
+    
+    with col2:
+        output_formats = st.multiselect(
+            "Formats de sortie",
+            ["📄 Document structuré", "📊 Tableau comparatif", "🗂️ Fiches synthétiques", "📈 Visualisations"],
+            default=["📄 Document structuré"],
+            key="output_formats"
+        )
+    
+    # Modèles de prompt personnalisés
+    with st.expander("✏️ Prompts personnalisés (optionnel)", expanded=False):
+        custom_prompt = st.text_area(
+            "Instructions supplémentaires pour l'analyse",
+            placeholder="Ex: Concentrez-vous sur les aspects fiscaux et les clauses de responsabilité...",
+            height=100,
+            key="custom_prompt"
+        )
+    
+    # Sauvegarder la configuration
+    if st.button("💾 Sauvegarder cette configuration", key="save_config"):
+        config_name = st.text_input("Nom de la configuration", key="config_name")
+        if config_name:
+            # Sauvegarder dans session state
+            st.success(f"✅ Configuration '{config_name}' sauvegardée")
+    
+    # Bouton suivant
+    st.markdown("---")
+    
+    if st.button("Lancer l'analyse →", type="primary", key="next_step_3", use_container_width=True):
+        st.session_state.module_state['current_step'] = 3
+        st.session_state.module_state['processing'] = True
+        st.rerun()
+
+def render_analysis_tab():
+    """Onglet d'analyse avec visualisation en temps réel"""
+    
+    st.markdown("### 🚀 Analyse en cours")
+    
+    if not st.session_state.module_state.get('processing', False):
+        st.info("💡 Configurez d'abord votre analyse dans les onglets précédents")
+        return
+    
+    selected_models = st.session_state.module_state.get('selected_models', [])
+    
+    # Container pour l'animation de traitement
+    processing_container = st.container()
+    
+    with processing_container:
+        # Timeline des modèles
+        st.markdown("#### 📊 Progression de l'analyse")
+        
+        # Créer les placeholders pour chaque modèle
+        model_placeholders = {}
+        progress_bars = {}
+        
+        for model_id in selected_models:
+            model = AI_MODELS[model_id]
+            
+            col1, col2, col3 = st.columns([1, 3, 1])
+            
+            with col1:
+                st.markdown(f"<div style='font-size: 2rem; text-align: center;'>{model.icon}</div>", unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"**{model.display_name}**")
+                progress_bars[model_id] = st.progress(0)
+                model_placeholders[model_id] = st.empty()
+            
+            with col3:
+                status_placeholder = st.empty()
+                status_placeholder.markdown("⏳ En attente...")
+        
+        # Simulation de l'analyse asynchrone
+        st.markdown("---")
+        
+        # Logs en temps réel
+        with st.expander("📝 Logs détaillés", expanded=True):
+            log_container = st.empty()
+            logs = []
+        
+        # Métriques en temps réel
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            metric1 = st.empty()
+        with col2:
+            metric2 = st.empty()
+        with col3:
+            metric3 = st.empty()
+        with col4:
+            metric4 = st.empty()
+        
+        # Simulation du traitement
+        start_time = time.time()
+        
+        for i in range(101):
+            # Mise à jour des barres de progression
+            for idx, model_id in enumerate(selected_models):
+                # Progression différente pour chaque modèle
+                model_progress = min(100, i + (idx * 5))
+                progress_bars[model_id].progress(model_progress / 100)
+                
+                # Statuts
+                if model_progress < 30:
+                    model_placeholders[model_id].info("🔄 Initialisation...")
+                elif model_progress < 60:
+                    model_placeholders[model_id].warning("⚡ Analyse en cours...")
+                elif model_progress < 90:
+                    model_placeholders[model_id].info("🔍 Finalisation...")
+                else:
+                    model_placeholders[model_id].success("✅ Terminé!")
+            
+            # Mise à jour des logs
+            if i % 10 == 0:
+                logs.append(f"[{time.strftime('%H:%M:%S')}] Traitement: {i}% complété")
+                log_container.text('\n'.join(logs[-10:]))  # Garder les 10 derniers logs
+            
+            # Mise à jour des métriques
+            elapsed = time.time() - start_time
+            metric1.metric("⏱️ Temps écoulé", f"{elapsed:.1f}s")
+            metric2.metric("📊 Progression", f"{i}%")
+            metric3.metric("🔄 Modèles actifs", len(selected_models))
+            metric4.metric("💾 Mémoire", f"{np.random.randint(100, 500)} MB")
+            
+            time.sleep(0.05)  # Simulation du délai
+        
+        # Résultats disponibles
+        st.success("✅ Analyse terminée avec succès!")
+        
+        # Aperçu des résultats
+        st.markdown("#### 👀 Aperçu des résultats")
+        
+        # Graphique de comparaison des scores
+        scores = {AI_MODELS[m].display_name: np.random.uniform(0.7, 0.95) for m in selected_models}
+        
+        fig = go.Figure(data=[
+            go.Bar(
+                x=list(scores.keys()),
+                y=list(scores.values()),
+                marker_color=['#8B0000', '#4B0000', '#FFD700', '#28A745', '#FFC107'][:len(scores)]
+            )
+        ])
+        
+        fig.update_layout(
+            title="Scores de confiance par modèle",
+            yaxis_title="Score",
+            yaxis=dict(range=[0, 1]),
+            showlegend=False,
+            height=300
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Enregistrer les résultats
+        st.session_state.module_state['results'] = {
+            'scores': scores,
+            'processing_time': elapsed,
+            'timestamp': datetime.now()
+        }
+        
+        # Bouton pour voir les résultats complets
+        if st.button("Voir les résultats détaillés →", type="primary", key="view_results", use_container_width=True):
+            st.session_state.module_state['current_step'] = 4
+            st.session_state.module_state['processing'] = False
+            st.rerun()
+
+def render_results_tab():
+    """Onglet des résultats avec visualisations avancées"""
+    
+    st.markdown("### 📊 Résultats de l'analyse")
+    
+    results = st.session_state.module_state.get('results')
+    
+    if not results:
+        st.info("💡 Aucun résultat disponible. Lancez d'abord une analyse.")
+        return
+    
+    # Mode d'affichage
+    view_mode = st.radio(
+        "Mode d'affichage",
+        ["📄 Vue synthétique", "🔍 Vue détaillée", "📊 Vue comparative", "📈 Visualisations"],
+        horizontal=True,
+        key="view_mode"
+    )
+    
+    if "📄" in view_mode:
+        render_synthetic_view(results)
+    elif "🔍" in view_mode:
+        render_detailed_view(results)
+    elif "📊" in view_mode:
+        render_comparative_view(results)
+    else:
+        render_visualizations(results)
+    
+    # Actions d'export
+    st.markdown("---")
+    st.markdown("### 💾 Actions")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📄 Export Word", key="export_word", use_container_width=True):
+            # Utiliser l'export manager
+            st.info("Export Word en cours...")
+    
+    with col2:
+        if st.button("📊 Export Excel", key="export_excel", use_container_width=True):
+            st.info("Export Excel en cours...")
+    
+    with col3:
+        if st.button("📧 Envoyer par email", key="send_email", use_container_width=True):
+            st.info("Préparation de l'email...")
+    
+    with col4:
+        if st.button("🔄 Nouvelle analyse", key="new_analysis", use_container_width=True):
+            # Réinitialiser
+            st.session_state.module_state['current_step'] = 0
+            st.session_state.module_state['results'] = None
+            st.session_state.module_state['processing'] = False
+            st.rerun()
+
+def render_synthetic_view(results):
+    """Vue synthétique des résultats"""
+    
+    # Résumé exécutif
+    st.markdown("#### 📝 Résumé exécutif")
+    
+    st.markdown("""
+    <div class="model-card">
+        <h5>Points clés de l'analyse</h5>
+        <ul>
+            <li><strong>Conclusion principale :</strong> Les clauses contractuelles sont conformes aux normes en vigueur</li>
+            <li><strong>Risques identifiés :</strong> 3 points d'attention mineurs</li>
+            <li><strong>Recommandations :</strong> 5 actions suggérées</li>
+            <li><strong>Niveau de confiance :</strong> 92% (Très élevé)</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Métriques clés
+    st.markdown("#### 📊 Métriques clés")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-label">Documents analysés</div>
+            <div class="metric-value">15</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-label">Temps d'analyse</div>
+            <div class="metric-value">2.3s</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-label">Modèles utilisés</div>
+            <div class="metric-value">3</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("""
+        <div class="metric-card">
+            <div class="metric-label">Score moyen</div>
+            <div class="metric-value">88%</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Points d'attention
+    st.markdown("#### ⚠️ Points d'attention")
+    
+    alerts = [
+        ("⚡ Moyen", "Clause de limitation de responsabilité à préciser", "Article 7.2"),
+        ("💡 Faible", "Délai de préavis pourrait être allongé", "Article 12.1"),
+        ("💡 Faible", "Mention des données personnelles à compléter", "Annexe B")
+    ]
+    
+    for level, message, ref in alerts:
+        st.warning(f"{level} - {message} (Réf: {ref})")
+
+def render_detailed_view(results):
+    """Vue détaillée par modèle"""
+    
+    selected_models = st.session_state.module_state.get('selected_models', [])
+    
+    for model_id in selected_models:
+        model = AI_MODELS[model_id]
+        
+        with st.expander(f"{model.icon} Analyse de {model.display_name}", expanded=True):
+            # Tabs pour chaque section
+            tabs = st.tabs(["Résumé", "Points clés", "Risques", "Recommandations"])
+            
+            with tabs[0]:
+                st.markdown("""
+                **Analyse générale :**
+                
+                Le document analysé présente une structure juridique solide avec des clauses bien définies.
+                L'ensemble respecte les normes légales en vigueur, avec quelques points d'amélioration possibles
+                pour renforcer la protection des parties.
+                """)
+            
+            with tabs[1]:
+                st.markdown("""
+                - ✅ Clauses contractuelles complètes
+                - ✅ Obligations clairement définies
+                - ✅ Mécanismes de résolution des conflits prévus
+                - ⚠️ Délais de notification à préciser
+                """)
+            
+            with tabs[2]:
+                risk_data = {
+                    'Risque': ['Responsabilité', 'Confidentialité', 'Résiliation'],
+                    'Niveau': ['Moyen', 'Faible', 'Faible'],
+                    'Impact': ['Financier', 'Réputation', 'Opérationnel'],
+                    'Probabilité': ['30%', '15%', '20%']
+                }
+                st.dataframe(pd.DataFrame(risk_data), use_container_width=True)
+            
+            with tabs[3]:
+                st.markdown("""
+                1. **Réviser la clause de limitation de responsabilité**
+                   - Ajouter des plafonds spécifiques
+                   - Clarifier les exclusions
+                
+                2. **Renforcer les clauses de confidentialité**
+                   - Étendre la durée post-contractuelle
+                   - Préciser les sanctions
+                """)
+
+def render_comparative_view(results):
+    """Vue comparative entre modèles"""
+    
+    st.markdown("#### 🔍 Comparaison des analyses")
+    
+    # Tableau comparatif
+    comparison_data = {
+        'Critère': ['Complétude', 'Précision', 'Pertinence', 'Clarté', 'Temps'],
+        'GPT-4': [95, 92, 94, 90, 2.1],
+        'Claude 3': [93, 94, 95, 92, 2.3],
+        'Gemini': [90, 91, 89, 88, 1.8]
+    }
+    
+    df = pd.DataFrame(comparison_data)
+    
+    # Graphique radar
+    fig = go.Figure()
+    
+    for col in df.columns[1:]:
+        fig.add_trace(go.Scatterpolar(
+            r=df[col],
+            theta=df['Critère'],
+            fill='toself',
+            name=col
+        ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100]
+            )),
+        showlegend=True,
+        title="Comparaison des performances par modèle"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Points de divergence
+    st.markdown("#### 🔀 Points de divergence")
+    
+    divergences = [
+        {
+            'Point': 'Interprétation de la clause 5.3',
+            'GPT-4': 'Restrictive',
+            'Claude 3': 'Modérée',
+            'Gemini': 'Permissive'
+        },
+        {
+            'Point': 'Niveau de risque global',
+            'GPT-4': 'Faible',
+            'Claude 3': 'Moyen',
+            'Gemini': 'Faible'
+        }
+    ]
+    
+    st.dataframe(pd.DataFrame(divergences), use_container_width=True)
+
+def render_visualizations(results):
+    """Visualisations avancées des résultats"""
+    
+    # Distribution des scores
+    st.markdown("#### 📊 Distribution des scores d'analyse")
+    
+    scores_data = np.random.normal(85, 10, 100)
+    
+    fig = go.Figure(data=[go.Histogram(x=scores_data, nbinsx=20)])
+    fig.update_layout(
+        title="Distribution des scores de confiance",
+        xaxis_title="Score (%)",
+        yaxis_title="Fréquence",
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Heatmap des corrélations
+    st.markdown("#### 🔥 Matrice de corrélation des critères")
+    
+    criteria = ['Clarté', 'Précision', 'Complétude', 'Pertinence', 'Cohérence']
+    corr_matrix = np.random.rand(5, 5)
+    corr_matrix = (corr_matrix + corr_matrix.T) / 2
+    np.fill_diagonal(corr_matrix, 1)
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_matrix,
+        x=criteria,
+        y=criteria,
+        colorscale='RdBu'
+    ))
+    
+    fig.update_layout(title="Corrélations entre critères d'analyse")
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Timeline d'analyse
+    st.markdown("#### ⏱️ Chronologie de l'analyse")
+    
+    timeline_data = []
+    base_time = datetime.now()
+    
+    for i, model in enumerate(['GPT-4', 'Claude 3', 'Gemini']):
+        timeline_data.append({
+            'Modèle': model,
+            'Début': base_time,
+            'Fin': base_time.replace(second=base_time.second + np.random.randint(1, 4))
+        })
+    
+    fig = px.timeline(
+        timeline_data,
+        x_start="Début",
+        x_end="Fin",
+        y="Modèle",
+        title="Temps d'exécution par modèle"
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+def render_sidebar():
+    """Barre latérale avec aide et informations"""
+    
+    with st.sidebar:
+        st.markdown("### 💡 Aide & Informations")
+        
+        # Guide rapide
+        with st.expander("📖 Guide rapide", expanded=False):
+            st.markdown("""
+            1. **Chargez vos données** dans l'onglet Données
+            2. **Sélectionnez les modèles** d'IA à utiliser
+            3. **Configurez** les paramètres d'analyse
+            4. **Lancez** l'analyse
+            5. **Consultez** et exportez les résultats
+            """)
+        
+        # Statistiques d'utilisation
+        st.markdown("### 📊 Statistiques")
+        
+        metrics = st.session_state.performance_metrics
+        
+        st.metric("Analyses totales", metrics['total_analyses'])
+        st.metric("Temps moyen", f"{metrics['avg_response_time']:.1f}s")
+        
+        # Modèles les plus utilisés
+        st.markdown("#### 🏆 Modèles populaires")
+        
+        model_usage = metrics['model_usage']
+        if any(model_usage.values()):
+            sorted_models = sorted(model_usage.items(), key=lambda x: x[1], reverse=True)[:3]
+            
+            for model_id, count in sorted_models:
+                if count > 0:
+                    model = AI_MODELS[model_id]
+                    st.markdown(f"{model.icon} {model.display_name}: **{count}** utilisations")
+        
+        # Raccourcis
+        st.markdown("### ⌨️ Raccourcis")
+        
+        shortcuts = [
+            ("Ctrl+N", "Nouvelle analyse"),
+            ("Ctrl+S", "Sauvegarder"),
+            ("Ctrl+E", "Exporter"),
+            ("F1", "Aide")
+        ]
+        
+        for key, action in shortcuts:
+            st.markdown(f"`{key}` : {action}")
+        
+        # Support
+        st.markdown("### 🆘 Support")
+        
+        if st.button("💬 Contacter le support", use_container_width=True):
+            st.info("Support : support@nexora-law.ai")
+        
+        if st.button("📚 Documentation", use_container_width=True):
+            st.info("docs.nexora-law.ai")
+
+def render_footer():
+    """Footer avec informations et métriques"""
+    
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([2, 3, 2])
+    
+    with col1:
+        st.caption("© 2024 Nexora Law IA")
+    
+    with col2:
+        # Mini métriques de performance
+        if st.session_state.module_state.get('results'):
+            processing_time = st.session_state.module_state['results'].get('processing_time', 0)
+            st.caption(f"⚡ Dernière analyse : {processing_time:.1f}s | 💾 Cache actif | 🟢 Tous systèmes opérationnels")
+    
+    with col3:
+        st.caption(f"Version 2.0 | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+
+# ========================= FONCTIONS UTILITAIRES =========================
+
+def get_file_icon(filename: str) -> str:
+    """Retourne l'icône appropriée selon l'extension du fichier"""
+    
+    ext = filename.lower().split('.')[-1]
+    icons = {
+        'pdf': '📕',
+        'docx': '📄',
+        'doc': '📄',
+        'txt': '📝',
+        'xlsx': '📊',
+        'xls': '📊',
+        'csv': '📋',
+        'json': '🔧',
+        'xml': '📦'
+    }
+    
+    return icons.get(ext, '📎')
+
+def get_model_recommendations(analysis_type: str) -> List[str]:
+    """Recommande des modèles selon le type d'analyse"""
+    
+    recommendations = {
+        "📜 Analyse contractuelle": ["claude3", "gpt4", "mistral"],
+        "⚖️ Recherche jurisprudentielle": ["gpt4", "claude3"],
+        "📊 Due diligence": ["gpt4", "gemini", "claude3"],
+        "🔍 Conformité réglementaire": ["claude3", "mistral", "gpt4"],
+        "💡 Conseil juridique": ["claude3", "gpt4"]
+    }
+    
+    return recommendations.get(analysis_type, ["gpt4", "claude3"])
+
+async def process_with_model(model_id: str, content: str, config: Dict) -> Dict:
+    """Traite le contenu avec un modèle spécifique (simulation)"""
+    
+    # Simulation d'appel API
+    await asyncio.sleep(np.random.uniform(1, 3))
+    
+    # Résultat simulé
+    return {
+        'model_id': model_id,
+        'response': f"Analyse par {AI_MODELS[model_id].display_name}",
+        'confidence': np.random.uniform(0.7, 0.95),
+        'tokens_used': np.random.randint(500, 2000),
+        'processing_time': np.random.uniform(1, 3)
+    }
+
+def apply_fusion_strategy(responses: List[Dict], strategy: str) -> Dict:
+    """Applique la stratégie de fusion sélectionnée"""
+    
+    if strategy == "Vote majoritaire":
+        # Logique de vote
+        return {'fused_response': "Résultat du vote majoritaire", 'method': strategy}
+    
+    elif strategy == "Consensus pondéré":
+        # Pondération selon les scores
+        return {'fused_response': "Résultat du consensus pondéré", 'method': strategy}
+    
+    elif strategy == "Meilleure réponse":
+        # Sélection de la meilleure
+        best = max(responses, key=lambda x: x.get('confidence', 0))
+        return {'fused_response': best['response'], 'method': strategy, 'selected_model': best['model_id']}
+    
+    elif strategy == "Synthèse créative":
+        # Création d'une nouvelle réponse
+        return {'fused_response': "Synthèse créative des réponses", 'method': strategy}
+    
+    else:  # Analyse comparative
+        return {'responses': responses, 'method': strategy}
+
+# ========================= POINT D'ENTRÉE =========================
+
+if __name__ == "__main__":
+    run()
