@@ -11,6 +11,9 @@ from enum import Enum
 
 # Import des énumérations centrales
 from config.app_config import DocumentType, InfractionAffaires, LLMProvider
+
+# Alias pour compatibilité avec les anciens imports
+TypeDocument = DocumentType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 # Imports conditionnels pour éviter les imports circulaires
@@ -60,26 +63,6 @@ class SourceEntreprise(Enum):
     MANUAL = "manual"
     CACHED = "cached"
 
-class TypeDocument(Enum):
-    """Types de documents juridiques"""
-    DECISION = "decision"
-    ARRET = "arret"
-    ORDONNANCE = "ordonnance"
-    JUGEMENT = "jugement"
-    AVIS = "avis"
-    RAPPORT = "rapport"
-    CONCLUSIONS = "conclusions"
-    NOTE = "note"
-    COMMENTAIRE = "commentaire"
-    PLAINTE = "plainte"
-    PLAINTE_CPC = "plainte_avec_cpc"
-    ASSIGNATION = "assignation"
-    CONTRAT = "contrat"
-    MEMOIRE = "memoire"
-    REQUETE = "requete"
-    CONSULTATION = "consultation"
-    MISE_EN_DEMEURE = "mise_en_demeure"
-    COURRIER = "courrier"
 
 class TypeJuridiction(Enum):
     """Types de juridictions"""
@@ -1370,7 +1353,7 @@ class DocumentTemplate:
     """Template de document juridique"""
     id: str
     name: str
-    type: TypeDocument
+    type: DocumentType
     structure: List[str]
     style: StyleRedaction
     category: str = "Autre"

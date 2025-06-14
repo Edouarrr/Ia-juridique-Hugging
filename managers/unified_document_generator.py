@@ -18,9 +18,9 @@ from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
 from managers.template_manager import TemplateManager
 # Import des dataclasses
+from config.app_config import DocumentType
 from modules.dataclasses import (DocumentJuridique, InfractionIdentifiee,
-                                 Partie, PhaseProcedure, StyleRedaction,
-                                 TypeDocument)
+                                 Partie, PhaseProcedure, StyleRedaction)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ class UnifiedGenerationRequest:
     """Requête de génération unifiée pour tous types de documents"""
     
     # Informations de base
-    document_type: TypeDocument
+    document_type: DocumentType
     parties: Dict[str, List[Partie]]
     infractions: List[InfractionIdentifiee]
     contexte: str
@@ -112,7 +112,7 @@ class LongDocumentPlugin(GenerationPlugin):
         logger.info(f"Plugin documents longs activé - Cible: {request.length.value}")
         
         # Structure spécifique documents longs
-        if request.document_type == TypeDocument.PLAINTE and request.length == DocumentLength.VERY_LONG:
+        if request.document_type == DocumentType.PLAINTE and request.length == DocumentLength.VERY_LONG:
             structure = {
                 "en_tete": 500,
                 "qualites_parties": 2000,
@@ -277,7 +277,7 @@ class PlaidoiriePlugin(GenerationPlugin):
     WORDS_PER_MINUTE = 150
     
     def can_handle(self, request: UnifiedGenerationRequest) -> bool:
-        return (request.document_type == TypeDocument.PLAIDOIRIE or 
+        return (request.document_type == DocumentType.PLAIDOIRIE or
                 request.plaidoirie_duration is not None)
     
     async def generate(self, request: UnifiedGenerationRequest,
@@ -673,7 +673,7 @@ class UnifiedDocumentGenerator:
             if 'anthropic' in providers:
                 return 'anthropic'
         
-        if request.document_type == TypeDocument.PLAIDOIRIE:
+        if request.document_type == DocumentType.PLAIDOIRIE:
             # GPT-4 pour l'oralité
             if 'openai' in providers:
                 return 'openai'
@@ -681,25 +681,25 @@ class UnifiedDocumentGenerator:
         # Par défaut
         return providers[0]
     
-    def _get_standard_structure(self, doc_type: TypeDocument) -> Dict[str, List[str]]:
+    def _get_standard_structure(self, doc_type: DocumentType) -> Dict[str, List[str]]:
         """Retourne la structure standard d'un document"""
         
         structures = {
-            TypeDocument.PLAINTE: {
+            DocumentType.PLAINTE: {
                 'sections': ['en_tete', 'qualites', 'faits', 'discussion', 'demandes'],
                 'required': ['en_tete', 'faits', 'demandes']
             },
-            TypeDocument.CONCLUSIONS: {
+            DocumentType.CONCLUSIONS: {
                 'sections': ['en_tete', 'rappel', 'faits', 'discussion', 'dispositif'],
                 'required': ['en_tete', 'discussion', 'dispositif']
             },
-            TypeDocument.ASSIGNATION: {
+            DocumentType.ASSIGNATION: {
                 'sections': ['en_tete', 'convocation', 'expose', 'moyens', 'dispositif'],
                 'required': ['en_tete', 'convocation', 'dispositif']
             }
         }
         
-        return structures.get(doc_type, structures[TypeDocument.PLAINTE])
+        return structures.get(doc_type, structures[DocumentType.PLAINTE])
     
     async def _generate_section_standard(self, section: str,
                                        request: UnifiedGenerationRequest) -> str:
