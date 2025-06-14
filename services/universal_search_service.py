@@ -163,6 +163,23 @@ class UniversalSearchService:
         
         # Analyser la requête
         query_analysis = self.analyze_query_advanced(query)
+
+        # Enrichir avec le résumé du dossier si disponible
+        contextual_prompt = query
+        if query_analysis.reference:
+            doc_manager = st.session_state.get('doc_manager')
+            summary = None
+            if doc_manager and hasattr(doc_manager, 'get_summary'):
+                try:
+                    summary = doc_manager.get_summary(query_analysis.reference)
+                except Exception:
+                    summary = None
+            if summary:
+                contextual_prompt = (
+                    f"Contexte du dossier :\n{summary}\n\nQuestion : {query}"
+                )
+                # Réanalyser la requête avec le contexte
+                query_analysis = self.analyze_query_advanced(contextual_prompt)
         
         # Recherches parallèles
         search_tasks = []
