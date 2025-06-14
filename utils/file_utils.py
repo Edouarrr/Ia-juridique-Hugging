@@ -50,7 +50,12 @@ def sanitize_filename(filename: str) -> str:
 
 
 def clean_filename(filename: str) -> str:
-    """Alias de :func:`sanitize_filename` pour compatibilité."""
+    """Return a sanitized version of ``filename``.
+
+    This helper simply delegates to :func:`sanitize_filename` and exists
+    for backward compatibility with older modules that imported
+    ``clean_filename`` directly.
+    """
     return sanitize_filename(filename)
 
 
