@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+from utils.prompt_rewriter import rewrite_prompt
 
 # Import des classes du service existant - pas d'import direct pour éviter les erreurs circulaires
 # Les classes seront importées depuis universal_search_service lors de l'utilisation
@@ -109,6 +110,10 @@ class UniversalSearchInterface:
                 label_visibility="hidden",
                 key="universal_search_input"
             )
+
+            if search_input:
+                rewritten = rewrite_prompt(search_input)
+                st.markdown(f"*Reformulation :* {rewritten}")
             
             # Analyser la requête en temps réel
             if search_input and len(search_input) > 2:

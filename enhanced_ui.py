@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 
 import streamlit as st
+from utils.prompt_rewriter import rewrite_prompt
 import streamlit.components.v1 as components
 
 from app import ModuleManager
@@ -280,6 +281,10 @@ def create_search_interface():
             key="main_search",
             help="Appuyez sur Entrée pour lancer la recherche"
         )
+
+        if query:
+            rewritten = rewrite_prompt(query)
+            st.markdown(f"*Reformulation :* {rewritten}")
 
         search_mode = st.selectbox(
             "Mode",
