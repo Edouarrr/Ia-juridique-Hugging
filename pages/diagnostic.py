@@ -46,7 +46,7 @@ with col2:
 # Test utils
 with col3:
     try:
-        from utils.helpers import initialize_session_state
+        from utils.session import initialize_session_state
         st.metric("Utils", "OK", "✅")
     except:
         st.metric("Utils", "Erreur", "❌")

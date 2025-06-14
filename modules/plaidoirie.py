@@ -18,7 +18,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from config.app_config import REDACTION_STYLES, LLMProvider
 from managers.multi_llm_manager import MultiLLMManager
 from models.dataclasses import Document, PlaidoirieResult
-from utils.helpers import extract_section
+from utils.text_processing import extract_section
 try:
     from utils import clean_key, format_duration, format_legal_date, truncate_text
 except Exception:  # pragma: no cover - fallback for standalone use

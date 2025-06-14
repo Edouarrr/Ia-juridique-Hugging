@@ -17,7 +17,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from managers.azure_blob_manager import AzureBlobManager
 from models.dataclasses import Document
-from utils.helpers import calculate_read_time, get_file_icon, sanitize_filename
+from utils.text_processing import calculate_read_time
+from utils.file_utils import get_file_icon, sanitize_filename
 try:
     from utils import clean_key, format_file_size, format_legal_date, truncate_text
 except Exception:  # pragma: no cover - fallback for standalone use
