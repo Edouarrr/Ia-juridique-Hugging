@@ -7,18 +7,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+from azure.core.exceptions import ClientAuthenticationError, ResourceNotFoundError
+from azure.storage.blob import BlobServiceClient, ContainerClient
 
 logger = logging.getLogger(__name__)
-
-try:
-    from azure.core.exceptions import (ClientAuthenticationError,
-                                       ResourceNotFoundError)
-    from azure.storage.blob import BlobServiceClient, ContainerClient
-    AZURE_AVAILABLE = True
-    print("[AzureBlobManager] ✅ Azure SDK importé avec succès")
-except ImportError as e:
-    AZURE_AVAILABLE = False
-    print(f"[AzureBlobManager] ❌ Azure SDK non disponible: {e}")
 
 class AzureBlobManager:
     """Gestionnaire pour Azure Blob Storage"""
@@ -28,11 +20,7 @@ class AzureBlobManager:
         self.blob_service_client = None
         self.connection_error = None
         
-        print(f"[AzureBlobManager] Initialisation - AZURE_AVAILABLE: {AZURE_AVAILABLE}")
-        
-        if not AZURE_AVAILABLE:
-            self.connection_error = "SDK Azure non disponible"
-            return
+        print("[AzureBlobManager] Initialisation")
         
         # Récupérer la connection string
         connection_string = self._get_connection_string()

@@ -907,9 +907,8 @@ def show_global_statistics(documents: Dict[str, Document]):
         st.metric("📂 Sources", sources_count)
     
     # Graphiques
-    try:
-        import plotly.express as px
-        import plotly.graph_objects as go
+    import plotly.express as px
+    import plotly.graph_objects as go
 
         # Répartition par type
         fig1 = px.pie(
@@ -934,31 +933,6 @@ def show_global_statistics(documents: Dict[str, Document]):
         top_docs = df.nlargest(10, 'Taille')[['Titre', 'Taille', 'Mots']]
         st.markdown("### 📊 Top 10 des documents les plus volumineux")
         st.dataframe(top_docs, use_container_width=True)
-        
-    except ImportError:
-        st.warning("Installez plotly pour voir les graphiques interactifs")
-        
-        # Alternative avec matplotlib si disponible
-        try:
-            import matplotlib.pyplot as plt
-            
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-            
-            # Camembert des types
-            type_counts = df['Type'].value_counts()
-            ax1.pie(type_counts.values, labels=type_counts.index, autopct='%1.1f%%')
-            ax1.set_title("Répartition par type")
-            
-            # Histogramme des tailles
-            ax2.hist(df['Taille'], bins=30, edgecolor='black')
-            ax2.set_xlabel("Taille (octets)")
-            ax2.set_ylabel("Nombre de documents")
-            ax2.set_title("Distribution des tailles")
-            
-            st.pyplot(fig)
-            
-        except ImportError:
-            st.info("Installez matplotlib ou plotly pour voir les graphiques")
 
 def show_kanban_view(documents: Dict[str, Document]):
     """Affiche une vue Kanban des documents"""
