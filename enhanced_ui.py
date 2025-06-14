@@ -12,6 +12,9 @@ import streamlit.components.v1 as components
 
 from app import ModuleManager
 from managers.multi_llm_manager import MultiLLMManager
+import export_manager
+import azure_indexer
+import timeline_generator
 
 # Configuration de la page avec un design moderne
 st.set_page_config(
@@ -208,6 +211,29 @@ def load_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
+def handle_command(command: str, selected_folder: str) -> bool:
+    """Execute une commande spéciale de l'interface.
+
+    Args:
+        command: La chaîne saisie commençant par '#'.
+        selected_folder: Dossier cible pour les opérations.
+
+    Returns:
+        True si la commande est reconnue et exécutée, False sinon.
+    """
+
+    cmd = command.strip()[1:].split()[0].lower()
+    if cmd == "export":
+        export_manager.export(selected_folder)
+    elif cmd == "index":
+        azure_indexer.index_folder(selected_folder)
+    elif cmd == "timeline":
+        timeline_generator.generate(selected_folder)
+    else:
+        st.error(f"Commande inconnue : {cmd}")
+        return False
+    return True
+
 def create_search_interface():
     """Crée une interface de recherche améliorée avec soumission sur Entrée"""
     
@@ -300,6 +326,11 @@ def create_search_interface():
             use_container_width=True,
             type="primary"
         )
+
+    selected_folder = st.session_state.get("selected_folder", ".")
+    if search_clicked and isinstance(query, str) and query.strip().startswith("#"):
+        if handle_command(query, selected_folder):
+            search_clicked = False
     
     # Suggestions rapides
     st.markdown("**Suggestions rapides :**")
