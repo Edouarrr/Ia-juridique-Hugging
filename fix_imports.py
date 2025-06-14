@@ -70,23 +70,14 @@ def add_classes_to_dataclasses():
             content = f.read()
         
         # Vérifier si les classes existent déjà
-        if 'class EmailConfig' in content:
+        if 'class Relationship' in content and 'class PlaidoirieResult' in content and 'class PreparationClientResult' in content:
             print("✅ Les classes supplémentaires existent déjà dans models/dataclasses.py")
             return
-        
+
         # Classes à ajouter
         additional_classes = '''
 
 # ========== CLASSES AJOUTÉES POUR COMPATIBILITÉ ==========
-
-@dataclass
-class EmailConfig:
-    """Configuration pour l'envoi d'emails"""
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    sender: str = ""
-    password: str = ""
-    use_tls: bool = True
 
 @dataclass
 class Relationship:
@@ -122,7 +113,6 @@ class PreparationClientResult:
 # Mettre à jour __all__ si nécessaire
 try:
     __all__.extend([
-        'EmailConfig',
         'Relationship',
         'PlaidoirieResult',
         'PreparationClientResult'
