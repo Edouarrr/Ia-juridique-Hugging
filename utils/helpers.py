@@ -1,235 +1,377 @@
-# utils/helpers.py
-"""
-Fonctions utilitaires générales pour l'application juridique
-"""
+"""Fonctions utilitaires pour l'application IA Juridique"""
+
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional, Union
-import json
+from typing import Optional, Dict, List, Any
 import hashlib
+import json
 from datetime import datetime
 
 def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
     """
-    Tronque un texte à une longueur maximale en ajoutant un suffixe.
+    Tronque un texte à une longueur maximale
     
     Args:
         text: Le texte à tronquer
-        max_length: La longueur maximale (par défaut 100)
-        suffix: Le suffixe à ajouter si le texte est tronqué (par défaut "...")
-    
+        max_length: Longueur maximale du texte
+        suffix: Suffixe à ajouter si le texte est tronqué
+        
     Returns:
         Le texte tronqué
     """
     if not text:
         return ""
-    
-    # Convertir en string si nécessaire
     text = str(text)
-    
-    # Si le texte est déjà plus court, le retourner tel quel
     if len(text) <= max_length:
         return text
-    
-    # Calculer la longueur disponible pour le texte
     available_length = max_length - len(suffix)
-    
-    # Tronquer et ajouter le suffixe
     return text[:available_length] + suffix
 
 def clean_key(key: str) -> str:
     """
-    Nettoie une clé pour la rendre utilisable comme identifiant.
-    Supprime les caractères spéciaux et normalise le texte.
+    Nettoie une clé pour la rendre utilisable comme identifiant
     
     Args:
         key: La clé à nettoyer
-    
+        
     Returns:
         La clé nettoyée
     """
     if not key:
         return ""
-    
-    # Convertir en string
     key = str(key)
-    
     # Supprimer les accents
     key = ''.join(c for c in unicodedata.normalize('NFD', key) 
                   if unicodedata.category(c) != 'Mn')
-    
-    # Convertir en minuscules
     key = key.lower()
-    
-    # Remplacer les espaces et caractères spéciaux par des underscores
     key = re.sub(r'[^a-z0-9]+', '_', key)
-    
-    # Supprimer les underscores en début et fin
     key = key.strip('_')
-    
-    # Éviter les doubles underscores
     key = re.sub(r'_+', '_', key)
-    
     return key
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Nettoie un nom de fichier en supprimant les caractères interdits.
-    
-    Args:
-        filename: Le nom de fichier à nettoyer
-    
-    Returns:
-        Le nom de fichier nettoyé
-    """
-    # Caractères interdits dans les noms de fichiers
-    invalid_chars = '<>:"/\\|?*'
-    
-    # Remplacer les caractères interdits par des underscores
-    for char in invalid_chars:
-        filename = filename.replace(char, '_')
-    
-    # Supprimer les espaces en début et fin
-    filename = filename.strip()
-    
-    # Limiter la longueur
-    max_length = 255
-    if len(filename) > max_length:
-        name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
-        if ext:
-            available_length = max_length - len(ext) - 1
-            filename = f"{name[:available_length]}.{ext}"
-        else:
-            filename = filename[:max_length]
-    
-    return filename
 
 def generate_unique_id(prefix: str = "") -> str:
     """
-    Génère un identifiant unique basé sur le timestamp et un hash.
+    Génère un identifiant unique
     
     Args:
         prefix: Préfixe optionnel pour l'identifiant
-    
+        
     Returns:
         Un identifiant unique
     """
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
-    hash_part = hashlib.md5(timestamp.encode()).hexdigest()[:8]
-    
-    if prefix:
-        return f"{clean_key(prefix)}_{timestamp}_{hash_part}"
-    else:
-        return f"{timestamp}_{hash_part}"
-
-def deep_merge_dicts(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Fusionne deux dictionnaires de manière récursive.
-    
-    Args:
-        dict1: Premier dictionnaire
-        dict2: Deuxième dictionnaire (ses valeurs écrasent celles du premier)
-    
-    Returns:
-        Le dictionnaire fusionné
-    """
-    result = dict1.copy()
-    
-    for key, value in dict2.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge_dicts(result[key], value)
-        else:
-            result[key] = value
-    
-    return result
-
-def safe_get(dictionary: Dict[str, Any], path: str, default: Any = None) -> Any:
-    """
-    Récupère une valeur dans un dictionnaire imbriqué de manière sûre.
-    
-    Args:
-        dictionary: Le dictionnaire source
-        path: Le chemin vers la valeur (ex: "user.profile.name")
-        default: Valeur par défaut si le chemin n'existe pas
-    
-    Returns:
-        La valeur trouvée ou la valeur par défaut
-    """
-    keys = path.split('.')
-    value = dictionary
-    
-    for key in keys:
-        if isinstance(value, dict) and key in value:
-            value = value[key]
-        else:
-            return default
-    
-    return value
+    import uuid
+    unique_id = str(uuid.uuid4())[:8]
+    return f"{prefix}_{unique_id}" if prefix else unique_id
 
 def format_file_size(size_bytes: int) -> str:
     """
-    Formate une taille de fichier en unité lisible.
+    Formate une taille de fichier en unité lisible
     
     Args:
         size_bytes: Taille en octets
-    
+        
     Returns:
         Taille formatée (ex: "1.5 MB")
     """
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ['B', 'KB', 'MB', 'GB']:
         if size_bytes < 1024.0:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
-    
-    return f"{size_bytes:.1f} PB"
+    return f"{size_bytes:.1f} TB"
 
-def chunk_list(lst: List[Any], chunk_size: int) -> List[List[Any]]:
+def extract_date_from_filename(filename: str) -> Optional[datetime]:
     """
-    Divise une liste en sous-listes de taille fixe.
+    Extrait une date depuis un nom de fichier
     
     Args:
-        lst: La liste à diviser
-        chunk_size: La taille de chaque sous-liste
-    
+        filename: Nom du fichier
+        
     Returns:
-        Liste de sous-listes
+        Date extraite ou None
     """
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+    # Patterns de dates courants
+    patterns = [
+        r'(\d{4})-(\d{2})-(\d{2})',  # YYYY-MM-DD
+        r'(\d{2})-(\d{2})-(\d{4})',  # DD-MM-YYYY
+        r'(\d{4})(\d{2})(\d{2})',    # YYYYMMDD
+        r'(\d{2})(\d{2})(\d{4})',    # DDMMYYYY
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, filename)
+        if match:
+            try:
+                groups = match.groups()
+                if len(groups[0]) == 4:  # YYYY en premier
+                    return datetime(int(groups[0]), int(groups[1]), int(groups[2]))
+                else:  # DD en premier
+                    return datetime(int(groups[2]), int(groups[1]), int(groups[0]))
+            except ValueError:
+                continue
+    return None
 
-def safe_json_loads(json_string: str, default: Any = None) -> Any:
+def normalize_document_type(filename: str, content: str = "") -> str:
     """
-    Charge un JSON de manière sûre avec une valeur par défaut en cas d'erreur.
+    Détermine le type de document juridique
     
     Args:
-        json_string: La chaîne JSON à parser
-        default: Valeur par défaut en cas d'erreur
-    
+        filename: Nom du fichier
+        content: Contenu du document (optionnel)
+        
     Returns:
-        L'objet Python ou la valeur par défaut
+        Type de document normalisé
     """
-    try:
-        return json.loads(json_string)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return default
+    filename_lower = filename.lower()
+    content_lower = content.lower() if content else ""
+    
+    # Règles de catégorisation
+    if any(term in filename_lower for term in ['pv', 'proces-verbal', 'audition']):
+        return 'pv'
+    elif any(term in filename_lower for term in ['expertise', 'expert', 'rapport']):
+        return 'expertise'
+    elif any(term in filename_lower for term in ['contrat', 'convention', 'accord']):
+        return 'contrat'
+    elif any(term in filename_lower for term in ['facture', 'devis', 'bon']):
+        return 'facture'
+    elif any(term in filename_lower for term in ['lettre', 'courrier', 'mail']):
+        return 'courrier'
+    elif any(term in filename_lower for term in ['procedure', 'jugement', 'ordonnance']):
+        return 'procedure'
+    else:
+        return 'autre'
 
-def remove_duplicates(lst: List[Any], key: Optional[callable] = None) -> List[Any]:
+def calculate_document_hash(content: bytes) -> str:
     """
-    Supprime les doublons d'une liste tout en préservant l'ordre.
+    Calcule le hash SHA-256 d'un document
     
     Args:
-        lst: La liste source
-        key: Fonction optionnelle pour extraire la clé de comparaison
-    
+        content: Contenu du document en bytes
+        
     Returns:
-        Liste sans doublons
+        Hash SHA-256 en hexadécimal
     """
-    seen = set()
-    result = []
+    return hashlib.sha256(content).hexdigest()
+
+def is_valid_email(email: str) -> bool:
+    """
+    Vérifie si une adresse email est valide
     
-    for item in lst:
-        check_value = key(item) if key else item
-        if check_value not in seen:
-            seen.add(check_value)
-            result.append(item)
+    Args:
+        email: Adresse email à vérifier
+        
+    Returns:
+        True si l'email est valide
+    """
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email))
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Nettoie un nom de fichier pour le rendre sûr
+    
+    Args:
+        filename: Nom de fichier à nettoyer
+        
+    Returns:
+        Nom de fichier nettoyé
+    """
+    # Remplacer les caractères dangereux
+    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    # Limiter la longueur
+    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+    if len(name) > 200:
+        name = name[:200]
+    return f"{name}.{ext}" if ext else name
+
+def parse_search_query(query: str) -> Dict[str, Any]:
+    """
+    Parse une requête de recherche avancée
+    
+    Args:
+        query: Requête de recherche
+        
+    Returns:
+        Dictionnaire avec les éléments parsés
+    """
+    result = {
+        'container': None,
+        'terms': [],
+        'operators': [],
+        'date_filter': None,
+        'type_filter': None,
+        'raw_query': query
+    }
+    
+    # Extraire le container (@xxx)
+    container_match = re.match(r'@(\w+)\s*,?\s*(.*)', query)
+    if container_match:
+        result['container'] = container_match.group(1)
+        query = container_match.group(2)
+    
+    # Extraire les filtres de date
+    date_match = re.search(r'DATE:(\d{4})', query)
+    if date_match:
+        result['date_filter'] = date_match.group(1)
+        query = query.replace(date_match.group(0), '')
+    
+    # Extraire les termes entre guillemets
+    quoted_terms = re.findall(r'"([^"]+)"', query)
+    result['terms'].extend(quoted_terms)
+    for term in quoted_terms:
+        query = query.replace(f'"{term}"', '')
+    
+    # Extraire les opérateurs
+    for op in ['ET', 'OU', 'SAUF']:
+        if op in query:
+            result['operators'].append(op)
+    
+    # Termes restants
+    remaining_terms = query.split()
+    result['terms'].extend([t for t in remaining_terms if t not in ['ET', 'OU', 'SAUF']])
     
     return result
+
+def format_legal_date(date: datetime) -> str:
+    """
+    Formate une date au format juridique français
+    
+    Args:
+        date: Date à formater
+        
+    Returns:
+        Date formatée (ex: "15 janvier 2024")
+    """
+    months = [
+        'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+        'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+    ]
+    return f"{date.day} {months[date.month - 1]} {date.year}"
+
+def estimate_reading_time(text: str, words_per_minute: int = 200) -> int:
+    """
+    Estime le temps de lecture d'un texte
+    
+    Args:
+        text: Texte à analyser
+        words_per_minute: Vitesse de lecture moyenne
+        
+    Returns:
+        Temps de lecture estimé en minutes
+    """
+    if not text:
+        return 0
+    word_count = len(text.split())
+    return max(1, round(word_count / words_per_minute))
+
+def generate_document_summary(content: str, max_sentences: int = 3) -> str:
+    """
+    Génère un résumé simple d'un document
+    
+    Args:
+        content: Contenu du document
+        max_sentences: Nombre maximum de phrases
+        
+    Returns:
+        Résumé du document
+    """
+    if not content:
+        return ""
+    
+    # Diviser en phrases
+    sentences = re.split(r'[.!?]+', content)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    # Prendre les premières phrases
+    summary_sentences = sentences[:max_sentences]
+    return '. '.join(summary_sentences) + '.'
+
+def validate_container_name(name: str) -> bool:
+    """
+    Valide un nom de container Azure
+    
+    Args:
+        name: Nom du container
+        
+    Returns:
+        True si le nom est valide
+    """
+    # Règles Azure : 3-63 caractères, lettres minuscules, chiffres et tirets
+    if not name or len(name) < 3 or len(name) > 63:
+        return False
+    if not re.match(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$', name):
+        return False
+    if '--' in name:
+        return False
+    return True
+
+def merge_document_metadata(doc1: Dict, doc2: Dict) -> Dict:
+    """
+    Fusionne les métadonnées de deux documents
+    
+    Args:
+        doc1: Premier document
+        doc2: Deuxième document
+        
+    Returns:
+        Métadonnées fusionnées
+    """
+    merged = doc1.copy()
+    
+    # Fusionner les champs spécifiques
+    for key in ['tags', 'categories', 'authors']:
+        if key in doc2:
+            if key in merged:
+                merged[key] = list(set(merged[key] + doc2[key]))
+            else:
+                merged[key] = doc2[key]
+    
+    # Prendre la date la plus récente
+    if 'last_modified' in doc2:
+        if 'last_modified' not in merged or doc2['last_modified'] > merged['last_modified']:
+            merged['last_modified'] = doc2['last_modified']
+    
+    return merged
+
+# Fonctions spécifiques pour la gestion des erreurs
+def format_error_message(error: Exception, context: str = "") -> str:
+    """
+    Formate un message d'erreur de manière conviviale
+    
+    Args:
+        error: Exception capturée
+        context: Contexte de l'erreur
+        
+    Returns:
+        Message d'erreur formaté
+    """
+    error_type = type(error).__name__
+    error_msg = str(error)
+    
+    if context:
+        return f"{context} : {error_type} - {error_msg}"
+    else:
+        return f"{error_type} : {error_msg}"
+
+def create_error_report(errors: List[Dict]) -> str:
+    """
+    Crée un rapport d'erreurs formaté
+    
+    Args:
+        errors: Liste des erreurs
+        
+    Returns:
+        Rapport formaté
+    """
+    if not errors:
+        return "Aucune erreur détectée"
+    
+    report = f"# Rapport d'erreurs - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    
+    for i, error in enumerate(errors, 1):
+        report += f"## Erreur {i}\n"
+        report += f"- **Module** : {error.get('module', 'Inconnu')}\n"
+        report += f"- **Type** : {error.get('type', 'Inconnu')}\n"
+        report += f"- **Message** : {error.get('message', 'Pas de message')}\n"
+        report += f"- **Timestamp** : {error.get('timestamp', 'Non défini')}\n\n"
+    
+    return report
