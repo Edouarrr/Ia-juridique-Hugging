@@ -17,9 +17,12 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from managers.azure_blob_manager import AzureBlobManager
 from models.dataclasses import Document
-from utils.helpers import (calculate_read_time, clean_key, format_file_size,
-                           format_legal_date, get_file_icon, sanitize_filename,
-                           truncate_text)
+from utils.helpers import calculate_read_time, get_file_icon, sanitize_filename
+try:
+    from utils import clean_key, format_file_size, format_legal_date, truncate_text
+except Exception:  # pragma: no cover - fallback for standalone use
+    from utils.fallback import clean_key, format_legal_date, truncate_text
+    from utils import format_file_size
 
 # Configuration de l'explorateur
 EXPLORER_CONFIG = {
