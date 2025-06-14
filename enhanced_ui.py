@@ -10,6 +10,9 @@ from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 
+from app import ModuleManager
+from managers.multi_llm_manager import MultiLLMManager
+
 # Configuration de la page avec un design moderne
 st.set_page_config(
     page_title="IA Juridique Pro",
@@ -251,6 +254,43 @@ def create_search_interface():
             key="main_search",
             help="Appuyez sur Entrée pour lancer la recherche"
         )
+
+        search_mode = st.selectbox(
+            "Mode",
+            ["Recherche multi-IA", "Exécuter un module"],
+            key="search_mode_select"
+        )
+
+        selected_models = []
+        selected_module = None
+        merge_option = "synthétique"
+
+        if search_mode == "Recherche multi-IA":
+            llm_manager = MultiLLMManager()
+            providers = llm_manager.get_available_providers()
+            selected_models = st.multiselect(
+                "Modèles IA",
+                providers,
+                default=providers,
+                key="multi_models_select"
+            )
+
+            merge_option = st.radio(
+                "Fusion des réponses",
+                ["synthétique", "exhaustive"],
+                horizontal=True,
+                key="merge_option_radio"
+            )
+        else:
+            manager = ModuleManager()
+            manager.discover_modules()
+            modules = list(manager.available_modules.keys())
+            if modules:
+                selected_module = st.selectbox(
+                    "Module à exécuter",
+                    modules,
+                    key="module_select"
+                )
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Espacement
@@ -283,7 +323,7 @@ def create_search_interface():
     # Injecter le JavaScript
     components.html(search_js, height=0)
     
-    return query, search_clicked
+    return query, search_clicked, search_mode, selected_models, merge_option, selected_module
 
 def create_modern_sidebar():
     """Crée une sidebar moderne avec navigation intuitive"""
@@ -521,18 +561,33 @@ def enhanced_main_interface():
     # Interface principale
     if st.session_state.get('current_page', 'home') == 'home':
         # Barre de recherche améliorée
-        query, search_clicked = create_search_interface()
+        query, search_clicked, search_mode, models, merge_option, module_name = create_search_interface()
         
         # Traiter la recherche
         if search_clicked or (query and st.session_state.get('last_query', '') != query):
             st.session_state.last_query = query
-            with st.spinner("🔍 Analyse de votre demande..."):
-                time.sleep(0.5)  # Simulation
-                st.success(f"✅ Recherche lancée pour : {query}")
-                # Ici, appeler votre logique de traitement
+            with st.spinner("🔍 Traitement en cours..."):
+                if search_mode == "Recherche multi-IA" and models:
+                    llm_manager = MultiLLMManager()
+                    responses = llm_manager.query_multiple_llms(models, query)
+                    fusion_prompt = None
+                    if merge_option == "exhaustive":
+                        fusion_prompt = "Fournis une réponse détaillée en combinant toutes les informations."
+                    result = llm_manager.fusion_responses(responses, fusion_prompt)
+                    st.session_state.multi_ai_result = result
+                elif search_mode == "Exécuter un module" and module_name:
+                    manager = ModuleManager()
+                    manager.discover_modules()
+                    if module_name in manager.available_modules:
+                        manager.run_module(module_name)
+                st.success("✅ Traitement terminé")
         
         # Dashboard principal
         create_main_dashboard()
+
+        if st.session_state.get('multi_ai_result'):
+            st.markdown("## Résultat consolidé")
+            st.markdown(st.session_state.multi_ai_result)
     
     elif st.session_state.get('current_page') == 'redaction':
         st.title("📝 Module de rédaction")
@@ -551,3 +606,4 @@ if __name__ == "__main__":
         st.session_state.current_page = 'home'
     
     enhanced_main_interface()
+
