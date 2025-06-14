@@ -12,6 +12,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from managers.azure_blob_manager import AzureBlobManager
+from managers.azure_search_manager import AzureSearchManager
+
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -410,6 +413,19 @@ def init_session_state():
         st.session_state.module_manager = ModuleManager()
         st.session_state.multi_llm_manager = None
         st.session_state.azure_connected = False
+
+        # Créer les gestionnaires Azure et les stocker
+        st.session_state.azure_blob_manager = AzureBlobManager()
+        st.session_state.azure_search_manager = AzureSearchManager()
+
+        # Enregistrer les erreurs éventuelles
+        st.session_state.azure_blob_error = st.session_state.azure_blob_manager.get_connection_error()
+        st.session_state.azure_search_error = st.session_state.azure_search_manager.get_connection_error()
+
+        st.session_state.azure_connected = (
+            st.session_state.azure_blob_manager.is_connected()
+            and st.session_state.azure_search_manager.is_connected()
+        )
         
         # Découvrir les modules
         st.session_state.module_manager.discover_modules()
@@ -574,6 +590,19 @@ def show_sidebar():
             st.success(f"✅ {len(status['success'])} chargés")
         if status["failed"]:
             st.error(f"❌ {len(status['failed'])} erreurs")
+
+        # Afficher les erreurs de connexion Azure
+        blob_error = None
+        search_error = None
+        if 'azure_blob_manager' in st.session_state:
+            blob_error = st.session_state.azure_blob_manager.get_connection_error()
+        if 'azure_search_manager' in st.session_state:
+            search_error = st.session_state.azure_search_manager.get_connection_error()
+
+        if blob_error:
+            st.error(f"Azure Blob: {blob_error}")
+        if search_error:
+            st.error(f"Azure Search: {search_error}")
         
         # Boutons d'action
         st.markdown("---")
