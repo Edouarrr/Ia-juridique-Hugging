@@ -9,7 +9,10 @@ import streamlit as st
 
 from utils.formatters import format_date
 # Import des utilitaires depuis le package utils
-from utils.helpers import clean_key, truncate_text
+try:
+    from utils import clean_key, truncate_text
+except Exception:  # pragma: no cover - fallback for standalone use
+    from utils.fallback import clean_key, truncate_text
 from utils.text_processing import clean_text, process_text
 
 
