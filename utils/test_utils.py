@@ -305,7 +305,7 @@ def test_session():
     # On ne peut pas vraiment tester les fonctions Streamlit sans l'environnement
     # Mais on peut au moins importer le module
     try:
-        from utils.session import get_session_value, set_session_value
+        from utils import get_session_value, set_session_value
         print("✓ session module imported successfully")
     except Exception as e:
         print(f"⚠ session module import warning: {e}")
