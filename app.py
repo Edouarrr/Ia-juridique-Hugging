@@ -463,6 +463,7 @@ def show_dashboard():
             st.markdown(f"💡 Suggestion : *{suggestion}*")
 
     search_service = UniversalSearchService()
+    # Initialize search service for dashboard queries
 
     if search_query:
         query_to_use = search_query
