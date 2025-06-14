@@ -1,13 +1,15 @@
 """Composants d'interface réutilisables pour les pages Streamlit."""
 
+from __future__ import annotations
 import streamlit as st
 
 # Palette de couleurs professionnelle
-PRIMARY_COLOR = "#0d47a1"  # Bleu foncé
+PRIMARY_COLOR = "#0d47a1"    # Bleu foncé
 SECONDARY_COLOR = "#f5f7fa"  # Gris très clair
 TEXT_COLOR = "#333333"
 BRAND_NAME = "STERU BARATTE AARPI"
 
+__all__ = ["apply_theme", "render_header", "render_footer", "page_layout"]
 
 def apply_theme() -> None:
     """Applique le thème général de l'application."""
@@ -38,23 +40,16 @@ def apply_theme() -> None:
         unsafe_allow_html=True,
     )
 
-
 def render_header() -> None:
     """Affiche l'en-tête standard de l'application."""
     st.markdown(f"<div class='sb-header'><h1>{BRAND_NAME}</h1></div>", unsafe_allow_html=True)
 
-
 def render_footer() -> None:
-    """Affiche le pied de page standard."""
+    """Ajoute un pied de page discret."""
     st.markdown(
-        "<div class='sb-footer'>\u00a9 2024 STERU BARATTE AARPI - Tous droits réservés.</div>",
+        """
+        <hr>
+        <div class='sb-footer'>STERU BARATTE AARPI – Assistant IA Juridique – Paris, 2025</div>
+        """,
         unsafe_allow_html=True,
     )
-
-
-def page_layout(title: str) -> None:
-    """Initialise la page avec le thème, le header et le titre."""
-    apply_theme()
-    render_header()
-    st.title(title)
-
