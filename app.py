@@ -17,6 +17,7 @@ from managers.azure_search_manager import AzureSearchManager
 from services.universal_search_service import UniversalSearchService
 from managers.document_manager import DocumentManager
 from utils import LEGAL_SUGGESTIONS
+from module_loader import get_available_modules
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -583,7 +584,25 @@ def show_dashboard():
                             st.session_state.current_view = module['id']
                             st.rerun()
             
-            st.markdown("")
+
+    # --- Affichage dynamique des modules disponibles ---
+    detected = get_available_modules()
+    if detected:
+        st.markdown("### 🧩 Modules détectés")
+        cols = st.columns(3)
+        for idx, (name, module) in enumerate(detected.items()):
+            desc = module.__doc__.strip() if module.__doc__ else "Aucune description disponible"
+            if desc.startswith("Module de"):
+                desc = desc.split(".")[0] + "."
+            with cols[idx % 3]:
+                if st.button(f"🧩 {name}", key=f"mod_{name}"):
+                    try:
+                        module.run()
+                    except Exception as e:
+                        st.error(f"Erreur dans {name}: {e}")
+                st.caption(desc)
+
+    st.markdown("")
 
 def show_sidebar():
     """Affiche la barre latérale"""
