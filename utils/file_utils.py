@@ -6,6 +6,7 @@ Fonctions utilitaires pour la gestion des fichiers
 import mimetypes
 import os
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
@@ -42,8 +43,40 @@ def sanitize_filename(filename: str) -> str:
     name_without_ext = filename.split('.')[0].upper()
     if name_without_ext in reserved_names:
         filename = f"_{filename}"
-    
+
     return filename
+
+
+@dataclass
+class EmailConfig:
+    """Configuration d'un email"""
+    to: List[str]
+    subject: str
+    body: str
+    cc: List[str] = field(default_factory=list)
+    bcc: List[str] = field(default_factory=list)
+    attachments: List[Dict[str, Any]] = field(default_factory=list)
+    priority: str = "normal"
+
+    def add_attachment(self, filename: str, data: bytes, mimetype: str):
+        """Ajoute une pièce jointe"""
+        self.attachments.append({
+            'filename': filename,
+            'data': data,
+            'mimetype': mimetype,
+        })
+
+
+ATTACHMENT_MIME_TYPES = {
+    'pdf': 'application/pdf',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'txt': 'text/plain',
+    'html': 'text/html',
+    'json': 'application/json',
+    'csv': 'text/csv',
+    'zip': 'application/zip',
+}
 
 
 def format_file_size(size_bytes: int) -> str:

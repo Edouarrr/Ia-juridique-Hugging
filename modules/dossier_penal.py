@@ -23,6 +23,12 @@ import streamlit as st
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
+from utils.file_utils import (
+    EmailConfig,
+    is_valid_email,
+    format_file_size,
+    ATTACHMENT_MIME_TYPES,
+)
 
 # Configuration des modèles IA
 AI_MODELS = {
@@ -52,54 +58,7 @@ AI_MODELS = {
     }
 }
 
-# Dataclasses intégrées
-@dataclass
-class EmailConfig:
-    """Configuration d'un email"""
-    to: List[str]
-    subject: str
-    body: str
-    cc: List[str] = field(default_factory=list)
-    bcc: List[str] = field(default_factory=list)
-    attachments: List[Dict[str, Any]] = field(default_factory=list)
-    priority: str = "normal"
-    ai_enhanced: bool = False
-    ai_model: str = ""
-    tone: str = "professionnel"
-    
-    def add_attachment(self, filename: str, data: bytes, mimetype: str):
-        """Ajoute une pièce jointe"""
-        self.attachments.append({
-            'filename': filename,
-            'data': data,
-            'mimetype': mimetype
-        })
 
-# Fonctions helper intégrées
-def is_valid_email(email: str) -> bool:
-    """Vérifie si une adresse email est valide"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-def format_file_size(size_bytes: int) -> str:
-    """Formate la taille d'un fichier"""
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
-
-# Types MIME pour les pièces jointes
-ATTACHMENT_MIME_TYPES = {
-    'pdf': 'application/pdf',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'txt': 'text/plain',
-    'html': 'text/html',
-    'json': 'application/json',
-    'csv': 'text/csv',
-    'zip': 'application/zip'
-}
 
 def run():
     """Fonction principale du module - Point d'entrée pour lazy loading"""
