@@ -49,6 +49,11 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
+def clean_filename(filename: str) -> str:
+    """Alias de :func:`sanitize_filename` pour compatibilité."""
+    return sanitize_filename(filename)
+
+
 @dataclass
 class EmailConfig:
     """Configuration d'un email"""

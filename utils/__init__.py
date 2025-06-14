@@ -51,6 +51,7 @@ from .file_utils import (
     is_valid_filename,
     organize_files_by_type,
     sanitize_filename,
+    clean_filename,
     split_path,
     ATTACHMENT_MIME_TYPES,
     EmailConfig,
@@ -168,6 +169,7 @@ __all__ = [
     
     # File Utils
     'sanitize_filename',
+    'clean_filename',
     'format_file_size',
     'is_valid_email',
     'validate_uploaded_file',

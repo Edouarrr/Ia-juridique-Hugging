@@ -29,7 +29,8 @@ from models.dataclasses import (Document, ElementProcedure, ForceProbante,
                                 NaturePiece, PieceProcedurale,
                                 PieceSelectionnee)
 # Import des utilitaires
-from utils.helpers import clean_filename, extract_key_phrases
+from utils import sanitize_filename
+from utils.text_processing import extract_key_phrases
 try:
     from utils import clean_key, format_file_size, format_legal_date, truncate_text
 except Exception:  # pragma: no cover - fallback for standalone use
