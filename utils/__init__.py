@@ -20,7 +20,8 @@ from .constants import (ACCEPTED_FILE_TYPES, BARREAUX, COLORS, CURRENCIES,
                         DEPARTEMENTS, DOCUMENT_TYPES, ERROR_MESSAGES,
                         FORMES_JURIDIQUES, ICONS, INFRACTIONS_COURANTES,
                         JURIDICTIONS, LIMITS, PHASES_PROCEDURE,
-                        QUALITES_PARTIES, REGEX_PATTERNS)
+                        QUALITES_PARTIES, REGEX_PATTERNS,
+                        LEGAL_SUGGESTIONS)
 # Date Time
 from .date_time import (JOURS_FR, MOIS_FR, MONTHS_FR, add_business_days,
                         calculate_business_days, extract_dates, format_date,
@@ -170,7 +171,8 @@ __all__ = [
     'DOCUMENT_TYPES',
     'JURIDICTIONS',
     'ICONS',
-    
+    'LEGAL_SUGGESTIONS',
+
     # Version
     '__version__'
 ]
