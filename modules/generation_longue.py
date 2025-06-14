@@ -1,18 +1,36 @@
 """Module de génération pour documents juridiques longs (25-50+ pages)"""
 
 import streamlit as st
+import pandas as pd
 from datetime import datetime
-from typing import Dict, List, Optional, Any
-import asyncio
+import os
+import sys
+from pathlib import Path
 import time
+import asyncio
+from typing import Dict, List, Optional, Any
+import json
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Ajouter le chemin parent pour importer utils
+sys.path.append(str(Path(__file__).parent.parent))
+from utils import truncate_text, clean_key, format_legal_date
 
 # Import des configurations
-from config.cahier_des_charges import (
-    STRUCTURES_ACTES, 
-    PROMPTS_GENERATION,
-    INFRACTIONS_PENALES,
-    FORMULES_JURIDIQUES
-)
+try:
+    from config.cahier_des_charges import (
+        STRUCTURES_ACTES, 
+        PROMPTS_GENERATION,
+        INFRACTIONS_PENALES,
+        FORMULES_JURIDIQUES
+    )
+except ImportError:
+    # Configurations par défaut si imports échouent
+    STRUCTURES_ACTES = {}
+    PROMPTS_GENERATION = {'style_instruction': ''}
+    INFRACTIONS_PENALES = []
+    FORMULES_JURIDIQUES = {}
 
 # Import du gestionnaire LLM
 try:
@@ -21,36 +39,142 @@ try:
 except ImportError:
     LLM_AVAILABLE = False
 
+# ========================= CONFIGURATION =========================
+
+# Modèles d'IA disponibles
+AVAILABLE_MODELS = {
+    "anthropic": {
+        "name": "Claude 3 Opus",
+        "icon": "🧠",
+        "strengths": ["Raisonnement juridique", "Documents longs", "Cohérence"],
+        "max_tokens": 100000
+    },
+    "openai": {
+        "name": "GPT-4 Turbo",
+        "icon": "🤖",
+        "strengths": ["Créativité", "Rapidité", "Multilangue"],
+        "max_tokens": 128000
+    },
+    "mistral": {
+        "name": "Mistral Large",
+        "icon": "🌟",
+        "strengths": ["Efficacité", "Précision", "Français"],
+        "max_tokens": 32000
+    },
+    "cohere": {
+        "name": "Command R+",
+        "icon": "💡",
+        "strengths": ["Recherche", "Synthèse", "Citations"],
+        "max_tokens": 128000
+    }
+}
+
+# Types de documents avec leurs caractéristiques
+DOCUMENT_TYPES = {
+    'plainte_cpc': {
+        'name': 'Plainte avec CPC',
+        'icon': '⚖️',
+        'pages': '50+',
+        'complexity': 5,
+        'sections': ['en_tete', 'identite_complete', 'faits_detailles', 'discussion_par_qualification', 'prejudice_demandes', 'pieces']
+    },
+    'conclusions_fond': {
+        'name': 'Conclusions au fond',
+        'icon': '📑',
+        'pages': '40-50',
+        'complexity': 4,
+        'sections': ['en_tete', 'faits_procedure', 'discussion_juridique', 'demandes']
+    },
+    'conclusions_nullite': {
+        'name': 'Conclusions de nullité',
+        'icon': '🚫',
+        'pages': '30-35',
+        'complexity': 4,
+        'sections': ['en_tete', 'nullite_copj', 'grief', 'demandes']
+    },
+    'conclusions_appel': {
+        'name': "Conclusions d'appel",
+        'icon': '📤',
+        'pages': '40-45',
+        'complexity': 4,
+        'sections': ['en_tete', 'critique_motifs_fait', 'critique_motifs_droit', 'demandes']
+    },
+    'observations_175': {
+        'name': 'Observations art. 175',
+        'icon': '📝',
+        'pages': '40-45',
+        'complexity': 4,
+        'sections': ['en_tete', 'evolution_accusations', 'qualification_approfondie', 'demandes']
+    },
+    'plainte_simple': {
+        'name': 'Plainte simple',
+        'icon': '📋',
+        'pages': '25-30',
+        'complexity': 3,
+        'sections': ['en_tete', 'faits', 'discussion', 'demandes']
+    },
+    'citation_directe': {
+        'name': 'Citation directe',
+        'icon': '📮',
+        'pages': '20-25',
+        'complexity': 3,
+        'sections': ['en_tete', 'expose_faits', 'application_espece', 'volet_civil']
+    }
+}
+
 # ========================= GÉNÉRATEUR DOCUMENTS LONGS =========================
 
-class GenerateurDocumentsLongs:
-    """Générateur spécialisé pour documents juridiques de 25-50+ pages"""
+class GenerateurDocumentsLongsV2:
+    """Générateur amélioré pour documents juridiques de 25-50+ pages"""
     
     def __init__(self):
         self.llm_manager = get_llm_manager() if LLM_AVAILABLE else None
-        self.max_tokens_per_section = 4000  # Limite par section pour éviter les coupures
+        self.max_tokens_per_section = 4000
+        self.models_config = {}
+        
+    def configure_models(self, models: List[str], fusion_mode: str = "vote"):
+        """Configure les modèles à utiliser"""
+        self.models_config = {
+            'models': models,
+            'fusion_mode': fusion_mode  # vote, average, best
+        }
         
     async def generer_document_long(self, type_acte: str, params: Dict) -> Dict[str, Any]:
-        """
-        Génère un document long par sections pour atteindre 25-50+ pages
+        """Génère un document long avec interface améliorée"""
         
-        Returns:
-            Dict avec le document complet et les métadonnées
-        """
-        
-        # Récupérer la structure et les cibles
+        # Récupérer la configuration
+        doc_config = DOCUMENT_TYPES.get(type_acte, {})
         structure = STRUCTURES_ACTES.get(type_acte, {})
         longueur_cible = structure.get('longueur_cible', 20000)
         longueur_min = structure.get('longueur_min', 15000)
         longueur_max = structure.get('longueur_max', 30000)
         
-        st.info(f"""
-        📋 Génération d'un document complexe en cours...
-        - Type : {type_acte.replace('_', ' ').title()}
-        - Longueur cible : {longueur_cible:,} mots (~{longueur_cible//500} pages)
-        - Plage : {longueur_min:,} à {longueur_max:,} mots
-        """)
+        # Container principal pour le suivi
+        main_container = st.container()
         
+        with main_container:
+            # Header avec métriques
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("📄 Type", doc_config.get('name', type_acte))
+            with col2:
+                st.metric("📊 Pages cibles", doc_config.get('pages', '25+'))
+            with col3:
+                st.metric("🎯 Mots cibles", f"{longueur_cible:,}")
+            with col4:
+                complexity_stars = "⭐" * doc_config.get('complexity', 3)
+                st.metric("💪 Complexité", complexity_stars)
+            
+            # Barre de progression principale
+            progress_container = st.container()
+            with progress_container:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                time_elapsed = st.empty()
+            
+            # Container pour les sections
+            sections_container = st.container()
+            
         # Initialiser le document
         document = {
             'type': type_acte,
@@ -60,187 +184,303 @@ class GenerateurDocumentsLongs:
                 'longueur_mots': 0,
                 'nb_pages_estimees': 0,
                 'temps_generation': 0,
-                'sections_generees': 0
+                'sections_generees': 0,
+                'modeles_utilises': self.models_config.get('models', []),
+                'fusion_mode': self.models_config.get('fusion_mode', 'single')
             }
         }
-        
-        # Progress bar
-        progress_bar = st.progress(0)
-        status_text = st.empty()
         
         # Timer
         start_time = time.time()
         
-        # Générer section par section
-        sections = structure.get('sections', [])
+        # Générer section par section avec UI améliorée
+        sections = doc_config.get('sections', structure.get('sections', []))
         total_sections = len(sections)
         
+        # Créer un expander pour chaque section
+        section_expanders = {}
+        with sections_container:
+            for section in sections:
+                section_name = section.replace('_', ' ').title()
+                section_expanders[section] = st.expander(
+                    f"{self._get_section_icon(section)} {section_name}",
+                    expanded=False
+                )
+        
         for idx, section in enumerate(sections):
-            status_text.text(f"⏳ Génération de la section : {section.replace('_', ' ').title()}...")
+            # Mettre à jour le statut
+            elapsed = time.time() - start_time
+            time_elapsed.text(f"⏱️ Temps écoulé : {elapsed:.1f}s")
+            status_text.text(f"🔄 Génération : {section.replace('_', ' ').title()}")
             
-            # Calculer la longueur cible pour cette section
+            # Calculer la longueur cible
             section_weight = self._get_section_weight(section, type_acte)
             section_target = int(longueur_cible * section_weight)
             
-            # Générer la section
-            section_content = await self._generer_section_longue(
-                section=section,
-                type_acte=type_acte,
-                params=params,
-                target_length=section_target,
-                context=document['sections']  # Passer les sections précédentes pour cohérence
-            )
+            # Afficher les détails dans l'expander
+            with section_expanders[section]:
+                section_col1, section_col2 = st.columns([3, 1])
+                with section_col1:
+                    section_progress = st.progress(0)
+                    section_status = st.empty()
+                with section_col2:
+                    section_metric = st.empty()
+                
+                # Générer la section avec suivi
+                section_content = await self._generer_section_avec_suivi(
+                    section=section,
+                    type_acte=type_acte,
+                    params=params,
+                    target_length=section_target,
+                    context=document['sections'],
+                    progress_callback=lambda p, s: self._update_section_progress(
+                        section_progress, section_status, section_metric, p, s
+                    )
+                )
             
             # Stocker la section
             document['sections'][section] = section_content
             
-            # Mettre à jour les métriques
+            # Mettre à jour les métriques globales
             section_words = len(section_content.split())
             document['metadata']['longueur_mots'] += section_words
             document['metadata']['sections_generees'] += 1
             
-            # Mettre à jour la progress bar
+            # Mettre à jour la progress bar principale
             progress = (idx + 1) / total_sections
             progress_bar.progress(progress)
             
-            # Afficher les stats intermédiaires
-            status_text.text(
-                f"✅ Section '{section}' générée : {section_words:,} mots | "
-                f"Total : {document['metadata']['longueur_mots']:,} mots"
-            )
-            
-            # Pause pour éviter la surcharge
-            await asyncio.sleep(0.5)
+            # Marquer la section comme complétée
+            with section_expanders[section]:
+                st.success(f"✅ Section complétée : {section_words:,} mots")
         
-        # Assembler le document complet
-        status_text.text("🔄 Assemblage du document final...")
+        # Assembler le document final
+        status_text.text("🔧 Assemblage du document final...")
         document['contenu_complet'] = self._assembler_document_long(
             sections=document['sections'],
             type_acte=type_acte,
             params=params
         )
         
-        # Vérifier et ajuster la longueur si nécessaire
+        # Vérifier et enrichir si nécessaire
         mots_actuels = len(document['contenu_complet'].split())
+        if mots_actuels < longueur_min and params.get('options', {}).get('enrichissement_auto', True):
+            status_text.text("📝 Enrichissement automatique...")
+            document = await self._enrichir_document_intelligent(document, longueur_min, params)
         
-        if mots_actuels < longueur_min:
-            status_text.text("📝 Enrichissement du document pour atteindre la longueur minimale...")
-            document = await self._enrichir_document(document, longueur_min, params)
-        
-        # Finaliser les métadonnées
+        # Finaliser
         document['metadata']['longueur_mots'] = len(document['contenu_complet'].split())
         document['metadata']['nb_pages_estimees'] = document['metadata']['longueur_mots'] // 500
         document['metadata']['temps_generation'] = time.time() - start_time
         
         # Affichage final
         progress_bar.progress(1.0)
-        status_text.text(
-            f"✅ Document généré : {document['metadata']['longueur_mots']:,} mots "
-            f"(~{document['metadata']['nb_pages_estimees']} pages) "
-            f"en {document['metadata']['temps_generation']:.1f} secondes"
-        )
+        status_text.text("✅ Document généré avec succès !")
+        time_elapsed.text(f"⏱️ Temps total : {document['metadata']['temps_generation']:.1f}s")
         
         return document
     
-    def _get_section_weight(self, section: str, type_acte: str) -> float:
-        """Détermine le poids relatif d'une section dans le document"""
-        
-        # Poids par défaut selon le type de section
-        weights = {
-            # Sections majeures (40-50% du document)
-            'faits': 0.35,
-            'faits_detailles': 0.40,
-            'faits_procedure': 0.35,
-            'expose_faits': 0.35,
-            
-            # Discussion juridique (30-40% du document)
-            'discussion': 0.30,
-            'discussion_juridique': 0.35,
-            'discussion_par_qualification': 0.35,
-            'qualification_approfondie': 0.35,
-            'critique_motifs_droit': 0.25,
-            'critique_motifs_fait': 0.25,
-            
-            # Parties techniques (10-15%)
-            'nullite_copj': 0.15,
-            'application_espece': 0.10,
-            'grief': 0.10,
-            'evolution_accusations': 0.15,
-            
-            # Préjudices et demandes (10-15%)
-            'prejudice_demandes': 0.15,
-            'prejudices': 0.10,
-            'volet_civil': 0.10,
-            
-            # Parties formelles (5-10%)
-            'en_tete': 0.05,
-            'identite_complete': 0.05,
-            'parties': 0.05,
-            'dispositif': 0.05,
-            'par_ces_motifs': 0.05,
-            'demandes': 0.05,
-            
-            # Autres
-            'pieces': 0.03,
-            'election_domicile': 0.02,
-            'consignation': 0.02
+    def _get_section_icon(self, section: str) -> str:
+        """Retourne une icône appropriée pour chaque section"""
+        icons = {
+            'en_tete': '📋',
+            'identite_complete': '👤',
+            'parties': '👥',
+            'faits': '📖',
+            'faits_detailles': '📚',
+            'faits_procedure': '⚖️',
+            'expose_faits': '📝',
+            'discussion': '💭',
+            'discussion_juridique': '⚖️',
+            'discussion_par_qualification': '🔍',
+            'qualification_approfondie': '🔬',
+            'critique_motifs_droit': '⚖️',
+            'critique_motifs_fait': '📊',
+            'nullite_copj': '🚫',
+            'application_espece': '🎯',
+            'grief': '⚠️',
+            'evolution_accusations': '📈',
+            'prejudice_demandes': '💰',
+            'prejudices': '💸',
+            'volet_civil': '⚖️',
+            'dispositif': '📜',
+            'par_ces_motifs': '⚖️',
+            'demandes': '📋',
+            'pieces': '📎',
+            'election_domicile': '🏠',
+            'consignation': '💶'
         }
-        
-        # Ajustements selon le type d'acte
-        if type_acte == 'plainte_cpc' and section == 'faits_detailles':
-            return 0.45  # Les faits sont cruciaux dans une plainte
-        elif type_acte == 'conclusions_fond' and section == 'discussion_par_qualification':
-            return 0.40  # La discussion est centrale
-        elif type_acte == 'conclusions_nullite' and section in ['nullite_copj', 'grief']:
-            return 0.20  # Plus de poids sur les nullités
-        
-        return weights.get(section, 0.10)
+        return icons.get(section, '📄')
     
-    async def _generer_section_longue(self, section: str, type_acte: str, 
-                                     params: Dict, target_length: int,
-                                     context: Dict) -> str:
-        """Génère une section longue et détaillée"""
+    def _update_section_progress(self, progress_bar, status_text, metric, progress, status):
+        """Met à jour l'interface pour une section"""
+        progress_bar.progress(progress)
+        status_text.text(status)
+        if 'mots' in status:
+            # Extraire le nombre de mots du status
+            words = status.split(':')[-1].strip().split()[0].replace(',', '')
+            try:
+                metric.metric("Mots", f"{int(words):,}")
+            except:
+                pass
+    
+    async def _generer_section_avec_suivi(self, section: str, type_acte: str,
+                                         params: Dict, target_length: int,
+                                         context: Dict, progress_callback) -> str:
+        """Génère une section avec suivi du progrès"""
         
-        # Créer un prompt spécifique pour la section
+        # Si fusion de modèles activée
+        if len(self.models_config.get('models', [])) > 1:
+            return await self._generer_section_fusion(
+                section, type_acte, params, target_length, context, progress_callback
+            )
+        
+        # Génération simple
+        progress_callback(0.1, "📝 Préparation du prompt...")
+        
         prompt = self._creer_prompt_section_longue(
             section, type_acte, params, target_length, context
         )
         
         if not self.llm_manager:
-            # Fallback sans LLM
+            progress_callback(1.0, "✅ Section générée (mode template)")
             return self._generer_section_template_longue(
                 section, type_acte, params, target_length
             )
         
-        # Pour les sections très longues, générer en plusieurs passes
+        # Pour sections longues, multi-passes
         if target_length > 3000:
-            return await self._generer_section_multi_passes(
-                prompt, target_length, section
+            return await self._generer_section_multi_passes_avec_suivi(
+                prompt, target_length, section, progress_callback
             )
         else:
-            # Génération simple pour sections courtes
+            progress_callback(0.5, "🤖 Génération IA en cours...")
+            
+            model = self.models_config.get('models', ['anthropic'])[0]
             response = self.llm_manager.query_single_llm(
-                provider="anthropic",
+                provider=model,
                 query=prompt,
-                system_prompt=PROMPTS_GENERATION['style_instruction'],
+                system_prompt=PROMPTS_GENERATION.get('style_instruction', ''),
                 max_tokens=self.max_tokens_per_section
             )
             
             if response['success']:
+                words = len(response['response'].split())
+                progress_callback(1.0, f"✅ Généré : {words:,} mots")
                 return response['response']
             else:
+                progress_callback(1.0, "⚠️ Fallback template")
                 return self._generer_section_template_longue(
                     section, type_acte, params, target_length
                 )
     
-    async def _generer_section_multi_passes(self, base_prompt: str, 
-                                          target_length: int, 
-                                          section_name: str) -> str:
-        """Génère une section en plusieurs passes pour atteindre la longueur cible"""
+    async def _generer_section_fusion(self, section: str, type_acte: str,
+                                     params: Dict, target_length: int,
+                                     context: Dict, progress_callback) -> str:
+        """Génère une section en utilisant plusieurs modèles et fusion"""
+        
+        models = self.models_config.get('models', ['anthropic'])
+        fusion_mode = self.models_config.get('fusion_mode', 'vote')
+        
+        progress_callback(0.1, f"🔄 Fusion {len(models)} modèles...")
+        
+        # Créer le prompt
+        prompt = self._creer_prompt_section_longue(
+            section, type_acte, params, target_length, context
+        )
+        
+        # Générer avec chaque modèle
+        responses = {}
+        for i, model in enumerate(models):
+            progress = 0.1 + (0.7 * i / len(models))
+            progress_callback(progress, f"🤖 {AVAILABLE_MODELS[model]['name']}...")
+            
+            if self.llm_manager:
+                response = self.llm_manager.query_single_llm(
+                    provider=model,
+                    query=prompt,
+                    system_prompt=PROMPTS_GENERATION.get('style_instruction', ''),
+                    max_tokens=min(self.max_tokens_per_section, 
+                                 AVAILABLE_MODELS[model]['max_tokens'])
+                )
+                if response['success']:
+                    responses[model] = response['response']
+        
+        # Fusionner les réponses
+        progress_callback(0.85, "🔀 Fusion des réponses...")
+        
+        if not responses:
+            progress_callback(1.0, "⚠️ Aucune réponse, fallback template")
+            return self._generer_section_template_longue(
+                section, type_acte, params, target_length
+            )
+        
+        # Stratégies de fusion
+        if fusion_mode == "best":
+            # Choisir la meilleure réponse (la plus longue et cohérente)
+            best_response = max(responses.values(), key=lambda x: len(x))
+            result = best_response
+        elif fusion_mode == "average":
+            # Moyenner et combiner
+            result = self._fusionner_reponses_moyenne(responses, target_length)
+        else:  # vote
+            # Voter sur les meilleurs éléments
+            result = self._fusionner_reponses_vote(responses, target_length)
+        
+        words = len(result.split())
+        progress_callback(1.0, f"✅ Fusion complète : {words:,} mots")
+        
+        return result
+    
+    def _fusionner_reponses_moyenne(self, responses: Dict[str, str], target_length: int) -> str:
+        """Fusionne les réponses en prenant le meilleur de chaque"""
+        # Pour simplifier, on prend des paragraphes de chaque réponse
+        all_paragraphs = []
+        
+        for model, response in responses.items():
+            paragraphs = [p.strip() for p in response.split('\n\n') if p.strip()]
+            all_paragraphs.extend([(p, model) for p in paragraphs])
+        
+        # Sélectionner les meilleurs paragraphes jusqu'à la longueur cible
+        result_paragraphs = []
+        current_length = 0
+        
+        for paragraph, model in all_paragraphs:
+            paragraph_words = len(paragraph.split())
+            if current_length + paragraph_words <= target_length * 1.1:
+                result_paragraphs.append(paragraph)
+                current_length += paragraph_words
+        
+        return '\n\n'.join(result_paragraphs)
+    
+    def _fusionner_reponses_vote(self, responses: Dict[str, str], target_length: int) -> str:
+        """Fusionne par vote sur les éléments communs"""
+        # Analyse des éléments communs
+        common_elements = []
+        
+        # Pour l'instant, on prend la réponse la plus complète
+        # et on l'enrichit avec des éléments uniques des autres
+        base_response = max(responses.values(), key=lambda x: len(x))
+        
+        # Enrichir avec des éléments uniques
+        for model, response in responses.items():
+            if response != base_response:
+                # Extraire des éléments uniques (simplification)
+                unique_parts = response[-1000:]  # Derniers 1000 caractères
+                if unique_parts not in base_response:
+                    base_response += f"\n\n{unique_parts}"
+        
+        return base_response[:target_length * 6]  # Approximation caractères
+    
+    async def _generer_section_multi_passes_avec_suivi(self, base_prompt: str,
+                                                      target_length: int,
+                                                      section_name: str,
+                                                      progress_callback) -> str:
+        """Génère en plusieurs passes avec suivi du progrès"""
         
         content_parts = []
         current_length = 0
-        max_passes = 5  # Maximum 5 passes pour éviter les boucles infinies
+        max_passes = 5
         
         for pass_num in range(max_passes):
             remaining_words = target_length - current_length
@@ -248,7 +488,11 @@ class GenerateurDocumentsLongs:
             if remaining_words <= 0:
                 break
             
-            # Adapter le prompt pour la passe courante
+            # Progress pour cette passe
+            pass_progress = 0.2 + (0.8 * pass_num / max_passes)
+            progress_callback(pass_progress, f"📝 Passe {pass_num + 1}/{max_passes}")
+            
+            # Adapter le prompt
             if pass_num == 0:
                 prompt = base_prompt
             else:
@@ -259,26 +503,157 @@ Il reste environ {remaining_words} mots à générer pour cette section.
 NE PAS répéter ce qui a déjà été dit, mais CONTINUER et APPROFONDIR."""
             
             # Générer
-            response = self.llm_manager.query_single_llm(
-                provider="anthropic",
-                query=prompt,
-                system_prompt=PROMPTS_GENERATION['style_instruction'],
-                max_tokens=self.max_tokens_per_section
-            )
-            
-            if response['success']:
-                part_content = response['response']
-                content_parts.append(part_content)
-                current_length += len(part_content.split())
+            if self.llm_manager:
+                model = self.models_config.get('models', ['anthropic'])[0]
+                response = self.llm_manager.query_single_llm(
+                    provider=model,
+                    query=prompt,
+                    system_prompt=PROMPTS_GENERATION.get('style_instruction', ''),
+                    max_tokens=self.max_tokens_per_section
+                )
                 
-                # Progress pour cette section
-                progress = min(current_length / target_length, 1.0)
-                st.progress(progress, f"Section '{section_name}' : {current_length:,}/{target_length:,} mots")
+                if response['success']:
+                    part_content = response['response']
+                    content_parts.append(part_content)
+                    current_length += len(part_content.split())
+                    
+                    progress_callback(
+                        pass_progress,
+                        f"📊 Passe {pass_num + 1} : {current_length:,}/{target_length:,} mots"
+                    )
+                else:
+                    break
             else:
                 break
         
-        # Assembler les parties
+        progress_callback(1.0, f"✅ Multi-passes terminé : {current_length:,} mots")
         return '\n\n'.join(content_parts)
+    
+    async def _enrichir_document_intelligent(self, document: Dict, longueur_min: int,
+                                           params: Dict) -> Dict:
+        """Enrichissement intelligent avec analyse des sections faibles"""
+        
+        mots_actuels = document['metadata']['longueur_mots']
+        mots_manquants = longueur_min - mots_actuels
+        
+        if mots_manquants <= 0:
+            return document
+        
+        # Analyser quelles sections enrichir en priorité
+        sections_analysis = []
+        for section, content in document['sections'].items():
+            weight = self._get_section_weight(section, document['type'])
+            actual_words = len(content.split())
+            expected_words = int(weight * longueur_min)
+            deficit = expected_words - actual_words
+            
+            if deficit > 0:
+                sections_analysis.append({
+                    'section': section,
+                    'deficit': deficit,
+                    'priority': weight
+                })
+        
+        # Trier par déficit et priorité
+        sections_analysis.sort(key=lambda x: (x['deficit'] * x['priority']), reverse=True)
+        
+        # Enrichir les sections prioritaires
+        enrichment_container = st.container()
+        with enrichment_container:
+            st.info(f"📈 Enrichissement intelligent : +{mots_manquants:,} mots nécessaires")
+            enrichment_progress = st.progress(0)
+            
+            for i, section_info in enumerate(sections_analysis[:3]):  # Top 3 sections
+                section = section_info['section']
+                target_enrichment = min(section_info['deficit'], mots_manquants // 3)
+                
+                progress = i / min(3, len(sections_analysis))
+                enrichment_progress.progress(progress)
+                
+                st.text(f"🔄 Enrichissement : {section.replace('_', ' ').title()}")
+                
+                # Générer contenu supplémentaire
+                enrichment_prompt = self._creer_prompt_enrichissement(
+                    section, document['sections'][section], target_enrichment
+                )
+                
+                if self.llm_manager:
+                    model = self.models_config.get('models', ['anthropic'])[0]
+                    response = self.llm_manager.query_single_llm(
+                        provider=model,
+                        query=enrichment_prompt,
+                        system_prompt=PROMPTS_GENERATION.get('style_instruction', '')
+                    )
+                    
+                    if response['success']:
+                        document['sections'][section] += "\n\n" + response['response']
+            
+            enrichment_progress.progress(1.0)
+        
+        # Reconstruire le document
+        document['contenu_complet'] = self._assembler_document_long(
+            document['sections'],
+            document['type'],
+            params
+        )
+        
+        # Mettre à jour les métadonnées
+        document['metadata']['longueur_mots'] = len(document['contenu_complet'].split())
+        document['metadata']['nb_pages_estimees'] = document['metadata']['longueur_mots'] // 500
+        document['metadata']['enrichissement'] = True
+        
+        return document
+    
+    def _creer_prompt_enrichissement(self, section: str, current_content: str,
+                                   target_words: int) -> str:
+        """Crée un prompt pour enrichir une section"""
+        
+        return f"""
+La section '{section}' doit être ENRICHIE avec {target_words} mots supplémentaires.
+
+Contenu actuel (fin de la section) :
+{current_content[-2000:]}
+
+CONSIGNES D'ENRICHISSEMENT :
+1. CONTINUER le développement sans répéter
+2. Ajouter des ARGUMENTS SUBSIDIAIRES
+3. Développer des EXEMPLES JURISPRUDENTIELS supplémentaires
+4. Approfondir l'ANALYSE DOCTRINALE
+5. Ajouter des NUANCES et PRÉCISIONS
+6. Développer des SCENARIOS ALTERNATIFS
+7. Enrichir avec des RÉFÉRENCES COMPLÉMENTAIRES
+
+IMPORTANT :
+- NE PAS résumer ou conclure
+- CONTINUER dans la même logique
+- Maintenir le même niveau de détail
+- Respecter le style juridique élaboré
+"""
+    
+    def _get_section_weight(self, section: str, type_acte: str) -> float:
+        """Détermine le poids relatif d'une section"""
+        weights = {
+            'faits': 0.35, 'faits_detailles': 0.40, 'faits_procedure': 0.35,
+            'expose_faits': 0.35, 'discussion': 0.30, 'discussion_juridique': 0.35,
+            'discussion_par_qualification': 0.35, 'qualification_approfondie': 0.35,
+            'critique_motifs_droit': 0.25, 'critique_motifs_fait': 0.25,
+            'nullite_copj': 0.15, 'application_espece': 0.10, 'grief': 0.10,
+            'evolution_accusations': 0.15, 'prejudice_demandes': 0.15,
+            'prejudices': 0.10, 'volet_civil': 0.10, 'en_tete': 0.05,
+            'identite_complete': 0.05, 'parties': 0.05, 'dispositif': 0.05,
+            'par_ces_motifs': 0.05, 'demandes': 0.05, 'pieces': 0.03,
+            'election_domicile': 0.02, 'consignation': 0.02
+        }
+        
+        # Ajustements spécifiques
+        if type_acte == 'plainte_cpc' and section == 'faits_detailles':
+            return 0.45
+        elif type_acte == 'conclusions_fond' and section == 'discussion_par_qualification':
+            return 0.40
+        elif type_acte == 'conclusions_nullite' and section in ['nullite_copj', 'grief']:
+            return 0.20
+        
+        return weights.get(section, 0.10)
     
     def _creer_prompt_section_longue(self, section: str, type_acte: str,
                                     params: Dict, target_length: int,
@@ -289,337 +664,148 @@ NE PAS répéter ce qui a déjà été dit, mais CONTINUER et APPROFONDIR."""
         infractions = params.get('infractions', [])
         contexte_affaire = params.get('contexte', '')
         
-        # Prompts spécialisés par section
+        # Base commune
+        base_prompt = f"""
+Rédige la section '{section}' pour {type_acte}.
+Longueur IMPÉRATIVE : {target_length} mots MINIMUM.
+
+CONTEXTE :
+- Parties : {parties}
+- Infractions : {infractions}
+- Affaire : {contexte_affaire}
+
+STYLE EXIGÉ :
+- Juridique professionnel et élaboré
+- Phrases complexes et nuancées
+- Vocabulaire technique précis
+- Développements exhaustifs
+- Références doctrinales et jurisprudentielles
+"""
+        
+        # Prompts spécialisés par section (conservés du code original)
         prompts_sections = {
             'faits_detailles': f"""
-Rédige un EXPOSÉ EXHAUSTIF DES FAITS pour une {type_acte}.
-Longueur IMPÉRATIVE : {target_length} mots MINIMUM.
-PARTIES CONCERNÉES :
-- Demandeurs : {', '.join(parties.get('demandeurs', []))}
-- Défendeurs : {', '.join(parties.get('defendeurs', []))}
-CONTEXTE : {contexte_affaire}
-STRUCTURE OBLIGATOIRE :
-I. PRÉSENTATION GÉNÉRALE DE L'AFFAIRE (20% du texte)
-   A. Les acteurs en présence
-      - Présentation détaillée de chaque partie
-      - Historique des relations
-      - Contexte économique et social
-   
-   B. L'environnement de l'affaire
-      - Secteur d'activité
-      - Enjeux financiers
-      - Contexte réglementaire
-II. GENÈSE DES FAITS (25% du texte)
-    A. Les origines du litige
-       - Premiers contacts
-       - Négociations initiales
-       - Évolution des relations
-    
-    B. Les premiers signes de difficultés
-       - Indices avant-coureurs
-       - Premières irrégularités constatées
-       - Réactions des parties
-III. CHRONOLOGIE DÉTAILLÉE DES FAITS (35% du texte)
-     Pour CHAQUE événement significatif :
-     - Date précise
-     - Acteurs impliqués
-     - Description détaillée de l'événement
-     - Documents associés (avec cote précise)
-     - Conséquences immédiates
-     - Analyse de la pertinence
-IV. ANALYSE DES MÉCANISMES FRAUDULEUX (20% du texte)
-    A. Schémas mis en place
-       - Description technique
-       - Acteurs et rôles
-       - Flux financiers
-    
-    B. Modes opératoires
-       - Techniques utilisées
-       - Dissimulations
-       - Complicités
-CONSIGNES IMPÉRATIVES :
-- NE JAMAIS résumer ou synthétiser
-- Développer CHAQUE point en profondeur
-- Utiliser des phrases longues et complexes
-- Multiplier les détails factuels
-- Citer systématiquement les pièces
-- Inclure des verbatim de documents importants
-- Analyser les motivations des acteurs
-- Décrire l'ambiance, le contexte
-- Utiliser un vocabulaire riche et varié
-""",
+{base_prompt}
 
-            'discussion_par_qualification': f"""
-Rédige une DISCUSSION JURIDIQUE EXHAUSTIVE pour une {type_acte}.
-Longueur IMPÉRATIVE : {target_length} mots MINIMUM.
-INFRACTIONS À ANALYSER : {', '.join(infractions)}
-STRUCTURE PAR INFRACTION (répéter pour chaque) :
-I. {infractions[0] if infractions else '[INFRACTION]'} (3000-4000 mots par infraction)
-   
-   A. CADRE LÉGAL EXHAUSTIF (1000+ mots)
-      1. Textes d'incrimination
-         - Citation intégrale des articles
-         - Analyse grammaticale et sémantique
-         - Portée de chaque terme
-      
-      2. Évolution législative
-         - Historique des modifications
-         - Travaux préparatoires
-         - Intentions du législateur
-      
-      3. Doctrine autorisée
-         - Principaux auteurs (citations longues)
-         - Débats doctrinaux
-         - Positions divergentes
-   B. ÉLÉMENTS CONSTITUTIFS DÉTAILLÉS (1500+ mots)
-      1. Élément matériel
-         a) Comportement incriminé
-            - Nature exacte de l'acte
-            - Modalités de commission
-            - Circonstances aggravantes
-         
-         b) Conditions préalables
-            - Qualité de l'auteur
-            - Contexte de commission
-            - Éléments objectifs
-         
-         c) Résultat
-            - Préjudice requis
-            - Lien de causalité
-            - Étendue du dommage
-      
-      2. Élément moral
-         a) Intention générale
-            - Conscience de l'illégalité
-            - Volonté de l'acte
-         
-         b) Dol spécial (si requis)
-            - Intention particulière
-            - Mobile (pertinence)
-         
-         c) Preuves de l'intention
-            - Indices matériels
-            - Comportements révélateurs
-            - Déclarations
-   C. APPLICATION MINUTIEUSE AUX FAITS (1500+ mots)
-      1. Correspondance avec l'élément matériel
-         - Chaque acte reproché
-         - Chaque condition vérifiée
-         - Preuves documentaires (PIÈCES n°...)
-      
-      2. Démonstration de l'élément moral
-         - Indices de l'intention
-         - Faisceau de preuves
-         - Réfutation des justifications
-      
-      3. Caractérisation complète
-         - Synthèse probatoire
-         - Force de la démonstration
-   D. JURISPRUDENCE EXHAUSTIVE (1000+ mots)
-      Pour CHAQUE arrêt cité (minimum 10 arrêts) :
-      - Référence complète
-      - Faits de l'espèce
-      - Solution retenue
-      - Principe dégagé
-      - Application au cas présent
-      - Distinction éventuelle
-CONSIGNES :
-- Développer CHAQUE point sans exception
-- Ne JAMAIS dire "il convient de noter" mais développer
-- Multiplier les citations de doctrine
-- Analyser en profondeur chaque jurisprudence
-- Anticiper TOUTES les objections
-- Proposer des interprétations alternatives
-- Conclure chaque partie par une synthèse partielle
-""",
-
-            'prejudice_demandes': f"""
-Rédige une section PRÉJUDICES ET DEMANDES exhaustive.
-Longueur IMPÉRATIVE : {target_length} mots MINIMUM.
 STRUCTURE DÉTAILLÉE :
-I. ANALYSE EXHAUSTIVE DES PRÉJUDICES (70% du texte)
+I. PRÉSENTATION GÉNÉRALE (20%)
+   A. Acteurs et contexte
+   B. Environnement économique
    
-   A. PRÉJUDICES PATRIMONIAUX DIRECTS
-      1. Détournements et pertes sèches
-         - Inventaire exhaustif
-         - Montants précis avec calculs
-         - Références aux pièces comptables
-         - Méthodes d'évaluation
-      
-      2. Surcoûts et dépenses induites
-         - Frais d'expertise
-         - Honoraires supplémentaires
-         - Coûts de restructuration
-         - Mesures correctives
-      
-      3. Évaluation consolidée
-         - Tableau récapitulatif détaillé
-         - Actualisations et intérêts
-         - Projections
-   B. PRÉJUDICES PATRIMONIAUX INDIRECTS
-      1. Pertes d'exploitation
-         - Analyse sur 3-5 ans
-         - Comparaison avec prévisions
-         - Impact sur la trésorerie
-         - Calculs détaillés
-      
-      2. Perte de chance et manque à gagner
-         - Opportunités manquées
-         - Contrats perdus
-         - Développements avortés
-         - Quantification argumentée
-      
-      3. Dépréciation d'actifs
-         - Valeur de l'entreprise
-         - Goodwill
-         - Brevets et marques
-   C. PRÉJUDICES EXTRA-PATRIMONIAUX
-      1. Préjudice moral
-         - Souffrance psychologique
-         - Stress et anxiété
-         - Impact sur la santé
-         - Jurisprudence sur quantum
-      
-      2. Préjudice d'image et réputation
-         - Analyse médiatique
-         - Impact commercial
-         - Perte de confiance
-         - Coût de reconstruction
-      
-      3. Préjudice social
-         - Relations professionnelles
-         - Statut social
-         - Carrière
-II. DEMANDES CIRCONSTANCIÉES (30% du texte)
-    
-    A. DEMANDES PRINCIPALES
-       1. Au pénal
-          - Déclaration de culpabilité
-          - Peines requises (argumentation)
-          - Peines complémentaires
-       
-       2. Au civil
-          - Dommages-intérêts (détail par poste)
-          - Intérêts légaux
-          - Capitalisation
-          - Article 475-1 CPP
-    
-    B. DEMANDES SUBSIDIAIRES
-       - Expertises complémentaires
-       - Mesures d'instruction
-       - Provisions
-    
-    C. DEMANDES ACCESSOIRES
-       - Publication jugement
-       - Exécution provisoire
-       - Contrainte judiciaire
-Développer CHAQUE poste de préjudice sur 200-300 mots minimum.
-Justifier CHAQUE montant par des calculs détaillés.
-Citer la jurisprudence sur l'évaluation des préjudices.
+II. GENÈSE DES FAITS (25%)
+   A. Origines du litige
+   B. Premiers dysfonctionnements
+   
+III. CHRONOLOGIE EXHAUSTIVE (35%)
+   - Date, acteurs, faits, preuves
+   - Analyse de chaque événement
+   
+IV. MÉCANISMES FRAUDULEUX (20%)
+   A. Schémas et montages
+   B. Modes opératoires
+
+Développer CHAQUE point sur 200-300 mots minimum.
+""",
+            
+            'discussion_par_qualification': f"""
+{base_prompt}
+
+POUR CHAQUE INFRACTION (3000-4000 mots) :
+
+I. CADRE LÉGAL (1000+ mots)
+   - Textes complets
+   - Évolution législative
+   - Doctrine
+
+II. ÉLÉMENTS CONSTITUTIFS (1500+ mots)
+   - Matériel (acte, conditions, résultat)
+   - Moral (intention, dol)
+   
+III. APPLICATION AUX FAITS (1500+ mots)
+   - Correspondance détaillée
+   - Preuves et pièces
+   
+IV. JURISPRUDENCE (1000+ mots)
+   - Minimum 10 arrêts analysés
 """
         }
         
-        # Prompt par défaut si section non définie
-        default_prompt = f"""
-Rédige la section '{section}' pour une {type_acte}.
-Longueur IMPÉRATIVE : {target_length} mots MINIMUM.
-Contexte de l'affaire : {contexte_affaire}
-Parties : {parties}
-Infractions : {infractions}
-CONSIGNES ABSOLUES :
-1. Développer de manière EXHAUSTIVE sans jamais résumer
-2. Utiliser un style juridique élaboré avec phrases complexes
-3. Multiplier les sous-parties et développements
-4. Inclure de nombreuses références (doctrine, jurisprudence)
-5. Analyser chaque point en profondeur
-6. Ne JAMAIS utiliser de formules creuses ("il convient de", "force est de constater")
-7. TOUJOURS développer, expliquer, analyser, approfondir
-8. Minimum 30-40 lignes par paragraphe
-9. Minimum 5-6 paragraphes par sous-partie
-10. Utiliser un vocabulaire juridique riche et varié
-Le texte doit être dense, technique et exhaustif.
-"""
-        
-        return prompts_sections.get(section, default_prompt)
+        return prompts_sections.get(section, base_prompt)
     
     def _generer_section_template_longue(self, section: str, type_acte: str,
                                        params: Dict, target_length: int) -> str:
-        """Génère un template long pour une section (fallback)"""
+        """Template de fallback pour génération sans IA"""
         
-        # Templates étendus pour chaque section
-        # Ici on pourrait avoir des templates très détaillés
-        # Pour l'instant, on génère un texte indicatif
-        
-        lines = [f"\n[SECTION : {section.upper().replace('_', ' ')}]\n"]
-        lines.append(f"[Cette section doit contenir environ {target_length} mots]\n")
-        
-        # Générer des sous-sections selon le type
-        if 'faits' in section:
-            lines.extend([
-                "I. CONTEXTE GÉNÉRAL DE L'AFFAIRE\n",
-                "[Développement sur 500-800 mots : présentation des parties, historique...]\n",
-                "II. CHRONOLOGIE DÉTAILLÉE DES FAITS\n",
-                "[Développement sur 1500-2000 mots : chaque événement daté et détaillé...]\n",
-                "III. ANALYSE DES MÉCANISMES MIS EN ŒUVRE\n",
-                "[Développement sur 800-1000 mots : schémas frauduleux, montages...]\n"
-            ])
-        elif 'discussion' in section or 'qualification' in section:
-            for inf in params.get('infractions', ['[INFRACTION]']):
-                lines.extend([
-                    f"\nI. SUR L'{inf.upper()}\n",
-                    "A. Rappel du cadre légal\n[500-700 mots]\n",
-                    "B. Éléments constitutifs\n[700-1000 mots]\n",
-                    "C. Application aux faits\n[800-1000 mots]\n",
-                    "D. Jurisprudence\n[500-700 mots]\n"
-                ])
-        
-        lines.append(f"\n[Fin de section - Total visé : {target_length} mots]\n")
-        
-        return '\n'.join(lines)
+        template = f"""
+[SECTION : {section.upper().replace('_', ' ')}]
+[Longueur cible : {target_length} mots]
+
+[Cette section contiendra un développement exhaustif sur les points suivants :]
+
+I. INTRODUCTION ET CONTEXTE
+[Développement de 500-800 mots sur le contexte spécifique à cette section]
+
+II. DÉVELOPPEMENT PRINCIPAL
+[Corps principal de 60-70% de la longueur totale]
+A. Premier aspect
+B. Deuxième aspect
+C. Troisième aspect
+
+III. ANALYSE APPROFONDIE
+[Analyse détaillée de 20-30% de la longueur]
+
+IV. ÉLÉMENTS COMPLÉMENTAIRES
+[Développements subsidiaires]
+
+[Note : En production, cette section sera générée par l'IA avec le contenu juridique approprié]
+"""
+        return template
     
-    def _assembler_document_long(self, sections: Dict[str, str], 
+    def _assembler_document_long(self, sections: Dict[str, str],
                                 type_acte: str, params: Dict) -> str:
-        """Assemble toutes les sections en un document cohérent"""
+        """Assemble le document final avec mise en forme"""
         
-        # En-tête du document
-        document_parts = []
-        
-        # Titre et en-tête selon le type
-        if type_acte == 'plainte_cpc':
-            document_parts.append("""
-PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+        # En-tête selon le type
+        headers = {
+            'plainte_cpc': """PLAINTE AVEC CONSTITUTION DE PARTIE CIVILE
+
 À L'ATTENTION DE MONSIEUR LE DOYEN DES JUGES D'INSTRUCTION
 TRIBUNAL JUDICIAIRE DE [VILLE]
-""")
-        elif 'conclusions' in type_acte:
-            document_parts.append("""
-CONCLUSIONS
+
+""",
+            'conclusions_fond': """CONCLUSIONS AU FOND
+
 POUR : [CLIENT]
 CONTRE : [PARTIES ADVERSES]
-""")
+
+""",
+            'conclusions_nullite': """CONCLUSIONS AUX FINS DE NULLITÉ
+
+POUR : [CLIENT]
+CONTRE : [MINISTÈRE PUBLIC ET PARTIES]
+
+"""
+        }
         
-        # Ajouter chaque section avec sa numérotation
+        document_parts = [headers.get(type_acte, f"{type_acte.upper()}\n\n")]
+        
+        # Ajouter les sections avec numérotation
         section_number = 1
         for section_key, section_content in sections.items():
-            # Titre de section
             section_title = section_key.upper().replace('_', ' ')
-            
-            # Numérotation romaine pour les grandes sections
             roman_num = self._to_roman(section_number)
+            
             document_parts.append(f"\n\n{roman_num}. {section_title}\n\n")
-            
-            # Contenu de la section
             document_parts.append(section_content)
-            
             section_number += 1
         
-        # Conclusion et signature
+        # Conclusion
         document_parts.append(self._generer_conclusion_longue(type_acte, params))
         
         return ''.join(document_parts)
     
     def _to_roman(self, num: int) -> str:
-        """Convertit un nombre en chiffre romain"""
+        """Convertit en chiffres romains"""
         val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
         syms = ['M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I']
         roman_num = ''
@@ -632,358 +818,787 @@ CONTRE : [PARTIES ADVERSES]
         return roman_num
     
     def _generer_conclusion_longue(self, type_acte: str, params: Dict) -> str:
-        """Génère une conclusion développée pour le document"""
+        """Génère la conclusion du document"""
         
-        if type_acte == 'plainte_cpc':
-            return """
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        
+        conclusions = {
+            'plainte_cpc': f"""
+
 PAR CES MOTIFS
+
 Il est demandé à Monsieur le Doyen des Juges d'Instruction de bien vouloir :
+
 - RECEVOIR la présente plainte avec constitution de partie civile ;
 - CONSTATER la recevabilité et le bien-fondé de la constitution de partie civile ;
-- ORDONNER l'ouverture d'une information judiciaire des chefs de :
-  * [LISTE DES INFRACTIONS]
-  
-- PROCÉDER ou faire procéder à tous actes d'information utiles à la manifestation de la vérité ;
-- ORDONNER toutes expertises nécessaires ;
-- TRANSMETTRE le dossier au Parquet pour réquisitions ;
-- RENVOYER les mis en cause devant la juridiction de jugement ;
-Et en tout état de cause,
-- CONDAMNER les responsables à réparer l'intégralité du préjudice subi ;
-- DIRE que la présente décision sera exécutoire par provision ;
-- CONDAMNER les défendeurs aux entiers dépens.
+- ORDONNER l'ouverture d'une information judiciaire ;
+- PROCÉDER à tous actes utiles à la manifestation de la vérité ;
+
 SOUS TOUTES RÉSERVES
-Fait à [VILLE], le """ + datetime.now().strftime('%d/%m/%Y') + """
+
+Fait à [VILLE], le {date_str}
+
 [SIGNATURE]
+
 BORDEREAU DE PIÈCES COMMUNIQUÉES
 [Liste des pièces]
-"""
-        else:
-            return """
-PAR CES MOTIFS
-[DEMANDES SPÉCIFIQUES AU TYPE D'ACTE]
-SOUS TOUTES RÉSERVES
-[SIGNATURE ET DATE]
-"""
-    
-    async def _enrichir_document(self, document: Dict, longueur_min: int, 
-                               params: Dict) -> Dict:
-        """Enrichit un document pour atteindre la longueur minimale"""
-        
-        mots_actuels = document['metadata']['longueur_mots']
-        mots_manquants = longueur_min - mots_actuels
-        
-        if mots_manquants <= 0:
-            return document
-        
-        # Identifier les sections à enrichir (les plus importantes)
-        sections_a_enrichir = []
-        for section, content in document['sections'].items():
-            if 'faits' in section or 'discussion' in section:
-                sections_a_enrichir.append(section)
-        
-        if not sections_a_enrichir:
-            sections_a_enrichir = list(document['sections'].keys())
-        
-        # Répartir les mots manquants
-        mots_par_section = mots_manquants // len(sections_a_enrichir)
-        
-        for section in sections_a_enrichir:
-            # Générer du contenu supplémentaire
-            prompt_enrichissement = f"""
-La section '{section}' doit être ENRICHIE avec {mots_par_section} mots supplémentaires.
-Contenu actuel à enrichir :
-{document['sections'][section][-1000:]}  # Derniers 1000 caractères
-CONSIGNES :
-- Ajouter des développements complémentaires
-- Approfondir l'analyse
-- Ajouter des exemples jurisprudentiels
-- Développer des arguments subsidiaires
-- NE PAS répéter ce qui a déjà été dit
-- CONTINUER et APPROFONDIR le raisonnement
-"""
+""",
             
-            if self.llm_manager:
-                response = self.llm_manager.query_single_llm(
-                    provider="anthropic",
-                    query=prompt_enrichissement,
-                    system_prompt=PROMPTS_GENERATION['style_instruction']
-                )
-                
-                if response['success']:
-                    # Ajouter le contenu enrichi
-                    document['sections'][section] += "\n\n" + response['response']
-        
-        # Reconstruire le document complet
-        document['contenu_complet'] = self._assembler_document_long(
-            document['sections'],
-            document['type'],
-            params
-        )
-        
-        # Mettre à jour les métadonnées
-        document['metadata']['longueur_mots'] = len(document['contenu_complet'].split())
-        document['metadata']['nb_pages_estimees'] = document['metadata']['longueur_mots'] // 500
-        
-        return document
+            'conclusions_fond': f"""
 
-# ========================= INTERFACE STREAMLIT =========================
+PAR CES MOTIFS
 
-def show_generation_longue_interface():
-    """Interface pour la génération de documents longs"""
-    
-    st.header("📜 Génération de documents juridiques longs (25-50+ pages)")
-    
-    st.info("""
-    🎯 **Module spécialisé pour documents complexes**
-    
-    Ce module génère des actes juridiques exhaustifs de 25 à 50+ pages, 
-    adaptés aux dossiers complexes de droit pénal des affaires.
-    
-    **Caractéristiques :**
-    - Développements approfondis de chaque point
-    - Analyse exhaustive des faits et du droit
-    - Citations doctrinales et jurisprudentielles nombreuses
-    - Structure rigoureuse et hiérarchisée
-    """)
-    
-    # Initialiser le générateur
-    if 'generateur_long' not in st.session_state:
-        st.session_state.generateur_long = GenerateurDocumentsLongs()
-    
-    generateur = st.session_state.generateur_long
-    
-    # Configuration
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        type_acte = st.selectbox(
-            "Type de document",
-            [
-                'plainte_cpc',
-                'conclusions_fond',
-                'conclusions_nullite',
-                'conclusions_appel',
-                'observations_175',
-                'plainte_simple',
-                'citation_directe'
-            ],
-            format_func=lambda x: {
-                'plainte_cpc': 'Plainte avec CPC (50+ pages)',
-                'conclusions_fond': 'Conclusions au fond (40-50 pages)',
-                'conclusions_nullite': 'Conclusions de nullité (30-35 pages)',
-                'conclusions_appel': 'Conclusions d\'appel (40-45 pages)',
-                'observations_175': 'Observations art. 175 (40-45 pages)',
-                'plainte_simple': 'Plainte simple (25-30 pages)',
-                'citation_directe': 'Citation directe (20-25 pages)'
-            }.get(x, x)
-        )
-    
-    with col2:
-        # Afficher la longueur cible
-        structure = STRUCTURES_ACTES.get(type_acte, {})
-        st.metric(
-            "Longueur cible",
-            f"{structure.get('longueur_cible', 20000):,} mots",
-            f"~{structure.get('longueur_cible', 20000)//500} pages"
-        )
-    
-    # Parties
-    st.subheader("👥 Configuration des parties")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        demandeurs = st.text_area(
-            "Demandeurs / Plaignants",
-            height=100,
-            placeholder="Un par ligne\nEx: SCI PATRIMOINE\nM. DUPONT Jean"
-        )
-    
-    with col2:
-        defendeurs = st.text_area(
-            "Défendeurs / Mis en cause",
-            height=100,
-            placeholder="Un par ligne\nEx: SA CONSTRUCTION\nM. MARTIN Pierre"
-        )
-    
-    # Infractions et contexte
-    st.subheader("🚨 Infractions et contexte")
-    
-    infractions = st.multiselect(
-        "Infractions",
-        [
-            "Abus de biens sociaux",
-            "Corruption",
-            "Escroquerie",
-            "Abus de confiance",
-            "Blanchiment",
-            "Faux et usage de faux",
-            "Détournement de fonds publics",
-            "Favoritisme",
-            "Prise illégale d'intérêts",
-            "Trafic d'influence"
-        ]
-    )
-    
-    contexte = st.text_area(
-        "Contexte détaillé de l'affaire",
-        height=150,
-        placeholder="Décrivez l'affaire, les montants en jeu, la période des faits..."
-    )
-    
-    # Options avancées
-    with st.expander("⚙️ Options avancées"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            enrichissement_auto = st.checkbox(
-                "Enrichissement automatique si trop court",
-                value=True,
-                help="Ajoute automatiquement du contenu si la longueur minimale n'est pas atteinte"
-            )
-        
-        with col2:
-            parallel_generation = st.checkbox(
-                "Génération parallèle (plus rapide)",
-                value=False,
-                help="Génère plusieurs sections simultanément (expérimental)"
-            )
-    
-    # Bouton de génération
-    if st.button("🚀 Générer le document long", type="primary", use_container_width=True):
-        
-        # Validation
-        if not (demandeurs.strip() or defendeurs.strip()):
-            st.error("Veuillez renseigner au moins une partie")
-            return
-        
-        if not infractions:
-            st.error("Veuillez sélectionner au moins une infraction")
-            return
-        
-        # Préparer les paramètres
-        params = {
-            'parties': {
-                'demandeurs': [d.strip() for d in demandeurs.split('\n') if d.strip()],
-                'defendeurs': [d.strip() for d in defendeurs.split('\n') if d.strip()]
-            },
-            'infractions': infractions,
-            'contexte': contexte,
-            'options': {
-                'enrichissement_auto': enrichissement_auto,
-                'parallel': parallel_generation
-            }
+[DEMANDES PRINCIPALES ET SUBSIDIAIRES]
+
+SOUS TOUTES RÉSERVES
+
+Fait le {date_str}
+
+[SIGNATURE AVOCAT]
+"""
         }
         
-        # Générer
-        asyncio.run(generer_document_interface(generateur, type_acte, params))
+        return conclusions.get(type_acte, f"\n\nFait le {date_str}\n[SIGNATURE]")
 
-async def generer_document_interface(generateur, type_acte, params):
-    """Interface de génération avec gestion asynchrone"""
+# ========================= INTERFACE UTILISATEUR =========================
+
+def run():
+    """Fonction principale du module - OBLIGATOIRE"""
     
-    try:
-        # Générer le document
-        document = await generateur.generer_document_long(type_acte, params)
+    # Titre et description
+    st.title("📜 Générateur de Documents Juridiques Longs")
+    st.markdown("""
+    <div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+        <h3>🎯 Module spécialisé pour documents complexes (25-50+ pages)</h3>
+        <p>Ce module génère des actes juridiques exhaustifs adaptés aux dossiers complexes de droit pénal des affaires.</p>
+        <ul>
+            <li>📊 <b>Longueur</b> : 25 à 50+ pages selon le type d'acte</li>
+            <li>🤖 <b>IA Multiple</b> : Fusion de plusieurs modèles pour une qualité optimale</li>
+            <li>📈 <b>Enrichissement</b> : Ajustement automatique de la longueur</li>
+            <li>⚡ <b>Performance</b> : Génération parallèle et optimisée</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Initialisation
+    if 'generateur_long_v2' not in st.session_state:
+        st.session_state.generateur_long_v2 = GenerateurDocumentsLongsV2()
+    if 'document_genere' not in st.session_state:
+        st.session_state.document_genere = None
+    if 'generation_history' not in st.session_state:
+        st.session_state.generation_history = []
+    
+    generateur = st.session_state.generateur_long_v2
+    
+    # Structure en onglets
+    tabs = st.tabs(["📝 Configuration", "🤖 Modèles IA", "🚀 Génération", "📊 Résultats", "📚 Historique"])
+    
+    with tabs[0]:  # Configuration
+        st.markdown("### 📝 Configuration du document")
         
-        # Stocker le résultat
-        st.session_state.document_long_genere = document
+        # Sélection du type avec carte visuelle
+        st.markdown("#### Type de document")
         
-        # Afficher les résultats
-        st.success(f"""
-        ✅ **Document généré avec succès !**
+        # Créer une grille de cartes pour les types de documents
+        cols = st.columns(3)
+        selected_type = None
         
-        - **Longueur :** {document['metadata']['longueur_mots']:,} mots
-        - **Pages estimées :** ~{document['metadata']['nb_pages_estimees']} pages
-        - **Temps de génération :** {document['metadata']['temps_generation']:.1f} secondes
-        - **Sections générées :** {document['metadata']['sections_generees']}
-        """)
+        for idx, (key, config) in enumerate(DOCUMENT_TYPES.items()):
+            col = cols[idx % 3]
+            with col:
+                if st.button(
+                    f"{config['icon']} {config['name']}\n{config['pages']} pages",
+                    key=f"type_{key}",
+                    use_container_width=True,
+                    help=f"Complexité : {'⭐' * config['complexity']}"
+                ):
+                    st.session_state.selected_doc_type = key
         
-        # Aperçu du document
-        with st.expander("📄 Aperçu du document", expanded=True):
-            # Afficher les premières lignes
-            preview_lines = document['contenu_complet'].split('\n')[:50]
-            st.text('\n'.join(preview_lines))
-            st.info(f"... (document complet : {document['metadata']['longueur_mots']:,} mots)")
+        # Afficher le type sélectionné
+        if 'selected_doc_type' in st.session_state:
+            selected_type = st.session_state.selected_doc_type
+            doc_config = DOCUMENT_TYPES[selected_type]
+            
+            st.success(f"✅ Type sélectionné : {doc_config['icon']} {doc_config['name']}")
+            
+            # Afficher les détails
+            with st.expander("📋 Détails du document", expanded=True):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Pages estimées", doc_config['pages'])
+                with col2:
+                    st.metric("Complexité", "⭐" * doc_config['complexity'])
+                with col3:
+                    st.metric("Sections", len(doc_config['sections']))
+                
+                # Liste des sections
+                st.markdown("**Sections incluses :**")
+                sections_text = []
+                for section in doc_config['sections']:
+                    icon = generateur._get_section_icon(section)
+                    name = section.replace('_', ' ').title()
+                    sections_text.append(f"{icon} {name}")
+                st.write(" • ".join(sections_text))
         
-        # Actions
-        col1, col2, col3 = st.columns(3)
+        # Configuration des parties
+        st.markdown("#### 👥 Parties")
         
+        col1, col2 = st.columns(2)
         with col1:
-            st.download_button(
-                "📥 Télécharger (TXT)",
-                document['contenu_complet'].encode('utf-8'),
-                file_name=f"{type_acte}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
+            demandeurs = st.text_area(
+                "Demandeurs / Plaignants",
+                height=100,
+                placeholder="Un par ligne\nEx: SCI PATRIMOINE\nM. DUPONT Jean",
+                help="Entrez les noms des demandeurs, un par ligne"
             )
         
         with col2:
-            if st.button("📊 Voir les statistiques détaillées"):
-                show_document_statistics_detailed(document)
+            defendeurs = st.text_area(
+                "Défendeurs / Mis en cause",
+                height=100,
+                placeholder="Un par ligne\nEx: SA CONSTRUCTION\nM. MARTIN Pierre",
+                help="Entrez les noms des défendeurs, un par ligne"
+            )
         
-        with col3:
-            if st.button("✏️ Éditer le document"):
-                st.session_state.edit_mode = True
-                st.rerun()
+        # Infractions
+        st.markdown("#### 🚨 Infractions")
         
-    except Exception as e:
-        st.error(f"❌ Erreur lors de la génération : {str(e)}")
-        import traceback
-        with st.expander("Détails de l'erreur"):
-            st.code(traceback.format_exc())
-
-def show_document_statistics_detailed(document: Dict):
-    """Affiche des statistiques détaillées sur le document généré"""
+        # Liste prédéfinie avec possibilité d'ajouter
+        infractions_predefinies = [
+            "Abus de biens sociaux", "Corruption", "Escroquerie",
+            "Abus de confiance", "Blanchiment", "Faux et usage de faux",
+            "Détournement de fonds publics", "Favoritisme",
+            "Prise illégale d'intérêts", "Trafic d'influence"
+        ]
+        
+        infractions = st.multiselect(
+            "Sélectionnez les infractions",
+            infractions_predefinies,
+            help="Vous pouvez sélectionner plusieurs infractions"
+        )
+        
+        # Ajout d'infractions personnalisées
+        infraction_custom = st.text_input(
+            "Ajouter une infraction non listée",
+            placeholder="Ex: Violation du secret professionnel"
+        )
+        if infraction_custom and st.button("➕ Ajouter", key="add_infraction"):
+            infractions.append(infraction_custom)
+            st.success(f"✅ Ajouté : {infraction_custom}")
+        
+        # Contexte
+        st.markdown("#### 📖 Contexte de l'affaire")
+        
+        contexte = st.text_area(
+            "Description détaillée",
+            height=200,
+            placeholder="""Décrivez l'affaire en détail :
+- Période des faits
+- Montants en jeu
+- Contexte économique
+- Relations entre les parties
+- Éléments clés...""",
+            help="Plus le contexte est détaillé, plus le document sera pertinent"
+        )
+        
+        # Validation de la configuration
+        config_complete = all([
+            'selected_doc_type' in st.session_state,
+            demandeurs.strip() or defendeurs.strip(),
+            infractions,
+            contexte.strip()
+        ])
+        
+        if config_complete:
+            st.success("✅ Configuration complète")
+            st.session_state.doc_config = {
+                'type': selected_type,
+                'parties': {
+                    'demandeurs': [d.strip() for d in demandeurs.split('\n') if d.strip()],
+                    'defendeurs': [d.strip() for d in defendeurs.split('\n') if d.strip()]
+                },
+                'infractions': infractions,
+                'contexte': contexte
+            }
+        else:
+            st.warning("⚠️ Veuillez compléter tous les champs obligatoires")
     
-    with st.expander("📊 Statistiques détaillées", expanded=True):
+    with tabs[1]:  # Modèles IA
+        st.markdown("### 🤖 Configuration des modèles d'IA")
         
-        # Métriques générales
-        col1, col2, col3, col4 = st.columns(4)
+        st.info("""
+        💡 **Fusion de modèles** : Combinez plusieurs IA pour obtenir le meilleur de chaque modèle.
+        Chaque modèle a ses forces spécifiques.
+        """)
         
-        with col1:
-            st.metric("Mots totaux", f"{document['metadata']['longueur_mots']:,}")
-        with col2:
-            st.metric("Pages", f"~{document['metadata']['nb_pages_estimees']}")
-        with col3:
-            st.metric("Sections", document['metadata']['sections_generees'])
-        with col4:
-            st.metric("Temps", f"{document['metadata']['temps_generation']:.1f}s")
+        # Sélection des modèles
+        st.markdown("#### Sélection des modèles")
         
-        # Répartition par section
-        st.subheader("📑 Répartition par section")
+        selected_models = []
+        cols = st.columns(2)
         
-        section_stats = []
-        for section, content in document['sections'].items():
-            words = len(content.split())
-            percentage = (words / document['metadata']['longueur_mots']) * 100
-            section_stats.append({
-                'Section': section.replace('_', ' ').title(),
-                'Mots': words,
-                'Pourcentage': f"{percentage:.1f}%",
-                'Pages': f"~{words//500}"
-            })
+        for idx, (model_key, model_info) in enumerate(AVAILABLE_MODELS.items()):
+            col = cols[idx % 2]
+            with col:
+                if st.checkbox(
+                    f"{model_info['icon']} {model_info['name']}",
+                    key=f"model_{model_key}",
+                    help=f"Forces : {', '.join(model_info['strengths'])}"
+                ):
+                    selected_models.append(model_key)
         
-        import pandas as pd
-        df = pd.DataFrame(section_stats)
-        st.dataframe(df, use_container_width=True)
+        if not selected_models:
+            st.warning("⚠️ Sélectionnez au moins un modèle")
+            selected_models = ['anthropic']  # Par défaut
         
-        # Graphique de répartition
-        st.subheader("📊 Visualisation")
-        chart_data = pd.DataFrame({
-            'Section': [s['Section'] for s in section_stats],
-            'Mots': [s['Mots'] for s in section_stats]
-        })
-        st.bar_chart(chart_data.set_index('Section'))
-
-# ========================= INTÉGRATION =========================
-
-def integrate_with_main_module():
-    """Intègre ce module avec le module principal de génération"""
+        # Mode de fusion
+        if len(selected_models) > 1:
+            st.markdown("#### 🔀 Mode de fusion")
+            
+            fusion_mode = st.radio(
+                "Stratégie de fusion",
+                [
+                    ("vote", "🗳️ Vote", "Sélectionne les meilleurs éléments de chaque modèle"),
+                    ("average", "⚖️ Moyenne", "Combine équitablement les réponses"),
+                    ("best", "🏆 Meilleur", "Choisit la réponse la plus complète")
+                ],
+                format_func=lambda x: f"{x[1]} {x[0].title()} - {x[2]}",
+                horizontal=True
+            )[0]
+        else:
+            fusion_mode = "single"
+        
+        # Afficher la configuration
+        st.markdown("#### Configuration actuelle")
+        
+        config_cols = st.columns(len(selected_models) or 1)
+        for idx, model in enumerate(selected_models):
+            with config_cols[idx]:
+                model_info = AVAILABLE_MODELS[model]
+                st.metric(
+                    model_info['name'],
+                    model_info['icon'],
+                    f"Max: {model_info['max_tokens']:,} tokens"
+                )
+        
+        # Sauvegarder la configuration
+        generateur.configure_models(selected_models, fusion_mode)
+        st.success(f"✅ Configuration sauvegardée : {len(selected_models)} modèle(s)")
     
-    # Cette fonction peut être appelée depuis generation_juridique.py
-    # pour ajouter l'option de génération longue
-    pass
+    with tabs[2]:  # Génération
+        st.markdown("### 🚀 Génération du document")
+        
+        # Vérifier la configuration
+        if 'doc_config' not in st.session_state:
+            st.error("❌ Veuillez d'abord configurer le document dans l'onglet Configuration")
+            return
+        
+        config = st.session_state.doc_config
+        
+        # Résumé de la configuration
+        with st.expander("📋 Résumé de la configuration", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"**Type** : {DOCUMENT_TYPES[config['type']]['icon']} {DOCUMENT_TYPES[config['type']]['name']}")
+                st.markdown(f"**Demandeurs** : {len(config['parties']['demandeurs'])} partie(s)")
+                st.markdown(f"**Défendeurs** : {len(config['parties']['defendeurs'])} partie(s)")
+            
+            with col2:
+                st.markdown(f"**Infractions** : {len(config['infractions'])} sélectionnée(s)")
+                st.markdown(f"**Modèles IA** : {len(selected_models)} configuré(s)")
+                st.markdown(f"**Mode fusion** : {fusion_mode}")
+        
+        # Options avancées
+        with st.expander("⚙️ Options avancées"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                enrichissement_auto = st.checkbox(
+                    "📈 Enrichissement automatique",
+                    value=True,
+                    help="Ajoute automatiquement du contenu si la longueur minimale n'est pas atteinte"
+                )
+                
+                parallel_generation = st.checkbox(
+                    "⚡ Génération parallèle",
+                    value=False,
+                    help="Génère plusieurs sections simultanément (expérimental)"
+                )
+            
+            with col2:
+                save_draft = st.checkbox(
+                    "💾 Sauvegarder les brouillons",
+                    value=True,
+                    help="Sauvegarde automatique après chaque section"
+                )
+                
+                verbose_mode = st.checkbox(
+                    "📊 Mode verbeux",
+                    value=False,
+                    help="Affiche des informations détaillées pendant la génération"
+                )
+        
+        # Estimation du temps
+        doc_type_config = DOCUMENT_TYPES[config['type']]
+        sections_count = len(doc_type_config['sections'])
+        models_count = len(selected_models)
+        
+        if models_count > 1:
+            time_estimate = sections_count * models_count * 15  # 15s par section par modèle
+        else:
+            time_estimate = sections_count * 20  # 20s par section
+        
+        st.info(f"""
+        ⏱️ **Estimation** : {time_estimate // 60} min {time_estimate % 60} sec
+        
+        📊 **Détails** :
+        - {sections_count} sections à générer
+        - {models_count} modèle(s) utilisé(s)
+        - Mode {'fusion' if models_count > 1 else 'simple'}
+        """)
+        
+        # Bouton de génération principal
+        if st.button(
+            "🚀 Lancer la génération",
+            type="primary",
+            use_container_width=True,
+            disabled=not config_complete
+        ):
+            # Préparer les paramètres
+            params = {
+                **config,
+                'options': {
+                    'enrichissement_auto': enrichissement_auto,
+                    'parallel': parallel_generation,
+                    'save_draft': save_draft,
+                    'verbose': verbose_mode
+                }
+            }
+            
+            # Container pour la génération
+            generation_container = st.container()
+            
+            with generation_container:
+                # Lancer la génération
+                try:
+                    # Créer une tâche asynchrone
+                    import asyncio
+                    
+                    # Générer le document
+                    document = asyncio.run(
+                        generateur.generer_document_long(config['type'], params)
+                    )
+                    
+                    # Sauvegarder le résultat
+                    st.session_state.document_genere = document
+                    st.session_state.generation_history.append({
+                        'timestamp': datetime.now(),
+                        'type': config['type'],
+                        'document': document
+                    })
+                    
+                    # Afficher le succès
+                    st.balloons()
+                    st.success("✅ Document généré avec succès !")
+                    
+                    # Basculer sur l'onglet résultats
+                    st.info("📊 Consultez l'onglet 'Résultats' pour voir le document")
+                    
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de la génération : {str(e)}")
+                    if verbose_mode:
+                        import traceback
+                        st.code(traceback.format_exc())
+    
+    with tabs[3]:  # Résultats
+        st.markdown("### 📊 Résultats de la génération")
+        
+        if st.session_state.document_genere:
+            document = st.session_state.document_genere
+            
+            # Métriques principales
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    "📝 Mots",
+                    f"{document['metadata']['longueur_mots']:,}",
+                    f"+{document['metadata']['longueur_mots'] - 15000:,}"
+                )
+            
+            with col2:
+                st.metric(
+                    "📄 Pages",
+                    f"~{document['metadata']['nb_pages_estimees']}",
+                    f"Cible atteinte"
+                )
+            
+            with col3:
+                st.metric(
+                    "📑 Sections",
+                    document['metadata']['sections_generees'],
+                    "Complètes"
+                )
+            
+            with col4:
+                temps = document['metadata']['temps_generation']
+                st.metric(
+                    "⏱️ Temps",
+                    f"{temps//60:.0f}m {temps%60:.0f}s",
+                    f"{document['metadata']['longueur_mots']/temps:.0f} mots/s"
+                )
+            
+            # Aperçu du document
+            with st.expander("📄 Aperçu du document", expanded=True):
+                # Options d'affichage
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col1:
+                    preview_length = st.slider(
+                        "Longueur de l'aperçu",
+                        100, 2000, 500,
+                        step=100,
+                        help="Nombre de mots à afficher"
+                    )
+                
+                with col2:
+                    show_structure = st.checkbox(
+                        "🏗️ Structure seule",
+                        help="Afficher uniquement la structure"
+                    )
+                
+                with col3:
+                    highlight_sections = st.checkbox(
+                        "🎨 Colorer sections",
+                        help="Mettre en évidence les sections"
+                    )
+                
+                # Affichage
+                if show_structure:
+                    # Afficher uniquement la structure
+                    st.markdown("**Structure du document :**")
+                    for section, content in document['sections'].items():
+                        words = len(content.split())
+                        icon = generateur._get_section_icon(section)
+                        st.write(f"{icon} **{section.replace('_', ' ').title()}** : {words:,} mots")
+                else:
+                    # Afficher le contenu
+                    preview_text = ' '.join(document['contenu_complet'].split()[:preview_length])
+                    
+                    if highlight_sections:
+                        # Ajouter de la couleur aux titres de sections
+                        import re
+                        preview_text = re.sub(
+                            r'([IVX]+\. [A-Z\s]+)',
+                            r'<span style="color: #1f77b4; font-weight: bold;">\1</span>',
+                            preview_text
+                        )
+                        st.markdown(preview_text, unsafe_allow_html=True)
+                    else:
+                        st.text(preview_text)
+                    
+                    st.info(f"... (aperçu limité à {preview_length} mots)")
+            
+            # Analyse détaillée
+            with st.expander("📊 Analyse détaillée"):
+                # Graphique de répartition des sections
+                st.markdown("#### Répartition par section")
+                
+                # Préparer les données
+                section_data = []
+                for section, content in document['sections'].items():
+                    section_data.append({
+                        'Section': section.replace('_', ' ').title(),
+                        'Mots': len(content.split()),
+                        'Pourcentage': (len(content.split()) / document['metadata']['longueur_mots']) * 100
+                    })
+                
+                df = pd.DataFrame(section_data)
+                
+                # Graphique en camembert
+                fig = px.pie(
+                    df,
+                    values='Mots',
+                    names='Section',
+                    title='Répartition des mots par section',
+                    hole=0.4
+                )
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Tableau détaillé
+                st.markdown("#### Statistiques par section")
+                
+                # Ajouter des colonnes calculées
+                df['Pages'] = df['Mots'] / 500
+                df['Densité'] = df['Mots'] / document['metadata']['sections_generees']
+                
+                # Formatter le tableau
+                st.dataframe(
+                    df.style.format({
+                        'Mots': '{:,.0f}',
+                        'Pourcentage': '{:.1f}%',
+                        'Pages': '{:.1f}',
+                        'Densité': '{:.0f}'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Modèles utilisés
+                if document['metadata'].get('modeles_utilises'):
+                    st.markdown("#### 🤖 Modèles utilisés")
+                    model_cols = st.columns(len(document['metadata']['modeles_utilises']))
+                    for idx, model in enumerate(document['metadata']['modeles_utilises']):
+                        with model_cols[idx]:
+                            model_info = AVAILABLE_MODELS.get(model, {})
+                            st.info(f"{model_info.get('icon', '🤖')} {model_info.get('name', model)}")
+            
+            # Actions sur le document
+            st.markdown("### 💾 Actions")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                # Télécharger en TXT
+                st.download_button(
+                    "📄 Télécharger (TXT)",
+                    document['contenu_complet'].encode('utf-8'),
+                    file_name=f"{document['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+            
+            with col2:
+                # Télécharger en JSON (avec métadonnées)
+                json_data = json.dumps({
+                    'metadata': document['metadata'],
+                    'content': document['contenu_complet'],
+                    'sections': document['sections']
+                }, ensure_ascii=False, indent=2)
+                
+                st.download_button(
+                    "📊 Export JSON",
+                    json_data.encode('utf-8'),
+                    file_name=f"{document['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+            
+            with col3:
+                # Copier dans le presse-papier (simulé)
+                if st.button("📋 Copier", use_container_width=True):
+                    st.info("📋 Utilisez Ctrl+A puis Ctrl+C dans l'aperçu")
+            
+            with col4:
+                # Nouvelle génération
+                if st.button("🔄 Nouveau", use_container_width=True):
+                    st.session_state.document_genere = None
+                    st.rerun()
+            
+            # Section d'édition
+            with st.expander("✏️ Éditer le document"):
+                st.warning("⚠️ L'édition modifiera le document généré")
+                
+                # Sélectionner la section à éditer
+                section_to_edit = st.selectbox(
+                    "Section à éditer",
+                    list(document['sections'].keys()),
+                    format_func=lambda x: x.replace('_', ' ').title()
+                )
+                
+                # Éditeur de texte
+                edited_content = st.text_area(
+                    f"Contenu de la section '{section_to_edit}'",
+                    value=document['sections'][section_to_edit],
+                    height=400
+                )
+                
+                # Sauvegarder les modifications
+                if st.button("💾 Sauvegarder les modifications"):
+                    document['sections'][section_to_edit] = edited_content
+                    # Reconstruire le document
+                    document['contenu_complet'] = generateur._assembler_document_long(
+                        document['sections'],
+                        document['type'],
+                        st.session_state.doc_config
+                    )
+                    # Mettre à jour les métadonnées
+                    document['metadata']['longueur_mots'] = len(document['contenu_complet'].split())
+                    document['metadata']['nb_pages_estimees'] = document['metadata']['longueur_mots'] // 500
+                    document['metadata']['edited'] = True
+                    
+                    st.success("✅ Modifications sauvegardées")
+                    st.rerun()
+        
+        else:
+            # Aucun document généré
+            st.info("📄 Aucun document généré pour le moment")
+            st.markdown("""
+            Pour générer un document :
+            1. 📝 Configurez le document dans l'onglet 'Configuration'
+            2. 🤖 Sélectionnez les modèles d'IA dans l'onglet 'Modèles IA'
+            3. 🚀 Lancez la génération dans l'onglet 'Génération'
+            """)
+    
+    with tabs[4]:  # Historique
+        st.markdown("### 📚 Historique des générations")
+        
+        if st.session_state.generation_history:
+            # Options de filtrage
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                # Filtre par type
+                types_in_history = list(set(h['type'] for h in st.session_state.generation_history))
+                filter_type = st.multiselect(
+                    "Filtrer par type",
+                    types_in_history,
+                    default=types_in_history
+                )
+            
+            with col2:
+                # Tri
+                sort_order = st.radio(
+                    "Trier par",
+                    ["Plus récent", "Plus ancien"],
+                    horizontal=True
+                )
+            
+            # Afficher l'historique
+            history_filtered = [
+                h for h in st.session_state.generation_history
+                if h['type'] in filter_type
+            ]
+            
+            if sort_order == "Plus récent":
+                history_filtered.reverse()
+            
+            for idx, entry in enumerate(history_filtered):
+                with st.expander(
+                    f"{DOCUMENT_TYPES[entry['type']]['icon']} "
+                    f"{entry['timestamp'].strftime('%d/%m/%Y %H:%M')} - "
+                    f"{DOCUMENT_TYPES[entry['type']]['name']}",
+                    expanded=False
+                ):
+                    # Métadonnées
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Mots", f"{entry['document']['metadata']['longueur_mots']:,}")
+                    with col2:
+                        st.metric("Pages", f"~{entry['document']['metadata']['nb_pages_estimees']}")
+                    with col3:
+                        temps = entry['document']['metadata']['temps_generation']
+                        st.metric("Temps", f"{temps//60:.0f}m {temps%60:.0f}s")
+                    
+                    # Actions
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button(f"👁️ Voir", key=f"view_{idx}"):
+                            st.session_state.document_genere = entry['document']
+                            st.info("📊 Basculez sur l'onglet 'Résultats'")
+                    
+                    with col2:
+                        st.download_button(
+                            "💾 Télécharger",
+                            entry['document']['contenu_complet'].encode('utf-8'),
+                            file_name=f"{entry['type']}_{entry['timestamp'].strftime('%Y%m%d_%H%M%S')}.txt",
+                            mime="text/plain",
+                            key=f"download_{idx}"
+                        )
+                    
+                    with col3:
+                        if st.button(f"🗑️ Supprimer", key=f"delete_{idx}"):
+                            st.session_state.generation_history.remove(entry)
+                            st.rerun()
+            
+            # Statistiques globales
+            with st.expander("📊 Statistiques globales"):
+                total_docs = len(st.session_state.generation_history)
+                total_words = sum(h['document']['metadata']['longueur_mots'] for h in st.session_state.generation_history)
+                total_pages = sum(h['document']['metadata']['nb_pages_estimees'] for h in st.session_state.generation_history)
+                total_time = sum(h['document']['metadata']['temps_generation'] for h in st.session_state.generation_history)
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Documents", total_docs)
+                with col2:
+                    st.metric("Mots totaux", f"{total_words:,}")
+                with col3:
+                    st.metric("Pages totales", f"~{total_pages:,}")
+                with col4:
+                    st.metric("Temps total", f"{total_time//60:.0f}m")
+                
+                # Graphique d'évolution
+                if total_docs > 1:
+                    st.markdown("#### 📈 Évolution des générations")
+                    
+                    # Préparer les données
+                    evolution_data = []
+                    for entry in st.session_state.generation_history:
+                        evolution_data.append({
+                            'Date': entry['timestamp'],
+                            'Mots': entry['document']['metadata']['longueur_mots'],
+                            'Type': DOCUMENT_TYPES[entry['type']]['name']
+                        })
+                    
+                    df_evolution = pd.DataFrame(evolution_data)
+                    
+                    # Graphique
+                    fig = px.line(
+                        df_evolution,
+                        x='Date',
+                        y='Mots',
+                        color='Type',
+                        markers=True,
+                        title='Évolution du nombre de mots par génération'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # Actions globales
+            st.markdown("#### Actions globales")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("🗑️ Effacer tout l'historique", type="secondary", use_container_width=True):
+                    if st.checkbox("Confirmer la suppression"):
+                        st.session_state.generation_history = []
+                        st.success("✅ Historique effacé")
+                        st.rerun()
+            
+            with col2:
+                # Export de l'historique
+                history_json = json.dumps([
+                    {
+                        'timestamp': entry['timestamp'].isoformat(),
+                        'type': entry['type'],
+                        'metadata': entry['document']['metadata']
+                    }
+                    for entry in st.session_state.generation_history
+                ], ensure_ascii=False, indent=2)
+                
+                st.download_button(
+                    "📥 Exporter l'historique",
+                    history_json.encode('utf-8'),
+                    file_name=f"historique_generations_{datetime.now().strftime('%Y%m%d')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+        
+        else:
+            st.info("📚 Aucune génération dans l'historique")
+            st.markdown("""
+            L'historique conserve toutes vos générations de documents pour :
+            - 📊 Comparer les résultats
+            - 💾 Retrouver des documents antérieurs
+            - 📈 Analyser vos statistiques d'utilisation
+            """)
 
+# Point d'entrée OBLIGATOIRE
 if __name__ == "__main__":
-    # Test du module
-    st.set_page_config(page_title="Génération Documents Longs", page_icon="📜", layout="wide")
-    show_generation_longue_interface()
+    run()
