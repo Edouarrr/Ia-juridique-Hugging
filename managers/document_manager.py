@@ -31,6 +31,8 @@ from managers.jurisprudence_verifier import JurisprudenceVerifier
 # Import des gestionnaires
 from managers.llm_manager import LLMManager
 from managers.template_manager import TemplateManager
+# Utils
+from utils import generate_document_summary
 # CORRECTION : Import depuis modules au lieu de models
 from modules.dataclasses import (AnalyseJuridique, CasJuridique,
                                  DocumentJuridique)
@@ -46,6 +48,9 @@ class DocumentManager:
         'import': ['.pdf', '.docx', '.txt', '.json', '.xlsx', '.csv'],
         'export': ['pdf', 'docx', 'xlsx', 'json', 'txt']
     }
+
+    # Dossier contenant les documents à analyser
+    BASE_DOCUMENTS_DIR = Path("documents")
     
     def __init__(self):
         # Gestionnaires externes
@@ -817,13 +822,67 @@ class DocumentManager:
         """Retourne des statistiques sur les imports"""
         if not self.imported_documents:
             return {'count': 0}
-            
+
         return {
             'count': len(self.imported_documents),
             'total_size': sum(doc['size'] for doc in self.imported_documents),
             'types': pd.Series([Path(doc['filename']).suffix for doc in self.imported_documents]).value_counts().to_dict(),
             'latest': self.imported_documents[-1]['filename'] if self.imported_documents else None
         }
+
+    def get_summary(self, folder_name: str) -> str:
+        """Génère ou récupère un résumé pour un dossier donné."""
+        try:
+            folder_path = self.BASE_DOCUMENTS_DIR / folder_name
+            if not folder_path.is_dir():
+                return ""
+
+            summary_file = folder_path / "summary.txt"
+            if summary_file.exists():
+                try:
+                    return summary_file.read_text(encoding="utf-8").strip()
+                except Exception as e:
+                    logger.error(f"Erreur lecture summary.txt: {e}")
+
+            texts: List[str] = []
+            for path in folder_path.iterdir():
+                if not path.is_file():
+                    continue
+                ext = path.suffix.lower()
+                content = ""
+                try:
+                    if ext == '.pdf':
+                        with open(path, 'rb') as f:
+                            content = self._extract_pdf_content(f)
+                    elif ext == '.docx':
+                        with open(path, 'rb') as f:
+                            content = self._extract_docx_content(f)
+                    elif ext == '.json':
+                        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = self._extract_json_content(f)
+                    elif ext in ['.xlsx', '.csv']:
+                        with open(path, 'rb') as f:
+                            content = self._extract_table_content(f, ext)
+                    elif ext == '.txt':
+                        content = path.read_text(encoding='utf-8', errors='ignore')
+                except Exception as e:
+                    logger.error(f"Erreur extraction de {path.name}: {e}")
+                    continue
+
+                if content:
+                    texts.append(content.split('\n\n')[0])
+                if len(texts) >= 3:
+                    break
+
+            if not texts:
+                return ""
+
+            combined = '\n'.join(texts)
+            return generate_document_summary(combined)
+
+        except Exception as e:
+            logger.error(f"Erreur résumé dossier {folder_name}: {e}")
+            return ""
 
 
 # ========== FONCTIONS D'INTERFACE STREAMLIT ==========
