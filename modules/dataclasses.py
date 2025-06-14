@@ -8,6 +8,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+
+# Import des énumérations centrales
+from config.app_config import DocumentType, InfractionAffaires, LLMProvider
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 # Imports conditionnels pour éviter les imports circulaires
@@ -17,17 +20,6 @@ if TYPE_CHECKING:
 
 # ========== ENUMS ==========
 
-class DocumentType(Enum):
-    CONCLUSIONS = "conclusions"
-    PLAINTE = "plainte"
-    ASSIGNATION = "assignation"
-    COURRIER = "courrier"
-    EXPERTISE = "expertise"
-    JUGEMENT = "jugement"
-    ORDONNANCE = "ordonnance"
-    PV = "proces_verbal"
-    RAPPORT = "rapport"
-    AUTRE = "autre"
 
 class RiskLevel(Enum):
     """Niveaux de risque"""
@@ -149,38 +141,6 @@ class PhaseProcedure(Enum):
     PRE_CONTENTIEUX = "pré-contentieux"
     PREMIERE_INSTANCE = "première instance"
 
-class InfractionAffaires(Enum):
-    """Types d'infractions pénales des affaires"""
-    ABUS_BIENS_SOCIAUX = "Abus de biens sociaux"
-    CORRUPTION = "Corruption"
-    TRAFIC_INFLUENCE = "Trafic d'influence"
-    FAVORITISME = "Favoritisme"
-    PRISE_ILLEGALE_INTERETS = "Prise illégale d'intérêts"
-    BLANCHIMENT = "Blanchiment"
-    FRAUDE_FISCALE = "Fraude fiscale"
-    ESCROQUERIE = "Escroquerie"
-    ABUS_CONFIANCE = "Abus de confiance"
-    FAUX_USAGE_FAUX = "Faux et usage de faux"
-    BANQUEROUTE = "Banqueroute"
-    RECEL = "Recel"
-    DELIT_INITIE = "Délit d'initié"
-    MANIPULATION_COURS = "Manipulation de cours"
-    ENTRAVE = "Entrave"
-    TRAVAIL_DISSIMULE = "Travail dissimulé"
-    MARCHANDAGE = "Marchandage"
-    HARCELEMENT = "Harcèlement"
-    DISCRIMINATION = "Discrimination"
-
-class LLMProvider(Enum):
-    """Fournisseurs de modèles de langage"""
-    CLAUDE = "claude"
-    OPENAI = "openai"
-    GEMINI = "gemini"
-    LOCAL = "local"
-    PERPLEXITY = "perplexity"
-    MISTRAL = "mistral"
-    GROK = "grok"
-    GROQ = "groq"
 
 class SearchMode(Enum):
     """Modes de recherche"""

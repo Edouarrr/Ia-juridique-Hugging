@@ -28,6 +28,8 @@ try:
 except ImportError:
     # Les dépendances optionnelles ne sont pas disponibles
     pass
+from modules.multi_llm_manager import LLMModel, MultiLLMManager
+from utils import clean_key, format_legal_date, truncate_text
 
 # Énumération des niveaux de risque pénal
 class RiskLevelPenal(Enum):
