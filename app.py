@@ -1,955 +1,903 @@
-"""Application IA Juridique - Droit Pénal des Affaires - Version optimisée"""
+# app.py
+"""Application principale avec gestion Azure et interface de recherche améliorée"""
 
 import streamlit as st
-import streamlit.components.v1 as components
-import os
-import sys
-import time
-import logging
-import traceback
-import importlib
-import importlib.util
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-import json
+import asyncio
+from typing import Dict, List, Optional
+import re
+import sys
+import os
+import traceback
 
-# Configuration du logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+print("=== DÉMARRAGE APPLICATION ===")
 
 # Configuration de la page
 st.set_page_config(
-    page_title="IA Juridique - Droit Pénal des Affaires",
+    page_title="Assistant Pénal des Affaires IA",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS personnalisé
+# Import corrigé - utiliser app_config au lieu de APP_CONFIG
+from config.app_config import app_config, api_config
+from utils.helpers import initialize_session_state
+from utils.styles import load_custom_css
+
+# Import des services - CORRIGÉ : depuis managers au lieu de services
+from managers.universal_search_service import UniversalSearchService
+
+# Styles CSS personnalisés fusionnés
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #1a237e 0%, #3949ab 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+    /* Styles de base */
+    .main-title {
         text-align: center;
-        padding: 1rem 0;
+        padding: 2rem 0;
     }
-    .module-card {
-        background: #f8f9fa;
+    
+    .main-title h1 {
+        color: #1a237e;
+        font-size: 3rem;
+    }
+    
+    .main-title p {
+        color: #666;
+        font-size: 1.2rem;
+    }
+    
+    /* Styles pour la barre de recherche */
+    .search-container {
+        background-color: #f0f2f6;
+        padding: 20px;
         border-radius: 10px;
-        padding: 1.5rem;
-        margin: 0.5rem 0;
-        border: 1px solid #e0e0e0;
+        margin-bottom: 20px;
+    }
+    
+    /* Style pour les résultats */
+    .result-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        border-left: 4px solid #1f77b4;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.3s ease;
     }
-    .module-card:hover {
+    
+    .result-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
-    .status-ok { color: #4caf50; }
-    .status-error { color: #f44336; }
-    .status-warning { color: #ff9800; }
+    
+    /* Style pour les tags */
+    .tag {
+        display: inline-block;
+        padding: 4px 8px;
+        margin: 2px;
+        background-color: #e1ecf4;
+        border-radius: 3px;
+        font-size: 0.85em;
+        color: #39739d;
+    }
+    
+    /* Style pour la référence @ */
+    .reference-tag {
+        background-color: #ffd93d;
+        color: #6c4a00;
+        font-weight: bold;
+    }
+    
+    /* Indicateur de recherche */
+    .search-indicator {
+        text-align: center;
+        color: #666;
+        font-style: italic;
+        margin: 20px 0;
+    }
+    
+    /* Bouton de recherche amélioré */
+    .stButton > button {
+        background-color: #1f77b4;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #1557a0;
+        transform: translateY(-2px);
+    }
+    
+    /* Styles pour les métriques Azure */
+    .azure-status {
+        padding: 10px;
+        border-radius: 5px;
+        margin: 5px 0;
+    }
+    
+    .azure-connected {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .azure-disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    
+    /* Style pour les highlights */
+    mark {
+        background-color: #ffd93d;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ========== CONFIGURATION DES MODULES ==========
-# Configuration complète de tous les modules existants
-MODULES_CONFIG = {
-    # Modules d'analyse
-    "comparison": {
-        "name": "📊 Comparaison de documents",
-        "desc": "Analyse comparative avec détection des contradictions",
-        "category": "analyse",
-        "priority": 1
-    },
-    "timeline": {
-        "name": "📅 Timeline juridique",
-        "desc": "Chronologie des infractions et procédures",
-        "category": "analyse",
-        "priority": 2
-    },
-    "extraction": {
-        "name": "📑 Extraction d'informations",
-        "desc": "Extraction des éléments constitutifs",
-        "category": "analyse",
-        "priority": 3
-    },
-    "mapping": {
-        "name": "🗺️ Cartographie des relations",
-        "desc": "Analyse des réseaux d'entités et relations",
-        "category": "analyse",
-        "priority": 4
-    },
-    "recherche_analyse_unifiee": {
-        "name": "🔍 Recherche & Analyse unifiée",
-        "desc": "Recherche intelligente multi-sources avec IA",
-        "category": "analyse",
-        "priority": 5
-    },
-    
-    # Modules de stratégie
-    "strategy": {
-        "name": "⚖️ Stratégie de défense",
-        "desc": "Élaboration de stratégies pénales",
-        "category": "strategie",
-        "priority": 1
-    },
-    "plaidoirie": {
-        "name": "🎯 Plaidoirie pénale",
-        "desc": "Préparation des plaidoiries",
-        "category": "strategie",
-        "priority": 2
-    },
-    "preparation_client": {
-        "name": "👤 Préparation client",
-        "desc": "Préparer aux interrogatoires",
-        "category": "strategie",
-        "priority": 3
-    },
-    
-    # Modules de rédaction
-    "redaction_unified": {
-        "name": "✍️ Rédaction juridique",
-        "desc": "Génération de tous types de documents",
-        "category": "redaction",
-        "priority": 1
-    },
-    "generation_longue": {
-        "name": "📜 Génération longue",
-        "desc": "Documents juridiques complexes et détaillés",
-        "category": "redaction",
-        "priority": 2
-    },
-    
-    # Modules de gestion
-    "import_export": {
-        "name": "📁 Import/Export",
-        "desc": "Gestion des documents et données",
-        "category": "gestion",
-        "priority": 1
-    },
-    "pieces_manager": {
-        "name": "📎 Gestion des pièces",
-        "desc": "Organisation du dossier pénal",
-        "category": "gestion",
-        "priority": 2
-    },
-    "dossier_penal": {
-        "name": "📂 Dossier pénal unifié",
-        "desc": "Vue d'ensemble du dossier",
-        "category": "gestion",
-        "priority": 3
-    },
-    
-    # Modules spécialisés
-    "jurisprudence": {
-        "name": "⚖️ Jurisprudence",
-        "desc": "Recherche et analyse de jurisprudence",
-        "category": "specialise",
-        "priority": 1
-    },
-    "email": {
-        "name": "📧 Gestion des emails",
-        "desc": "Centre de messagerie juridique avec IA",
-        "category": "communication",
-        "priority": 1
-    }
-}
+# Initialisation du service de recherche
+@st.cache_resource
+def get_search_service():
+    """Initialise et retourne le service de recherche"""
+    return UniversalSearchService()
 
-# Modules à vérifier/créer (ceux qui pourraient manquer)
-MODULES_TO_CREATE = {
-    # Modules possiblement manquants
-    "search_module": {
-        "name": "🔍 Recherche simple",
-        "desc": "Recherche basique dans les documents",
-        "category": "analyse",
-        "priority": 6
-    },
-    "contradiction_analysis": {
-        "name": "⚡ Analyse contradictions",
-        "desc": "Détection automatique des incohérences",
-        "category": "analyse",
-        "priority": 7
-    },
-    "conclusions": {
-        "name": "📝 Conclusions pénales",
-        "desc": "Rédaction de conclusions",
-        "category": "redaction",
-        "priority": 3
-    },
-    "courrier_juridique": {
-        "name": "✉️ Courriers juridiques",
-        "desc": "Correspondances et notifications",
-        "category": "redaction",
-        "priority": 4
-    },
-    "bordereau": {
-        "name": "📋 Bordereau de pièces",
-        "desc": "Génération de bordereaux",
-        "category": "redaction",
-        "priority": 5
-    },
-    "calcul_prejudice": {
-        "name": "💰 Calcul préjudice",
-        "desc": "Évaluation des préjudices",
-        "category": "specialise",
-        "priority": 2
-    },
-    "procedure_verification": {
-        "name": "✅ Vérification procédure",
-        "desc": "Contrôle de conformité procédurale",
-        "category": "specialise",
-        "priority": 3
-    },
-    "risk_assessment": {
-        "name": "⚠️ Évaluation risques",
-        "desc": "Analyse des risques juridiques",
-        "category": "specialise",
-        "priority": 4
-    },
-    "evidence_chain": {
-        "name": "🔗 Chaîne de preuves",
-        "desc": "Gestion et analyse des preuves",
-        "category": "specialise",
-        "priority": 5
-    },
-    "negotiation": {
-        "name": "🤝 Négociation pénale",
-        "desc": "Stratégies de négociation",
-        "category": "strategie",
-        "priority": 4
-    },
-    "witness_preparation": {
-        "name": "👥 Préparation témoins",
-        "desc": "Préparer les témoins",
-        "category": "strategie",
-        "priority": 5
-    },
-    "report_generation": {
-        "name": "📊 Génération rapports",
-        "desc": "Création de rapports juridiques",
-        "category": "redaction",
-        "priority": 6
-    },
-    "integration_juridique": {
-        "name": "🔌 Intégration juridique",
-        "desc": "Intégration avec systèmes externes",
-        "category": "technique",
-        "priority": 1
-    },
-    "chat": {
-        "name": "💬 Chat juridique",
-        "desc": "Assistant conversationnel juridique",
-        "category": "communication",
-        "priority": 2
-    }
-}
-
-# ========== GESTIONNAIRE DE MODULES ==========
-class ModuleManager:
-    """Gestionnaire centralisé des modules"""
+def init_azure_managers():
+    """Initialise les gestionnaires Azure avec logs détaillés"""
     
-    def __init__(self):
-        self.modules_path = Path(__file__).parent / "modules"
-        self.managers_path = Path(__file__).parent / "managers"
-        self.loaded_modules = {}
-        self.available_modules = {}
-        self.load_status = {"success": [], "failed": {}, "warnings": []}
-        
-    def discover_modules(self):
-        """Découvre tous les modules disponibles"""
-        # Vérifier l'existence du dossier modules
-        if not self.modules_path.exists():
-            self.load_status["warnings"].append(f"Dossier modules non trouvé : {self.modules_path}")
-            logger.error(f"❌ Dossier modules non trouvé : {self.modules_path}")
-            return
-        
-        logger.info(f"📂 Scan du dossier : {self.modules_path}")
-        
-        # Scanner les fichiers Python
-        module_files = list(self.modules_path.glob("*.py"))
-        logger.info(f"📋 Fichiers trouvés : {[f.name for f in module_files]}")
-        
-        for module_file in module_files:
-            if module_file.name.startswith("_"):
-                continue
-                
-            module_name = module_file.stem
-            logger.info(f"🔍 Analyse du module : {module_name}")
-            
-            # Chercher d'abord dans MODULES_CONFIG
-            if module_name in MODULES_CONFIG:
-                self.available_modules[module_name] = {
-                    "path": module_file,
-                    "config": MODULES_CONFIG[module_name],
-                    "loaded": False
-                }
-                logger.info(f"✅ Module reconnu : {module_name}")
-            # Puis dans MODULES_TO_CREATE (au cas où ils ont été créés)
-            elif module_name in MODULES_TO_CREATE:
-                self.available_modules[module_name] = {
-                    "path": module_file,
-                    "config": MODULES_TO_CREATE[module_name],
-                    "loaded": False
-                }
-                logger.info(f"✅ Module optionnel trouvé : {module_name}")
-            else:
-                logger.warning(f"⚠️ Module non configuré : {module_name}")
-                self.load_status["warnings"].append(f"Module {module_name} trouvé mais non configuré")
+    print("=== INITIALISATION AZURE ===")
     
-    def load_module(self, module_name: str) -> bool:
-        """Charge un module spécifique"""
-        if module_name in self.loaded_modules:
-            return True
-            
-        if module_name not in self.available_modules:
-            self.load_status["failed"][module_name] = "Module non trouvé dans la configuration"
-            return False
-            
-        module_info = self.available_modules[module_name]
-        module_path = module_info["path"]
-        
+    # Azure Blob Manager
+    if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
+        print("Initialisation Azure Blob Manager...")
         try:
-            # Import dynamique du module - CORRECTION ICI
-            spec = importlib.util.spec_from_file_location(
-                f"modules.{module_name}",  # Chemin corrigé
-                module_path
-            )
+            from managers.azure_blob_manager import AzureBlobManager
             
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[f"modules.{module_name}"] = module
-                spec.loader.exec_module(module)
+            print("Import AzureBlobManager réussi")
+            manager = AzureBlobManager()
+            print(f"AzureBlobManager créé: {manager}")
+            
+            st.session_state.azure_blob_manager = manager
+            
+            if hasattr(manager, 'is_connected') and manager.is_connected():
+                print("✅ Azure Blob connecté avec succès")
+                containers = manager.list_containers()
+                print(f"Containers trouvés: {containers}")
+            else:
+                print("❌ Azure Blob non connecté")
+                if hasattr(manager, 'get_connection_error'):
+                    error = manager.get_connection_error()
+                    print(f"Erreur: {error}")
+                    
+        except Exception as e:
+            print(f"❌ Erreur fatale Azure Blob: {e}")
+            print(traceback.format_exc())
+            st.session_state.azure_blob_manager = None
+    else:
+        print("Azure Blob Manager déjà initialisé")
+    
+    # Azure Search Manager  
+    if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
+        print("Initialisation Azure Search Manager...")
+        try:
+            from managers.azure_search_manager import AzureSearchManager
+            
+            print("Import AzureSearchManager réussi")
+            manager = AzureSearchManager()
+            print(f"AzureSearchManager créé: {manager}")
+            
+            st.session_state.azure_search_manager = manager
+            
+            if hasattr(manager, 'search_client') and manager.search_client:
+                print("✅ Azure Search connecté avec succès")
+            else:
+                print("❌ Azure Search non connecté")
+                if hasattr(manager, 'get_connection_error'):
+                    error = manager.get_connection_error()
+                    print(f"Erreur: {error}")
+                    
+        except Exception as e:
+            print(f"❌ Erreur fatale Azure Search: {e}")
+            print(traceback.format_exc())
+            st.session_state.azure_search_manager = None
+    else:
+        print("Azure Search Manager déjà initialisé")
+
+def reinit_azure():
+    """Force la réinitialisation d'Azure"""
+    print("=== RÉINITIALISATION AZURE FORCÉE ===")
+    
+    # Supprimer les managers existants
+    if 'azure_blob_manager' in st.session_state:
+        del st.session_state.azure_blob_manager
+    if 'azure_search_manager' in st.session_state:
+        del st.session_state.azure_search_manager
+    
+    # Réinitialiser
+    init_azure_managers()
+    
+    st.rerun()
+
+def show_azure_status_detailed():
+    """Affichage détaillé du statut Azure avec diagnostics"""
+    
+    # Test des variables d'environnement
+    conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+    search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+    search_key = os.getenv('AZURE_SEARCH_KEY')
+    
+    # Azure Blob
+    st.markdown("**Azure Blob Storage**")
+    blob_manager = st.session_state.get('azure_blob_manager')
+    
+    if not conn_str:
+        st.error("❌ Connection String manquante")
+    elif not blob_manager:
+        st.error("❌ Manager non initialisé")
+    elif hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
+        st.success("✅ Connecté")
+        containers = blob_manager.list_containers()
+        if containers:
+            st.caption(f"{len(containers)} containers")
+        else:
+            st.caption("0 containers")
+    else:
+        st.error("❌ Non connecté")
+        if hasattr(blob_manager, 'get_connection_error'):
+            error = blob_manager.get_connection_error()
+            st.caption(error[:40] + "..." if error and len(error) > 40 else error or "Erreur inconnue")
+    
+    # Azure Search
+    st.markdown("**Azure Search**")
+    search_manager = st.session_state.get('azure_search_manager')
+    
+    if not search_endpoint or not search_key:
+        st.error("❌ Endpoint/Key manquant")
+    elif not search_manager:
+        st.error("❌ Manager non initialisé")
+    elif hasattr(search_manager, 'search_client') and search_manager.search_client:
+        st.success("✅ Connecté")
+        st.caption("Index: juridique-index")
+    else:
+        st.error("❌ Non connecté")
+        if hasattr(search_manager, 'get_connection_error'):
+            error = search_manager.get_connection_error()
+            st.caption(error[:40] + "..." if error and len(error) > 40 else error or "Erreur inconnue")
+
+def show_configuration_modal():
+    """Affiche la configuration dans un modal"""
+    with st.container():
+        st.markdown("---")
+        st.header("⚙️ Configuration")
+        
+        tabs = st.tabs(["🔑 Variables", "🔧 Azure", "🧪 Tests"])
+        
+        with tabs[0]:
+            st.subheader("Variables d'environnement")
+            
+            vars_to_check = [
+                ("AZURE_STORAGE_CONNECTION_STRING", "Azure Blob Storage"),
+                ("AZURE_SEARCH_ENDPOINT", "Azure Search URL"),
+                ("AZURE_SEARCH_KEY", "Azure Search Key"),
+                ("ANTHROPIC_API_KEY", "Claude API"),
+                ("OPENAI_API_KEY", "OpenAI API"),
+                ("GOOGLE_API_KEY", "Google Gemini API")
+            ]
+            
+            for var, desc in vars_to_check:
+                col1, col2, col3 = st.columns([3, 1, 2])
+                with col1:
+                    st.text(desc)
+                with col2:
+                    if os.getenv(var):
+                        st.success("✅")
+                    else:
+                        st.error("❌")
+                with col3:
+                    if os.getenv(var):
+                        value = os.getenv(var)
+                        st.caption(f"{value[:20]}...")
+        
+        with tabs[1]:
+            st.subheader("Diagnostics Azure détaillés")
+            
+            # Azure Blob
+            with st.expander("🗄️ Azure Blob Storage", expanded=True):
+                blob_manager = st.session_state.get('azure_blob_manager')
                 
-                # Vérifier que le module a une fonction run()
-                if hasattr(module, 'run'):
-                    self.loaded_modules[module_name] = module
-                    module_info["loaded"] = True
-                    self.load_status["success"].append(module_name)
-                    logger.info(f"✅ Module {module_name} chargé avec succès")
-                    return True
+                conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+                st.write(f"**Connection String:** {'✅ Présente' if conn_str else '❌ Manquante'}")
+                
+                if blob_manager:
+                    st.write(f"**Manager:** ✅ Initialisé")
+                    if hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
+                        st.success("✅ Connexion active")
+                        containers = blob_manager.list_containers()
+                        st.write(f"**Containers:** {len(containers)}")
+                        for container in containers[:5]:
+                            st.text(f"• {container}")
+                    else:
+                        st.error("❌ Connexion échouée")
+                        if hasattr(blob_manager, 'get_connection_error'):
+                            error = blob_manager.get_connection_error()
+                            st.error(f"**Erreur:** {error}")
                 else:
-                    self.load_status["failed"][module_name] = "Fonction run() non trouvée"
-                    logger.error(f"❌ Module {module_name} : pas de fonction run()")
-                    return False
-            else:
-                self.load_status["failed"][module_name] = "Impossible de créer les specs"
-                return False
+                    st.error("❌ Manager non initialisé")
+            
+            # Azure Search
+            with st.expander("🔍 Azure Search", expanded=True):
+                search_manager = st.session_state.get('azure_search_manager')
                 
-        except Exception as e:
-            self.load_status["failed"][module_name] = str(e)
-            logger.error(f"Erreur chargement {module_name}: {traceback.format_exc()}")
-            return False
-    
-    def run_module(self, module_name: str):
-        """Exécute un module"""
-        if module_name not in self.loaded_modules:
-            if not self.load_module(module_name):
-                st.error(f"❌ Impossible de charger le module {module_name}")
-                if module_name in self.load_status["failed"]:
-                    st.error(f"Erreur : {self.load_status['failed'][module_name]}")
-                return
+                endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
+                key = os.getenv('AZURE_SEARCH_KEY')
+                st.write(f"**Endpoint:** {'✅ Présent' if endpoint else '❌ Manquant'}")
+                st.write(f"**Key:** {'✅ Présente' if key else '❌ Manquante'}")
+                
+                if search_manager:
+                    st.write(f"**Manager:** ✅ Initialisé")
+                    if hasattr(search_manager, 'search_client') and search_manager.search_client:
+                        st.success("✅ Connexion active")
+                        st.write(f"**Index:** {getattr(search_manager, 'index_name', 'juridique-index')}")
+                    else:
+                        st.error("❌ Connexion échouée")
+                        if hasattr(search_manager, 'get_connection_error'):
+                            error = search_manager.get_connection_error()
+                            st.error(f"**Erreur:** {error}")
+                else:
+                    st.error("❌ Manager non initialisé")
         
+        with tabs[2]:
+            st.subheader("Tests de connexion")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("🧪 Tester Azure Blob", key="test_blob", use_container_width=True):
+                    test_azure_blob()
+            
+            with col2:
+                if st.button("🧪 Tester Azure Search", key="test_search", use_container_width=True):
+                    test_azure_search()
+            
+            with col3:
+                if st.button("🧪 Tester tout", key="test_all", use_container_width=True):
+                    test_azure_blob()
+                    test_azure_search()
+            
+            # Affichage des informations de configuration
+            if app_config:
+                st.markdown("---")
+                st.subheader("Configuration actuelle")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Version app:** {app_config.version}")
+                    st.write(f"**Debug mode:** {app_config.debug}")
+                    st.write(f"**Max file size:** {app_config.max_file_size_mb} MB")
+                    st.write(f"**Max files:** {app_config.max_files_per_upload}")
+                
+                with col2:
+                    st.write(f"**Azure Storage:** {'✅' if app_config.enable_azure_storage else '❌'}")
+                    st.write(f"**Azure Search:** {'✅' if app_config.enable_azure_search else '❌'}")
+                    st.write(f"**Multi-LLM:** {'✅' if app_config.enable_multi_llm else '❌'}")
+                    st.write(f"**Email:** {'✅' if app_config.enable_email else '❌'}")
+        
+        if st.button("❌ Fermer", key="close_config"):
+            st.session_state.show_config_modal = False
+            st.rerun()
+
+def test_azure_blob():
+    """Test de connexion Azure Blob"""
+    with st.spinner("Test Azure Blob..."):
         try:
-            # Exécuter le module
-            self.loaded_modules[module_name].run()
+            from managers.azure_blob_manager import AzureBlobManager
+            test_manager = AzureBlobManager()
+            
+            if test_manager.is_connected():
+                containers = test_manager.list_containers()
+                st.success(f"✅ Azure Blob OK - {len(containers)} containers")
+            else:
+                error = test_manager.get_connection_error()
+                st.error(f"❌ Azure Blob KO: {error}")
         except Exception as e:
-            st.error(f"❌ Erreur lors de l'exécution du module {module_name}")
-            st.error(str(e))
-            logger.error(f"Erreur exécution {module_name}: {traceback.format_exc()}")
-    
-    def get_modules_by_category(self) -> Dict[str, List[Dict]]:
-        """Retourne les modules groupés par catégorie"""
-        modules_by_cat = {}
-        
-        for name, info in self.available_modules.items():
-            config = info["config"]
-            category = config.get("category", "autre")
+            st.error(f"❌ Erreur test Azure Blob: {e}")
+
+def test_azure_search():
+    """Test de connexion Azure Search"""
+    with st.spinner("Test Azure Search..."):
+        try:
+            from managers.azure_search_manager import AzureSearchManager
+            test_manager = AzureSearchManager()
             
-            if category not in modules_by_cat:
-                modules_by_cat[category] = []
+            if test_manager.search_client:
+                st.success("✅ Azure Search OK")
+            else:
+                error = test_manager.get_connection_error()
+                st.error(f"❌ Azure Search KO: {error}")
+        except Exception as e:
+            st.error(f"❌ Erreur test Azure Search: {e}")
+
+# Fonction pour afficher les suggestions
+def show_search_suggestions(query: str):
+    """Affiche des suggestions basées sur la requête"""
+    suggestions = []
+    
+    if query:
+        # Suggestions de références @
+        if '@' in query and not re.search(r'@\w+', query):
+            suggestions.extend([
+                "@VINCI2024", "@SOGEPROM", "@PERINET", "@ABS001"
+            ])
+        
+        # Suggestions de types de documents
+        if len(query) > 2:
+            doc_types = ["conclusions", "plainte", "assignation", "courrier", "expertise"]
+            for doc_type in doc_types:
+                if doc_type.startswith(query.lower()):
+                    suggestions.append(doc_type)
+        
+        # Suggestions d'infractions
+        if "infraction" in query.lower() or "abus" in query.lower():
+            suggestions.extend([
+                "abus de biens sociaux", "corruption", "escroquerie"
+            ])
+    
+    if suggestions:
+        st.caption("💡 Suggestions:")
+        cols = st.columns(min(len(suggestions), 4))
+        for idx, suggestion in enumerate(suggestions[:4]):
+            with cols[idx]:
+                if st.button(suggestion, key=f"sugg_{idx}"):
+                    st.session_state.search_query = query + " " + suggestion
+
+# Fonction principale de recherche
+async def perform_search(query: str, filters: Optional[Dict] = None):
+    """Effectue la recherche et affiche les résultats"""
+    search_service = get_search_service()
+    
+    # Indicateur de recherche en cours
+    with st.spinner(f"🔍 Recherche en cours pour : **{query}**"):
+        results = await search_service.search(query, filters)
+    
+    return results
+
+# Fonction pour afficher un résultat améliorée
+def display_result_enhanced(doc, index: int):
+    """Affiche un résultat de recherche avec highlights"""
+    with st.container():
+        col1, col2 = st.columns([10, 2])
+        
+        with col1:
+            # Titre avec numéro et score
+            score_badge = ""
+            if doc.metadata.get('score', 0) >= 20:
+                score_badge = "🔥"  # Haute pertinence
+            elif doc.metadata.get('score', 0) >= 10:
+                score_badge = "⭐"  # Pertinence moyenne
             
-            modules_by_cat[category].append({
-                "id": name,
-                "name": config["name"],
-                "desc": config["desc"],
-                "loaded": info["loaded"],
-                "priority": config.get("priority", 99)
-            })
+            st.markdown(f"### {index}. {doc.title} {score_badge}")
+            
+            # Afficher les métadonnées
+            metadata_cols = st.columns(4)
+            with metadata_cols[0]:
+                st.caption(f"📄 Source: {doc.source}")
+            with metadata_cols[1]:
+                st.caption(f"🆔 ID: {doc.id[:8]}...")
+            with metadata_cols[2]:
+                if doc.metadata.get('score'):
+                    st.caption(f"⭐ Score: {doc.metadata['score']:.2f}")
+            with metadata_cols[3]:
+                if doc.metadata.get('type'):
+                    st.caption(f"📁 Type: {doc.metadata['type']}")
+            
+            # Afficher les highlights s'ils existent
+            if hasattr(doc, 'highlights') and doc.highlights:
+                st.markdown("**Extraits pertinents:**")
+                for highlight in doc.highlights[:3]:
+                    st.markdown(f"> *...{highlight}...*")
+            else:
+                # Sinon, afficher un extrait du contenu
+                content_preview = doc.content[:300] + "..." if len(doc.content) > 300 else doc.content
+                st.markdown(f"<div class='result-card'>{content_preview}</div>", unsafe_allow_html=True)
+            
+            # Afficher la date si disponible
+            if doc.metadata.get('date'):
+                st.caption(f"📅 Date: {doc.metadata['date']}")
         
-        # Trier par priorité
-        for category in modules_by_cat:
-            modules_by_cat[category].sort(key=lambda x: x["priority"])
-        
-        return modules_by_cat
+        with col2:
+            # Boutons d'action
+            if st.button("📖 Voir détails", key=f"view_{index}"):
+                st.session_state.selected_document = doc
+                st.session_state.show_document_modal = True
+            
+            if st.button("📥 Télécharger", key=f"download_{index}"):
+                # Implémenter le téléchargement
+                pass
+            
+            if st.button("🔗 Partager", key=f"share_{index}"):
+                # Implémenter le partage
+                pass
 
-# ========== GESTIONNAIRE MULTI-LLM ==========
-def load_multi_llm_manager():
-    """Charge le gestionnaire multi-LLM"""
-    try:
-        from managers.multi_llm_manager import MultiLLMManager
-        return MultiLLMManager(), True
-    except ImportError:
-        logger.warning("MultiLLMManager non disponible")
-        return None, False
-    except Exception as e:
-        logger.error(f"Erreur chargement MultiLLMManager: {e}")
-        return None, False
+def display_search_facets(facets: Dict[str, Dict[str, int]]):
+    """Affiche les facettes de recherche pour filtrage dynamique"""
+    if not facets:
+        return
+    
+    st.markdown("### 📊 Affiner la recherche")
+    
+    cols = st.columns(3)
+    
+    # Facette Sources
+    with cols[0]:
+        if facets.get('sources'):
+            st.markdown("**Sources**")
+            for source, count in sorted(facets['sources'].items(), key=lambda x: x[1], reverse=True)[:5]:
+                if st.checkbox(f"{source} ({count})", key=f"facet_source_{source}"):
+                    # Ajouter au filtre
+                    if 'active_filters' not in st.session_state:
+                        st.session_state.active_filters = {}
+                    st.session_state.active_filters['source'] = source
+    
+    # Facette Types
+    with cols[1]:
+        if facets.get('types'):
+            st.markdown("**Types de documents**")
+            for doc_type, count in sorted(facets['types'].items(), key=lambda x: x[1], reverse=True)[:5]:
+                type_display = doc_type.upper() if doc_type != 'unknown' else 'Non classé'
+                if st.checkbox(f"{type_display} ({count})", key=f"facet_type_{doc_type}"):
+                    # Ajouter au filtre
+                    if 'active_filters' not in st.session_state:
+                        st.session_state.active_filters = {}
+                    st.session_state.active_filters['type'] = doc_type
+    
+    # Facette Scores
+    with cols[2]:
+        if facets.get('scores'):
+            st.markdown("**Pertinence**")
+            scores = facets['scores']
+            if scores.get('high', 0) > 0:
+                if st.checkbox(f"🔥 Très pertinent ({scores['high']})", key="facet_score_high"):
+                    st.session_state.filter_high_score = True
+            if scores.get('medium', 0) > 0:
+                if st.checkbox(f"⭐ Pertinent ({scores['medium']})", key="facet_score_medium"):
+                    st.session_state.filter_medium_score = True
+            if scores.get('low', 0) > 0:
+                if st.checkbox(f"📄 Peu pertinent ({scores['low']})", key="facet_score_low"):
+                    st.session_state.filter_low_score = True
 
-# ========== INITIALISATION ==========
-def init_session_state():
-    """Initialise l'état de session"""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = True
-        st.session_state.current_view = 'dashboard'
-        st.session_state.module_manager = ModuleManager()
-        st.session_state.multi_llm_manager = None
-        st.session_state.azure_connected = False
-        
-        # Découvrir les modules
-        st.session_state.module_manager.discover_modules()
-        
-        # Charger le gestionnaire LLM
-        llm_manager, llm_success = load_multi_llm_manager()
-        if llm_success:
-            st.session_state.multi_llm_manager = llm_manager
+def display_search_suggestions(suggestions: List[str]):
+    """Affiche les suggestions de recherche alternative"""
+    if not suggestions:
+        return
+    
+    st.markdown("### 💡 Essayez aussi")
+    
+    cols = st.columns(len(suggestions))
+    for idx, suggestion in enumerate(suggestions):
+        with cols[idx]:
+            if st.button(f"🔍 {suggestion}", key=f"suggestion_{idx}", use_container_width=True):
+                # Relancer la recherche avec la suggestion
+                st.session_state.search_input = suggestion
+                st.rerun()
 
-# ========== INTERFACE PRINCIPALE ==========
-def show_dashboard():
-    """Affiche le tableau de bord principal"""
-    st.markdown('<h1 class="main-header">⚖️ IA Juridique - Droit Pénal des Affaires</h1>', unsafe_allow_html=True)
+def show_document_modal():
+    """Affiche le modal de détail d'un document"""
+    if st.session_state.get('show_document_modal') and st.session_state.get('selected_document'):
+        doc = st.session_state.selected_document
+        
+        with st.container():
+            st.markdown("---")
+            st.markdown(f"## 📄 {doc.title}")
+            
+            # Métadonnées
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write(f"**Source:** {doc.source}")
+            with col2:
+                st.write(f"**Type:** {doc.metadata.get('type', 'Document')}")
+            with col3:
+                if doc.metadata.get('date'):
+                    st.write(f"**Date:** {doc.metadata['date']}")
+            
+            # Contenu complet
+            st.markdown("### Contenu")
+            
+            # Si highlights disponibles, les mettre en évidence
+            if hasattr(doc, 'highlights') and doc.highlights:
+                content_with_highlights = doc.content
+                for highlight in doc.highlights:
+                    # Mettre en surbrillance les passages
+                    content_with_highlights = content_with_highlights.replace(
+                        highlight, 
+                        f"<mark style='background-color: #ffd93d;'>{highlight}</mark>"
+                    )
+                st.markdown(content_with_highlights, unsafe_allow_html=True)
+            else:
+                st.text_area("", doc.content, height=400, disabled=True)
+            
+            # Actions
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("📥 Télécharger", key="modal_download"):
+                    # Implémenter le téléchargement
+                    pass
+            with col2:
+                if st.button("📧 Envoyer par email", key="modal_email"):
+                    # Implémenter l'envoi
+                    pass
+            with col3:
+                if st.button("❌ Fermer", key="modal_close"):
+                    st.session_state.show_document_modal = False
+                    st.session_state.selected_document = None
+                    st.rerun()
+
+# Interface principale
+def main():
+    """Interface principale de l'application"""
     
-    # Métriques principales
-    col1, col2, col3, col4 = st.columns(4)
+    print("=== DÉBUT MAIN ===")
     
-    with col1:
-        total_modules = len(st.session_state.module_manager.available_modules)
-        st.metric("📦 Modules disponibles", total_modules, delta="+1" if total_modules > 8 else None)
+    # Initialisation
+    initialize_session_state()
+    load_custom_css()
     
-    with col2:
-        loaded_modules = len(st.session_state.module_manager.loaded_modules)
-        st.metric("✅ Modules chargés", loaded_modules)
+    # FORCER l'initialisation Azure AU DÉBUT
+    init_azure_managers()
     
-    with col3:
-        llm_status = "✅" if st.session_state.multi_llm_manager else "❌"
-        st.metric("🤖 Multi-LLM", llm_status)
-    
-    with col4:
-        missing_count = len([m for m in MODULES_TO_CREATE if not (Path(__file__).parent / "modules" / f"{m}.py").exists()])
-        st.metric("📋 À créer", missing_count, delta=f"-{15-missing_count}" if missing_count < 15 else None)
+    # Titre principal
+    st.markdown("""
+    <div class='main-title'>
+        <h1>⚖️ Assistant Pénal des Affaires IA</h1>
+        <p>Intelligence artificielle au service du droit pénal économique</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Afficher les modules non configurés s'il y en a
-    show_modules_unconfigured()
-    
-    # Alerte si des modules manquent
-    missing_modules = []
-    for module_id in MODULES_TO_CREATE:
-        module_path = Path(__file__).parent / "modules" / f"{module_id}.py"
-        if not module_path.exists():
-            missing_modules.append(module_id)
-    
-    if missing_modules:
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.warning(f"⚠️ {len(missing_modules)} modules supplémentaires peuvent être créés pour étendre les fonctionnalités")
-        with col2:
-            if st.button("📋 Voir les détails", key="show_missing"):
-                st.session_state.show_missing_details = not st.session_state.get('show_missing_details', False)
-        
-        if st.session_state.get('show_missing_details', False):
-            with st.expander("Modules disponibles à la création", expanded=True):
-                for module_id in missing_modules:
-                    config = MODULES_TO_CREATE[module_id]
-                    st.write(f"• **{config['name']}** - {config['desc']}")
-                
-                if st.button("🔧 Créer tous les modules manquants", type="primary"):
-                    create_missing_modules()
-                    st.rerun()
-    else:
-        st.success("✅ Tous les modules optionnels ont été créés !")
-    
-    # Modules par catégorie
-    modules_by_cat = st.session_state.module_manager.get_modules_by_category()
-    
-    if not modules_by_cat:
-        st.warning("⚠️ Aucun module trouvé. Vérifiez la structure du projet.")
-        show_troubleshooting()
-        return
-    
-    # Afficher les modules par catégorie
-    categories_display = {
-        "analyse": ("📊 Analyse", "Modules d'analyse et extraction"),
-        "strategie": ("⚖️ Stratégie", "Modules de stratégie juridique"),
-        "redaction": ("✍️ Rédaction", "Modules de génération de documents"),
-        "gestion": ("📁 Gestion", "Modules de gestion des dossiers"),
-        "specialise": ("🎯 Spécialisé", "Modules spécialisés"),
-        "communication": ("💬 Communication", "Modules de communication"),
-        "technique": ("🔧 Technique", "Modules techniques"),
-        "autre": ("📦 Autres", "Modules divers")
-    }
-    
-    for cat_key, (cat_title, cat_desc) in categories_display.items():
-        if cat_key in modules_by_cat:
-            st.markdown(f"### {cat_title}")
-            st.caption(cat_desc)
-            
-            cols = st.columns(3)
-            for idx, module in enumerate(modules_by_cat[cat_key]):
-                with cols[idx % 3]:
-                    # Carte de module
-                    status_icon = "✅" if module["loaded"] else "⚠️"
-                    
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="module-card">
-                            <h4>{status_icon} {module['name']}</h4>
-                            <p style="color: #666; font-size: 0.9em;">{module['desc']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        if st.button(
-                            "Ouvrir", 
-                            key=f"open_{module['id']}", 
-                            use_container_width=True
-                        ):
-                            st.session_state.current_view = module['id']
-                            st.rerun()
-            
-            st.markdown("")
-
-def show_sidebar():
-    """Affiche la barre latérale"""
+    # Barre latérale avec statut Azure et filtres
     with st.sidebar:
-        st.markdown("## ⚖️ Navigation")
+        # État du système Azure
+        st.header("📊 État du système")
+        show_azure_status_detailed()
         
-        # Bouton Accueil
-        if st.button("🏠 Tableau de bord", use_container_width=True):
-            st.session_state.current_view = 'dashboard'
-            st.rerun()
-        
+        # Métriques
         st.markdown("---")
-        
-        # Modules rapides (seulement ceux qui existent)
-        st.markdown("### 🚀 Accès rapide")
-        quick_modules = ["recherche_analyse_unifiee", "import_export", "strategy", "redaction_unified", "email", "jurisprudence"]
-        
-        for module_id in quick_modules:
-            if module_id in st.session_state.module_manager.available_modules:
-                config = st.session_state.module_manager.available_modules[module_id]["config"]
-                if st.button(config["name"], use_container_width=True, key=f"quick_{module_id}"):
-                    st.session_state.current_view = module_id
-                    st.rerun()
-        
-        st.markdown("---")
-        
-        # Statut système
-        st.markdown("### 📊 Statut système")
-        
-        # Modules existants
-        available = len(st.session_state.module_manager.available_modules)
-        total_possible = len(MODULES_CONFIG) + len(MODULES_TO_CREATE)
-        missing = len([m for m in MODULES_TO_CREATE if not (Path(__file__).parent / "modules" / f"{m}.py").exists()])
+        nb_docs = len(st.session_state.get('azure_documents', {}))
+        nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
         
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("📦 Existants", available)
+            st.metric("Documents", nb_docs)
         with col2:
-            st.metric("📋 Optionnels", missing)
+            st.metric("Pièces", nb_pieces)
         
-        # Barre de progression
-        progress = available / total_possible
-        st.progress(progress)
-        st.caption(f"{available}/{total_possible} modules")
-        
-        # Statut des chargements
-        status = st.session_state.module_manager.load_status
-        if status["success"]:
-            st.success(f"✅ {len(status['success'])} chargés")
-        if status["failed"]:
-            st.error(f"❌ {len(status['failed'])} erreurs")
-        
-        # Boutons d'action
+        # Boutons utilitaires
         st.markdown("---")
+        if st.button("🔄 Réinitialiser Azure", key="reinit_azure"):
+            reinit_azure()
         
-        if st.button("🔧 Diagnostic", use_container_width=True):
-            st.session_state.current_view = 'diagnostic'
-            st.rerun()
+        if st.button("⚙️ Configuration", key="show_config"):
+            st.session_state.show_config_modal = True
         
-        if missing > 0:
-            if st.button("➕ Créer modules optionnels", use_container_width=True, type="primary"):
-                st.session_state.current_view = 'create_modules'
-                st.rerun()
-
-def show_diagnostic():
-    """Affiche la page de diagnostic"""
-    st.markdown("## 🔧 Diagnostic du système")
-    
-    # État des modules
-    st.markdown("### 📦 État des modules")
-    
-    manager = st.session_state.module_manager
-    
-    # Tableau récapitulatif
-    data = []
-    for name, info in manager.available_modules.items():
-        status = "✅ Chargé" if info["loaded"] else "⚠️ Non chargé"
-        error = manager.load_status["failed"].get(name, "-")
-        data.append({
-            "Module": info["config"]["name"],
-            "ID": name,
-            "Catégorie": info["config"]["category"],
-            "État": status,
-            "Erreur": error
-        })
-    
-    if data:
-        st.dataframe(data, use_container_width=True, hide_index=True)
-    
-    # Afficher les avertissements
-    if manager.load_status["warnings"]:
-        st.warning("### ⚠️ Avertissements")
-        for warning in manager.load_status["warnings"]:
-            st.warning(warning)
-    
-    # Liste des fichiers Python dans le dossier modules
-    st.markdown("### 📁 Fichiers dans le dossier modules")
-    if manager.modules_path.exists():
-        py_files = sorted([f.stem for f in manager.modules_path.glob("*.py") if not f.name.startswith("_")])
-        cols = st.columns(3)
-        for i, file_name in enumerate(py_files):
-            with cols[i % 3]:
-                if file_name in manager.available_modules:
-                    st.success(f"✅ {file_name}")
-                elif file_name in MODULES_CONFIG or file_name in MODULES_TO_CREATE:
-                    st.info(f"📋 {file_name} (configuré)")
-                else:
-                    st.warning(f"❓ {file_name} (non configuré)")
-    
-    # Actions de réparation
-    st.markdown("### 🛠️ Actions")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("🔄 Recharger tous les modules"):
-            manager.discover_modules()
-            st.rerun()
-    
-    with col2:
-        if st.button("📋 Créer modules manquants"):
-            create_missing_modules()
-    
-    with col3:
-        if st.button("📥 Exporter diagnostic"):
-            export_diagnostic()
-
-def show_modules_unconfigured():
-    """Affiche les modules non configurés"""
-    modules_path = Path(__file__).parent / "modules"
-    if modules_path.exists():
-        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
-        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
-        unconfigured = set(all_py_files) - configured_modules
+        # Filtres de recherche
+        st.markdown("---")
+        st.header("🔧 Filtres de recherche")
         
-        if unconfigured:
-            st.warning(f"### ⚠️ Modules non configurés ({len(unconfigured)})")
-            st.info("Ces modules existent mais ne sont pas dans la configuration :")
-            
-            cols = st.columns(3)
-            for i, module in enumerate(sorted(unconfigured)):
-                with cols[i % 3]:
-                    st.code(f"{module}.py")
-            
-            st.markdown("""
-            **Pour les utiliser :**
-            1. Ajoutez-les à `MODULES_CONFIG` dans `app.py`
-            2. Spécifiez leur nom, description et catégorie
-            3. Redémarrez l'application
-            """)
-            
-            # Proposer un template de configuration
-            if st.button("📋 Générer template de configuration"):
-                config_template = {}
-                for module in sorted(unconfigured):
-                    config_template[module] = {
-                        "name": f"📄 {module.replace('_', ' ').title()}",
-                        "desc": f"Module {module}",
-                        "category": "autre",
-                        "priority": 10
-                    }
-                st.code(json.dumps(config_template, indent=2))
-
-def show_troubleshooting():
-    """Affiche l'aide au dépannage"""
-    st.markdown("### 🛠️ Dépannage")
-    
-    # Vérifier les modules non configurés
-    modules_path = Path(__file__).parent / "modules"
-    if modules_path.exists():
-        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
-        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
-        unconfigured = set(all_py_files) - configured_modules
-        
-        if unconfigured:
-            st.warning(f"⚠️ {len(unconfigured)} modules trouvés mais non configurés")
-            with st.expander("Voir les modules non configurés"):
-                for module in sorted(unconfigured):
-                    st.write(f"• {module}.py")
-                st.info("Ces modules doivent être ajoutés à MODULES_CONFIG pour être utilisables")
-    
-    st.info("""
-    **Aucun module trouvé ?** Voici les étapes à suivre :
-    
-    1. **Vérifiez la structure** :
-       ```
-       votre_projet/
-       ├── app.py
-       ├── modules/
-       │   ├── __init__.py
-       │   ├── comparison.py
-       │   ├── timeline.py
-       │   └── ...
-       └── managers/
-           ├── __init__.py
-           └── multi_llm_manager.py
-       ```
-    
-    2. **Créez le dossier modules** s'il n'existe pas
-    
-    3. **Vérifiez que chaque module a une fonction run()** :
-       ```python
-       def run():
-           st.write("Module fonctionne!")
-       ```
-    
-    4. **Redémarrez l'application**
-    
-    5. **Consultez le diagnostic** pour voir les erreurs détaillées
-    """)
-
-def show_modules_unconfigured():
-    """Affiche les modules non configurés"""
-    modules_path = Path(__file__).parent / "modules"
-    if modules_path.exists():
-        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
-        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
-        unconfigured = set(all_py_files) - configured_modules
-        
-        if unconfigured:
-            st.warning(f"### ⚠️ Modules non configurés ({len(unconfigured)})")
-            st.info("Ces modules existent mais ne sont pas dans la configuration :")
-            
-            cols = st.columns(3)
-            for i, module in enumerate(sorted(unconfigured)):
-                with cols[i % 3]:
-                    st.code(f"{module}.py")
-            
-            st.markdown("""
-            **Pour les utiliser :**
-            1. Ajoutez-les à `MODULES_CONFIG` dans `app.py`
-            2. Spécifiez leur nom, description et catégorie
-            3. Redémarrez l'application
-            """)
-            
-            # Proposer un template de configuration
-            if st.button("📋 Générer template de configuration"):
-                config_template = {}
-                for module in sorted(unconfigured):
-                    config_template[module] = {
-                        "name": f"📄 {module.replace('_', ' ').title()}",
-                        "desc": f"Module {module}",
-                        "category": "autre",
-                        "priority": 10
-                    }
-                st.code(json.dumps(config_template, indent=2))
-
-def create_missing_modules():
-    """Crée les modules manquants avec un template de base"""
-    modules_path = Path(__file__).parent / "modules"
-    modules_path.mkdir(exist_ok=True)
-    
-    template = '''"""Module {name}"""
-import streamlit as st
-
-def run():
-    """Point d'entrée du module"""
-    st.title("{title}")
-    st.info("Ce module est en cours de développement")
-    
-    # Interface basique
-    st.markdown("### 🚧 En construction")
-    st.write("Les fonctionnalités seront bientôt disponibles.")
-'''
-    
-    created = []
-    # Créer les modules existants manquants
-    for module_id, config in MODULES_CONFIG.items():
-        module_path = modules_path / f"{module_id}.py"
-        if not module_path.exists():
-            content = template.format(
-                name=module_id,
-                title=config["name"]
-            )
-            module_path.write_text(content, encoding='utf-8')
-            created.append(module_id)
-    
-    # Créer les modules supplémentaires
-    for module_id, config in MODULES_TO_CREATE.items():
-        module_path = modules_path / f"{module_id}.py"
-        if not module_path.exists():
-            content = template.format(
-                name=module_id,
-                title=config["name"]
-            )
-            module_path.write_text(content, encoding='utf-8')
-            created.append(module_id)
-    
-    if created:
-        st.success(f"✅ {len(created)} modules créés : {', '.join(created)}")
-        st.info("Relancez l'application pour charger les nouveaux modules")
-    else:
-        st.info("Tous les modules existent déjà")
-
-def export_diagnostic():
-    """Exporte le diagnostic complet"""
-    diagnostic = {
-        "timestamp": datetime.now().isoformat(),
-        "modules": {},
-        "system": {
-            "python_version": sys.version,
-            "streamlit_version": st.__version__,
-            "working_directory": str(Path.cwd()),
-            "modules_path": str(Path(__file__).parent / "modules")
-        },
-        "available_files": []
-    }
-    
-    # État des modules
-    for name, info in st.session_state.module_manager.available_modules.items():
-        diagnostic["modules"][name] = {
-            "config": info["config"],
-            "loaded": info["loaded"],
-            "error": st.session_state.module_manager.load_status["failed"].get(name),
-            "path": str(info["path"])
-        }
-    
-    # Liste des fichiers dans le dossier modules
-    modules_path = Path(__file__).parent / "modules"
-    if modules_path.exists():
-        diagnostic["available_files"] = [
-            f.name for f in modules_path.glob("*.py") 
-            if not f.name.startswith("_")
-        ]
-    
-    # Téléchargement
-    st.download_button(
-        "💾 Télécharger diagnostic.json",
-        json.dumps(diagnostic, indent=2),
-        "diagnostic.json",
-        "application/json"
-    )
-
-# ========== FONCTION PRINCIPALE ==========
-def main():
-    """Point d'entrée principal"""
-    init_session_state()
-    
-    # Sidebar
-    show_sidebar()
-    
-    # Router vers la vue appropriée
-    current_view = st.session_state.current_view
-    
-    if current_view == 'dashboard':
-        show_dashboard()
-    elif current_view == 'diagnostic':
-        show_diagnostic()
-    elif current_view == 'create_modules':
-        st.markdown("## ➕ Création des modules optionnels")
-        st.info("""
-        Les modules ci-dessous sont **optionnels** et peuvent étendre les fonctionnalités de votre application.
-        Vous pouvez les créer maintenant ou plus tard selon vos besoins.
-        """)
-        
-        # Afficher les modules optionnels par catégorie
-        missing_by_cat = {}
-        for module_id, config in MODULES_TO_CREATE.items():
-            module_path = Path(__file__).parent / "modules" / f"{module_id}.py"
-            if not module_path.exists():
-                cat = config.get('category', 'autre')
-                if cat not in missing_by_cat:
-                    missing_by_cat[cat] = []
-                missing_by_cat[cat].append((module_id, config))
-        
-        if missing_by_cat:
-            for cat, modules in missing_by_cat.items():
-                st.markdown(f"### {cat.title()}")
-                for module_id, config in modules:
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.write(f"**{config['name']}** - {config['desc']}")
-                    with col2:
-                        if st.button("Créer", key=f"create_{module_id}"):
-                            create_single_module(module_id, config)
-                            st.success(f"✅ Module {module_id} créé")
-            
-            st.markdown("---")
-            if st.button("🔧 Créer tous les modules", type="primary"):
-                create_missing_modules()
-                st.rerun()
-        else:
-            st.success("✅ Tous les modules optionnels ont déjà été créés !")
-        
-        if st.button("↩️ Retour au tableau de bord"):
-            st.session_state.current_view = 'dashboard'
-            st.rerun()
-    elif current_view in st.session_state.module_manager.available_modules:
-        # Charger et exécuter le module
-        st.session_state.module_manager.run_module(current_view)
-    else:
-        show_dashboard()
-    
-    # Footer
-    st.markdown("---")
-    modules_count = len(st.session_state.module_manager.available_modules)
-    st.markdown(
-        f"""<p style='text-align: center; color: #666; font-size: 0.8rem;'>
-        IA Juridique v2.0 - Droit Pénal des Affaires • {modules_count} modules disponibles • Système modulaire optimisé
-        </p>""",
-        unsafe_allow_html=True
-    )
-
-def create_single_module(module_id: str, config: dict):
-    """Crée un seul module"""
-    modules_path = Path(__file__).parent / "modules"
-    modules_path.mkdir(exist_ok=True)
-    
-    template = '''"""Module {name}"""
-import streamlit as st
-
-def run():
-    """Point d'entrée du module"""
-    st.title("{title}")
-    st.info("Ce module est en cours de développement")
-    
-    # Interface basique
-    st.markdown("### 🚧 En construction")
-    st.write("Les fonctionnalités seront bientôt disponibles.")
-'''
-    
-    module_path = modules_path / f"{module_id}.py"
-    if not module_path.exists():
-        content = template.format(
-            name=module_id,
-            title=config["name"]
+        # Filtre par type de document
+        doc_type_filter = st.selectbox(
+            "Type de document",
+            ["Tous", "CONCLUSIONS", "PLAINTE", "ASSIGNATION", "COURRIER", "EXPERTISE"],
+            index=0
         )
-        module_path.write_text(content, encoding='utf-8')
+        
+        # Filtre par date
+        date_range = st.date_input(
+            "Période",
+            value=[],
+            key="date_range"
+        )
+        
+        # Filtre par partie
+        partie_filter = st.text_input(
+            "Nom de partie",
+            placeholder="Ex: VINCI, SOGEPROM..."
+        )
+        
+        # Filtre par infraction
+        infraction_filter = st.multiselect(
+            "Infractions",
+            ["Abus de biens sociaux", "Corruption", "Escroquerie", "Abus de confiance", "Blanchiment"]
+        )
+        
+        # Aide
+        with st.expander("📚 Aide à la recherche"):
+            st.markdown("""
+            **Conseils de recherche:**
+            
+            🔹 **Référence dossier** : Utilisez @ suivi du code  
+               Ex: `@VINCI2024`
+            
+            🔹 **Recherche par partie** : Nom contre Nom  
+               Ex: `VINCI contre PERINET`
+            
+            🔹 **Type de document** : Ajoutez le type  
+               Ex: `conclusions @VINCI2024`
+            
+            🔹 **Infractions** : Mentionnez l'infraction  
+               Ex: `abus de biens sociaux SOGEPROM`
+            
+            🔹 **Recherche combinée** :  
+               Ex: `@VINCI2024 conclusions corruption`
+            """)
+    
+    # Zone de recherche principale
+    st.markdown("<div class='search-container'>", unsafe_allow_html=True)
+    
+    # Créer un conteneur pour la barre de recherche
+    search_container = st.container()
+    
+    with search_container:
+        # Utilisation de form pour permettre la soumission avec Entrée
+        with st.form(key="search_form", clear_on_submit=False):
+            col1, col2 = st.columns([5, 1])
+            
+            with col1:
+                # Champ de recherche avec placeholder informatif
+                search_query = st.text_input(
+                    "Rechercher",
+                    placeholder="Tapez votre recherche... (Ex: @VINCI2024 conclusions, abus de biens sociaux, etc.)",
+                    label_visibility="hidden",
+                    key="search_input"
+                )
+            
+            with col2:
+                # Bouton de recherche
+                search_button = st.form_submit_button(
+                    "🔍 Rechercher",
+                    use_container_width=True,
+                    type="primary"
+                )
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Afficher les suggestions (hors du form)
+    if 'search_query' not in st.session_state:
+        st.session_state.search_query = ""
+    
+    # Mettre à jour la requête si elle a changé
+    if search_query and search_query != st.session_state.search_query:
+        st.session_state.search_query = search_query
+        show_search_suggestions(search_query)
+    
+    # Construire les filtres
+    filters = {}
+    if doc_type_filter != "Tous":
+        filters['document_type'] = doc_type_filter
+    if partie_filter:
+        filters['partie'] = partie_filter
+    if infraction_filter:
+        filters['infractions'] = infraction_filter
+    if len(date_range) == 2:
+        filters['date_range'] = date_range
+    
+    # Effectuer la recherche si le bouton est cliqué ou Entrée est pressée
+    if search_button and search_query:
+        # Stocker la requête dans session state
+        st.session_state.last_search = search_query
+        st.session_state.search_results = None
+        
+        # Analyser la requête pour extraire la référence @
+        ref_match = re.search(r'@(\w+)', search_query)
+        if ref_match:
+            st.info(f"🎯 Recherche dans le dossier : **{ref_match.group(1)}**")
+        
+        # Effectuer la recherche
+        try:
+            results = asyncio.run(perform_search(search_query, filters))
+            st.session_state.search_results = results
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la recherche: {str(e)}")
+            with st.expander("Détails de l'erreur"):
+                st.code(traceback.format_exc())
+    
+    # Afficher les résultats
+    if 'search_results' in st.session_state and st.session_state.search_results:
+        results = st.session_state.search_results
+        
+        # Statistiques de recherche
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Documents trouvés", results.total_count)
+        with col2:
+            st.metric("Documents affichés", len(results.documents))
+        with col3:
+            if 'last_search' in st.session_state:
+                st.metric("Dernière recherche", st.session_state.last_search[:20] + "...")
+        
+        # Afficher les suggestions si disponibles
+        if hasattr(results, 'suggestions') and results.suggestions:
+            display_search_suggestions(results.suggestions)
+        
+        # Afficher les facettes si disponibles
+        if hasattr(results, 'facets') and results.facets:
+            with st.expander("🔧 Affiner les résultats", expanded=False):
+                display_search_facets(results.facets)
+        
+        # Afficher les résultats
+        st.markdown("## 📊 Résultats de recherche")
+        
+        if results.documents:
+            # Filtrer selon les facettes actives si nécessaire
+            filtered_docs = results.documents
+            
+            # Appliquer les filtres de score si activés
+            if st.session_state.get('filter_high_score'):
+                filtered_docs = [d for d in filtered_docs if d.metadata.get('score', 0) >= 20]
+            elif st.session_state.get('filter_medium_score'):
+                filtered_docs = [d for d in filtered_docs if 10 <= d.metadata.get('score', 0) < 20]
+            elif st.session_state.get('filter_low_score'):
+                filtered_docs = [d for d in filtered_docs if d.metadata.get('score', 0) < 10]
+            
+            # Afficher les documents filtrés
+            for idx, doc in enumerate(filtered_docs, 1):
+                display_result_enhanced(doc, idx)
+                if idx < len(filtered_docs):
+                    st.markdown("---")
+        else:
+            st.warning("Aucun document trouvé pour cette recherche.")
+        
+        # Afficher les statistiques de recherche
+        if st.button("📊 Voir les statistiques", key="show_stats"):
+            stats = asyncio.run(get_search_service().get_search_statistics())
+            with st.expander("Statistiques de recherche", expanded=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Recherches totales", stats['total_searches'])
+                    st.metric("Résultats moyens", f"{stats['average_results']:.1f}")
+                with col2:
+                    st.metric("Taille du cache", stats['cache_size'])
+                    if stats['popular_keywords']:
+                        st.write("**Mots-clés populaires:**")
+                        for keyword, count in list(stats['popular_keywords'].items())[:5]:
+                            st.write(f"• {keyword}: {count} fois")
+    
+    # Modal de document si nécessaire
+    if st.session_state.get('show_document_modal'):
+        show_document_modal()
+    
+    # Modal de configuration si demandé
+    if st.session_state.get('show_config_modal', False):
+        show_configuration_modal()
+    
+    # Footer avec informations
+    st.markdown("---")
+    st.caption(f"Dernière mise à jour : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
+# Point d'entrée
 if __name__ == "__main__":
-    main()
+    try:
+        # Initialiser les états de session si nécessaire
+        if 'search_history' not in st.session_state:
+            st.session_state.search_history = []
+        
+        if 'azure_documents' not in st.session_state:
+            st.session_state.azure_documents = {}
+        
+        if 'imported_documents' not in st.session_state:
+            st.session_state.imported_documents = {}
+        
+        if 'pieces_selectionnees' not in st.session_state:
+            st.session_state.pieces_selectionnees = {}
+        
+        # Lancer l'application
+        main()
+    except Exception as e:
+        st.error("❌ ERREUR FATALE")
+        st.code(str(e))
+        st.code(traceback.format_exc())
+        print("ERREUR FATALE:")
+        print(traceback.format_exc())
