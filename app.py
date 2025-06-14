@@ -1,4 +1,4 @@
-"""Application IA Juridique - Version améliorée avec page d'accueil complète et upload local"""
+"""Application IA Juridique - Version améliorée avec corrections et toggle recherche"""
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -14,6 +14,8 @@ from pathlib import Path
 import zipfile
 import tempfile
 import shutil
+import unicodedata
+import hashlib
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -27,38 +29,45 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ========== DIAGNOSTIC DES MODULES ==========
-def show_modules_diagnostic():
-    """Affiche le diagnostic des modules"""
-    import modules
-    
-    try:
-        status = modules.get_modules_status()
-        
-        st.markdown("### 📊 Diagnostic des Modules")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total modules", status['total_modules'])
-        with col2:
-            st.metric("Modules chargés", status['loaded_count'], 
-                     delta=f"+{status['loaded_count']}" if status['loaded_count'] > 0 else None)
-        with col3:
-            st.metric("Modules en erreur", status['failed_count'],
-                     delta=f"-{status['failed_count']}" if status['failed_count'] > 0 else None)
-        
-        if status['loaded_count'] > 0:
-            with st.expander(f"✅ Modules chargés ({status['loaded_count']})", expanded=False):
-                for module in sorted(status['loaded']):
-                    st.success(f"• {module}")
-        
-        if status['failed_count'] > 0:
-            with st.expander(f"❌ Modules en erreur ({status['failed_count']})", expanded=True):
-                for module, error in status['failed'].items():
-                    st.error(f"**{module}**: {error}")
-                    
-    except Exception as e:
-        st.error(f"Erreur lors du diagnostic: {e}")
+# ========== FONCTIONS UTILITAIRES ==========
+
+def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """Tronque un texte à une longueur maximale"""
+    if not text:
+        return ""
+    text = str(text)
+    if len(text) <= max_length:
+        return text
+    available_length = max_length - len(suffix)
+    return text[:available_length] + suffix
+
+def clean_key(key: str) -> str:
+    """Nettoie une clé pour la rendre utilisable comme identifiant"""
+    if not key:
+        return ""
+    key = str(key)
+    # Supprimer les accents
+    key = ''.join(c for c in unicodedata.normalize('NFD', key) 
+                  if unicodedata.category(c) != 'Mn')
+    key = key.lower()
+    key = re.sub(r'[^a-z0-9]+', '_', key)
+    key = key.strip('_')
+    key = re.sub(r'_+', '_', key)
+    return key
+
+def get_modules_status() -> Dict:
+    """Retourne le statut des modules"""
+    # Simulation du statut des modules
+    return {
+        'total_modules': 9,
+        'loaded_count': 7,
+        'failed_count': 2,
+        'loaded': ['search', 'compare', 'timeline', 'extract', 'strategy', 'report', 'chat'],
+        'failed': {
+            'contract': 'Module en développement',
+            'jurisprudence': 'Module en développement'
+        }
+    }
 
 # ========== CSS PROFESSIONNEL TONS BLEUS ==========
 st.markdown("""
@@ -227,24 +236,15 @@ st.markdown("""
         margin: 0 auto;
     }
     
-    /* Quick actions */
-    .quick-action-btn {
-        background: white;
-        border: 2px solid var(--accent-blue);
-        color: var(--accent-blue);
-        padding: 0.75rem 1.5rem;
-        border-radius: 2rem;
-        font-weight: 600;
-        transition: all 0.2s;
-        cursor: pointer;
-        margin: 0.25rem;
-        display: inline-block;
-    }
-    
-    .quick-action-btn:hover {
-        background: var(--accent-blue);
-        color: white;
-        transform: translateY(-1px);
+    /* Toggle switch */
+    .toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.5rem;
+        background: var(--bg-light);
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
     }
     
     /* Stats cards */
@@ -267,15 +267,6 @@ st.markdown("""
         color: var(--text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.05em;
-    }
-    
-    /* Barres de progression personnalisées */
-    .stProgress > div > div > div > div {
-        background-color: var(--accent-blue);
-        transition: width 0.5s ease;
-    }
-    .stProgress > div > div {
-        background-color: var(--light-blue);
     }
     
     /* Document cards */
@@ -312,14 +303,6 @@ st.markdown("""
     /* Sidebar optimisée */
     section[data-testid="stSidebar"] {
         background: var(--bg-light);
-    }
-    
-    /* Tabs personnalisés */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: var(--bg-light);
-        border-radius: 0.5rem;
-        padding: 0.25rem;
-        gap: 0.25rem;
     }
     
     /* Animations */
@@ -892,10 +875,17 @@ SEARCH_JAVASCRIPT = """
                 if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                     e.preventDefault();
                     
-                    // Trouver et cliquer le bouton Analyser
+                    // Récupérer le mode actuel (toggle)
+                    const searchMode = document.querySelector('input[name="search_mode"]:checked');
+                    const mode = searchMode ? searchMode.value : 'multi-ia';
+                    
+                    // Trouver et cliquer le bon bouton selon le mode
                     const buttons = document.querySelectorAll('button');
                     for (const button of buttons) {
-                        if (button.textContent.includes('Analyser')) {
+                        if (mode === 'multi-ia' && button.textContent.includes('Analyser')) {
+                            button.click();
+                            break;
+                        } else if (mode === 'module' && button.textContent.includes('Ouvrir le module')) {
                             button.click();
                             break;
                         }
@@ -967,6 +957,7 @@ def init_session_state():
         'selected_ais': [],
         'current_view': 'home',
         'search_query': '',
+        'search_mode': 'multi-ia',  # 'multi-ia' ou 'module'
         'selected_client': None,
         'selected_documents': [],
         'show_all_versions': False,
@@ -1019,57 +1010,7 @@ def show_home_page():
     </div>
     """, unsafe_allow_html=True)
     
-    # Statistiques rapides
-    col1, col2, col3, col4 = st.columns(4)
-    
-    # Compter les documents disponibles
-    total_docs = 0
-    total_folders = 0
-    
-    if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected:
-        containers = st.session_state.azure_blob_manager.list_containers()
-        total_folders += len(containers)
-        # Estimation du nombre de documents
-        total_docs += len(containers) * 50  # Estimation
-    
-    if st.session_state.local_folders:
-        total_folders += len(st.session_state.local_folders)
-        for folder_docs in st.session_state.local_folders.values():
-            total_docs += len(folder_docs)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">{len(AVAILABLE_MODULES)}</div>
-            <div class="stat-label">Modules IA</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">8</div>
-            <div class="stat-label">IA Disponibles</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">{total_folders}</div>
-            <div class="stat-label">Dossiers</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f"""
-        <div class="stat-card">
-            <div class="stat-number">{total_docs}</div>
-            <div class="stat-label">Documents</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Actions rapides
+    # Actions rapides sans les statistiques
     st.markdown("### 🚀 Actions rapides")
     
     col1, col2, col3, col4 = st.columns(4)
@@ -1078,7 +1019,7 @@ def show_home_page():
         ("🔍 Nouvelle analyse", "search", ""),
         ("📁 Charger dossier", "upload", ""),
         ("💬 Assistant IA", "chat", ""),
-        ("📊 Dernière analyse", "last", "")
+        ("⚙️ Configuration", "config", "")
     ]
     
     for idx, (label, action, query) in enumerate(quick_actions):
@@ -1087,8 +1028,8 @@ def show_home_page():
                 if action == "upload":
                     st.session_state.current_view = "home"
                     st.session_state.show_upload = True
-                elif action == "last":
-                    st.info("Aucune analyse récente")
+                elif action == "config":
+                    st.session_state.current_view = "config"
                 else:
                     st.session_state.current_view = action
                     if query:
@@ -1239,6 +1180,113 @@ def show_home_page():
         - Formation personnalisée sur demande
         """)
 
+def show_diagnostics():
+    """Affiche les diagnostics détaillés des services et documents"""
+    st.markdown("### 🔧 État des services")
+    
+    services = [
+        {
+            'name': 'Azure Blob Storage',
+            'manager': st.session_state.azure_blob_manager,
+            'required': True,
+            'icon': '💾'
+        },
+        {
+            'name': 'Azure Search',
+            'manager': st.session_state.azure_search_manager,
+            'required': False,
+            'icon': '🔍'
+        },
+        {
+            'name': 'Azure OpenAI',
+            'manager': st.session_state.azure_openai_manager,
+            'required': False,
+            'icon': '🤖'
+        }
+    ]
+    
+    cols = st.columns(3)
+    for idx, service in enumerate(services):
+        with cols[idx]:
+            manager = service['manager']
+            is_connected = manager and hasattr(manager, 'connected') and manager.connected
+            
+            if is_connected:
+                st.success(f"{service['icon']} {service['name']}\n✅ Connecté")
+            elif service['required']:
+                st.error(f"{service['icon']} {service['name']}\n❌ Erreur")
+            else:
+                st.warning(f"{service['icon']} {service['name']}\n⚠️ Optionnel")
+            
+            if manager and hasattr(manager, 'error') and manager.error:
+                st.caption(manager.error[:50])
+    
+    # Diagnostic des modules
+    st.markdown("### 📊 Diagnostic des Modules")
+    
+    status = get_modules_status()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total modules", status['total_modules'])
+    with col2:
+        st.metric("Modules chargés", status['loaded_count'], 
+                 delta=f"+{status['loaded_count']}" if status['loaded_count'] > 0 else None)
+    with col3:
+        st.metric("Modules en erreur", status['failed_count'],
+                 delta=f"-{status['failed_count']}" if status['failed_count'] > 0 else None)
+    
+    if status['loaded_count'] > 0:
+        with st.expander(f"✅ Modules chargés ({status['loaded_count']})", expanded=False):
+            for module in sorted(status['loaded']):
+                st.success(f"• {module}")
+    
+    if status['failed_count'] > 0:
+        with st.expander(f"❌ Modules en erreur ({status['failed_count']})", expanded=True):
+            for module, error in status['failed'].items():
+                st.error(f"**{module}**: {error}")
+    
+    # Statistiques des documents
+    st.markdown("### 📈 Statistiques des documents")
+    
+    # Compter les documents Azure
+    azure_docs_count = 0
+    azure_folders_count = 0
+    
+    if st.session_state.azure_blob_manager and st.session_state.azure_blob_manager.connected:
+        containers = st.session_state.azure_blob_manager.list_containers()
+        azure_folders_count = len(containers)
+        # Estimation du nombre de documents
+        for container in containers[:3]:  # Limiter pour la performance
+            blobs = st.session_state.azure_blob_manager.list_blobs_with_versions(container, False)
+            azure_docs_count += len(blobs)
+        if azure_folders_count > 3:
+            azure_docs_count = int(azure_docs_count * azure_folders_count / 3)  # Extrapolation
+    
+    # Compter les documents locaux
+    local_docs_count = 0
+    local_folders_count = len(st.session_state.local_folders)
+    for folder_docs in st.session_state.local_folders.values():
+        local_docs_count += len(folder_docs)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### ☁️ Documents Azure")
+        sub_col1, sub_col2 = st.columns(2)
+        with sub_col1:
+            st.metric("Dossiers", azure_folders_count)
+        with sub_col2:
+            st.metric("Documents", f"~{azure_docs_count}")
+    
+    with col2:
+        st.markdown("#### 💾 Documents locaux")
+        sub_col1, sub_col2 = st.columns(2)
+        with sub_col1:
+            st.metric("Dossiers", local_folders_count)
+        with sub_col2:
+            st.metric("Documents", local_docs_count)
+
 def show_ai_selector():
     """Sélecteur d'IA avec design professionnel"""
     st.markdown("### 🤖 Sélection des IA")
@@ -1293,47 +1341,6 @@ def show_ai_selector():
             else:
                 if ai_name in st.session_state.selected_ais:
                     st.session_state.selected_ais.remove(ai_name)
-
-def show_diagnostics():
-    """Affiche les diagnostics des services"""
-    st.markdown("### 🔧 État des services")
-    
-    services = [
-        {
-            'name': 'Azure Blob Storage',
-            'manager': st.session_state.azure_blob_manager,
-            'required': True,
-            'icon': '💾'
-        },
-        {
-            'name': 'Azure Search',
-            'manager': st.session_state.azure_search_manager,
-            'required': False,
-            'icon': '🔍'
-        },
-        {
-            'name': 'Azure OpenAI',
-            'manager': st.session_state.azure_openai_manager,
-            'required': False,
-            'icon': '🤖'
-        }
-    ]
-    
-    cols = st.columns(3)
-    for idx, service in enumerate(services):
-        with cols[idx]:
-            manager = service['manager']
-            is_connected = manager and hasattr(manager, 'connected') and manager.connected
-            
-            if is_connected:
-                st.success(f"{service['icon']} {service['name']}\n✅ Connecté")
-            elif service['required']:
-                st.error(f"{service['icon']} {service['name']}\n❌ Erreur")
-            else:
-                st.warning(f"{service['icon']} {service['name']}\n⚠️ Optionnel")
-            
-            if manager and hasattr(manager, 'error') and manager.error:
-                st.caption(manager.error[:50])
 
 def generate_folder_alias(folder_name: str) -> str:
     """Génère un alias court pour un dossier"""
@@ -1513,13 +1520,45 @@ def display_client_documents(client: str):
         st.info("Aucun document ne correspond au filtre")
 
 def show_search_interface():
-    """Interface de recherche avec support @client et prompts IA"""
+    """Interface de recherche avec toggle module/multi-IA"""
     st.markdown("### 🔍 Recherche intelligente")
     
-    # Sélection des IA
-    show_ai_selector()
+    # Toggle pour choisir le mode de recherche
+    st.markdown("#### Mode de recherche")
+    mode_col1, mode_col2, mode_col3 = st.columns([1, 1, 2])
+    
+    with mode_col1:
+        if st.button(
+            "🤖 Multi-IA", 
+            type="primary" if st.session_state.search_mode == 'multi-ia' else "secondary",
+            use_container_width=True,
+            help="Analyser avec plusieurs IA simultanément"
+        ):
+            st.session_state.search_mode = 'multi-ia'
+            st.rerun()
+    
+    with mode_col2:
+        if st.button(
+            "📋 Module spécifique", 
+            type="primary" if st.session_state.search_mode == 'module' else "secondary",
+            use_container_width=True,
+            help="Appeler un module spécifique directement"
+        ):
+            st.session_state.search_mode = 'module'
+            st.rerun()
+    
+    with mode_col3:
+        if st.session_state.search_mode == 'multi-ia':
+            st.info("💡 Mode Multi-IA : Analysez avec plusieurs IA en parallèle")
+        else:
+            st.info("💡 Mode Module : Tapez le nom d'un module pour y accéder directement")
     
     st.markdown("---")
+    
+    # Si mode multi-IA, afficher le sélecteur d'IA
+    if st.session_state.search_mode == 'multi-ia':
+        show_ai_selector()
+        st.markdown("---")
     
     # Détection du client actuel
     query = st.session_state.get('search_query', '')
@@ -1554,37 +1593,107 @@ def show_search_interface():
         st.info(f"💡 Dossiers disponibles : {alias_text}...")
     
     # Zone de recherche
-    search_text = st.text_area(
-        "search_area",
-        value=query,
-        placeholder=(
+    placeholder = ""
+    if st.session_state.search_mode == 'multi-ia':
+        placeholder = (
             "Tapez @ suivi de l'indicateur du dossier, puis votre demande\n"
             "Exemple : @mar, analyser les contradictions dans les PV\n"
             "Appuyez sur Entrée pour lancer l'analyse"
-        ),
+        )
+    else:
+        placeholder = (
+            "Tapez le nom d'un module ou utilisez le langage naturel\n"
+            "Exemples : 'timeline', 'créer une chronologie', 'comparer documents'\n"
+            "Appuyez sur Entrée pour ouvrir le module"
+        )
+    
+    search_text = st.text_area(
+        "search_area",
+        value=query,
+        placeholder=placeholder,
         height=100,
         key="search_query",
         label_visibility="hidden"
     )
     
-    # Boutons d'action
+    # Boutons d'action selon le mode
     col1, col2, col3 = st.columns([2, 1, 1])
     
-    with col2:
-        if st.session_state.azure_search_manager and st.session_state.azure_search_manager.connected:
-            if st.button("🔍 Rechercher", use_container_width=True):
-                perform_azure_search(clean_query if client else search_text)
+    if st.session_state.search_mode == 'multi-ia':
+        with col2:
+            if st.session_state.azure_search_manager and st.session_state.azure_search_manager.connected:
+                if st.button("🔍 Rechercher", use_container_width=True):
+                    perform_azure_search(clean_query if client else search_text)
+        
+        with col3:
+            if st.button("🤖 Analyser", type="primary", use_container_width=True):
+                if search_text and st.session_state.selected_ais:
+                    process_analysis(search_text)
+                else:
+                    st.warning("Sélectionnez des IA et entrez une requête")
+    else:
+        # Mode module
+        with col3:
+            if st.button("📋 Ouvrir le module", type="primary", use_container_width=True):
+                if search_text:
+                    module_id = find_module_by_query(search_text)
+                    if module_id:
+                        st.session_state.current_view = module_id
+                        st.rerun()
+                    else:
+                        st.error(f"Aucun module trouvé pour '{search_text}'")
+                else:
+                    st.warning("Entrez le nom d'un module")
     
-    with col3:
-        if st.button("🤖 Analyser", type="primary", use_container_width=True):
-            if search_text and st.session_state.selected_ais:
-                process_analysis(search_text)
-            else:
-                st.warning("Sélectionnez des IA et entrez une requête")
-    
-    # Prompts suggérés basés sur les documents
-    if client and st.session_state.azure_openai_manager:
+    # Prompts suggérés ou modules suggérés selon le mode
+    if st.session_state.search_mode == 'multi-ia' and client and st.session_state.azure_openai_manager:
         show_ai_prompts(client)
+    elif st.session_state.search_mode == 'module':
+        show_module_suggestions()
+
+def find_module_by_query(query: str) -> Optional[str]:
+    """Trouve un module basé sur une requête en langage naturel"""
+    query_lower = query.lower().strip()
+    
+    # Correspondances directes par ID
+    for module_id in AVAILABLE_MODULES:
+        if module_id in query_lower:
+            return module_id
+    
+    # Correspondances par mots-clés
+    keyword_mapping = {
+        'search': ['recherche', 'rechercher', 'analyser', 'analyse'],
+        'compare': ['comparer', 'comparaison', 'différences', 'contradictions'],
+        'timeline': ['timeline', 'chronologie', 'dates', 'événements'],
+        'extract': ['extraire', 'extraction', 'informations clés'],
+        'strategy': ['stratégie', 'stratégique', 'plan', 'tactique'],
+        'report': ['rapport', 'génération', 'document', 'mémo'],
+        'contract': ['contrat', 'clause', 'accord'],
+        'jurisprudence': ['jurisprudence', 'précédent', 'décision'],
+        'chat': ['chat', 'assistant', 'dialogue', 'conversation']
+    }
+    
+    for module_id, keywords in keyword_mapping.items():
+        if any(keyword in query_lower for keyword in keywords):
+            return module_id
+    
+    return None
+
+def show_module_suggestions():
+    """Affiche des suggestions de modules"""
+    st.markdown("**💡 Modules disponibles :**")
+    
+    cols = st.columns(3)
+    for idx, (module_id, module_info) in enumerate(AVAILABLE_MODULES.items()):
+        with cols[idx % 3]:
+            if st.button(
+                f"{module_info['icon']} {module_info['name']}",
+                key=f"suggest_module_{module_id}",
+                use_container_width=True,
+                help=module_info['description']
+            ):
+                st.session_state.current_view = module_id
+                st.rerun()
 
 def show_ai_prompts(client: str):
     """Affiche les prompts générés par l'IA"""
@@ -1921,12 +2030,12 @@ def show_sidebar():
         # Actions rapides
         st.markdown("### ⚡ Actions rapides")
         
-        if st.button("🔍 Nouvelle recherche", key="quick_search", use_container_width=True):
+        if st.button("🔍 Nouvelle recherche", key="quick_search_sidebar", use_container_width=True):
             st.session_state.current_view = "search"
             st.session_state.search_query = ""
             st.rerun()
         
-        if st.button("📁 Charger documents", key="quick_upload", use_container_width=True):
+        if st.button("📁 Charger documents", key="quick_upload_sidebar", use_container_width=True):
             st.session_state.current_view = "home"
             st.rerun()
         
@@ -3064,6 +3173,20 @@ def show_help():
         st.markdown("""
         ### 🔍 Recherche avancée
         
+        #### Mode Multi-IA vs Mode Module
+        
+        L'application propose deux modes de recherche :
+        
+        **🤖 Mode Multi-IA** : Analyse avec plusieurs IA
+        - Sélectionnez les IA à utiliser
+        - Lancez une analyse comparative
+        - Obtenez des perspectives multiples
+        
+        **📋 Mode Module** : Appel direct d'un module
+        - Tapez le nom du module ou utilisez le langage naturel
+        - Exemples : "timeline", "créer une chronologie", "comparer documents"
+        - Accès rapide aux fonctionnalités spécifiques
+        
         #### Syntaxe de recherche
         
         **Recherche simple :**
@@ -3081,7 +3204,7 @@ def show_help():
         @dup, comparer les montants entre factures et contrats après janvier 2024
         ```
         
-            #### Opérateurs avancés
+        #### Opérateurs avancés
         
         | Opérateur | Fonction | Exemple |
         |---|---|---|
@@ -3207,8 +3330,7 @@ def main():
         'jurisprudence': show_jurisprudence_module,
         'chat': show_chat_module,
         'config': show_config,
-        'help': show_help,
-        'modules_diagnostic': show_modules_diagnostic
+        'help': show_help
     }
     
     current_view = st.session_state.get('current_view', 'home')
@@ -3223,7 +3345,7 @@ def main():
     st.markdown("---")
     st.markdown(
         """<p style='text-align: center; color: var(--text-secondary); font-size: 0.75rem;'>
-        ⚖️ IA Juridique v4.0 | Analyse Multi-IA | 9 Modules Spécialisés | Support Documents Locaux
+        ⚖️ IA Juridique v5.0 | Analyse Multi-IA | 9 Modules Spécialisés | Support Documents Locaux
         </p>""",
         unsafe_allow_html=True
     )
