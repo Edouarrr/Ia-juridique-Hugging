@@ -2805,12 +2805,33 @@ class VerificationResult:
 # ========== CLASSES POUR EMAIL ==========
 @dataclass
 class EmailConfig:
-    """Configuration pour l'envoi d'emails"""
+    """Configuration complète d'un email et des paramètres SMTP"""
+    # Paramètres du message
+    to: List[str] = field(default_factory=list)
+    subject: str = ""
+    body: str = ""
+    cc: List[str] = field(default_factory=list)
+    bcc: List[str] = field(default_factory=list)
+    attachments: List[Dict[str, Any]] = field(default_factory=list)
+    priority: str = "normal"
+    ai_enhanced: bool = False
+    ai_model: str = ""
+    tone: str = "professionnel"
+
+    # Paramètres SMTP
     smtp_server: str = "smtp.gmail.com"
     smtp_port: int = 587
     sender: str = ""
     password: str = ""
     use_tls: bool = True
+
+    def add_attachment(self, filename: str, data: bytes, mimetype: str) -> None:
+        """Ajoute une pièce jointe."""
+        self.attachments.append({
+            "filename": filename,
+            "data": data,
+            "mimetype": mimetype,
+        })
 
 @dataclass
 class EmailMessage:

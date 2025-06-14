@@ -9,7 +9,6 @@ import smtplib
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from datetime import datetime
 from email import encoders
 from email.mime.base import MIMEBase
@@ -28,28 +27,7 @@ from config.ai_models import AI_MODELS
 
 # Configuration des modèles IA importée depuis config.ai_models
 
-# Dataclasses intégrées
-@dataclass
-class EmailConfig:
-    """Configuration d'un email"""
-    to: List[str]
-    subject: str
-    body: str
-    cc: List[str] = field(default_factory=list)
-    bcc: List[str] = field(default_factory=list)
-    attachments: List[Dict[str, Any]] = field(default_factory=list)
-    priority: str = "normal"
-    ai_enhanced: bool = False
-    ai_model: str = ""
-    tone: str = "professionnel"
-    
-    def add_attachment(self, filename: str, data: bytes, mimetype: str):
-        """Ajoute une pièce jointe"""
-        self.attachments.append({
-            'filename': filename,
-            'data': data,
-            'mimetype': mimetype
-        })
+from modules.dataclasses import EmailConfig
 
 # Fonctions helper intégrées importées de utils
 
