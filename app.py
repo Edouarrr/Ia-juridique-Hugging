@@ -304,6 +304,9 @@ class ModuleManager:
             else:
                 logger.warning(f"⚠️ Module non configuré : {module_name}")
                 self.load_status["warnings"].append(f"Module {module_name} trouvé mais non configuré")
+
+        # Construire la liste de recherche triée par catégorie et priorité
+        self.build_search_list()
     
     def load_module(self, module_name: str) -> bool:
         """Charge un module spécifique"""
@@ -388,8 +391,25 @@ class ModuleManager:
         # Trier par priorité
         for category in modules_by_cat:
             modules_by_cat[category].sort(key=lambda x: x["priority"])
-        
+
         return modules_by_cat
+
+    def build_search_list(self) -> List[Dict]:
+        """Construit une liste triée pour la recherche rapide"""
+        self.search_list = sorted(
+            [
+                {
+                    "id": name,
+                    "name": info["config"]["name"],
+                    "desc": info["config"]["desc"],
+                    "category": info["config"].get("category", "autre"),
+                    "priority": info["config"].get("priority", 99),
+                }
+                for name, info in self.available_modules.items()
+            ],
+            key=lambda x: (x["category"], x["priority"]),
+        )
+        return self.search_list
 
 # ========== GESTIONNAIRE MULTI-LLM ==========
 def load_multi_llm_manager():
@@ -493,8 +513,20 @@ def show_dashboard():
     
     # Modules par catégorie
     modules_by_cat = st.session_state.module_manager.get_modules_by_category()
+
+    # Barre de recherche pour filtrer les modules
+    search_query = st.text_input("🔍 Rechercher un module", "", key="module_search")
+    filtered_by_cat = {}
+    if search_query:
+        q = search_query.lower()
+        for cat, modules in modules_by_cat.items():
+            filtered = [m for m in modules if q in m["name"].lower() or q in m["desc"].lower() or q in m["id"]]
+            if filtered:
+                filtered_by_cat[cat] = filtered
+    else:
+        filtered_by_cat = modules_by_cat
     
-    if not modules_by_cat:
+    if not filtered_by_cat:
         st.warning("⚠️ Aucun module trouvé. Vérifiez la structure du projet.")
         show_troubleshooting()
         return
@@ -512,12 +544,12 @@ def show_dashboard():
     }
     
     for cat_key, (cat_title, cat_desc) in categories_display.items():
-        if cat_key in modules_by_cat:
+        if cat_key in filtered_by_cat:
             st.markdown(f"### {cat_title}")
             st.caption(cat_desc)
-            
+
             cols = st.columns(3)
-            for idx, module in enumerate(modules_by_cat[cat_key]):
+            for idx, module in enumerate(filtered_by_cat[cat_key]):
                 with cols[idx % 3]:
                     # Carte de module
                     status_icon = "✅" if module["loaded"] else "⚠️"
@@ -554,7 +586,10 @@ def show_sidebar():
         
         # Modules rapides (seulement ceux qui existent)
         st.markdown("### 🚀 Accès rapide")
-        quick_modules = ["recherche_analyse_unifiee", "import_export", "strategy", "redaction_unified", "email", "jurisprudence"]
+        quick_modules = sorted(
+            MODULES_CONFIG.keys(),
+            key=lambda m: MODULES_CONFIG[m].get("priority", 99)
+        )[:6]
         
         for module_id in quick_modules:
             if module_id in st.session_state.module_manager.available_modules:
