@@ -449,18 +449,19 @@ def show_dashboard():
         placeholder="Ex: @DOSSIER123",
         key="dashboard_search",
     )
-if search_query.startswith("@"):
-    st.info(f"Recherche dossier : {search_query[1:]}")
 
-if search_query:
-    suggestion = next(
-        (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
-        None,
-    )
-    if suggestion:
-        st.markdown(f"💡 Suggestion : *{suggestion}*")
+    if search_query.startswith("@"):
+        st.info(f"Recherche dossier : {search_query[1:]}")
 
-search_service = UniversalSearchService()
+    if search_query:
+        suggestion = next(
+            (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
+            None,
+        )
+        if suggestion:
+            st.markdown(f"💡 Suggestion : *{suggestion}*")
+
+    search_service = UniversalSearchService()
 
     if search_query:
         query_to_use = search_query
