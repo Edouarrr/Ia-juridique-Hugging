@@ -7,6 +7,8 @@ import logging
 import sys
 from typing import Any, Dict
 
+from utils.class_factory import create_placeholder_class
+
 from utils.logging import decorate_public_functions, setup_logger
 
 logger = setup_logger(__name__)
@@ -50,7 +52,11 @@ for module_name, class_name in AVAILABLE_MODULES.items():
         error_msg = str(e)
         _import_status["failed"][class_name] = error_msg
         logger.warning("⚠️  %s - %s", class_name, error_msg)
-        globals()[class_name] = type(class_name, (), {"available": False, "error": error_msg})
+        globals()[class_name] = create_placeholder_class(
+            class_name,
+            error_msg,
+            logger,
+        )
 
 for mod in REGISTERED_MODULES:
     try:
