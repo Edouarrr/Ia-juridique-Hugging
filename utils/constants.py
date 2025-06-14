@@ -284,8 +284,14 @@ DEPARTEMENTS = {
     '974': 'La Réunion', '976': 'Mayotte'
 }
 
-# ========== SUGGESTIONS JURIDIQUES ==========
+# ========== SUGGESTIONS LÉGALES ==========
+
 LEGAL_SUGGESTIONS = [
+    'Plainte pour abus de biens sociaux',
+    'Assignation en référé',
+    'Contrat de bail commercial',
+    'Consultation jurisprudence récente',
+    'Procédure de CJIP',
     "Qualification juridique des faits",
     "Éléments constitutifs de l'infraction",
     "Responsabilité pénale",
@@ -297,3 +303,4 @@ LEGAL_SUGGESTIONS = [
     "Sanctions encourues",
     "Moyens de défense"
 ]
+
