@@ -12,7 +12,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Dict, List, Optional
 
-from utils.file_utils import (
+from utils import (
     EmailConfig,
     is_valid_email,
     format_file_size,
@@ -598,31 +598,27 @@ def prepare_email_content_and_attachments(email_config: EmailConfig, analysis: d
 
 def compress_email_attachments(email_config: EmailConfig):
     """Compresse les pièces jointes en un fichier ZIP"""
-    
-    try:
-        import zipfile
 
-        # Créer un buffer pour le ZIP
-        zip_buffer = io.BytesIO()
-        
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for att in email_config.attachments:
-                zip_file.writestr(att['filename'], att['data'])
-        
-        # Remplacer les pièces jointes par le ZIP
-        zip_data = zip_buffer.getvalue()
-        zip_filename = f"documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-        
-        email_config.attachments = [{
-            'filename': zip_filename,
-            'data': zip_data,
-            'mimetype': 'application/zip'
-        }]
-        
-        st.success(f"✅ Fichiers compressés dans {zip_filename}")
-        
-    except ImportError:
-        st.warning("⚠️ Module zipfile non disponible")
+    import zipfile
+
+    # Créer un buffer pour le ZIP
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for att in email_config.attachments:
+            zip_file.writestr(att['filename'], att['data'])
+
+    # Remplacer les pièces jointes par le ZIP
+    zip_data = zip_buffer.getvalue()
+    zip_filename = f"documents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+
+    email_config.attachments = [{
+        'filename': zip_filename,
+        'data': zip_data,
+        'mimetype': 'application/zip'
+    }]
+
+    st.success(f"✅ Fichiers compressés dans {zip_filename}")
 
 def get_available_attachments() -> Dict[str, Any]:
     """Récupère les documents disponibles pour attachement"""
@@ -700,194 +696,115 @@ def prepare_attachment(name: str, data: Dict[str, Any], format: str) -> bytes:
 
 def create_pdf_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe PDF"""
+
     try:
-        # Essayer d'utiliser reportlab s'il est disponible
-        from reportlab.lib.pagesizes import A4, letter
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-        
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        story = []
-        
-        styles = getSampleStyleSheet()
-        
-        # Titre
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor='black',
-            spaceAfter=30
-        )
-        
-        story.append(Paragraph(doc_type.replace('_', ' ').title(), title_style))
-        story.append(Spacer(1, 0.2*inch))
-        
-        # Contenu
-        if isinstance(content, str):
-            # Diviser le contenu en paragraphes
-            paragraphs = content.split('\n\n')
-            for para in paragraphs:
-                if para.strip():
-                    story.append(Paragraph(para.replace('\n', '<br/>'), styles['Normal']))
-                    story.append(Spacer(1, 0.1*inch))
-        
-        elif isinstance(content, dict):
-            # Traiter les structures complexes
-            for key, value in content.items():
-                story.append(Paragraph(f"<b>{key}:</b> {value}", styles['Normal']))
-                story.append(Spacer(1, 0.1*inch))
-        
-        # Construire le PDF
-        doc.build(story)
-        buffer.seek(0)
-        
-        return buffer.getvalue()
-        
-    except ImportError:
-        # Fallback : créer un PDF simple en texte
-        pdf_content = f"""%%PDF-1.4
-1 0 obj
+    except Exception:
+        pdf_content = content if isinstance(content, str) else str(content)
+        return pdf_content.encode("latin-1")
 
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    story = []
 
-2 0 obj
+    styles = getSampleStyleSheet()
 
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
+    # Titre
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor='black',
+        spaceAfter=30
+    )
 
-3 0 obj
+    story.append(Paragraph(doc_type.replace('_', ' ').title(), title_style))
+    story.append(Spacer(1, 0.2 * inch))
 
-/Type /Page
-/Parent 2 0 R
-/Resources 
-/Font 
-/F1 4 0 R
->>
->>
-/MediaBox [0 0 612 792]
-/Contents 5 0 R
->>
-endobj
+    # Contenu
+    if isinstance(content, str):
+        paragraphs = content.split('\n\n')
+        for para in paragraphs:
+            if para.strip():
+                story.append(Paragraph(para.replace('\n', '<br/>'), styles['Normal']))
+                story.append(Spacer(1, 0.1 * inch))
+    elif isinstance(content, dict):
+        for key, value in content.items():
+            story.append(Paragraph(f"<b>{key}:</b> {value}", styles['Normal']))
+            story.append(Spacer(1, 0.1 * inch))
 
-4 0 obj
+    # Construire le PDF
+    doc.build(story)
+    buffer.seek(0)
 
-/Type /Font
-/Subtype /Type1
-/BaseFont /Helvetica
->>
-endobj
-
-5 0 obj
-
-/Length {len(str(content))}
->>
-stream
-BT
-/F1 12 Tf
-50 750 Td
-({doc_type.title()}) Tj
-0 -20 Td
-({str(content)[:100]}...) Tj
-ET
-endstream
-endobj
-
-xref
-0 6
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000262 00000 n
-0000000341 00000 n
-trailer
-
-/Size 6
-/Root 1 0 R
->>
-startxref
-{500 + len(str(content))}
-%%EOF"""
-        
-        return pdf_content.encode('latin-1')
+    return buffer.getvalue()
 
 def create_docx_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe DOCX"""
-    try:
-        from docx import Document
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.shared import Inches, Pt
-        
-        doc = Document()
-        
-        # Titre
-        title = doc.add_heading(doc_type.replace('_', ' ').title(), 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Date
-        doc.add_paragraph(f"Date : {datetime.now().strftime('%d/%m/%Y')}")
-        doc.add_paragraph()
-        
-        # Contenu
-        if isinstance(content, str):
-            # Ajouter le contenu avec mise en forme
-            paragraphs = content.split('\n\n')
-            for para in paragraphs:
-                if para.strip():
-                    # Détecter les titres (lignes en majuscules)
-                    if para.isupper() and len(para) < 100:
-                        doc.add_heading(para, level=2)
-                    else:
-                        p = doc.add_paragraph(para)
-                        # Mise en forme basique
-                        if para.startswith('ARTICLE') or para.startswith('Article'):
-                            p.runs[0].bold = True
-        
-        elif isinstance(content, dict):
-            # Bordereau ou autre structure
-            if 'header' in content:
-                doc.add_paragraph(content['header'])
-                doc.add_paragraph()
-            
-            if 'pieces' in content:
-                doc.add_heading('Liste des pièces', level=1)
-                
-                # Créer un tableau pour les pièces
-                table = doc.add_table(rows=1, cols=3)
-                table.style = 'Light Grid Accent 1'
-                
-                # En-têtes
-                header_cells = table.rows[0].cells
-                header_cells[0].text = 'N°'
-                header_cells[1].text = 'Titre'
-                header_cells[2].text = 'Description'
-                
-                # Pièces
-                for piece in content.get('pieces', []):
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = str(piece.get('numero', ''))
-                    row_cells[1].text = piece.get('titre', '')
-                    row_cells[2].text = piece.get('description', '')
-        
-        # Sauvegarder
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        
-        return buffer.getvalue()
-        
-    except ImportError:
-        # Fallback texte
-        return create_txt_attachment(content, doc_type)
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
+
+    doc = Document()
+
+    # Titre
+    title = doc.add_heading(doc_type.replace('_', ' ').title(), 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Date
+    doc.add_paragraph(f"Date : {datetime.now().strftime('%d/%m/%Y')}")
+    doc.add_paragraph()
+
+    # Contenu
+    if isinstance(content, str):
+        # Ajouter le contenu avec mise en forme
+        paragraphs = content.split('\n\n')
+        for para in paragraphs:
+            if para.strip():
+                # Détecter les titres (lignes en majuscules)
+                if para.isupper() and len(para) < 100:
+                    doc.add_heading(para, level=2)
+                else:
+                    p = doc.add_paragraph(para)
+                    # Mise en forme basique
+                    if para.startswith('ARTICLE') or para.startswith('Article'):
+                        p.runs[0].bold = True
+
+    elif isinstance(content, dict):
+        # Bordereau ou autre structure
+        if 'header' in content:
+            doc.add_paragraph(content['header'])
+            doc.add_paragraph()
+
+        if 'pieces' in content:
+            doc.add_heading('Liste des pièces', level=1)
+
+            # Créer un tableau pour les pièces
+            table = doc.add_table(rows=1, cols=3)
+            table.style = 'Light Grid Accent 1'
+
+            # En-têtes
+            header_cells = table.rows[0].cells
+            header_cells[0].text = 'N°'
+            header_cells[1].text = 'Titre'
+            header_cells[2].text = 'Description'
+
+            # Pièces
+            for piece in content.get('pieces', []):
+                row_cells = table.add_row().cells
+                row_cells[0].text = str(piece.get('numero', ''))
+                row_cells[1].text = piece.get('titre', '')
+                row_cells[2].text = piece.get('description', '')
+
+    # Sauvegarder
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+
+    return buffer.getvalue()
 
 def create_html_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe HTML"""
@@ -2263,70 +2180,66 @@ def export_email_history(history: List[Dict[str, Any]], format: str = 'json'):
         )
     
     elif format == 'excel':
-        try:
-            import io
+        import io
 
-            import pandas as pd
+        import pandas as pd
 
-            # Préparer les données pour DataFrame
-            data_rows = []
+        # Préparer les données pour DataFrame
+        data_rows = []
+
+        for entry in history:
+            data_rows.append({
+                'Date': entry['sent_at'].strftime('%d/%m/%Y'),
+                'Heure': entry['sent_at'].strftime('%H:%M:%S'),
+                'Objet': entry['subject'],
+                'Destinataires (À)': ', '.join(entry['to']),
+                'CC': ', '.join(entry['cc']),
+                'CCI': ', '.join(entry.get('bcc', [])),
+                'Pièces jointes': entry.get('attachments_count', 0),
+                'Taille totale (KB)': entry.get('total_size', 0) // 1024,
+                'Priorité': entry.get('priority', 'normal').title()
+            })
+
+        df = pd.DataFrame(data_rows)
+
+        # Créer le fichier Excel
+        output = io.BytesIO()
+
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Historique', index=False)
+
+            # Formater
+            workbook = writer.book
+            worksheet = writer.sheets['Historique']
+
+            # Format pour les en-têtes
+            header_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#4CAF50',
+                'font_color': 'white'
+            })
+
+            # Appliquer le format aux en-têtes
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+
+            # Ajuster la largeur des colonnes
+            worksheet.set_column('A:B', 12)  # Date et Heure
+            worksheet.set_column('C:C', 40)  # Objet
+            worksheet.set_column('D:F', 30)  # Destinataires
+            worksheet.set_column('G:I', 15)  # Stats
+
+        output.seek(0)
+
+        st.download_button(
+            "💾 Télécharger Excel",
+            output,
+            f"historique_emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_email_history_excel"
+        )
             
-            for entry in history:
-                data_rows.append({
-                    'Date': entry['sent_at'].strftime('%d/%m/%Y'),
-                    'Heure': entry['sent_at'].strftime('%H:%M:%S'),
-                    'Objet': entry['subject'],
-                    'Destinataires (À)': ', '.join(entry['to']),
-                    'CC': ', '.join(entry['cc']),
-                    'CCI': ', '.join(entry.get('bcc', [])),
-                    'Pièces jointes': entry.get('attachments_count', 0),
-                    'Taille totale (KB)': entry.get('total_size', 0) // 1024,
-                    'Priorité': entry.get('priority', 'normal').title()
-                })
-            
-            df = pd.DataFrame(data_rows)
-            
-            # Créer le fichier Excel
-            output = io.BytesIO()
-            
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Historique', index=False)
-                
-                # Formater
-                workbook = writer.book
-                worksheet = writer.sheets['Historique']
-                
-                # Format pour les en-têtes
-                header_format = workbook.add_format({
-                    'bold': True,
-                    'bg_color': '#4CAF50',
-                    'font_color': 'white'
-                })
-                
-                # Appliquer le format aux en-têtes
-                for col_num, value in enumerate(df.columns.values):
-                    worksheet.write(0, col_num, value, header_format)
-                
-                # Ajuster la largeur des colonnes
-                worksheet.set_column('A:B', 12)  # Date et Heure
-                worksheet.set_column('C:C', 40)  # Objet
-                worksheet.set_column('D:F', 30)  # Destinataires
-                worksheet.set_column('G:I', 15)  # Stats
-            
-            output.seek(0)
-            
-            st.download_button(
-                "💾 Télécharger Excel",
-                output,
-                f"historique_emails_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_email_history_excel"
-            )
-            
-        except ImportError:
-            st.error("❌ pandas/xlsxwriter requis pour l'export Excel")
-            # Fallback vers CSV
-            export_email_history(history, format='csv')
+        export_email_history(history, format='csv')
 
 def show_email_configuration_interface():
     """Interface de configuration des emails"""

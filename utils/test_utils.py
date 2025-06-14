@@ -23,7 +23,7 @@ def test_text_processing():
         extract_monetary_amounts,
         normalize_whitespace,
     )
-    from utils.helpers import clean_key, truncate_text
+    from utils import clean_key, truncate_text
 
     # Test clean_key
     assert clean_key("Test String 123!") == "test_string_123"
@@ -58,8 +58,13 @@ def test_date_time():
     """Test des fonctions de date/temps"""
     print("\n=== TEST DATE TIME ===")
     
-    from utils.date_time import (extract_dates, format_date, format_duration,
-                                 format_legal_date, is_business_day)
+    from utils import (
+        extract_dates,
+        format_date,
+        format_duration,
+        format_legal_date,
+        is_business_day,
+    )
 
     # Test format_date
     date = datetime(2024, 1, 15)
@@ -124,9 +129,14 @@ def test_file_utils():
     """Test des fonctions fichiers"""
     print("\n=== TEST FILE UTILS ===")
     
-    from utils.file_utils import (format_file_size, get_file_extension,
-                                  get_file_icon, is_valid_email,
-                                  sanitize_filename)
+    from utils import (
+        format_file_size,
+        get_file_extension,
+        get_file_icon,
+        is_valid_email,
+        validate_uploaded_file,
+        sanitize_filename,
+    )
 
     # Test sanitize_filename
     unsafe = "fichier<>:|?*.txt"
@@ -153,6 +163,33 @@ def test_file_utils():
     assert is_valid_email("test@example.com") == True
     assert is_valid_email("invalid.email") == False
     print("✓ is_valid_email")
+
+    class DummyFile:
+        def __init__(self, name, data, type=None):
+            self.name = name
+            self._data = data
+            self.size = len(data)
+            self.type = type or "text/plain"
+
+        def getvalue(self):
+            return self._data
+
+    # Fichier texte valide
+    valid, msg = validate_uploaded_file(DummyFile("test.txt", b"hello"))
+    assert valid
+
+    # Fichier vide
+    valid, msg = validate_uploaded_file(DummyFile("empty.txt", b""))
+    assert not valid
+
+    # Fichier trop volumineux (limite 1 MB pour le test)
+    big_data = b"a" * (2 * 1024 * 1024)
+    valid, msg = validate_uploaded_file(DummyFile("big.txt", big_data), max_size_mb=1)
+    assert not valid
+
+    # Fichier non texte
+    valid, msg = validate_uploaded_file(DummyFile("image.png", b"\x89PNG\r\n"))
+    assert not valid
 
 
 def test_validators():
@@ -223,8 +260,12 @@ def test_formatters():
     """Test des formatters"""
     print("\n=== TEST FORMATTERS ===")
     
-    from utils.formatters import (_to_roman, apply_legal_numbering,
-                                  format_legal_list, format_signature_block)
+    from utils import (
+        _to_roman,
+        apply_legal_numbering,
+        format_legal_list,
+        format_signature_block,
+    )
 
     # Test numérotation romaine
     assert _to_roman(1) == "I"

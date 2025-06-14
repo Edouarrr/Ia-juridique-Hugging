@@ -47,6 +47,12 @@ def initialize_session_state():
         'recent_actions': [],
         'favorites': [],
 
+        # Historique global
+        'history': {'searches': [], 'modules': []},
+
+        # Données liées aux dossiers
+        'dossiers': {},
+
         # Module juridique
         'acte_genere': None,
         'current_dossier': None,
@@ -170,6 +176,48 @@ def set_user_preference(key: str, value: Any):
         st.session_state.user_preferences = {}
     
     st.session_state.user_preferences[key] = value
+
+
+def log_search(query: str):
+    """Enregistre une recherche dans l'historique."""
+    from datetime import datetime
+
+    if 'history' not in st.session_state:
+        st.session_state.history = {'searches': [], 'modules': []}
+
+    st.session_state.history['searches'].insert(0, {
+        'query': query,
+        'timestamp': datetime.now()
+    })
+    st.session_state.history['searches'] = st.session_state.history['searches'][:20]
+
+
+def log_module_usage(module: str, dossier: str | None = None):
+    """Enregistre l'utilisation d'un module et met à jour les dossiers."""
+    from datetime import datetime
+
+    if 'history' not in st.session_state:
+        st.session_state.history = {'searches': [], 'modules': []}
+
+    entry = {'module': module, 'timestamp': datetime.now(), 'dossier': dossier}
+    st.session_state.history['modules'].insert(0, entry)
+    st.session_state.history['modules'] = st.session_state.history['modules'][:20]
+
+    if dossier:
+        if 'dossiers' not in st.session_state:
+            st.session_state.dossiers = {}
+        dossier_info = st.session_state.dossiers.setdefault(dossier, {'summary': '', 'modules': []})
+        if module not in dossier_info['modules']:
+            dossier_info['modules'].append(module)
+
+
+def set_dossier_summary(dossier: str, summary: str):
+    """Met à jour le résumé d'un dossier."""
+    if 'dossiers' not in st.session_state:
+        st.session_state.dossiers = {}
+
+    info = st.session_state.dossiers.setdefault(dossier, {'summary': '', 'modules': []})
+    info['summary'] = summary
 
 
 def reset_session():

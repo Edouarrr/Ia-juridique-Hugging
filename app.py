@@ -16,7 +16,8 @@ from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
 from services.universal_search_service import UniversalSearchService
 from managers.document_manager import DocumentManager
-from utils import LEGAL_SUGGESTIONS
+from utils import LEGAL_SUGGESTIONS, log_search, log_module_usage, set_dossier_summary
+from module_loader import get_available_modules
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -36,30 +37,50 @@ st.set_page_config(
 # CSS personnalisé
 st.markdown("""
 <style>
+    :root {
+        --primary-text: #2C3E50;
+        --section-bg: #F5F7FA;
+        --button-bg: #1F77B4;
+        --button-hover: #123b69;
+        --separator: #D0D6DD;
+    }
+    body {
+        color: var(--primary-text);
+    }
     .main-header {
         font-size: 2.5rem;
         font-weight: 700;
-        background: linear-gradient(90deg, #1a237e 0%, #3949ab 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: white;
         text-align: center;
         padding: 1rem 0;
+        background-color: var(--primary-text);
+        border-radius: 5px;
     }
     .module-card {
-        background: #f8f9fa;
+        background: var(--section-bg);
         border-radius: 10px;
         padding: 1.5rem;
         margin: 0.5rem 0;
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--separator);
         transition: all 0.3s ease;
     }
     .module-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
+    .stButton > button {
+        background-color: var(--button-bg);
+        color: white;
+    }
+    .stButton > button:hover {
+        background-color: var(--button-hover);
+    }
     .status-ok { color: #4caf50; }
     .status-error { color: #f44336; }
     .status-warning { color: #ff9800; }
+    hr {
+        border-color: var(--separator);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -332,8 +353,8 @@ class ModuleManager:
                 sys.modules[f"modules.{module_name}"] = module
                 spec.loader.exec_module(module)
                 
-                # Vérifier que le module a une fonction run()
-                if hasattr(module, 'run'):
+                # Vérifier que le module a une fonction run() exécutable
+                if callable(getattr(module, 'run', None)):
                     self.loaded_modules[module_name] = module
                     module_info["loaded"] = True
                     self.load_status["success"].append(module_name)
@@ -364,6 +385,7 @@ class ModuleManager:
         try:
             # Exécuter le module
             self.loaded_modules[module_name].run()
+            log_module_usage(module_name, st.session_state.get('selected_folder'))
         except Exception as e:
             st.error(f"❌ Erreur lors de l'exécution du module {module_name}")
             st.error(str(e))
@@ -441,29 +463,48 @@ def init_session_state():
 # ========== INTERFACE PRINCIPALE ==========
 def show_dashboard():
     """Affiche le tableau de bord principal"""
-    st.markdown('<h1 class="main-header">⚖️ IA Juridique - Droit Pénal des Affaires</h1>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style='background-color:#2C3E50;padding:10px;border-radius:5px'>
+        <h1 style='color:white;text-align:center'>STERU BARATTE AARPI ⚖️</h1>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Barre de recherche
+    st.markdown(
+        "Bienvenue sur la plateforme d'assistance juridique IA de STERU BARATTE AARPI. "
+        "Accédez à vos dossiers, modules de traitement, ou interrogez un cas en langage naturel."
+    )
+
+    st.markdown(
+        "<div style='background-color:#F5F7FA;padding:20px;border-radius:5px'>",
+        unsafe_allow_html=True,
+    )
     search_query = st.text_input(
         "🔍 Recherche de dossier ou commande",
         placeholder="Ex: @DOSSIER123",
         key="dashboard_search",
     )
-if search_query.startswith("@"):
-    st.info(f"Recherche dossier : {search_query[1:]}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-if search_query:
-    suggestion = next(
-        (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
-        None,
-    )
-    if suggestion:
-        st.markdown(f"💡 Suggestion : *{suggestion}*")
+    if search_query.startswith("@"):
+        st.info(f"Recherche dossier : {search_query[1:]}")
 
-search_service = UniversalSearchService()
+    if search_query:
+        suggestion = next(
+            (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
+            None,
+        )
+        if suggestion:
+            st.markdown(f"💡 Suggestion : *{suggestion}*")
+
+    search_service = UniversalSearchService()
+    # Initialize search service for dashboard queries
 
     if search_query:
         query_to_use = search_query
+        log_search(search_query)
 
         if search_query.startswith("@"):
             folder = search_query[1:].split()[0]
@@ -477,6 +518,7 @@ search_service = UniversalSearchService()
 
             folder_summary = doc_manager.get_summary(folder)
             if folder_summary:
+                set_dossier_summary(folder, folder_summary)
                 query_to_use = f"Contexte dossier : {folder_summary}\n\n{search_query}"
 
         if not search_query.startswith("#"):
@@ -542,7 +584,7 @@ search_service = UniversalSearchService()
         show_troubleshooting()
         return
     
-    # Afficher les modules par catégorie
+    # Afficher les modules par catégorie dans un encart
     categories_display = {
         "analyse": ("📊 Analyse", "Modules d'analyse et extraction"),
         "strategie": ("⚖️ Stratégie", "Modules de stratégie juridique"),
@@ -553,35 +595,54 @@ search_service = UniversalSearchService()
         "technique": ("🔧 Technique", "Modules techniques"),
         "autre": ("📦 Autres", "Modules divers")
     }
-    
-    for cat_key, (cat_title, cat_desc) in categories_display.items():
-        if cat_key in modules_by_cat:
-            st.markdown(f"### {cat_title}")
-            st.caption(cat_desc)
+
+    with st.expander("Modules disponibles", expanded=True):
+        for cat_key, (cat_title, cat_desc) in categories_display.items():
+            if cat_key in modules_by_cat:
+                st.markdown(f"### {cat_title}")
+                st.caption(cat_desc)
+
+                cols = st.columns(3)
+                for idx, module in enumerate(modules_by_cat[cat_key]):
+                    with cols[idx % 3]:
+                        # Carte de module
+                        status_icon = "✅" if module["loaded"] else "⚠️"
+
+                        with st.container():
+                            st.markdown(f"""
+                            <div class="module-card">
+                                <h4>{status_icon} {module['name']}</h4>
+                                <p style=\"color: #666; font-size: 0.9em;\">{module['desc']}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            if st.button(
+                                "Ouvrir",
+                                key=f"open_{module['id']}",
+                                use_container_width=True
+                            ):
+                                st.session_state.current_view = module['id']
+                                st.rerun()
             
-            cols = st.columns(3)
-            for idx, module in enumerate(modules_by_cat[cat_key]):
-                with cols[idx % 3]:
-                    # Carte de module
-                    status_icon = "✅" if module["loaded"] else "⚠️"
-                    
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="module-card">
-                            <h4>{status_icon} {module['name']}</h4>
-                            <p style="color: #666; font-size: 0.9em;">{module['desc']}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        if st.button(
-                            "Ouvrir", 
-                            key=f"open_{module['id']}", 
-                            use_container_width=True
-                        ):
-                            st.session_state.current_view = module['id']
-                            st.rerun()
-            
-            st.markdown("")
+
+    # --- Affichage dynamique des modules disponibles ---
+    detected = get_available_modules()
+    if detected:
+        st.markdown("### 🧩 Modules détectés")
+        cols = st.columns(3)
+        for idx, (name, module) in enumerate(detected.items()):
+            desc = module.__doc__.strip() if module.__doc__ else "Aucune description disponible"
+            if desc.startswith("Module de"):
+                desc = desc.split(".")[0] + "."
+            with cols[idx % 3]:
+                if st.button(f"🧩 {name}", key=f"mod_{name}"):
+                    try:
+                        module.run()
+                    except Exception as e:
+                        st.error(f"Erreur dans {name}: {e}")
+                st.caption(desc)
+
+    st.markdown("")
 
 def show_sidebar():
     """Affiche la barre latérale"""
@@ -607,7 +668,21 @@ def show_sidebar():
                 if st.button(config["name"], use_container_width=True, key=f"quick_{module_id}"):
                     st.session_state.current_view = module_id
                     st.rerun()
-        
+
+        st.markdown("---")
+
+        # Historique recent
+        st.markdown("### 🕘 Historique")
+        history = st.session_state.get('history', {'searches': [], 'modules': []})
+        if history['searches'] or history['modules']:
+            for h in history['searches'][:3]:
+                st.caption(f"🔍 {h['query']}")
+            for h in history['modules'][:3]:
+                dossier = f" @{h['dossier']}" if h.get('dossier') else ''
+                st.caption(f"📦 {h['module']}{dossier}")
+        else:
+            st.caption("Aucune activité récente")
+
         st.markdown("---")
         
         # Statut système
@@ -960,10 +1035,10 @@ def main():
     st.markdown("---")
     modules_count = len(st.session_state.module_manager.available_modules)
     st.markdown(
-        f"""<p style='text-align: center; color: #666; font-size: 0.8rem;'>
-        IA Juridique v2.0 - Droit Pénal des Affaires • {modules_count} modules disponibles • Système modulaire optimisé
+        """<p style='text-align:center; color:#2C3E50; font-size:0.8rem;'>
+        © STERU BARATTE AARPI – Assistant IA Juridique – Paris, 2025
         </p>""",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 def create_single_module(module_id: str, config: dict):

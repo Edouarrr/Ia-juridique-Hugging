@@ -1,135 +1,95 @@
-"""
-Modules de l'application IA Juridique - Initialisation
-"""
+"""Initialisation des modules de l'application."""
+
+from __future__ import annotations
 
 import importlib
 import logging
 import sys
 from typing import Any, Dict
 
-logger = logging.getLogger(__name__)
+from utils.logging import decorate_public_functions, setup_logger
 
-# Définir __all__ pour les exports
+logger = setup_logger(__name__)
+
 __all__ = [
-    'ComparisonModule',
-    'TimelineModule',
-    'ExtractionModule',
-    'StrategyModule',
-    'ReportModule',
-    'get_modules_status'
+    "ComparisonModule",
+    "TimelineModule",
+    "ExtractionModule",
+    "StrategyModule",
+    "ReportModule",
+    "get_modules_status",
 ]
 
-# Dictionnaire des modules disponibles
 AVAILABLE_MODULES = {
-    'comparison': 'ComparisonModule',
-    'timeline': 'TimelineModule',
-    'extraction': 'ExtractionModule',
-    'strategy': 'StrategyModule',
-    'report': 'ReportModule'
+    "comparison": "ComparisonModule",
+    "timeline": "TimelineModule",
+    "extraction": "ExtractionModule",
+    "strategy": "StrategyModule",
+    "report": "ReportModule",
 }
 
-# État des imports
-_import_status = {
-    'loaded': [],
-    'failed': {}
-}
+try:
+    from .module_registry import REGISTERED_MODULES
+except Exception:  # pragma: no cover - registry may not exist yet
+    REGISTERED_MODULES = []
 
-# Import dynamique des modules
+_import_status = {"loaded": [], "failed": {}}
+
 for module_name, class_name in AVAILABLE_MODULES.items():
     try:
-        # Utiliser importlib pour un import robuste
         module = importlib.import_module(f".{module_name}", package=__package__)
-        
+        decorate_public_functions(module)
         # Extraire la classe et l'ajouter au namespace
         if hasattr(module, class_name):
             globals()[class_name] = getattr(module, class_name)
-            _import_status['loaded'].append(class_name)
-            logger.info(f"✅ Module chargé : {class_name}")
+            _import_status["loaded"].append(class_name)
+            logger.info("✅ Module chargé : %s", class_name)
         else:
-            error_msg = f"Classe {class_name} non trouvée dans {module_name}"
-            _import_status['failed'][class_name] = error_msg
-            logger.warning(f"⚠️ {error_msg}")
-            
-    except ImportError as e:
-        error_msg = f"Module non disponible : {str(e)}"
-        _import_status['failed'][class_name] = error_msg
-        logger.warning(f"⚠️ {class_name} - {error_msg}")
-        
-        # Créer une classe placeholder
-        exec(f"""
-class {class_name}:
-    '''Placeholder pour {class_name} non disponible'''
-    def __init__(self, *args, **kwargs):
-        self.name = "{class_name.replace('Module', '')}"
-        self.available = False
-        self.error = "{error_msg}"
-        self.icon = "❌"
-        self.description = "Module non disponible"
-        logger.warning("Utilisation du placeholder pour {class_name}")
-    
-    def render(self):
-        import streamlit as st
-        st.error(f"Module {{self.name}} non disponible")
-        st.info(f"Erreur : {{self.error}}")
-        st.markdown("### 🛠️ Actions suggérées")
-        st.markdown("1. Vérifiez que le fichier `modules/{module_name}.py` existe")
-        st.markdown("2. Vérifiez les imports dans le fichier")
-        st.markdown("3. Consultez les logs pour plus de détails")
-""", globals())
-        
-    except Exception as e:
-        error_msg = f"Erreur inattendue : {str(e)}"
-        _import_status['failed'][class_name] = error_msg
-        logger.error(f"❌ {class_name} - {error_msg}")
-        
-        # Créer une classe placeholder pour l'erreur
-        exec(f"""
-class {class_name}:
-    '''Placeholder pour {class_name} avec erreur'''
-    def __init__(self, *args, **kwargs):
-        self.name = "{class_name.replace('Module', '')}"
-        self.available = False
-        self.error = "{error_msg}"
-        self.icon = "❌"
-        self.description = "Erreur lors du chargement"
-    
-    def render(self):
-        import streamlit as st
-        st.error(f"Erreur dans le module {{self.name}}")
-        st.code(f"{{self.error}}")
-""", globals())
+            raise AttributeError(f"Classe {class_name} manquante")
+    except Exception as e:  # noqa: BLE001 - logging visible errors is enough
+        error_msg = str(e)
+        _import_status["failed"][class_name] = error_msg
+        logger.warning("⚠️  %s - %s", class_name, error_msg)
+        globals()[class_name] = type(class_name, (), {"available": False, "error": error_msg})
+
+for mod in REGISTERED_MODULES:
+    try:
+        importlib.import_module(f".{mod}", package=__package__)
+        logger.info("✅ Module utilitaire chargé : %s", mod)
+    except Exception as e:  # pragma: no cover - best effort
+        logger.warning("⚠️  Impossible de charger %s: %s", mod, e)
+
 
 def get_modules_status() -> Dict[str, Any]:
-    """Retourne le statut des modules"""
     return {
-        'total_modules': len(AVAILABLE_MODULES),
-        'loaded_count': len(_import_status['loaded']),
-        'failed_count': len(_import_status['failed']),
-        'loaded': _import_status['loaded'],
-        'failed': _import_status['failed'],
-        'available_modules': AVAILABLE_MODULES
+        "total_modules": len(AVAILABLE_MODULES),
+        "loaded_count": len(_import_status["loaded"]),
+        "failed_count": len(_import_status["failed"]),
+        "loaded": _import_status["loaded"],
+        "failed": _import_status["failed"],
+        "available_modules": AVAILABLE_MODULES,
+        "registered_helpers": REGISTERED_MODULES,
     }
 
-def test_modules():
-    """Test rapide des modules disponibles"""
+
+def test_modules() -> Dict[str, Any]:
     status = get_modules_status()
-    print(f"\n📊 Statut des Modules :")
+    print("\n📊 Statut des Modules :")
     print(f"Total : {status['total_modules']}")
     print(f"Chargés : {status['loaded_count']} ✅")
     print(f"Échoués : {status['failed_count']} ❌")
-    
-    if status['loaded']:
-        print(f"\n✅ Modules disponibles :")
-        for module in status['loaded']:
-            print(f"  - {module}")
-    
-    if status['failed']:
-        print(f"\n❌ Modules non disponibles :")
-        for module, error in status['failed'].items():
-            print(f"  - {module}: {error}")
-    
+    if status["registered_helpers"]:
+        print("\nModules utilitaires :")
+        for mod in status["registered_helpers"]:
+            print(f"  - {mod}")
     return status
 
+decorate_public_functions(sys.modules[__name__])
+if __name__ == "__main__":  # pragma: no cover - manual test
+    test_modules()
+
 # Test automatique si exécuté directement
+decorate_public_functions(sys.modules[__name__])
+
 if __name__ == "__main__":
     test_modules()

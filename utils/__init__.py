@@ -36,11 +36,26 @@ from .document_utils import (compare_documents, create_breadcrumb,
                              get_document_statistics, merge_documents,
                              split_document)
 # File Utils
-from .file_utils import (create_unique_filename, format_file_size,
-                         get_file_extension, get_file_icon, get_file_info,
-                         get_mime_type, is_document_file, is_image_file,
-                         is_text_file, is_valid_email, is_valid_filename,
-                         organize_files_by_type, sanitize_filename, split_path)
+from .file_utils import (
+    create_unique_filename,
+    format_file_size,
+    get_file_extension,
+    get_file_icon,
+    get_file_info,
+    get_mime_type,
+    is_document_file,
+    is_image_file,
+    is_text_file,
+    is_valid_email,
+    validate_uploaded_file,
+    is_valid_filename,
+    organize_files_by_type,
+    sanitize_filename,
+    clean_filename,
+    split_path,
+    ATTACHMENT_MIME_TYPES,
+    EmailConfig,
+)
 # Formatters
 from .formatters import format_address, format_case_number, format_currency
 from .formatters import \
@@ -119,6 +134,9 @@ __all__ = [
     'update_session_values',
     'clear_session_results',
     'add_to_history',
+    'log_search',
+    'log_module_usage',
+    'set_dossier_summary',
     'toggle_favorite',
     'is_favorite',
     'get_user_preference',
@@ -151,8 +169,12 @@ __all__ = [
     
     # File Utils
     'sanitize_filename',
+    'clean_filename',
     'format_file_size',
     'is_valid_email',
+    'validate_uploaded_file',
+    'EmailConfig',
+    'ATTACHMENT_MIME_TYPES',
     
     # Cache Manager
     'CacheJuridique',

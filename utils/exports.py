@@ -39,8 +39,9 @@ from .document_utils import (compare_documents, create_breadcrumb,
 from .file_utils import (create_unique_filename, format_file_size,
                          get_file_extension, get_file_icon, get_mime_type,
                          is_document_file, is_image_file, is_text_file,
-                         is_valid_email, is_valid_filename,
-                         organize_files_by_type, sanitize_filename)
+                         is_valid_email, validate_uploaded_file, is_valid_filename,
+                         organize_files_by_type, sanitize_filename,
+                         clean_filename)
 # ========== FORMATTERS ==========
 from .formatters import (add_page_numbers, apply_legal_numbering,
                          create_document_footer, create_document_header,
@@ -149,6 +150,7 @@ __all__ = [
     
     # File Utils
     'sanitize_filename',
+    'clean_filename',
     'format_file_size',
     'get_file_icon',
     'get_file_extension',
@@ -160,6 +162,7 @@ __all__ = [
     'create_unique_filename',
     'organize_files_by_type',
     'is_valid_email',
+    'validate_uploaded_file',
     
     # Cache Manager
     'CacheJuridique',

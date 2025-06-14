@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+import sys
 import time
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
@@ -15,22 +16,14 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-# Imports optionnels
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-    logger.warning("plotly non disponible - graphiques désactivés")
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import pandas as pd
+from utils.decorators import decorate_public_functions
 
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
-    logger.warning("pandas non disponible - fonctionnalités limitées")
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # Configuration des modèles d'IA pour le droit pénal des affaires
 class AIModel(Enum):
@@ -42,12 +35,7 @@ class AIModel(Enum):
     FUSION = "🔥 Mode Fusion"
 
 # Import du manager multi-LLM
-try:
-    from llm_manager import LLMManager
-    LLM_MANAGER_AVAILABLE = True
-except ImportError:
-    LLM_MANAGER_AVAILABLE = False
-    logger.warning("LLM Manager non disponible - mode simulation activé")
+from llm_manager import LLMManager
 
 @dataclass
 class TimelineEvent:
@@ -83,11 +71,8 @@ class TimelineModule:
         # Configuration des styles
         self._inject_custom_styles()
         
-        # Initialiser le manager LLM si disponible
-        if LLM_MANAGER_AVAILABLE:
-            self.llm_manager = LLMManager()
-        else:
-            self.llm_manager = None
+        # Initialiser le manager LLM
+        self.llm_manager = LLMManager()
     
     def _init_session_state(self):
         """Initialise les variables de session"""
@@ -577,12 +562,8 @@ class TimelineModule:
                 with status:
                     st.write(f"🤖 Extraction avec {model.value}...")
                 
-                if self.llm_manager and LLM_MANAGER_AVAILABLE:
-                    # Extraction réelle via le manager LLM
-                    model_events = self._extract_with_llm_manager(documents, model, base_prompt)
-                else:
-                    # Mode simulation si manager non disponible
-                    model_events = self._simulate_ai_extraction(documents, model)
+                # Extraction via le manager LLM
+                model_events = self._extract_with_llm_manager(documents, model, base_prompt)
                 
                 model_results[model] = model_events
                 all_events.extend(model_events)
@@ -1939,7 +1920,7 @@ Document à analyser :
             })
         
         # Affichage interactif
-        if events_data and PANDAS_AVAILABLE:
+        if events_data:
             df = pd.DataFrame(events_data)
             
             # Utiliser data_editor pour permettre la modification
@@ -2549,9 +2530,7 @@ Document à analyser :
     
     def _create_advanced_visualization(self, events: List[TimelineEvent], config: Dict[str, Any]) -> Any:
         """Crée une visualisation avancée selon le type de chronologie"""
-        if not PLOTLY_AVAILABLE:
-            st.warning("Plotly non disponible. Installez-le pour les visualisations.")
-            return None
+
         
         timeline_type = config.get('timeline_type', 'Chronologie complète')
         view_type = config.get('view_type', 'Timeline linéaire')
@@ -3420,8 +3399,6 @@ Document à analyser :
     
     def _create_density_heatmap(self, events: List[TimelineEvent], config: Dict[str, Any]) -> go.Figure:
         """Carte de densité temporelle"""
-        if not PANDAS_AVAILABLE:
-            return self._create_modern_linear_timeline(events, config)
         
         # Créer un DataFrame
         df = pd.DataFrame([{
@@ -3650,9 +3627,9 @@ Document à analyser :
             'metadata': e.metadata
         } for e in events], ensure_ascii=False, indent=2)
         
-        # Export CSV si pandas disponible
-        if PANDAS_AVAILABLE:
-            df = pd.DataFrame([{
+        # Export CSV
+        df = pd.DataFrame([
+            {
                 'Date': e.date.strftime('%d/%m/%Y'),
                 'Description': e.description,
                 'Importance': e.importance,
@@ -3660,8 +3637,10 @@ Document à analyser :
                 'Acteurs': ', '.join(e.actors),
                 'Confiance': f"{e.confidence:.0%}",
                 'Source IA': e.metadata.get('ai_model', '') if e.ai_extracted else ''
-            } for e in events])
-            exports['csv'] = df.to_csv(index=False)
+            }
+            for e in events
+        ])
+        exports['csv'] = df.to_csv(index=False)
         
         # Export texte structuré
         exports['txt'] = self._export_to_structured_text(events, config)
@@ -3825,7 +3804,7 @@ Document à analyser :
                 st.write(f"**Durée:** {analysis['date_range']['duration_days']} jours")
         
         # Densité temporelle
-        if analysis.get('density') and PLOTLY_AVAILABLE:
+        if analysis.get('density'):
             st.markdown("#### 📈 Densité temporelle")
             
             months = list(analysis['density'].keys())
@@ -4054,12 +4033,13 @@ Document à analyser :
         if st.button("🧪 Tester la configuration", type="primary"):
             with st.spinner("Test en cours..."):
                 time.sleep(2)
-                st.success("""
-                ✅ Configuration validée !
-                - Manager LLM : {"Connecté" if LLM_MANAGER_AVAILABLE else "Mode simulation"}
+                st.success(
+                    f"""✅ Configuration validée !
+                - Manager LLM : Connecté
                 - Modèles actifs : {sum(1 for v in st.session_state.ai_models.values() if v)}
                 - Spécialisation : Droit pénal des affaires
-                """)
+                """
+                )
         
         # Sauvegarder la configuration
         if st.button("💾 Sauvegarder la configuration"):
@@ -4464,9 +4444,6 @@ Document à analyser :
     
     def _create_sunburst_viz(self, events: List[TimelineEvent], options: Dict) -> go.Figure:
         """Crée un diagramme sunburst chronologique"""
-        if not PLOTLY_AVAILABLE:
-            return None
-        
         # Préparer les données hiérarchiques
         data = []
         for event in events:
@@ -4503,9 +4480,6 @@ Document à analyser :
     
     def _create_temporal_heatmap(self, events: List[TimelineEvent], options: Dict) -> go.Figure:
         """Crée une carte de chaleur temporelle"""
-        if not PLOTLY_AVAILABLE or not PANDAS_AVAILABLE:
-            return None
-        
         # Créer une matrice temporelle
         df = pd.DataFrame([{
             'date': e.date,
@@ -4548,8 +4522,6 @@ Document à analyser :
     
     def _create_event_network(self, events: List[TimelineEvent], options: Dict) -> go.Figure:
         """Crée un réseau d'événements interactif"""
-        if not PLOTLY_AVAILABLE:
-            return None
         
         # Créer les connexions
         edge_x = []
@@ -4607,8 +4579,6 @@ Document à analyser :
     
     def _create_spiral_timeline(self, events: List[TimelineEvent], options: Dict) -> go.Figure:
         """Crée une timeline en spirale"""
-        if not PLOTLY_AVAILABLE:
-            return None
         
         import numpy as np
 
@@ -5100,12 +5070,8 @@ Document à analyser :
                                 'Acteurs': ', '.join(event.actors[:3])
                             })
                         
-                        if PANDAS_AVAILABLE:
-                            df = pd.DataFrame(preview_data)
-                            st.dataframe(df, use_container_width=True)
-                        else:
-                            for row in preview_data:
-                                st.write(row)
+                        df = pd.DataFrame(preview_data)
+                        st.dataframe(df, use_container_width=True)
                         
                         if len(events) > 10:
                             st.info(f"... et {len(events) - 10} autres événements")
@@ -5199,19 +5165,18 @@ Document à analyser :
         
         with col3:
             if st.button("📥 Modèle Excel", use_container_width=True):
-                if PANDAS_AVAILABLE:
-                    df_template = pd.DataFrame({
+                df_template = pd.DataFrame({
                         'Date': ['01/01/2024', '15/01/2024'],
                         'Description': ['Événement exemple 1', 'Événement exemple 2'],
                         'Importance': [5, 8],
                         'Catégorie': ['procédure', 'financier'],
                         'Acteurs': ['Acteur 1, Acteur 2', 'Acteur 3']
-                    })
-                    # Créer un fichier Excel en mémoire
-                    output = pd.ExcelWriter('timeline_template.xlsx', engine='xlsxwriter')
-                    df_template.to_excel(output, index=False)
-                    # Note: Cette approche simplifiée nécessiterait une gestion plus complexe en production
-                    st.info("Fonction Excel nécessite une configuration supplémentaire")
+                })
+                # Créer un fichier Excel en mémoire
+                output = pd.ExcelWriter('timeline_template.xlsx', engine='xlsxwriter')
+                df_template.to_excel(output, index=False)
+                # Note: Cette approche simplifiée nécessiterait une gestion plus complexe en production
+                st.info("Fonction Excel nécessite une configuration supplémentaire")
     
     def _render_template_selection(self):
         """Interface de sélection de templates pour le droit pénal des affaires"""
@@ -5866,8 +5831,7 @@ Document à analyser :
     
     def _create_quick_preview(self, events: List[TimelineEvent]) -> go.Figure:
         """Crée un aperçu rapide de la timeline"""
-        if not PLOTLY_AVAILABLE or not events:
-            return None
+
         
         # Timeline simple
         fig = go.Figure()
@@ -5906,9 +5870,7 @@ Document à analyser :
     
     def _import_from_csv(self, file) -> List[TimelineEvent]:
         """Importe des événements depuis un CSV"""
-        if not PANDAS_AVAILABLE:
-            st.error("pandas est requis pour importer des fichiers CSV")
-            return []
+
         
         try:
             df = pd.read_csv(file)
@@ -5919,9 +5881,6 @@ Document à analyser :
     
     def _import_from_excel(self, file) -> List[TimelineEvent]:
         """Importe des événements depuis Excel"""
-        if not PANDAS_AVAILABLE:
-            st.error("pandas est requis pour importer des fichiers Excel")
-            return []
         
         try:
             df = pd.read_excel(file)

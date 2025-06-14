@@ -16,20 +16,15 @@ from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
 from modules.dataclasses import (JurisprudenceCase, LetterheadTemplate,
                                  RedactionResult, StylePattern)
-from utils.helpers import (create_formatted_docx,
-                           create_letterhead_from_template,
-                           extract_legal_references)
-try:
-    from utils import clean_key, format_legal_date
-except Exception:  # pragma: no cover - fallback for standalone use
-    from utils.fallback import clean_key, format_legal_date
+from utils.formatters import (
+    create_formatted_docx,
+    create_letterhead_from_template,
+)
+from utils.legal_utils import extract_legal_references
+from utils import clean_key, format_legal_date
 
-try:
-    from docx import Document as DocxDocument
-    from docx.shared import Pt
-    DOCX_AVAILABLE = True
-except ImportError:
-    DOCX_AVAILABLE = False
+from docx import Document as DocxDocument
+from docx.shared import Pt
 
 
 class UnifiedRedactionModule:
@@ -515,7 +510,6 @@ class UnifiedRedactionModule:
             )
         
         with col2:
-            if DOCX_AVAILABLE:
                 # Export Word formaté
                 docx_data = create_formatted_docx(edited_content, result.type)
                 st.download_button(

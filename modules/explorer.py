@@ -17,12 +17,17 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from managers.azure_blob_manager import AzureBlobManager
 from models.dataclasses import Document
-from utils.helpers import calculate_read_time, get_file_icon, sanitize_filename
+from utils.text_processing import calculate_read_time
+from utils.file_utils import get_file_icon, sanitize_filename
 try:
     from utils import clean_key, format_file_size, format_legal_date, truncate_text
 except Exception:  # pragma: no cover - fallback for standalone use
     from utils.fallback import clean_key, format_legal_date, truncate_text
     from utils import format_file_size
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # Configuration de l'explorateur
 EXPLORER_CONFIG = {
@@ -907,58 +912,32 @@ def show_global_statistics(documents: Dict[str, Document]):
         st.metric("📂 Sources", sources_count)
     
     # Graphiques
-    try:
-        import plotly.express as px
-        import plotly.graph_objects as go
+    import plotly.express as px
+    import plotly.graph_objects as go
 
-        # Répartition par type
-        fig1 = px.pie(
-            df.groupby('Type').size().reset_index(name='count'),
-            values='count',
-            names='Type',
-            title="Répartition par type de document"
-        )
-        st.plotly_chart(fig1, use_container_width=True)
-        
-        # Distribution des tailles
-        fig2 = px.histogram(
-            df,
-            x='Taille',
-            nbins=30,
-            title="Distribution des tailles de documents",
-            labels={'Taille': 'Taille (octets)', 'count': 'Nombre de documents'}
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-        
-        # Top 10 des plus gros documents
-        top_docs = df.nlargest(10, 'Taille')[['Titre', 'Taille', 'Mots']]
-        st.markdown("### 📊 Top 10 des documents les plus volumineux")
-        st.dataframe(top_docs, use_container_width=True)
-        
-    except ImportError:
-        st.warning("Installez plotly pour voir les graphiques interactifs")
-        
-        # Alternative avec matplotlib si disponible
-        try:
-            import matplotlib.pyplot as plt
-            
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-            
-            # Camembert des types
-            type_counts = df['Type'].value_counts()
-            ax1.pie(type_counts.values, labels=type_counts.index, autopct='%1.1f%%')
-            ax1.set_title("Répartition par type")
-            
-            # Histogramme des tailles
-            ax2.hist(df['Taille'], bins=30, edgecolor='black')
-            ax2.set_xlabel("Taille (octets)")
-            ax2.set_ylabel("Nombre de documents")
-            ax2.set_title("Distribution des tailles")
-            
-            st.pyplot(fig)
-            
-        except ImportError:
-            st.info("Installez matplotlib ou plotly pour voir les graphiques")
+    # Répartition par type
+    fig1 = px.pie(
+        df.groupby('Type').size().reset_index(name='count'),
+        values='count',
+        names='Type',
+        title="Répartition par type de document"
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Distribution des tailles
+    fig2 = px.histogram(
+        df,
+        x='Taille',
+        nbins=30,
+        title="Distribution des tailles de documents",
+        labels={'Taille': 'Taille (octets)', 'count': 'Nombre de documents'}
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Top 10 des plus gros documents
+    top_docs = df.nlargest(10, 'Taille')[['Titre', 'Taille', 'Mots']]
+    st.markdown("### 📊 Top 10 des documents les plus volumineux")
+    st.dataframe(top_docs, use_container_width=True)
 
 def show_kanban_view(documents: Dict[str, Document]):
     """Affiche une vue Kanban des documents"""

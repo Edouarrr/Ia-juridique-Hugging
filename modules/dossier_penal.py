@@ -23,10 +23,17 @@ import streamlit as st
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils import clean_key, format_legal_date, truncate_text
-from modules.email import EmailConfig, ATTACHMENT_MIME_TYPES
-from utils.file_utils import format_file_size, is_valid_email
+from utils import (
+    EmailConfig,
+    is_valid_email,
+    format_file_size,
+    ATTACHMENT_MIME_TYPES,
 )
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 
 # Configuration des modèles IA importée depuis config.ai_models

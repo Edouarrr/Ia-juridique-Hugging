@@ -16,43 +16,13 @@ from utils.prompt_rewriter import rewrite_prompt
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Imports conditionnels pour chaque provider
-try:
-    import anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-    logger.warning("Anthropic SDK non installé")
-
-try:
-    import openai
-    from openai import AzureOpenAI, OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-    logger.warning("OpenAI SDK non installé")
-
-try:
-    import google.generativeai as genai
-    GOOGLE_AVAILABLE = True
-except ImportError:
-    GOOGLE_AVAILABLE = False
-    logger.warning("Google Generative AI SDK non installé")
-
-try:
-    from mistralai.client import MistralClient
-    from mistralai.models.chat_completion import ChatMessage
-    MISTRAL_AVAILABLE = True
-except ImportError:
-    MISTRAL_AVAILABLE = False
-    logger.warning("Mistral SDK non installé")
-
-try:
-    from groq import Groq
-    GROQ_AVAILABLE = True
-except ImportError:
-    GROQ_AVAILABLE = False
-    logger.warning("Groq SDK non installé")
+import anthropic
+import openai
+from openai import AzureOpenAI, OpenAI
+import google.generativeai as genai
+from mistralai.client import MistralClient
+from mistralai.models.chat_completion import ChatMessage
+from groq import Groq
 
 # Import de la configuration
 try:
@@ -90,7 +60,7 @@ class MultiLLMManager:
         """Initialise les clients pour chaque LLM disponible"""
         
         # OpenAI
-        if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
+        if os.getenv("OPENAI_API_KEY"):
             try:
                 self.clients["openai"] = OpenAI(
                     api_key=os.getenv("OPENAI_API_KEY")
@@ -100,7 +70,7 @@ class MultiLLMManager:
                 logger.error(f"Erreur initialisation OpenAI: {e}")
         
         # Azure OpenAI
-        if OPENAI_AVAILABLE and os.getenv("AZURE_OPENAI_ENDPOINT"):
+        if os.getenv("AZURE_OPENAI_ENDPOINT"):
             try:
                 self.clients["azure_openai"] = AzureOpenAI(
                     api_key=os.getenv("AZURE_OPENAI_KEY"),
@@ -112,7 +82,7 @@ class MultiLLMManager:
                 logger.error(f"Erreur initialisation Azure OpenAI: {e}")
         
         # Anthropic Claude
-        if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
+        if os.getenv("ANTHROPIC_API_KEY"):
             try:
                 self.clients["anthropic"] = anthropic.Anthropic(
                     api_key=os.getenv("ANTHROPIC_API_KEY")
@@ -122,7 +92,7 @@ class MultiLLMManager:
                 logger.error(f"Erreur initialisation Anthropic: {e}")
         
         # Google Gemini
-        if GOOGLE_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
+        if os.getenv("GOOGLE_API_KEY"):
             try:
                 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
                 self.clients["google"] = genai.GenerativeModel('gemini-pro')
@@ -131,7 +101,7 @@ class MultiLLMManager:
                 logger.error(f"Erreur initialisation Google Gemini: {e}")
         
         # Mistral
-        if MISTRAL_AVAILABLE and os.getenv("MISTRAL_API_KEY"):
+        if os.getenv("MISTRAL_API_KEY"):
             try:
                 self.clients["mistral"] = MistralClient(
                     api_key=os.getenv("MISTRAL_API_KEY")
@@ -141,7 +111,7 @@ class MultiLLMManager:
                 logger.error(f"Erreur initialisation Mistral: {e}")
         
         # Groq
-        if GROQ_AVAILABLE and os.getenv("GROQ_API_KEY"):
+        if os.getenv("GROQ_API_KEY"):
             try:
                 self.clients["groq"] = Groq(
                     api_key=os.getenv("GROQ_API_KEY")

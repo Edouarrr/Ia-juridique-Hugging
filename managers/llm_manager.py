@@ -12,25 +12,9 @@ from typing import Any, Dict, List, Optional
 from utils.prompt_rewriter import rewrite_prompt
 
 # Import du gestionnaire multi-LLM
-try:
-    from managers.multi_llm_manager import MultiLLMManager
-    MULTI_LLM_AVAILABLE = True
-except ImportError:
-    MULTI_LLM_AVAILABLE = False
-    
-# Import conditionnel de Groq (fallback)
-try:
-    from groq import Groq
-    GROQ_AVAILABLE = True
-except ImportError:
-    GROQ_AVAILABLE = False
-
-# Import conditionnel d'OpenAI
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
+from managers.multi_llm_manager import MultiLLMManager
+from groq import Groq
+from openai import OpenAI
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
@@ -51,20 +35,21 @@ class LLMManager:
     def _initialize(self):
         """Initialise le gestionnaire LLM avec les providers disponibles"""
         
-        # Essayer d'abord MultiLLMManager s'il est disponible
-        if MULTI_LLM_AVAILABLE:
-            try:
-                self.multi_llm = MultiLLMManager()
-                available_providers = self.multi_llm.get_available_providers()
-                if available_providers:
-                    self.default_provider = available_providers[0]
-                    logger.info(f"MultiLLMManager initialisé avec {len(available_providers)} providers")
-                    return
-            except Exception as e:
-                logger.warning(f"Impossible d'initialiser MultiLLMManager: {e}")
+        # Essayer d'abord MultiLLMManager
+        try:
+            self.multi_llm = MultiLLMManager()
+            available_providers = self.multi_llm.get_available_providers()
+            if available_providers:
+                self.default_provider = available_providers[0]
+                logger.info(
+                    f"MultiLLMManager initialisé avec {len(available_providers)} providers"
+                )
+                return
+        except Exception as e:
+            logger.warning(f"Impossible d'initialiser MultiLLMManager: {e}")
         
         # Fallback sur Groq direct
-        if GROQ_AVAILABLE and os.getenv("GROQ_API_KEY"):
+        if os.getenv("GROQ_API_KEY"):
             try:
                 self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
                 self.default_provider = "groq"
@@ -73,7 +58,7 @@ class LLMManager:
                 logger.error(f"Erreur initialisation Groq: {e}")
         
         # Fallback sur OpenAI direct
-        if not self.default_provider and OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
+        if not self.default_provider and os.getenv("OPENAI_API_KEY"):
             try:
                 self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
                 self.default_provider = "openai"
@@ -530,13 +515,10 @@ class LLMManager:
     def debug_info(self) -> Dict[str, Any]:
         """Retourne des informations de debug"""
         info = {
-            "multi_llm_available": MULTI_LLM_AVAILABLE,
-            "groq_available": GROQ_AVAILABLE,
-            "openai_available": OPENAI_AVAILABLE,
             "default_provider": self.default_provider,
             "available_providers": self.get_available_providers(),
             "has_groq_key": bool(os.getenv("GROQ_API_KEY")),
-            "has_openai_key": bool(os.getenv("OPENAI_API_KEY"))
+            "has_openai_key": bool(os.getenv("OPENAI_API_KEY")),
         }
         
         return info

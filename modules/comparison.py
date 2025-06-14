@@ -20,35 +20,17 @@ from config.ai_models import AI_MODELS
 # Configuration du logger
 logger = logging.getLogger(__name__)
 
-# ============= IMPORTS OPTIONNELS AVEC GESTION D'ERREURS =============
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
-    logger.warning("pandas non disponible - certaines fonctionnalités seront limitées")
-
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-    logger.warning("plotly non disponible - les graphiques seront désactivés")
-
-# Gestion des imports de modules locaux
-
-try:
-    sys.path.append(str(Path(__file__).parent.parent))
-    from utils import clean_key, format_legal_date, truncate_text
-    UTILS_AVAILABLE = True
-except ImportError:
-    UTILS_AVAILABLE = False
-    logger.warning("utils non disponible - certaines fonctionnalités seront limitées")
 sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # ============= CONFIGURATION DES MODÈLES IA =============
 
@@ -1004,23 +986,22 @@ def render_statistics():
             )
     
     # Graphiques
-    if PLOTLY_AVAILABLE:
-        st.markdown("---")
-        
-        # Graphique d'utilisation dans le temps
-        fig1 = create_usage_timeline()
-        if fig1:
-            st.plotly_chart(fig1, use_container_width=True)
-        
-        # Répartition par type d'analyse
-        fig2 = create_analysis_type_distribution()
-        if fig2:
-            st.plotly_chart(fig2, use_container_width=True)
-        
-        # Performance des modèles
-        fig3 = create_model_performance_chart()
-        if fig3:
-            st.plotly_chart(fig3, use_container_width=True)
+    st.markdown("---")
+
+    # Graphique d'utilisation dans le temps
+    fig1 = create_usage_timeline()
+    if fig1:
+        st.plotly_chart(fig1, use_container_width=True)
+
+    # Répartition par type d'analyse
+    fig2 = create_analysis_type_distribution()
+    if fig2:
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # Performance des modèles
+    fig3 = create_model_performance_chart()
+    if fig3:
+        st.plotly_chart(fig3, use_container_width=True)
 
 # ============= AIDE =============
 
@@ -1561,9 +1542,7 @@ def get_model_stats(model_id: str) -> Dict[str, Any]:
     }
 
 def create_usage_timeline():
-    """Crée un graphique timeline (nécessite plotly)"""
-    if not PLOTLY_AVAILABLE:
-        return None
+    """Crée un graphique timeline."""
     
     # Données fictives
     import random

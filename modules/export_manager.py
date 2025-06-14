@@ -20,7 +20,12 @@ import streamlit as st
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
+from utils.file_utils import get_file_icon
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # ========================= CONFIGURATION =========================
 
@@ -1408,24 +1413,6 @@ def render_footer():
         st.caption(f"Version 2.0 | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
 # ========================= FONCTIONS UTILITAIRES =========================
-
-def get_file_icon(filename: str) -> str:
-    """Retourne l'icône appropriée selon l'extension du fichier"""
-    
-    ext = filename.lower().split('.')[-1]
-    icons = {
-        'pdf': '📕',
-        'docx': '📄',
-        'doc': '📄',
-        'txt': '📝',
-        'xlsx': '📊',
-        'xls': '📊',
-        'csv': '📋',
-        'json': '🔧',
-        'xml': '📦'
-    }
-    
-    return icons.get(ext, '📎')
 
 def get_model_recommendations(analysis_type: str) -> List[str]:
     """Recommande des modèles selon le type d'analyse"""

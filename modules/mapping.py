@@ -15,29 +15,16 @@ import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils.helpers import extract_entities
-try:
-    from utils import clean_key, format_legal_date, truncate_text
-except Exception:  # pragma: no cover - fallback for standalone use
-    from utils.fallback import clean_key, format_legal_date, truncate_text
+from utils.text_processing import extract_entities
+from utils import clean_key, format_legal_date, truncate_text
+from utils.decorators import decorate_public_functions
 
-try:
-    import networkx as nx
-    NETWORKX_AVAILABLE = True
-except ImportError:
-    NETWORKX_AVAILABLE = False
+import networkx as nx
+import plotly.graph_objects as go
+import pandas as pd
 
-try:
-    import plotly.graph_objects as go
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 from managers.multi_llm_manager import MultiLLMManager
 from modules.dataclasses import Document, Entity, Relationship
@@ -264,22 +251,13 @@ def check_dependencies():
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if NETWORKX_AVAILABLE:
-                st.success("✅ NetworkX installé")
-            else:
-                st.warning("⚠️ NetworkX non disponible")
-        
+            st.success("✅ NetworkX installé")
+
         with col2:
-            if PLOTLY_AVAILABLE:
-                st.success("✅ Plotly installé")
-            else:
-                st.warning("⚠️ Plotly non disponible")
-        
+            st.success("✅ Plotly installé")
+
         with col3:
-            if PANDAS_AVAILABLE:
-                st.success("✅ Pandas installé")
-            else:
-                st.warning("⚠️ Pandas non disponible")
+            st.success("✅ Pandas installé")
 
 def render_sources_tab():
     """Rendu de l'onglet Sources"""
@@ -1133,16 +1111,10 @@ def generate_final_mapping_result(documents, entities, relationships, config, fu
     filtered_entities, filtered_relationships = filter_mapping_data(entities, relationships, config)
     
     # Analyser le réseau
-    network_analysis = None
-    if NETWORKX_AVAILABLE:
-        network_analysis = analyze_network(filtered_entities, filtered_relationships)
-    else:
-        network_analysis = basic_network_analysis(filtered_entities, filtered_relationships)
+    network_analysis = analyze_network(filtered_entities, filtered_relationships)
     
     # Créer la visualisation
-    visualization = None
-    if PLOTLY_AVAILABLE:
-        visualization = create_network_visualization(filtered_entities, filtered_relationships, config, network_analysis)
+    visualization = create_network_visualization(filtered_entities, filtered_relationships, config, network_analysis)
     
     return {
         'type': config['mapping_type'],
@@ -1346,9 +1318,9 @@ def display_relationships_detailed(relationships):
     
     # Statistiques par type
     rel_types = Counter(r.type for r in relationships)
-    
+
     # Graphique des types de relations
-    if PLOTLY_AVAILABLE and rel_types:
+    if rel_types:
         fig = go.Figure(data=[
             go.Bar(
                 x=list(rel_types.keys()),
@@ -1412,7 +1384,7 @@ def display_network_metrics(analysis):
     with col2:
         st.markdown("##### 📈 Distribution des degrés")
         
-        if 'degree_centrality' in analysis and PLOTLY_AVAILABLE:
+        if 'degree_centrality' in analysis:
             degrees = list(analysis['degree_centrality'].values())
             
             fig = go.Figure(data=[go.Histogram(
@@ -1485,16 +1457,15 @@ def render_export_tab():
         st.markdown("#### 📊 Formats de données")
         
         # Export Excel
-        if PANDAS_AVAILABLE:
-            if st.button("📊 Générer fichier Excel", use_container_width=True):
-                excel_data = export_mapping_to_excel(results)
-                st.download_button(
-                    "💾 Télécharger Excel",
-                    excel_data,
-                    f"cartographie_{results['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+        if st.button("📊 Générer fichier Excel", use_container_width=True):
+            excel_data = export_mapping_to_excel(results)
+            st.download_button(
+                "💾 Télécharger Excel",
+                excel_data,
+                f"cartographie_{results['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
         
         # Export JSON
         if st.button("🗂️ Exporter en JSON", use_container_width=True):
@@ -1508,17 +1479,16 @@ def render_export_tab():
             )
         
         # Export GraphML (pour NetworkX)
-        if NETWORKX_AVAILABLE:
-            if st.button("🔗 Exporter GraphML", use_container_width=True):
-                graphml_data = export_to_graphml(results)
-                if graphml_data:
-                    st.download_button(
-                        "💾 Télécharger GraphML",
-                        graphml_data,
-                        f"reseau_{results['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.graphml",
-                        "application/xml",
-                        use_container_width=True
-                    )
+        if st.button("🔗 Exporter GraphML", use_container_width=True):
+            graphml_data = export_to_graphml(results)
+            if graphml_data:
+                st.download_button(
+                    "💾 Télécharger GraphML",
+                    graphml_data,
+                    f"reseau_{results['type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.graphml",
+                    "application/xml",
+                    use_container_width=True,
+                )
     
     # Export de la visualisation
     st.markdown("#### 🖼️ Export de la visualisation")
@@ -1601,8 +1571,6 @@ def export_to_json(results):
 
 def export_to_graphml(results):
     """Exporte le réseau au format GraphML"""
-    if not NETWORKX_AVAILABLE:
-        return None
     
     # Recréer le graphe
     G = nx.DiGraph()
@@ -2068,9 +2036,6 @@ def filter_mapping_data(entities: List[Entity], relationships: List[Relationship
 def analyze_network(entities: List[Entity], relationships: List[Relationship]) -> Dict[str, Any]:
     """Analyse le réseau avec NetworkX"""
     
-    if not NETWORKX_AVAILABLE:
-        return basic_network_analysis(entities, relationships)
-    
     # Créer le graphe
     G = nx.Graph() if any(r.direction == 'bidirectional' for r in relationships) else nx.DiGraph()
     
@@ -2155,9 +2120,6 @@ def create_network_visualization(entities: List[Entity], relationships: List[Rel
                                 config: dict, analysis: Dict[str, Any]) -> go.Figure:
     """Crée la visualisation du réseau avec Plotly"""
     
-    if not PLOTLY_AVAILABLE:
-        return None
-    
     # Calculer les positions des nœuds
     pos = calculate_node_positions(entities, relationships, config['layout'])
     
@@ -2194,46 +2156,26 @@ def create_network_visualization(entities: List[Entity], relationships: List[Rel
 
 def calculate_node_positions(entities: List[Entity], relationships: List[Relationship], layout: str) -> Dict[str, Tuple[float, float]]:
     """Calcule les positions des nœuds selon le layout"""
-    
-    if NETWORKX_AVAILABLE:
-        # Créer un graphe NetworkX temporaire
-        G = nx.Graph()
-        G.add_nodes_from([e.name for e in entities])
-        G.add_edges_from([(r.source, r.target) for r in relationships])
-        
-        # Calculer les positions selon le layout
-        if layout == 'spring':
-            pos = nx.spring_layout(G, k=1, iterations=50)
-        elif layout == 'circular':
-            pos = nx.circular_layout(G)
-        elif layout == 'hierarchical':
-            try:
-                pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
-            except:
-                pos = nx.spring_layout(G)
-        elif layout == 'kamada_kawai':
-            pos = nx.kamada_kawai_layout(G)
-        else:
+
+    # Créer un graphe NetworkX temporaire
+    G = nx.Graph()
+    G.add_nodes_from([e.name for e in entities])
+    G.add_edges_from([(r.source, r.target) for r in relationships])
+
+    # Calculer les positions selon le layout
+    if layout == 'spring':
+        pos = nx.spring_layout(G, k=1, iterations=50)
+    elif layout == 'circular':
+        pos = nx.circular_layout(G)
+    elif layout == 'hierarchical':
+        try:
+            pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
+        except Exception:
             pos = nx.spring_layout(G)
+    elif layout == 'kamada_kawai':
+        pos = nx.kamada_kawai_layout(G)
     else:
-        # Layout simple sans NetworkX
-        n = len(entities)
-        if layout == 'circular':
-            # Disposition circulaire
-            import math
-            pos = {}
-            for i, entity in enumerate(entities):
-                angle = 2 * math.pi * i / n
-                pos[entity.name] = (math.cos(angle), math.sin(angle))
-        else:
-            # Grille simple
-            import math
-            cols = int(math.sqrt(n)) + 1
-            pos = {}
-            for i, entity in enumerate(entities):
-                row = i // cols
-                col = i % cols
-                pos[entity.name] = (col, -row)
+        pos = nx.spring_layout(G)
     
     return pos
 
@@ -2390,9 +2332,6 @@ def generate_mapping_report(mapping_result: Dict[str, Any]) -> str:
 
 def export_mapping_to_excel(mapping_result: Dict[str, Any]) -> bytes:
     """Exporte la cartographie vers Excel"""
-    
-    if not PANDAS_AVAILABLE:
-        return b""
     
     import io
     

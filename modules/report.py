@@ -13,6 +13,10 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import streamlit as st
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # Configuration du logger
 logger = logging.getLogger(__name__)

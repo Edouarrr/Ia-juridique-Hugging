@@ -25,8 +25,12 @@ from models.dataclasses import (JurisprudenceReference, SourceJurisprudence,
                                 TypeJuridiction, VerificationResult,
                                 get_all_juridictions)
 from utils import clean_key, format_legal_date, truncate_text
-from utils.helpers import highlight_text
+from utils.text_processing import highlight_text
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 logger = logging.getLogger(__name__)
 
