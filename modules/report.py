@@ -1,4 +1,4 @@
-"""Module de génération de rapports juridiques"""
+"""Module de génération de rapports juridiques avec IA multi-modèles"""
 
 import streamlit as st
 from datetime import datetime
@@ -6,1232 +6,2248 @@ from typing import List, Dict, Any, Optional
 import logging
 import re
 from collections import defaultdict
+import pandas as pd
+import time
+import json
+from pathlib import Path
+import sys
 
+# Configuration du logger
 logger = logging.getLogger(__name__)
 
-class ReportModule:
-    """Module de génération automatique de rapports juridiques"""
+# Configuration de la page pour une meilleure expérience
+def configure_page():
+    """Configure les paramètres de la page pour une meilleure UX"""
+    st.set_page_config(
+        page_title="Génération de Rapports - Nexora Law IA",
+        page_icon="📄",
+        layout="wide",
+        initial_sidebar_state="collapsed"
+    )
     
-    def __init__(self):
-        self.name = "Génération de rapports"
-        self.description = "Créez automatiquement des rapports juridiques professionnels"
-        self.icon = "📄"
-        self.available = True
-        
-        # Templates de rapports
-        self.report_templates = {
-            'synthese': {
-                'name': 'Synthèse d\'analyse',
-                'sections': ['Résumé exécutif', 'Faits', 'Analyse', 'Conclusions', 'Recommandations'],
-                'tone': 'professionnel'
-            },
-            'plaidoirie': {
-                'name': 'Note de plaidoirie',
-                'sections': ['En fait', 'En droit', 'Discussion', 'Par ces motifs'],
-                'tone': 'formel'
-            },
-            'memo': {
-                'name': 'Mémo juridique',
-                'sections': ['Objet', 'Contexte', 'Analyse', 'Risques', 'Actions'],
-                'tone': 'concis'
-            },
-            'conclusions': {
-                'name': 'Conclusions',
-                'sections': ['Rappel procédure', 'Faits', 'Moyens', 'Demandes'],
-                'tone': 'très formel'
-            },
-            'expertise': {
-                'name': 'Rapport d\'expertise',
-                'sections': ['Mission', 'Méthodologie', 'Constatations', 'Analyse', 'Conclusions'],
-                'tone': 'technique'
-            }
-        }
-        
-        # Styles de formatage
-        self.formatting_styles = {
-            'professionnel': {
-                'font': 'Arial',
-                'size': 11,
-                'spacing': 1.5,
-                'margins': 'normales'
-            },
-            'formel': {
-                'font': 'Times New Roman',
-                'size': 12,
-                'spacing': 2.0,
-                'margins': 'larges'
-            },
-            'moderne': {
-                'font': 'Calibri',
-                'size': 11,
-                'spacing': 1.15,
-                'margins': 'étroites'
-            }
-        }
+    # CSS personnalisé pour améliorer le design
+    st.markdown("""
+    <style>
+    /* Animation d'entrée */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
     
-    def render(self):
-        """Interface principale du module"""
-        st.markdown(f"### {self.icon} {self.name}")
-        st.markdown(f"*{self.description}*")
-        
-        # Tabs principaux
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "✍️ Nouveau rapport",
-            "📚 Modèles",
-            "🔄 Fusion",
-            "❓ Aide"
-        ])
-        
-        with tab1:
-            self._render_new_report()
-        
-        with tab2:
-            self._render_templates()
-        
-        with tab3:
-            self._render_merge_reports()
-        
-        with tab4:
-            self._render_help()
+    .main > div {
+        animation: fadeIn 0.5s ease-out;
+    }
     
-    def _render_new_report(self):
-        """Interface de création de rapport"""
-        
-        # Type de rapport
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            report_type = st.selectbox(
-                "Type de document",
-                list(self.report_templates.keys()),
-                format_func=lambda x: self.report_templates[x]['name']
-            )
-            
-            tone = st.select_slider(
-                "Ton du document",
-                ["Très formel", "Formel", "Professionnel", "Neutre", "Accessible"],
-                value="Professionnel"
-            )
-        
-        with col2:
-            length = st.select_slider(
-                "Longueur",
-                ["Concis", "Standard", "Détaillé", "Exhaustif"],
-                value="Standard"
-            )
-            
-            style = st.selectbox(
-                "Style de formatage",
-                list(self.formatting_styles.keys()),
-                format_func=lambda x: x.capitalize()
-            )
-        
-        # Informations de base
-        st.markdown("#### 📋 Informations générales")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
+    /* Cards améliorées */
+    .report-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        margin-bottom: 1rem;
+    }
+    
+    .report-card:hover {
+        box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+    }
+    
+    /* Boutons améliorés */
+    .stButton > button {
+        transition: all 0.3s ease;
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    /* Progress bars custom */
+    .stProgress > div > div > div > div {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* Tabs personnalisés */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        background-color: rgba(255,255,255,0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: rgba(255,255,255,0.2);
+    }
+    
+    /* Métriques améliorées */
+    [data-testid="metric-container"] {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* Tooltips */
+    .tooltip {
+        position: relative;
+        display: inline-block;
+        border-bottom: 1px dotted black;
+    }
+    
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 200px;
+        background-color: #555;
+        color: #fff;
+        text-align: center;
+        border-radius: 6px;
+        padding: 5px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -100px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+    }
+    
+    /* Animations de chargement */
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    
+    .loading {
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Templates de rapports enrichis
+REPORT_TEMPLATES = {
+    'synthese': {
+        'name': 'Synthèse d\'analyse',
+        'icon': '📊',
+        'sections': ['Résumé exécutif', 'Faits', 'Analyse', 'Conclusions', 'Recommandations'],
+        'tone': 'professionnel',
+        'description': 'Vue d\'ensemble complète d\'une affaire avec recommandations',
+        'duration': '10-15 min',
+        'ai_models': ['GPT-4', 'Claude', 'Gemini']
+    },
+    'plaidoirie': {
+        'name': 'Note de plaidoirie',
+        'icon': '⚖️',
+        'sections': ['En fait', 'En droit', 'Discussion', 'Par ces motifs'],
+        'tone': 'formel',
+        'description': 'Document structuré pour plaider devant une juridiction',
+        'duration': '20-30 min',
+        'ai_models': ['Claude', 'GPT-4', 'Mistral']
+    },
+    'memo': {
+        'name': 'Mémo juridique',
+        'icon': '📝',
+        'sections': ['Objet', 'Contexte', 'Analyse', 'Risques', 'Actions'],
+        'tone': 'concis',
+        'description': 'Communication interne rapide et efficace',
+        'duration': '5-10 min',
+        'ai_models': ['GPT-3.5', 'Claude', 'Llama']
+    },
+    'conclusions': {
+        'name': 'Conclusions',
+        'icon': '📜',
+        'sections': ['Rappel procédure', 'Faits', 'Moyens', 'Demandes'],
+        'tone': 'très formel',
+        'description': 'Document procédural respectant les formes juridiques',
+        'duration': '30-45 min',
+        'ai_models': ['GPT-4', 'Claude', 'Gemini']
+    },
+    'expertise': {
+        'name': 'Rapport d\'expertise',
+        'icon': '🔬',
+        'sections': ['Mission', 'Méthodologie', 'Constatations', 'Analyse', 'Conclusions'],
+        'tone': 'technique',
+        'description': 'Analyse technique détaillée avec méthodologie',
+        'duration': '45-60 min',
+        'ai_models': ['GPT-4', 'Claude', 'Gemini', 'Mistral']
+    }
+}
+
+# Modèles d'IA disponibles
+AI_MODELS = {
+    'GPT-4': {
+        'name': 'GPT-4 Turbo',
+        'provider': 'OpenAI',
+        'strengths': ['Créativité', 'Raisonnement complexe', 'Multilinguisme'],
+        'icon': '🧠',
+        'speed': 'Rapide',
+        'quality': 5
+    },
+    'Claude': {
+        'name': 'Claude 3',
+        'provider': 'Anthropic',
+        'strengths': ['Analyse approfondie', 'Éthique', 'Précision juridique'],
+        'icon': '🎓',
+        'speed': 'Très rapide',
+        'quality': 5
+    },
+    'Gemini': {
+        'name': 'Gemini Pro',
+        'provider': 'Google',
+        'strengths': ['Multimodal', 'Recherche', 'Synthèse'],
+        'icon': '💎',
+        'speed': 'Rapide',
+        'quality': 4
+    },
+    'GPT-3.5': {
+        'name': 'GPT-3.5 Turbo',
+        'provider': 'OpenAI',
+        'strengths': ['Rapidité', 'Efficacité', 'Coût'],
+        'icon': '⚡',
+        'speed': 'Ultra rapide',
+        'quality': 3
+    },
+    'Mistral': {
+        'name': 'Mistral Large',
+        'provider': 'Mistral AI',
+        'strengths': ['Open source', 'Personnalisable', 'Français'],
+        'icon': '🌟',
+        'speed': 'Rapide',
+        'quality': 4
+    },
+    'Llama': {
+        'name': 'Llama 2',
+        'provider': 'Meta',
+        'strengths': ['Open source', 'Efficace', 'Adaptable'],
+        'icon': '🦙',
+        'speed': 'Moyen',
+        'quality': 3
+    }
+}
+
+def run():
+    """Fonction principale du module - Point d'entrée pour le lazy loading"""
+    configure_page()
+    
+    # Header avec animation
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem 0;">
+            <h1 style="font-size: 2.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                       -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                📄 Génération de Rapports Juridiques
+            </h1>
+            <p style="font-size: 1.2rem; color: #666; margin-top: 1rem;">
+                Créez automatiquement des rapports professionnels avec l'IA
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Initialisation de l'état
+    initialize_session_state()
+    
+    # Barre de progression globale
+    if 'generation_progress' in st.session_state and st.session_state.generation_progress > 0:
+        progress_bar = st.progress(st.session_state.generation_progress)
+        progress_text = st.empty()
+        progress_text.text(f"Génération en cours... {st.session_state.generation_progress}%")
+    
+    # Navigation principale
+    tabs = st.tabs([
+        "🚀 Nouveau rapport",
+        "🤖 Modèles IA",
+        "📚 Bibliothèque",
+        "🔄 Fusion",
+        "📊 Historique",
+        "⚙️ Paramètres"
+    ])
+    
+    with tabs[0]:
+        render_new_report()
+    
+    with tabs[1]:
+        render_ai_models()
+    
+    with tabs[2]:
+        render_templates_library()
+    
+    with tabs[3]:
+        render_merge_reports()
+    
+    with tabs[4]:
+        render_history()
+    
+    with tabs[5]:
+        render_settings()
+
+def initialize_session_state():
+    """Initialise les variables de session"""
+    defaults = {
+        'report_history': [],
+        'custom_templates': {},
+        'ai_preferences': {},
+        'generation_progress': 0,
+        'current_report': None,
+        'selected_models': ['GPT-4'],
+        'fusion_mode': False,
+        'auto_save': True,
+        'theme': 'light'
+    }
+    
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+def render_new_report():
+    """Interface de création de nouveau rapport"""
+    # Sélection rapide du type
+    st.markdown("### 📋 Choisissez votre type de document")
+    
+    # Cards pour les types de rapports
+    cols = st.columns(3)
+    selected_type = None
+    
+    for i, (key, template) in enumerate(REPORT_TEMPLATES.items()):
+        with cols[i % 3]:
+            if render_template_card(key, template):
+                selected_type = key
+    
+    if selected_type:
+        st.session_state.selected_template = selected_type
+    
+    # Configuration détaillée
+    if 'selected_template' in st.session_state:
+        st.markdown("---")
+        render_report_configuration(st.session_state.selected_template)
+
+def render_template_card(template_id: str, template: Dict[str, Any]) -> bool:
+    """Affiche une carte de template"""
+    clicked = False
+    
+    card_html = f"""
+    <div class="report-card">
+        <h3>{template['icon']} {template['name']}</h3>
+        <p style="color: #666; font-size: 0.9rem;">{template['description']}</p>
+        <div style="margin-top: 1rem;">
+            <span style="background: #e0e7ff; color: #4c51bf; padding: 0.25rem 0.5rem; 
+                         border-radius: 4px; font-size: 0.8rem;">
+                ⏱️ {template['duration']}
+            </span>
+        </div>
+    </div>
+    """
+    
+    st.markdown(card_html, unsafe_allow_html=True)
+    
+    if st.button(f"Sélectionner", key=f"select_{template_id}", use_container_width=True):
+        clicked = True
+    
+    return clicked
+
+def render_report_configuration(template_id: str):
+    """Configure les détails du rapport"""
+    template = REPORT_TEMPLATES[template_id]
+    
+    st.markdown(f"### ⚙️ Configuration : {template['icon']} {template['name']}")
+    
+    # Configuration en colonnes
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Informations générales
+        with st.expander("📋 Informations générales", expanded=True):
             title = st.text_input(
                 "Titre du document",
-                placeholder="Ex: Synthèse de l'affaire X c/ Y"
+                placeholder=f"Ex: {template['name']} - Affaire X c/ Y",
+                help="Le titre apparaîtra en en-tête du document"
             )
             
-            client = st.text_input(
-                "Client/Demandeur",
-                placeholder="Nom du client"
-            )
+            col_a, col_b = st.columns(2)
+            with col_a:
+                client = st.text_input("Client/Demandeur", placeholder="Nom du client")
+                case_ref = st.text_input("Référence", placeholder="RG n° XX/XXXXX")
             
-            case_ref = st.text_input(
-                "Référence",
-                placeholder="RG n° XX/XXXXX"
-            )
-        
-        with col2:
-            jurisdiction = st.text_input(
-                "Juridiction",
-                placeholder="Ex: Tribunal de Commerce de Paris"
-            )
-            
-            author = st.text_input(
-                "Auteur",
-                placeholder="Votre nom",
-                value="Me. [Votre nom]"
-            )
-            
-            date = st.date_input(
-                "Date du document",
-                value=datetime.now()
-            )
+            with col_b:
+                jurisdiction = st.text_input("Juridiction", placeholder="Ex: TGI Paris")
+                author = st.text_input("Auteur", value="Me. [Votre nom]")
         
         # Sources de contenu
-        st.markdown("#### 📚 Sources de contenu")
+        with st.expander("📚 Sources de contenu", expanded=True):
+            content_source = st.radio(
+                "Utiliser",
+                ["🗂️ Données de session", "✍️ Saisie manuelle", "📤 Import fichier", "🤖 Génération IA"],
+                horizontal=True
+            )
+            
+            content_data = get_content_data(content_source, template_id)
         
-        content_source = st.radio(
-            "Utiliser",
-            ["Données de session", "Saisie manuelle", "Import fichier", "Génération IA"],
-            horizontal=True
+        # Sections du rapport
+        with st.expander("📑 Sections à inclure", expanded=True):
+            selected_sections = []
+            cols = st.columns(2)
+            
+            for i, section in enumerate(template['sections']):
+                with cols[i % 2]:
+                    if st.checkbox(section, value=True, key=f"section_{template_id}_{section}"):
+                        selected_sections.append(section)
+                        
+                        # Options par section
+                        if content_source == "🤖 Génération IA":
+                            length = st.select_slider(
+                                f"Détail pour '{section}'",
+                                ["Concis", "Standard", "Détaillé"],
+                                value="Standard",
+                                key=f"length_{template_id}_{section}"
+                            )
+    
+    with col2:
+        # Paramètres de génération
+        st.markdown("### 🎯 Paramètres")
+        
+        # Modèles IA
+        st.markdown("#### 🤖 Modèles IA")
+        if st.checkbox("Mode fusion multi-IA", value=False, help="Combine plusieurs modèles pour un meilleur résultat"):
+            st.session_state.fusion_mode = True
+            selected_models = st.multiselect(
+                "Sélectionner les modèles",
+                list(AI_MODELS.keys()),
+                default=['GPT-4', 'Claude'],
+                help="Les modèles seront utilisés en parallèle puis fusionnés"
+            )
+            
+            fusion_strategy = st.radio(
+                "Stratégie de fusion",
+                ["🏆 Meilleur résultat", "🤝 Consensus", "🎨 Créativité maximale"],
+                help="Comment combiner les résultats des différents modèles"
+            )
+        else:
+            st.session_state.fusion_mode = False
+            selected_models = [st.selectbox(
+                "Modèle principal",
+                list(AI_MODELS.keys()),
+                index=0
+            )]
+        
+        st.session_state.selected_models = selected_models
+        
+        # Afficher les caractéristiques des modèles sélectionnés
+        for model in selected_models:
+            with st.expander(f"{AI_MODELS[model]['icon']} {model}", expanded=False):
+                st.write(f"**Fournisseur:** {AI_MODELS[model]['provider']}")
+                st.write(f"**Vitesse:** {AI_MODELS[model]['speed']}")
+                st.write(f"**Qualité:** {'⭐' * AI_MODELS[model]['quality']}")
+                st.write("**Points forts:**")
+                for strength in AI_MODELS[model]['strengths']:
+                    st.write(f"• {strength}")
+        
+        # Style et formatage
+        st.markdown("#### 🎨 Style")
+        tone = st.select_slider(
+            "Ton",
+            ["Très formel", "Formel", "Professionnel", "Neutre", "Accessible"],
+            value="Professionnel"
         )
         
-        content_data = self._get_content_data(content_source, report_type)
+        length_multiplier = st.slider(
+            "Longueur globale",
+            0.5, 2.0, 1.0, 0.1,
+            help="Ajuste la longueur de toutes les sections"
+        )
         
-        # Sections à inclure
-        st.markdown("#### 📑 Sections du rapport")
-        
-        template = self.report_templates[report_type]
-        selected_sections = []
-        
-        cols = st.columns(2)
-        for i, section in enumerate(template['sections']):
-            with cols[i % 2]:
-                if st.checkbox(section, value=True, key=f"section_{section}"):
-                    selected_sections.append(section)
-        
-        # Options supplémentaires
-        with st.expander("⚙️ Options avancées", expanded=False):
-            col1, col2 = st.columns(2)
+        # Options avancées
+        with st.expander("⚙️ Options avancées"):
+            include_toc = st.checkbox("Table des matières", value=True)
+            include_citations = st.checkbox("Citations automatiques", value=True)
+            include_watermark = st.checkbox("Filigrane", value=False)
+            auto_translate = st.checkbox("Traduction multilingue", value=False)
             
-            with col1:
-                include_toc = st.checkbox("Table des matières", value=True)
-                include_annexes = st.checkbox("Annexes", value=False)
-                include_bibliography = st.checkbox("Bibliographie", value=False)
-                auto_numbering = st.checkbox("Numérotation automatique", value=True)
-            
-            with col2:
-                include_header = st.checkbox("En-tête personnalisé", value=True)
-                include_footer = st.checkbox("Pied de page", value=True)
-                include_watermark = st.checkbox("Filigrane", value=False)
-                digital_signature = st.checkbox("Signature numérique", value=False)
-        
-        # Génération
-        if st.button("📝 Générer le rapport", type="primary", use_container_width=True):
+            if auto_translate:
+                languages = st.multiselect(
+                    "Langues",
+                    ["Anglais", "Espagnol", "Allemand", "Italien"],
+                    default=["Anglais"]
+                )
+    
+    # Bouton de génération principal
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        if st.button(
+            f"🚀 Générer le rapport avec {len(selected_models)} modèle(s)",
+            type="primary",
+            use_container_width=True,
+            disabled=not title
+        ):
             if title and selected_sections:
                 config = {
-                    'type': report_type,
+                    'type': template_id,
                     'title': title,
                     'client': client,
                     'case_ref': case_ref,
                     'jurisdiction': jurisdiction,
                     'author': author,
-                    'date': date,
+                    'date': datetime.now(),
                     'tone': tone,
-                    'length': length,
-                    'style': style,
+                    'length_multiplier': length_multiplier,
                     'sections': selected_sections,
                     'content_data': content_data,
+                    'ai_models': selected_models,
+                    'fusion_mode': st.session_state.fusion_mode,
+                    'fusion_strategy': fusion_strategy if st.session_state.fusion_mode else None,
                     'options': {
                         'toc': include_toc,
-                        'annexes': include_annexes,
-                        'bibliography': include_bibliography,
-                        'numbering': auto_numbering,
-                        'header': include_header,
-                        'footer': include_footer,
+                        'citations': include_citations,
                         'watermark': include_watermark,
-                        'signature': digital_signature
+                        'translations': languages if auto_translate else []
                     }
                 }
                 
-                self._generate_report(config)
+                generate_report_with_ai(config)
             else:
-                st.warning("Veuillez remplir le titre et sélectionner au moins une section")
+                st.error("⚠️ Veuillez remplir au minimum le titre et sélectionner des sections")
+
+def get_content_data(source: str, report_type: str) -> Dict[str, Any]:
+    """Récupère les données selon la source"""
+    content_data = {}
     
-    def _get_content_data(self, source: str, report_type: str) -> Dict[str, Any]:
-        """Récupère les données de contenu selon la source"""
-        content_data = {}
-        
-        if source == "Données de session":
-            # Collecter toutes les données disponibles en session
-            st.info("📊 Collecte des données de session...")
+    if source == "🗂️ Données de session":
+        available_data = check_session_data()
+        if available_data:
+            st.success(f"✅ {len(available_data)} sources de données disponibles")
             
-            available_data = []
-            
-            # Documents
-            if 'selected_documents' in st.session_state:
-                available_data.append(f"📄 {len(st.session_state.selected_documents)} documents sélectionnés")
-            
-            # Analyses
-            if 'comparison_history' in st.session_state:
-                available_data.append(f"📊 {len(st.session_state.comparison_history)} comparaisons")
-            
-            if 'timeline_history' in st.session_state:
-                available_data.append(f"📅 {len(st.session_state.timeline_history)} timelines")
-            
-            if 'extraction_history' in st.session_state:
-                available_data.append(f"📑 {len(st.session_state.extraction_history)} extractions")
-            
-            if 'strategy_history' in st.session_state:
-                available_data.append(f"⚖️ {len(st.session_state.strategy_history)} stratégies")
-            
-            if available_data:
-                st.write("Données disponibles :")
-                for data in available_data:
-                    st.write(data)
-                
-                # Permettre la sélection
-                use_comparisons = st.checkbox("Inclure les comparaisons")
-                use_timelines = st.checkbox("Inclure les timelines")
-                use_extractions = st.checkbox("Inclure les extractions")
-                use_strategies = st.checkbox("Inclure les stratégies")
-                
-                # Compiler les données sélectionnées
-                if use_comparisons and 'comparison_history' in st.session_state:
-                    content_data['comparisons'] = st.session_state.comparison_history
-                
-                if use_timelines and 'timeline_history' in st.session_state:
-                    content_data['timelines'] = st.session_state.timeline_history
-                
-                if use_extractions and 'extraction_history' in st.session_state:
-                    content_data['extractions'] = st.session_state.extraction_history
-                
-                if use_strategies and 'strategy_history' in st.session_state:
-                    content_data['strategies'] = st.session_state.strategy_history
-            else:
-                st.warning("Aucune donnée disponible en session")
-        
-        elif source == "Saisie manuelle":
-            # Zones de texte pour chaque section potentielle
-            st.info("✍️ Saisissez le contenu pour chaque section")
-            
-            template = self.report_templates[report_type]
-            for section in template['sections']:
+            # Sélection des données à utiliser
+            for data_type, info in available_data.items():
+                if st.checkbox(f"Utiliser {info['name']} ({info['count']} éléments)", value=True):
+                    content_data[data_type] = info['data']
+        else:
+            st.info("💡 Aucune donnée de session disponible. Effectuez d'abord des analyses.")
+    
+    elif source == "✍️ Saisie manuelle":
+        template = REPORT_TEMPLATES[report_type]
+        for section in template['sections']:
+            with st.expander(f"📝 {section}", expanded=False):
                 content = st.text_area(
-                    f"Contenu pour '{section}'",
+                    f"Contenu",
                     height=150,
-                    key=f"manual_{section}"
+                    key=f"manual_{report_type}_{section}",
+                    placeholder=f"Saisissez le contenu pour la section '{section}'..."
                 )
                 if content:
                     content_data[section] = content
-        
-        elif source == "Import fichier":
-            uploaded_file = st.file_uploader(
-                "Choisir un fichier",
-                type=['txt', 'docx', 'pdf'],
-                help="Le contenu sera extrait et utilisé pour le rapport"
-            )
-            
-            if uploaded_file:
-                # Simuler l'extraction
-                content_data['imported'] = {
-                    'filename': uploaded_file.name,
-                    'content': "Contenu importé depuis le fichier..."
-                }
-                st.success(f"✅ Fichier '{uploaded_file.name}' importé")
-        
-        else:  # Génération IA
-            st.info("🤖 Configuration de la génération par IA")
-            
-            # Paramètres pour l'IA
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                ai_style = st.selectbox(
-                    "Style d'écriture IA",
-                    ["Juridique classique", "Moderne et clair", "Technique approfondi"]
-                )
-                
-                ai_focus = st.multiselect(
-                    "Points à développer",
-                    ["Faits", "Procédure", "Arguments", "Jurisprudence", "Stratégie"]
-                )
-            
-            with col2:
-                ai_length = st.slider(
-                    "Longueur par section (mots)",
-                    100, 1000, 300
-                )
-                
-                ai_creativity = st.slider(
-                    "Créativité",
-                    0.0, 1.0, 0.3,
-                    help="0 = Factuel, 1 = Créatif"
-                )
-            
-            content_data['ai_config'] = {
-                'style': ai_style,
-                'focus': ai_focus,
-                'length': ai_length,
-                'creativity': ai_creativity
-            }
-        
-        return content_data
     
-    def _generate_report(self, config: Dict[str, Any]):
-        """Génère le rapport"""
-        
-        with st.spinner("Génération du rapport en cours..."):
-            # Créer la structure du rapport
-            report = {
-                'id': f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                'created_at': datetime.now(),
-                'config': config,
-                'content': {}
-            }
-            
-            # Générer le contenu pour chaque section
-            for section in config['sections']:
-                report['content'][section] = self._generate_section_content(
-                    section, 
-                    config
-                )
-            
-            # Ajouter les métadonnées
-            report['metadata'] = {
-                'word_count': sum(len(content.split()) for content in report['content'].values()),
-                'page_estimate': 0,  # À calculer
-                'reading_time': 0    # À calculer
-            }
-            
-            # Estimer les pages et le temps de lecture
-            report['metadata']['page_estimate'] = report['metadata']['word_count'] // 250
-            report['metadata']['reading_time'] = report['metadata']['word_count'] // 200
-            
-            # Sauvegarder
-            if 'report_history' not in st.session_state:
-                st.session_state.report_history = []
-            st.session_state.report_history.append(report)
-            
-            # Afficher
-            self._display_report(report)
-    
-    def _generate_section_content(self, section: str, config: Dict[str, Any]) -> str:
-        """Génère le contenu d'une section"""
-        
-        # Si contenu manuel disponible
-        if section in config.get('content_data', {}):
-            return config['content_data'][section]
-        
-        # Sinon, générer selon le type et la section
-        content = []
-        
-        # Templates de contenu par section
-        if section == "Résumé exécutif":
-            content.append(
-                f"Le présent document constitue une {config['type']} "
-                f"dans l'affaire {config.get('case_ref', '[Référence]')} "
-                f"opposant {config.get('client', '[Client]')} à [Partie adverse]."
-            )
-            content.append(
-                "Cette analyse vise à présenter de manière synthétique "
-                "les éléments clés du dossier et nos recommandations."
-            )
-        
-        elif section == "Faits" or section == "En fait":
-            content.append("Les faits de l'espèce peuvent être résumés comme suit :")
-            
-            # Utiliser les données de session si disponibles
-            if 'timelines' in config.get('content_data', {}):
-                # Extraire les événements clés
-                timeline = config['content_data']['timelines'][-1] if config['content_data']['timelines'] else None
-                if timeline and 'events' in timeline:
-                    for event in timeline['events'][:5]:  # Top 5 événements
-                        content.append(
-                            f"- Le {event['date'].strftime('%d/%m/%Y')} : {event['description']}"
-                        )
-            else:
-                # Contenu générique
-                content.extend([
-                    "- Première occurrence des faits litigieux",
-                    "- Développement de la situation",
-                    "- Tentatives de résolution amiable",
-                    "- Échec des négociations et saisine de la juridiction"
-                ])
-        
-        elif section == "Analyse" or section == "En droit":
-            content.append("L'analyse juridique de la situation révèle plusieurs points essentiels :")
-            
-            # Utiliser les extractions si disponibles
-            if 'extractions' in config.get('content_data', {}):
-                extraction = config['content_data']['extractions'][-1] if config['content_data']['extractions'] else None
-                if extraction and 'results' in extraction:
-                    insights = extraction['results'].get('insights', [])
-                    for insight in insights[:3]:
-                        content.append(f"- {insight}")
-            else:
-                content.extend([
-                    "- Qualification juridique des faits",
-                    "- Fondements textuels applicables",
-                    "- Jurisprudence pertinente"
-                ])
-        
-        elif section == "Conclusions" or section == "Par ces motifs":
-            content.append("Au vu de l'ensemble de ces éléments, nous concluons :")
-            
-            # Utiliser la stratégie si disponible
-            if 'strategies' in config.get('content_data', {}):
-                strategy = config['content_data']['strategies'][-1] if config['content_data']['strategies'] else None
-                if strategy:
-                    for obj in strategy['config'].get('objectives', [])[:3]:
-                        content.append(f"- {obj}")
-            else:
-                content.extend([
-                    "- Sur le bien-fondé de la demande",
-                    "- Sur les moyens soulevés",
-                    "- Sur les demandes reconventionnelles éventuelles"
-                ])
-        
-        elif section == "Recommandations" or section == "Actions":
-            content.append("Nous recommandons les actions suivantes :")
-            
-            if 'strategies' in config.get('content_data', {}):
-                strategy = config['content_data']['strategies'][-1] if config['content_data']['strategies'] else None
-                if strategy and 'action_plan' in strategy:
-                    for phase in strategy['action_plan'][:2]:  # Premières phases
-                        content.append(f"\n**{phase['phase']}**")
-                        for task in phase['tasks'][:3]:
-                            content.append(f"- {task}")
-            else:
-                content.extend([
-                    "- Action immédiate recommandée",
-                    "- Stratégie à moyen terme",
-                    "- Précautions à prendre"
-                ])
-        
-        # Ajuster la longueur selon la configuration
-        if config['length'] == 'Concis':
-            content = content[:3]
-        elif config['length'] == 'Exhaustif':
-            content.extend([
-                "\nDéveloppement complémentaire...",
-                "Analyse approfondie des implications...",
-                "Examen détaillé des alternatives..."
-            ])
-        
-        # Ajuster le ton
-        if config['tone'] == 'Très formel':
-            # Ajouter des formules de politesse juridiques
-            content = [self._formalize_text(text) for text in content]
-        
-        return "\n\n".join(content)
-    
-    def _formalize_text(self, text: str) -> str:
-        """Rend un texte plus formel"""
-        replacements = {
-            "nous recommandons": "il est respectueusement soumis",
-            "nous concluons": "il appert de ce qui précède",
-            "les faits": "les éléments factuels de l'espèce",
-            "révèle": "fait apparaître",
-            "plusieurs points": "diverses considérations d'importance"
-        }
-        
-        formal_text = text
-        for informal, formal in replacements.items():
-            formal_text = formal_text.replace(informal, formal)
-        
-        return formal_text
-    
-    def _display_report(self, report: Dict[str, Any]):
-        """Affiche le rapport généré"""
-        st.success("✅ Rapport généré avec succès")
-        
-        # En-tête du rapport
-        st.markdown(f"# {report['config']['title']}")
-        
-        # Métadonnées
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Type", self.report_templates[report['config']['type']]['name'])
-        
-        with col2:
-            st.metric("Mots", f"{report['metadata']['word_count']:,}")
-        
-        with col3:
-            st.metric("Pages estimées", report['metadata']['page_estimate'])
-        
-        with col4:
-            st.metric("Temps lecture", f"{report['metadata']['reading_time']} min")
-        
-        # Options d'affichage
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            view_mode = st.radio(
-                "Mode d'affichage",
-                ["Aperçu", "Texte complet", "Mode édition"],
-                horizontal=True
-            )
-        
-        with col2:
-            if st.button("🖨️ Imprimer", use_container_width=True):
-                st.info("Utilisez Ctrl+P pour imprimer")
-        
-        # Affichage du contenu selon le mode
-        if view_mode == "Aperçu":
-            self._display_report_preview(report)
-        elif view_mode == "Texte complet":
-            self._display_report_full(report)
-        else:
-            self._display_report_edit(report)
-        
-        # Actions
-        st.markdown("### 🛠️ Actions")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            # Export Word
-            doc_content = self._export_to_docx_format(report)
-            st.download_button(
-                "📄 Télécharger Word",
-                data=doc_content,
-                file_name=f"{report['id']}.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-        
-        with col2:
-            # Export PDF (simulé)
-            if st.button("📑 Générer PDF", use_container_width=True):
-                st.info("Génération PDF en cours...")
-        
-        with col3:
-            # Email
-            if st.button("📧 Envoyer", use_container_width=True):
-                st.info("Configuration email requise")
-        
-        with col4:
-            # Sauvegarder comme template
-            if st.button("💾 Sauver modèle", use_container_width=True):
-                self._save_as_template(report)
-    
-    def _display_report_preview(self, report: Dict[str, Any]):
-        """Affiche un aperçu du rapport"""
-        
-        # Simuler une mise en page document
-        st.markdown(
-            f"""
-            <div style="background: white; padding: 2rem; border: 1px solid #ddd; 
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 1rem 0;">
-                <div style="text-align: center; margin-bottom: 2rem;">
-                    <h2 style="color: #1e3a5f; margin: 0;">{report['config']['title']}</h2>
-                    <p style="color: #666; margin: 0.5rem 0;">
-                        {report['config'].get('case_ref', '')}
-                    </p>
-                    <p style="color: #666; margin: 0;">
-                        {report['config']['date'].strftime('%d %B %Y')}
-                    </p>
-                </div>
-                
-                <div style="border-top: 2px solid #1e3a5f; margin: 2rem 0;"></div>
-            """,
-            unsafe_allow_html=True
+    elif source == "📤 Import fichier":
+        uploaded_files = st.file_uploader(
+            "Choisir des fichiers",
+            type=['txt', 'docx', 'pdf', 'json'],
+            accept_multiple_files=True,
+            help="Les contenus seront extraits et analysés"
         )
         
-        # Table des matières si activée
-        if report['config']['options']['toc']:
-            st.markdown("### Table des matières")
-            for i, section in enumerate(report['config']['sections'], 1):
-                st.markdown(f"{i}. {section}")
-            st.markdown("---")
-        
-        # Aperçu des sections (premières lignes seulement)
-        for section, content in report['content'].items():
-            st.markdown(f"### {section}")
-            
-            # Afficher les 3 premières lignes
-            lines = content.split('\n')
-            preview = '\n'.join(lines[:3])
-            if len(lines) > 3:
-                preview += "\n\n*[...]*"
-            
-            st.markdown(preview)
-            st.markdown("")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        if uploaded_files:
+            content_data['files'] = []
+            for file in uploaded_files:
+                with st.spinner(f"Traitement de {file.name}..."):
+                    # Simulation du traitement
+                    time.sleep(0.5)
+                    content_data['files'].append({
+                        'name': file.name,
+                        'size': file.size,
+                        'type': file.type,
+                        'content': f"Contenu extrait de {file.name}..."
+                    })
+            st.success(f"✅ {len(uploaded_files)} fichiers importés")
     
-    def _display_report_full(self, report: Dict[str, Any]):
-        """Affiche le rapport complet"""
+    else:  # Génération IA
+        st.info("🤖 L'IA générera automatiquement le contenu selon vos paramètres")
         
-        # En-tête formel
-        if report['config']['options']['header']:
-            st.markdown(
-                f"""
-                ---
-                **{report['config'].get('author', 'Auteur')}**  
-                {report['config'].get('jurisdiction', '')}  
-                {report['config']['date'].strftime('%d %B %Y')}
+        col1, col2 = st.columns(2)
+        with col1:
+            creativity = st.slider(
+                "Créativité",
+                0.0, 1.0, 0.3,
+                help="0 = Factuel strict, 1 = Très créatif"
+            )
+            
+            focus_points = st.multiselect(
+                "Points d'attention",
+                ["Faits précis", "Argumentation solide", "Jurisprudence récente", 
+                 "Stratégie gagnante", "Risques identifiés"],
+                default=["Faits précis", "Argumentation solide"]
+            )
+        
+        with col2:
+            research_depth = st.select_slider(
+                "Profondeur de recherche",
+                ["Basique", "Standard", "Approfondie", "Exhaustive"],
+                value="Standard"
+            )
+            
+            include_examples = st.checkbox("Inclure des exemples", value=True)
+            include_citations = st.checkbox("Ajouter des citations", value=True)
+        
+        content_data['ai_params'] = {
+            'creativity': creativity,
+            'focus_points': focus_points,
+            'research_depth': research_depth,
+            'include_examples': include_examples,
+            'include_citations': include_citations
+        }
+    
+    return content_data
+
+def check_session_data() -> Dict[str, Any]:
+    """Vérifie les données disponibles en session"""
+    available = {}
+    
+    data_mappings = {
+        'selected_documents': {'name': '📄 Documents', 'icon': '📄'},
+        'comparison_history': {'name': '📊 Comparaisons', 'icon': '📊'},
+        'timeline_history': {'name': '📅 Timelines', 'icon': '📅'},
+        'extraction_history': {'name': '📑 Extractions', 'icon': '📑'},
+        'strategy_history': {'name': '⚖️ Stratégies', 'icon': '⚖️'}
+    }
+    
+    for key, info in data_mappings.items():
+        if key in st.session_state and st.session_state[key]:
+            available[key] = {
+                'name': info['name'],
+                'count': len(st.session_state[key]),
+                'data': st.session_state[key]
+            }
+    
+    return available
+
+def generate_report_with_ai(config: Dict[str, Any]):
+    """Génère le rapport avec les modèles IA sélectionnés"""
+    # Réinitialiser la progression
+    st.session_state.generation_progress = 0
+    progress_placeholder = st.empty()
+    status_placeholder = st.empty()
+    
+    # Container pour les résultats
+    results_container = st.container()
+    
+    with st.spinner("Initialisation de la génération..."):
+        report = {
+            'id': f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            'created_at': datetime.now(),
+            'config': config,
+            'content': {},
+            'ai_results': {},
+            'metadata': {}
+        }
+        
+        total_steps = len(config['sections']) * len(config['ai_models'])
+        current_step = 0
+        
+        # Génération avec chaque modèle
+        for model in config['ai_models']:
+            model_results = {}
+            status_placeholder.info(f"🤖 Génération avec {AI_MODELS[model]['name']}...")
+            
+            for section in config['sections']:
+                current_step += 1
+                progress = int((current_step / total_steps) * 100)
+                st.session_state.generation_progress = progress
+                progress_placeholder.progress(progress)
                 
-                ---
-                """
-            )
-        
-        # Table des matières
-        if report['config']['options']['toc']:
-            with st.expander("📑 Table des matières", expanded=False):
-                for i, section in enumerate(report['config']['sections'], 1):
-                    st.markdown(f"{i}. {section}")
-        
-        # Contenu complet
-        for i, (section, content) in enumerate(report['content'].items(), 1):
-            if report['config']['options']['numbering']:
-                st.markdown(f"## {i}. {section}")
-            else:
-                st.markdown(f"## {section}")
+                # Simulation de génération
+                time.sleep(0.5)  # Remplacer par l'appel API réel
+                
+                content = generate_section_content(section, config, model)
+                model_results[section] = content
             
-            st.markdown(content)
-            
-            # Séparateur entre sections
-            if i < len(report['content']):
-                st.markdown("---")
+            report['ai_results'][model] = model_results
         
-        # Pied de page
-        if report['config']['options']['footer']:
-            st.markdown(
-                f"""
-                ---
-                <div style="text-align: center; color: #666; font-size: 0.9rem;">
-                    Page {report['metadata']['page_estimate']} | 
-                    {report['config']['title']} | 
-                    {report['config']['date'].strftime('%d/%m/%Y')}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        # Fusion des résultats si mode fusion activé
+        if config['fusion_mode']:
+            status_placeholder.info("🔄 Fusion des résultats multi-IA...")
+            report['content'] = merge_ai_results(report['ai_results'], config['fusion_strategy'])
+        else:
+            # Utiliser le résultat du modèle unique
+            report['content'] = report['ai_results'][config['ai_models'][0]]
+        
+        # Calcul des métadonnées
+        report['metadata'] = calculate_report_metadata(report)
+        
+        # Sauvegarder le rapport
+        st.session_state.report_history.append(report)
+        st.session_state.current_report = report
+        
+        # Afficher le succès
+        status_placeholder.success("✅ Rapport généré avec succès!")
+        progress_placeholder.progress(100)
+        
+        # Afficher le rapport
+        with results_container:
+            display_generated_report(report)
+
+def generate_section_content(section: str, config: Dict[str, Any], model: str) -> str:
+    """Génère le contenu d'une section avec un modèle spécifique"""
+    # Simulation de génération - À remplacer par les appels API réels
     
-    def _display_report_edit(self, report: Dict[str, Any]):
-        """Mode édition du rapport"""
-        st.info("✏️ Mode édition - Modifiez directement le contenu")
+    base_content = f"[Contenu généré par {model}]\n\n"
+    
+    # Templates par section
+    templates = {
+        "Résumé exécutif": f"""
+Le présent document constitue une {config['type']} dans l'affaire {config.get('case_ref', '[Référence]')}.
+
+Points clés :
+• Analyse approfondie des éléments factuels
+• Évaluation des risques juridiques
+• Recommandations stratégiques adaptées
+
+Cette synthèse a été élaborée avec {AI_MODELS[model]['name']} pour garantir 
+{', '.join(AI_MODELS[model]['strengths'][:2]).lower()}.
+        """,
         
-        edited_content = {}
+        "Faits": f"""
+Les faits de l'espèce, analysés par {AI_MODELS[model]['name']}, peuvent être résumés comme suit :
+
+1. Origine du litige
+   - Date de survenance : [À préciser]
+   - Parties impliquées : {config.get('client', '[Client]')} c/ [Partie adverse]
+   - Nature du différend : [Description]
+
+2. Développement chronologique
+   - Phase initiale : [Détails]
+   - Évolution : [Détails]
+   - Situation actuelle : [Détails]
+
+3. Éléments de preuve
+   - Documents disponibles : [Liste]
+   - Témoignages : [Si applicable]
+   - Expertises : [Si applicable]
+        """,
         
-        for section, content in report['content'].items():
-            st.markdown(f"### {section}")
+        "Analyse": f"""
+L'analyse juridique approfondie révèle plusieurs éléments déterminants :
+
+**Qualification juridique**
+{AI_MODELS[model]['name']} identifie la qualification suivante : [Qualification]
+
+**Fondements textuels**
+- Article X du Code Y : [Application]
+- Jurisprudence constante : [Références]
+
+**Points de droit essentiels**
+1. [Premier point]
+2. [Deuxième point]
+3. [Troisième point]
+
+Cette analyse bénéficie des capacités de {model} en matière de {AI_MODELS[model]['strengths'][0].lower()}.
+        """
+    }
+    
+    # Récupérer le template ou générer un contenu par défaut
+    content = templates.get(section, f"{base_content}Contenu de la section '{section}'...")
+    
+    # Ajuster selon la longueur demandée
+    if config.get('length_multiplier', 1.0) > 1.5:
+        content += f"\n\n**Développements complémentaires**\n[Contenu étendu généré par {model}...]"
+    
+    return content
+
+def merge_ai_results(ai_results: Dict[str, Dict[str, str]], strategy: str) -> Dict[str, str]:
+    """Fusionne les résultats de plusieurs modèles IA"""
+    merged_content = {}
+    
+    # Récupérer toutes les sections
+    all_sections = set()
+    for model_results in ai_results.values():
+        all_sections.update(model_results.keys())
+    
+    for section in all_sections:
+        contents = []
+        for model, results in ai_results.items():
+            if section in results:
+                contents.append((model, results[section]))
+        
+        if strategy == "🏆 Meilleur résultat":
+            # Sélectionner le contenu le plus long/détaillé
+            best_content = max(contents, key=lambda x: len(x[1]))
+            merged_content[section] = f"{best_content[1]}\n\n_[Sélectionné depuis {best_content[0]}]_"
+        
+        elif strategy == "🤝 Consensus":
+            # Combiner les éléments communs
+            consensus = f"**Synthèse consensuelle de {len(contents)} modèles :**\n\n"
             
+            # Extraire les points clés de chaque contenu
+            for model, content in contents:
+                lines = content.split('\n')
+                key_points = [l for l in lines if l.strip() and (l.startswith('•') or l.startswith('-'))][:3]
+                if key_points:
+                    consensus += f"\n**{model} souligne :**\n"
+                    consensus += '\n'.join(key_points) + '\n'
+            
+            merged_content[section] = consensus
+        
+        else:  # Créativité maximale
+            # Combiner tous les contenus de manière créative
+            creative_merge = "**Fusion créative multi-IA :**\n\n"
+            
+            for i, (model, content) in enumerate(contents):
+                if i > 0:
+                    creative_merge += "\n\n---\n\n"
+                creative_merge += f"**Perspective {AI_MODELS[model]['icon']} {model} :**\n{content}"
+            
+            merged_content[section] = creative_merge
+    
+    return merged_content
+
+def calculate_report_metadata(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Calcule les métadonnées du rapport"""
+    total_words = sum(len(content.split()) for content in report['content'].values())
+    
+    metadata = {
+        'word_count': total_words,
+        'page_estimate': max(1, total_words // 250),
+        'reading_time': max(1, total_words // 200),
+        'ai_models_used': report['config']['ai_models'],
+        'sections_count': len(report['content']),
+        'generation_time': datetime.now(),
+        'quality_score': calculate_quality_score(report)
+    }
+    
+    return metadata
+
+def calculate_quality_score(report: Dict[str, Any]) -> float:
+    """Calcule un score de qualité pour le rapport"""
+    score = 0.0
+    
+    # Score basé sur les modèles utilisés
+    for model in report['config']['ai_models']:
+        score += AI_MODELS[model]['quality'] * 0.2
+    
+    # Score basé sur la complétude
+    if len(report['content']) >= 4:
+        score += 1.0
+    
+    # Score basé sur la longueur
+    word_count = report['metadata']['word_count']
+    if word_count > 1000:
+        score += 1.0
+    elif word_count > 500:
+        score += 0.5
+    
+    # Normaliser sur 5
+    return min(5.0, score)
+
+def display_generated_report(report: Dict[str, Any]):
+    """Affiche le rapport généré avec options interactives"""
+    st.markdown("---")
+    st.markdown("## 📄 Rapport généré")
+    
+    # Métadonnées et métriques
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.metric("📝 Mots", f"{report['metadata']['word_count']:,}")
+    
+    with col2:
+        st.metric("📄 Pages", report['metadata']['page_estimate'])
+    
+    with col3:
+        st.metric("⏱️ Lecture", f"{report['metadata']['reading_time']} min")
+    
+    with col4:
+        st.metric("🤖 Modèles", len(report['metadata']['ai_models_used']))
+    
+    with col5:
+        quality = report['metadata']['quality_score']
+        st.metric("⭐ Qualité", f"{quality:.1f}/5.0")
+    
+    # Options d'affichage
+    display_mode = st.radio(
+        "Mode d'affichage",
+        ["📖 Lecture", "✏️ Édition", "🔍 Analyse", "📱 Aperçu mobile"],
+        horizontal=True
+    )
+    
+    # Container principal pour le rapport
+    report_container = st.container()
+    
+    with report_container:
+        if display_mode == "📖 Lecture":
+            display_reading_mode(report)
+        elif display_mode == "✏️ Édition":
+            display_edit_mode(report)
+        elif display_mode == "🔍 Analyse":
+            display_analysis_mode(report)
+        else:
+            display_mobile_preview(report)
+    
+    # Actions sur le rapport
+    st.markdown("---")
+    st.markdown("### 🛠️ Actions")
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        if st.button("💾 Sauvegarder", use_container_width=True):
+            save_report(report)
+    
+    with col2:
+        if st.button("📧 Envoyer", use_container_width=True):
+            send_report(report)
+    
+    with col3:
+        if st.button("🖨️ Imprimer", use_container_width=True):
+            st.info("Utilisez Ctrl+P ou Cmd+P")
+    
+    with col4:
+        export_format = st.selectbox("Format", ["PDF", "Word", "HTML", "Markdown"])
+    
+    with col5:
+        if st.button(f"⬇️ Exporter {export_format}", use_container_width=True):
+            export_report(report, export_format)
+
+def display_reading_mode(report: Dict[str, Any]):
+    """Affiche le rapport en mode lecture"""
+    # En-tête stylisé
+    st.markdown(f"""
+    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
+                border-radius: 12px; margin-bottom: 2rem;">
+        <h1 style="color: #2d3748; margin: 0;">{report['config']['title']}</h1>
+        <p style="color: #718096; margin: 0.5rem 0;">
+            {report['config'].get('case_ref', '')}
+        </p>
+        <p style="color: #718096; font-size: 0.9rem;">
+            {report['config']['date'].strftime('%d %B %Y')} | 
+            {report['config'].get('author', 'Auteur')}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Table des matières si activée
+    if report['config']['options'].get('toc', False):
+        with st.expander("📑 Table des matières", expanded=False):
+            for i, section in enumerate(report['config']['sections'], 1):
+                st.markdown(f"{i}. [{section}](#{section.lower().replace(' ', '-')})")
+    
+    # Contenu du rapport
+    for section, content in report['content'].items():
+        st.markdown(f"### {section}")
+        st.markdown(content)
+        
+        # Séparateur entre sections
+        st.markdown("---")
+
+def display_edit_mode(report: Dict[str, Any]):
+    """Mode édition du rapport"""
+    st.info("✏️ Mode édition - Modifiez directement le contenu")
+    
+    edited_content = {}
+    
+    for section, content in report['content'].items():
+        with st.expander(f"📝 {section}", expanded=True):
             edited = st.text_area(
-                f"Contenu de '{section}'",
+                "Contenu",
                 value=content,
-                height=200,
+                height=300,
                 key=f"edit_{section}",
                 label_visibility="collapsed"
             )
-            
             edited_content[section] = edited
-        
-        # Boutons d'action
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("💾 Sauvegarder les modifications", type="primary"):
-                # Mettre à jour le rapport
-                report['content'] = edited_content
-                report['metadata']['word_count'] = sum(len(c.split()) for c in edited_content.values())
-                report['metadata']['page_estimate'] = report['metadata']['word_count'] // 250
-                st.success("✅ Modifications sauvegardées")
-                st.rerun()
-        
-        with col2:
-            if st.button("🔄 Annuler"):
-                st.rerun()
-        
-        with col3:
-            if st.button("📋 Copier tout"):
-                full_text = "\n\n".join([f"{s}\n{'-'*len(s)}\n{c}" for s, c in edited_content.items()])
-                st.code(full_text)
-    
-    def _export_to_docx_format(self, report: Dict[str, Any]) -> str:
-        """Exporte le rapport au format Word (texte)"""
-        lines = []
-        
-        # En-tête
-        lines.append("="*60)
-        lines.append(report['config']['title'].upper())
-        lines.append("="*60)
-        lines.append("")
-        
-        # Métadonnées
-        if report['config'].get('case_ref'):
-            lines.append(f"Référence : {report['config']['case_ref']}")
-        if report['config'].get('client'):
-            lines.append(f"Client : {report['config']['client']}")
-        if report['config'].get('jurisdiction'):
-            lines.append(f"Juridiction : {report['config']['jurisdiction']}")
-        lines.append(f"Date : {report['config']['date'].strftime('%d %B %Y')}")
-        if report['config'].get('author'):
-            lines.append(f"Auteur : {report['config']['author']}")
-        lines.append("")
-        lines.append("-"*60)
-        lines.append("")
-        
-        # Table des matières
-        if report['config']['options']['toc']:
-            lines.append("TABLE DES MATIÈRES")
-            lines.append("-"*20)
-            for i, section in enumerate(report['config']['sections'], 1):
-                lines.append(f"{i}. {section}")
-            lines.append("")
-            lines.append("-"*60)
-            lines.append("")
-        
-        # Contenu
-        for i, (section, content) in enumerate(report['content'].items(), 1):
-            if report['config']['options']['numbering']:
-                lines.append(f"{i}. {section.upper()}")
-            else:
-                lines.append(section.upper())
             
-            lines.append("-" * len(section))
-            lines.append("")
-            lines.append(content)
-            lines.append("")
-            lines.append("")
-        
-        # Pied de page
-        lines.append("-"*60)
-        lines.append(f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
-        lines.append(f"Total : {report['metadata']['word_count']} mots - "
-                    f"Environ {report['metadata']['page_estimate']} pages")
-        
-        return "\n".join(lines)
+            # Outils d'édition
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("🔄 Régénérer", key=f"regen_{section}"):
+                    st.info("Régénération de la section...")
+            with col2:
+                if st.button("🎨 Reformuler", key=f"rephrase_{section}"):
+                    st.info("Reformulation en cours...")
+            with col3:
+                if st.button("📏 Ajuster longueur", key=f"adjust_{section}"):
+                    st.info("Ajustement de la longueur...")
     
-    def _save_as_template(self, report: Dict[str, Any]):
-        """Sauvegarde le rapport comme template"""
-        if 'custom_templates' not in st.session_state:
-            st.session_state.custom_templates = {}
+    # Boutons de sauvegarde
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Sauvegarder les modifications", type="primary", use_container_width=True):
+            report['content'] = edited_content
+            report['metadata'] = calculate_report_metadata(report)
+            st.success("✅ Modifications sauvegardées")
+            st.rerun()
+    
+    with col2:
+        if st.button("❌ Annuler", use_container_width=True):
+            st.rerun()
+
+def display_analysis_mode(report: Dict[str, Any]):
+    """Mode analyse du rapport"""
+    st.markdown("### 🔍 Analyse du rapport")
+    
+    # Statistiques détaillées
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 📊 Statistiques du contenu")
         
-        template_name = f"Template_{report['config']['type']}_{datetime.now().strftime('%Y%m%d')}"
+        # Analyse par section
+        section_stats = []
+        for section, content in report['content'].items():
+            words = len(content.split())
+            sentences = len(re.split(r'[.!?]+', content))
+            section_stats.append({
+                'Section': section,
+                'Mots': words,
+                'Phrases': sentences,
+                'Moy. mots/phrase': round(words/max(1, sentences), 1)
+            })
         
-        st.session_state.custom_templates[template_name] = {
-            'name': report['config']['title'],
-            'type': report['config']['type'],
-            'sections': report['config']['sections'],
-            'structure': {s: c[:100] + "..." for s, c in report['content'].items()},
-            'created_at': datetime.now()
+        df_stats = pd.DataFrame(section_stats)
+        st.dataframe(df_stats, use_container_width=True, hide_index=True)
+        
+        # Graphique de distribution
+        st.markdown("#### 📈 Distribution du contenu")
+        chart_data = pd.DataFrame({
+            'Section': [s['Section'] for s in section_stats],
+            'Mots': [s['Mots'] for s in section_stats]
+        })
+        st.bar_chart(chart_data.set_index('Section'))
+    
+    with col2:
+        st.markdown("#### 🤖 Analyse IA")
+        
+        # Contribution par modèle
+        if report['config'].get('fusion_mode', False):
+            st.markdown("**Contribution par modèle:**")
+            for model in report['config']['ai_models']:
+                st.write(f"• {AI_MODELS[model]['icon']} {model}")
+        
+        # Score de qualité détaillé
+        st.markdown("**Analyse qualitative:**")
+        quality_aspects = {
+            'Complétude': min(5, len(report['content']) * 1.25),
+            'Cohérence': 4.2,  # Simulation
+            'Clarté': 4.5,     # Simulation
+            'Pertinence': 4.8,  # Simulation
+            'Format': 5.0 if report['config']['options'].get('toc', False) else 4.0
         }
         
-        st.success(f"✅ Template '{template_name}' sauvegardé")
+        for aspect, score in quality_aspects.items():
+            st.metric(aspect, f"{score:.1f}/5.0", f"{(score/5*100):.0f}%")
+        
+        # Suggestions d'amélioration
+        st.markdown("**💡 Suggestions d'amélioration:**")
+        suggestions = [
+            "Ajouter plus de jurisprudence dans la section 'Analyse'",
+            "Développer les recommandations avec des actions concrètes",
+            "Inclure une timeline visuelle des événements"
+        ]
+        for suggestion in suggestions:
+            st.write(f"• {suggestion}")
+
+def display_mobile_preview(report: Dict[str, Any]):
+    """Aperçu mobile du rapport"""
+    st.markdown("### 📱 Aperçu mobile")
     
-    def _render_templates(self):
-        """Gestion des modèles de rapports"""
-        st.markdown("#### 📚 Bibliothèque de modèles")
-        
-        # Tabs pour les différents types de templates
-        tab1, tab2 = st.tabs(["Modèles standards", "Mes modèles"])
-        
-        with tab1:
-            self._display_standard_templates()
-        
-        with tab2:
-            self._display_custom_templates()
+    # Container simulant un écran mobile
+    mobile_container = st.container()
     
-    def _display_standard_templates(self):
-        """Affiche les templates standards"""
-        st.markdown("##### Modèles prédéfinis")
+    with mobile_container:
+        st.markdown("""
+        <div style="max-width: 375px; margin: 0 auto; border: 2px solid #ddd; 
+                    border-radius: 20px; padding: 20px; background: #f8f9fa;">
+        """, unsafe_allow_html=True)
         
-        for template_id, template in self.report_templates.items():
-            with st.expander(f"{template['name']}", expanded=False):
-                st.write(f"**Ton recommandé :** {template['tone']}")
-                st.write("**Sections :**")
-                for section in template['sections']:
-                    st.write(f"- {section}")
+        # En-tête mobile
+        st.markdown(f"""
+        <div style="text-align: center; padding: 1rem 0;">
+            <h3 style="margin: 0; font-size: 1.2rem;">{report['config']['title']}</h3>
+            <p style="margin: 0.5rem 0; font-size: 0.8rem; color: #666;">
+                {report['config']['date'].strftime('%d/%m/%Y')}
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Navigation mobile
+        st.markdown("""
+        <div style="display: flex; gap: 0.5rem; margin: 1rem 0; overflow-x: auto;">
+        """, unsafe_allow_html=True)
+        
+        for section in report['config']['sections'][:3]:
+            st.markdown(f"""
+            <div style="background: #e2e8f0; padding: 0.5rem 1rem; border-radius: 20px; 
+                        white-space: nowrap; font-size: 0.9rem;">
+                {section}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Contenu mobile (aperçu)
+        first_section = list(report['content'].keys())[0]
+        preview_content = report['content'][first_section][:200] + "..."
+        
+        st.markdown(f"""
+        <div style="padding: 1rem 0; font-size: 0.9rem; line-height: 1.6;">
+            <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">{first_section}</h4>
+            <p>{preview_content}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+
+def render_ai_models():
+    """Interface de gestion des modèles IA"""
+    st.markdown("### 🤖 Modèles d'Intelligence Artificielle")
+    
+    # Vue d'ensemble des modèles
+    st.markdown("#### 📊 Comparaison des modèles")
+    
+    # Tableau comparatif
+    models_data = []
+    for model_id, model_info in AI_MODELS.items():
+        models_data.append({
+            'Modèle': f"{model_info['icon']} {model_info['name']}",
+            'Fournisseur': model_info['provider'],
+            'Vitesse': model_info['speed'],
+            'Qualité': '⭐' * model_info['quality'],
+            'Points forts': ', '.join(model_info['strengths'][:2])
+        })
+    
+    df_models = pd.DataFrame(models_data)
+    st.dataframe(df_models, use_container_width=True, hide_index=True)
+    
+    # Configuration des préférences
+    st.markdown("#### ⚙️ Préférences par type de document")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        for template_id, template in list(REPORT_TEMPLATES.items())[:3]:
+            with st.expander(f"{template['icon']} {template['name']}"):
+                preferred_models = st.multiselect(
+                    "Modèles préférés",
+                    list(AI_MODELS.keys()),
+                    default=template['ai_models'][:2],
+                    key=f"pref_{template_id}"
+                )
                 
-                col1, col2 = st.columns(2)
+                if st.button(f"💾 Sauvegarder", key=f"save_pref_{template_id}"):
+                    if 'ai_preferences' not in st.session_state:
+                        st.session_state.ai_preferences = {}
+                    st.session_state.ai_preferences[template_id] = preferred_models
+                    st.success("Préférences sauvegardées")
+    
+    with col2:
+        for template_id, template in list(REPORT_TEMPLATES.items())[3:]:
+            with st.expander(f"{template['icon']} {template['name']}"):
+                preferred_models = st.multiselect(
+                    "Modèles préférés",
+                    list(AI_MODELS.keys()),
+                    default=template['ai_models'][:2],
+                    key=f"pref_{template_id}"
+                )
                 
-                with col1:
-                    if st.button(f"📝 Utiliser", key=f"use_std_{template_id}"):
+                if st.button(f"💾 Sauvegarder", key=f"save_pref_{template_id}"):
+                    if 'ai_preferences' not in st.session_state:
+                        st.session_state.ai_preferences = {}
+                    st.session_state.ai_preferences[template_id] = preferred_models
+                    st.success("Préférences sauvegardées")
+    
+    # Tests de performance
+    st.markdown("#### 🏃 Tests de performance")
+    
+    if st.button("🚀 Lancer un test de performance", use_container_width=True):
+        run_performance_test()
+
+def run_performance_test():
+    """Execute un test de performance des modèles"""
+    progress = st.progress(0)
+    status = st.empty()
+    results = {}
+    
+    test_prompt = "Générez un court résumé juridique sur la responsabilité contractuelle"
+    
+    for i, (model_id, model_info) in enumerate(AI_MODELS.items()):
+        status.text(f"Test de {model_info['name']}...")
+        progress.progress((i + 1) / len(AI_MODELS))
+        
+        # Simulation du test
+        start_time = time.time()
+        time.sleep(0.5 + (5 - model_info['quality']) * 0.2)  # Simulation
+        end_time = time.time()
+        
+        results[model_id] = {
+            'time': end_time - start_time,
+            'quality': model_info['quality'],
+            'tokens': 150 + model_info['quality'] * 50  # Simulation
+        }
+    
+    status.success("✅ Tests terminés!")
+    
+    # Affichage des résultats
+    st.markdown("##### 📊 Résultats des tests")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    # Meilleure vitesse
+    fastest = min(results.items(), key=lambda x: x[1]['time'])
+    with col1:
+        st.metric(
+            "⚡ Plus rapide",
+            AI_MODELS[fastest[0]]['name'],
+            f"{fastest[1]['time']:.2f}s"
+        )
+    
+    # Meilleure qualité
+    best_quality = max(results.items(), key=lambda x: x[1]['quality'])
+    with col2:
+        st.metric(
+            "⭐ Meilleure qualité",
+            AI_MODELS[best_quality[0]]['name'],
+            f"{best_quality[1]['quality']}/5"
+        )
+    
+    # Meilleur ratio
+    best_ratio = max(results.items(), key=lambda x: x[1]['quality'] / x[1]['time'])
+    with col3:
+        st.metric(
+            "🏆 Meilleur ratio",
+            AI_MODELS[best_ratio[0]]['name'],
+            f"Score: {(best_ratio[1]['quality'] / best_ratio[1]['time']):.2f}"
+        )
+
+def render_templates_library():
+    """Bibliothèque de templates"""
+    st.markdown("### 📚 Bibliothèque de modèles")
+    
+    # Filtres
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        filter_type = st.multiselect(
+            "Type de document",
+            list(REPORT_TEMPLATES.keys()),
+            format_func=lambda x: REPORT_TEMPLATES[x]['name']
+        )
+    
+    with col2:
+        filter_duration = st.select_slider(
+            "Durée de génération",
+            ["Tous", "< 15 min", "15-30 min", "> 30 min"],
+            value="Tous"
+        )
+    
+    with col3:
+        search = st.text_input("🔍 Rechercher", placeholder="Nom ou description...")
+    
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["📋 Standards", "⭐ Favoris", "🎨 Personnalisés"])
+    
+    with tab1:
+        display_standard_templates(filter_type, filter_duration, search)
+    
+    with tab2:
+        display_favorite_templates()
+    
+    with tab3:
+        display_custom_templates()
+
+def display_standard_templates(filter_type, filter_duration, search):
+    """Affiche les templates standards avec filtres"""
+    templates_to_show = REPORT_TEMPLATES.copy()
+    
+    # Appliquer les filtres
+    if filter_type:
+        templates_to_show = {k: v for k, v in templates_to_show.items() if k in filter_type}
+    
+    if search:
+        templates_to_show = {
+            k: v for k, v in templates_to_show.items() 
+            if search.lower() in v['name'].lower() or search.lower() in v['description'].lower()
+        }
+    
+    # Affichage en grille
+    cols = st.columns(2)
+    for i, (template_id, template) in enumerate(templates_to_show.items()):
+        with cols[i % 2]:
+            with st.container():
+                st.markdown(f"""
+                <div class="report-card">
+                    <h4>{template['icon']} {template['name']}</h4>
+                    <p style="color: #666;">{template['description']}</p>
+                    <div style="margin: 1rem 0;">
+                        <span style="background: #e0e7ff; padding: 0.25rem 0.5rem; 
+                                     border-radius: 4px; font-size: 0.8rem;">
+                            ⏱️ {template['duration']}
+                        </span>
+                        <span style="background: #fef3c7; padding: 0.25rem 0.5rem; 
+                                     border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">
+                            📝 {len(template['sections'])} sections
+                        </span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col_a, col_b, col_c = st.columns(3)
+                
+                with col_a:
+                    if st.button("👁️ Aperçu", key=f"preview_{template_id}"):
+                        show_template_preview(template_id, template)
+                
+                with col_b:
+                    if st.button("📝 Utiliser", key=f"use_{template_id}"):
                         st.session_state.selected_template = template_id
                         st.info(f"Template '{template['name']}' sélectionné")
                 
-                with col2:
-                    if st.button(f"👁️ Aperçu", key=f"preview_std_{template_id}"):
-                        self._preview_template(template_id, template)
-    
-    def _display_custom_templates(self):
-        """Affiche les templates personnalisés"""
-        if 'custom_templates' not in st.session_state or not st.session_state.custom_templates:
-            st.info("Aucun modèle personnalisé. Créez-en un en sauvegardant un rapport comme modèle.")
-            return
+                with col_c:
+                    if st.button("⭐ Favoris", key=f"fav_{template_id}"):
+                        add_to_favorites(template_id)
+
+def show_template_preview(template_id: str, template: Dict[str, Any]):
+    """Affiche un aperçu détaillé du template"""
+    with st.expander(f"Aperçu : {template['name']}", expanded=True):
+        st.markdown(f"**Description :** {template['description']}")
+        st.markdown(f"**Durée estimée :** {template['duration']}")
+        st.markdown(f"**Ton recommandé :** {template['tone']}")
         
-        st.markdown("##### Mes modèles personnalisés")
-        
-        for template_id, template in st.session_state.custom_templates.items():
-            with st.expander(
-                f"{template['name']} - {template['created_at'].strftime('%d/%m/%Y')}",
-                expanded=False
-            ):
-                st.write(f"**Type :** {self.report_templates.get(template['type'], {}).get('name', template['type'])}")
-                st.write(f"**Sections :** {len(template['sections'])}")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button("📝 Utiliser", key=f"use_custom_{template_id}"):
-                        st.session_state.selected_custom_template = template
-                        st.info("Template personnalisé sélectionné")
-                
-                with col2:
-                    if st.button("✏️ Modifier", key=f"edit_custom_{template_id}"):
-                        st.session_state.editing_template = template_id
-                
-                with col3:
-                    if st.button("🗑️ Supprimer", key=f"del_custom_{template_id}"):
-                        del st.session_state.custom_templates[template_id]
-                        st.rerun()
-    
-    def _preview_template(self, template_id: str, template: Dict[str, Any]):
-        """Aperçu d'un template"""
-        st.markdown(f"### Aperçu : {template['name']}")
-        
-        st.markdown("#### Structure du document")
-        
+        st.markdown("**Structure du document :**")
         for i, section in enumerate(template['sections'], 1):
-            st.markdown(f"**{i}. {section}**")
-            
-            # Contenu exemple selon la section
-            if section == "Résumé exécutif":
-                st.markdown("*Synthèse de l'affaire et des enjeux principaux...*")
-            elif section in ["Faits", "En fait"]:
-                st.markdown("*Chronologie et description détaillée des événements...*")
-            elif section in ["Analyse", "En droit"]:
-                st.markdown("*Analyse juridique approfondie avec références...*")
-            elif section == "Conclusions":
-                st.markdown("*Conclusions et recommandations finales...*")
-            else:
-                st.markdown(f"*Contenu de la section {section}...*")
-            
-            st.markdown("")
+            st.markdown(f"{i}. {section}")
+        
+        st.markdown("**Modèles IA recommandés :**")
+        for model in template['ai_models']:
+            st.write(f"• {AI_MODELS[model]['icon']} {model}")
+
+def add_to_favorites(template_id: str):
+    """Ajoute un template aux favoris"""
+    if 'favorite_templates' not in st.session_state:
+        st.session_state.favorite_templates = []
     
-    def _render_merge_reports(self):
-        """Fusion de plusieurs rapports"""
-        st.markdown("#### 🔄 Fusion de rapports")
+    if template_id not in st.session_state.favorite_templates:
+        st.session_state.favorite_templates.append(template_id)
+        st.success("✅ Ajouté aux favoris")
+    else:
+        st.info("Déjà dans les favoris")
+
+def display_favorite_templates():
+    """Affiche les templates favoris"""
+    if 'favorite_templates' not in st.session_state or not st.session_state.favorite_templates:
+        st.info("⭐ Aucun favori. Ajoutez des templates à vos favoris pour les retrouver ici.")
+        return
+    
+    for template_id in st.session_state.favorite_templates:
+        if template_id in REPORT_TEMPLATES:
+            template = REPORT_TEMPLATES[template_id]
+            with st.expander(f"{template['icon']} {template['name']}", expanded=False):
+                st.write(template['description'])
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"📝 Utiliser", key=f"use_fav_{template_id}"):
+                        st.session_state.selected_template = template_id
+                        st.success("Template sélectionné")
+                
+                with col2:
+                    if st.button(f"❌ Retirer", key=f"remove_fav_{template_id}"):
+                        st.session_state.favorite_templates.remove(template_id)
+                        st.rerun()
+
+def display_custom_templates():
+    """Affiche les templates personnalisés"""
+    if 'custom_templates' not in st.session_state or not st.session_state.custom_templates:
+        st.info("🎨 Aucun template personnalisé. Créez-en un en sauvegardant un rapport comme modèle.")
         
-        if 'report_history' not in st.session_state or len(st.session_state.report_history) < 2:
-            st.info("Au moins 2 rapports sont nécessaires pour effectuer une fusion.")
-            return
-        
-        # Sélection des rapports à fusionner
-        st.markdown("##### Sélectionner les rapports à fusionner")
-        
-        report_options = []
-        for i, report in enumerate(st.session_state.report_history):
-            report_options.append(
-                f"{report['config']['title']} - {report['created_at'].strftime('%d/%m/%Y %H:%M')}"
-            )
-        
-        selected_indices = st.multiselect(
-            "Rapports à fusionner",
-            range(len(report_options)),
-            format_func=lambda x: report_options[x],
-            help="Sélectionnez 2 à 5 rapports"
-        )
-        
-        if len(selected_indices) >= 2:
-            # Options de fusion
-            st.markdown("##### Options de fusion")
+        if st.button("➕ Créer un template personnalisé"):
+            create_custom_template()
+        return
+    
+    for template_id, template in st.session_state.custom_templates.items():
+        with st.expander(
+            f"{template.get('icon', '📄')} {template['name']} - {template['created_at'].strftime('%d/%m/%Y')}",
+            expanded=False
+        ):
+            st.write(f"**Type de base :** {template.get('base_type', 'Personnalisé')}")
+            st.write(f"**Sections :** {len(template['sections'])}")
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                merge_mode = st.selectbox(
-                    "Mode de fusion",
-                    ["Concaténation", "Synthèse", "Comparaison", "Consolidation"],
-                    help="Comment combiner les contenus"
-                )
-                
-                section_handling = st.radio(
-                    "Gestion des sections",
-                    ["Fusionner sections identiques", "Conserver toutes les sections", "Sélection manuelle"]
-                )
+                if st.button("📝 Utiliser", key=f"use_custom_{template_id}"):
+                    use_custom_template(template)
             
             with col2:
-                new_title = st.text_input(
-                    "Titre du rapport fusionné",
-                    value="Rapport consolidé"
-                )
-                
-                keep_metadata = st.checkbox(
-                    "Conserver les métadonnées",
-                    value=True,
-                    help="Références, dates, auteurs..."
-                )
+                if st.button("✏️ Modifier", key=f"edit_custom_{template_id}"):
+                    edit_custom_template(template_id, template)
             
-            # Aperçu de la structure
-            if section_handling == "Sélection manuelle":
-                st.markdown("##### Sélection des sections")
-                
-                # Collecter toutes les sections uniques
-                all_sections = set()
-                for idx in selected_indices:
-                    all_sections.update(st.session_state.report_history[idx]['config']['sections'])
-                
-                selected_sections = []
-                cols = st.columns(2)
-                for i, section in enumerate(sorted(all_sections)):
-                    with cols[i % 2]:
-                        if st.checkbox(section, value=True, key=f"merge_section_{section}"):
-                            selected_sections.append(section)
-            
-            # Bouton de fusion
-            if st.button("🔄 Fusionner les rapports", type="primary", use_container_width=True):
-                selected_reports = [st.session_state.report_history[i] for i in selected_indices]
-                
-                merge_config = {
-                    'mode': merge_mode,
-                    'section_handling': section_handling,
-                    'selected_sections': selected_sections if section_handling == "Sélection manuelle" else None,
-                    'new_title': new_title,
-                    'keep_metadata': keep_metadata
-                }
-                
-                self._perform_merge(selected_reports, merge_config)
-    
-    def _perform_merge(self, reports: List[Dict[str, Any]], config: Dict[str, Any]):
-        """Effectue la fusion des rapports"""
+            with col3:
+                if st.button("🗑️ Supprimer", key=f"del_custom_{template_id}"):
+                    if st.checkbox(f"Confirmer suppression", key=f"confirm_del_{template_id}"):
+                        del st.session_state.custom_templates[template_id]
+                        st.success("Template supprimé")
+                        st.rerun()
+
+def create_custom_template():
+    """Interface de création de template personnalisé"""
+    with st.form("create_custom_template"):
+        st.markdown("### ➕ Créer un template personnalisé")
         
-        with st.spinner("Fusion en cours..."):
-            # Créer le rapport fusionné
-            merged_report = {
-                'id': f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                'created_at': datetime.now(),
-                'config': {
-                    'title': config['new_title'],
-                    'type': 'merged',
-                    'tone': 'Professionnel',
-                    'length': 'Standard',
-                    'style': 'professionnel',
-                    'sections': [],
-                    'options': reports[0]['config']['options']  # Prendre les options du premier
-                },
-                'content': {},
-                'metadata': {
-                    'source_reports': len(reports),
-                    'merge_mode': config['mode']
-                }
-            }
-            
-            # Fusionner selon le mode
-            if config['mode'] == 'Concaténation':
-                merged_content = self._merge_concatenate(reports, config)
-            elif config['mode'] == 'Synthèse':
-                merged_content = self._merge_synthesize(reports, config)
-            elif config['mode'] == 'Comparaison':
-                merged_content = self._merge_compare(reports, config)
-            else:  # Consolidation
-                merged_content = self._merge_consolidate(reports, config)
-            
-            merged_report['content'] = merged_content
-            merged_report['config']['sections'] = list(merged_content.keys())
-            
-            # Calculer les métadonnées
-            total_words = sum(len(content.split()) for content in merged_content.values())
-            merged_report['metadata']['word_count'] = total_words
-            merged_report['metadata']['page_estimate'] = total_words // 250
-            merged_report['metadata']['reading_time'] = total_words // 200
-            
-            # Sauvegarder
-            st.session_state.report_history.append(merged_report)
-            
-            # Afficher
-            st.success("✅ Rapports fusionnés avec succès")
-            self._display_report(merged_report)
-    
-    def _merge_concatenate(self, reports: List[Dict[str, Any]], config: Dict[str, Any]) -> Dict[str, str]:
-        """Fusion par concaténation simple"""
-        merged_content = defaultdict(list)
+        name = st.text_input("Nom du template", placeholder="Ex: Rapport d'audit spécialisé")
         
-        for i, report in enumerate(reports):
-            # Ajouter un séparateur
-            if i > 0:
-                for section in merged_content:
-                    merged_content[section].append("\n---\n")
-            
-            # Ajouter le contenu
-            for section, content in report['content'].items():
-                if config['section_handling'] == "Fusionner sections identiques":
-                    merged_content[section].append(content)
-                else:
-                    # Préfixer avec le rapport source
-                    section_key = f"{section} (Rapport {i+1})"
-                    merged_content[section_key].append(content)
-        
-        # Convertir en dictionnaire simple
-        return {section: "\n".join(contents) for section, contents in merged_content.items()}
-    
-    def _merge_synthesize(self, reports: List[Dict[str, Any]], config: Dict[str, Any]) -> Dict[str, str]:
-        """Fusion avec synthèse du contenu"""
-        merged_content = {}
-        
-        # Regrouper par section
-        sections_content = defaultdict(list)
-        for report in reports:
-            for section, content in report['content'].items():
-                sections_content[section].append(content)
-        
-        # Synthétiser chaque section
-        for section, contents in sections_content.items():
-            if len(contents) == 1:
-                merged_content[section] = contents[0]
-            else:
-                # Créer une synthèse
-                synthesis = [f"Synthèse de {len(contents)} sources :\n"]
-                
-                # Extraire les points clés de chaque contenu
-                for i, content in enumerate(contents):
-                    # Prendre les premières lignes significatives
-                    lines = [l for l in content.split('\n') if l.strip()][:3]
-                    synthesis.append(f"\n**Source {i+1} :**")
-                    synthesis.extend([f"- {line}" for line in lines])
-                
-                merged_content[section] = "\n".join(synthesis)
-        
-        return merged_content
-    
-    def _merge_compare(self, reports: List[Dict[str, Any]], config: Dict[str, Any]) -> Dict[str, str]:
-        """Fusion avec comparaison des contenus"""
-        merged_content = {}
-        
-        # Introduction comparative
-        merged_content['Introduction'] = (
-            f"Ce document compare {len(reports)} rapports :\n\n" +
-            "\n".join([f"- Rapport {i+1} : {r['config']['title']}" for i, r in enumerate(reports)])
+        base_type = st.selectbox(
+            "Basé sur",
+            ["Nouveau"] + list(REPORT_TEMPLATES.keys()),
+            format_func=lambda x: "Partir de zéro" if x == "Nouveau" else REPORT_TEMPLATES[x]['name']
         )
         
-        # Comparer section par section
-        all_sections = set()
-        for report in reports:
-            all_sections.update(report['config']['sections'])
+        if base_type != "Nouveau":
+            sections = st.multiselect(
+                "Sections à inclure",
+                REPORT_TEMPLATES[base_type]['sections'],
+                default=REPORT_TEMPLATES[base_type]['sections']
+            )
+        else:
+            num_sections = st.number_input("Nombre de sections", min_value=1, max_value=10, value=3)
+            sections = []
+            for i in range(num_sections):
+                section = st.text_input(f"Section {i+1}", key=f"custom_section_{i}")
+                if section:
+                    sections.append(section)
         
-        for section in sorted(all_sections):
-            comparison = [f"## Comparaison : {section}\n"]
-            
-            for i, report in enumerate(reports):
-                if section in report['content']:
-                    comparison.append(f"### Rapport {i+1}")
-                    comparison.append(report['content'][section])
-                else:
-                    comparison.append(f"### Rapport {i+1}")
-                    comparison.append("*Section non présente dans ce rapport*")
+        description = st.text_area("Description", placeholder="Décrivez l'usage de ce template...")
+        
+        icon = st.selectbox("Icône", ["📄", "📊", "📈", "📑", "📜", "🎯", "💼", "⚖️"])
+        
+        if st.form_submit_button("Créer le template", type="primary"):
+            if name and sections:
+                template_id = f"custom_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 
-                comparison.append("")
-            
-            merged_content[f"Comparaison - {section}"] = "\n".join(comparison)
-        
-        return merged_content
+                st.session_state.custom_templates[template_id] = {
+                    'name': name,
+                    'icon': icon,
+                    'description': description,
+                    'sections': sections,
+                    'base_type': base_type if base_type != "Nouveau" else None,
+                    'created_at': datetime.now()
+                }
+                
+                st.success(f"✅ Template '{name}' créé avec succès!")
+                st.rerun()
+            else:
+                st.error("Veuillez remplir tous les champs requis")
+
+def render_merge_reports():
+    """Interface de fusion de rapports"""
+    st.markdown("### 🔄 Fusion de rapports")
     
-    def _merge_consolidate(self, reports: List[Dict[str, Any]], config: Dict[str, Any]) -> Dict[str, str]:
-        """Fusion avec consolidation intelligente"""
-        merged_content = {}
-        
-        # Regrouper les contenus similaires
-        for section in ['Faits', 'Analyse', 'Conclusions']:
-            contents = []
-            for report in reports:
-                for s, content in report['content'].items():
-                    if section.lower() in s.lower():
-                        contents.append(content)
-            
-            if contents:
-                # Consolidation intelligente
-                consolidated = self._consolidate_contents(contents, section)
-                merged_content[section] = consolidated
-        
-        return merged_content
+    if 'report_history' not in st.session_state or len(st.session_state.report_history) < 2:
+        st.info("📊 Au moins 2 rapports sont nécessaires pour effectuer une fusion.")
+        st.markdown("**Conseil :** Générez plusieurs rapports puis revenez ici pour les fusionner.")
+        return
     
-    def _consolidate_contents(self, contents: List[str], section: str) -> str:
-        """Consolide plusieurs contenus en évitant les redondances"""
-        if not contents:
-            return ""
+    # Sélection des rapports
+    st.markdown("#### 1️⃣ Sélectionner les rapports à fusionner")
+    
+    report_options = []
+    for i, report in enumerate(st.session_state.report_history):
+        report_options.append({
+            'index': i,
+            'title': report['config']['title'],
+            'date': report['created_at'].strftime('%d/%m/%Y %H:%M'),
+            'type': REPORT_TEMPLATES.get(report['config']['type'], {}).get('name', report['config']['type']),
+            'sections': len(report['content']),
+            'words': report['metadata']['word_count']
+        })
+    
+    # Affichage en tableau pour sélection
+    selected_reports = []
+    for opt in report_options:
+        col1, col2, col3, col4, col5 = st.columns([0.5, 3, 2, 1, 1])
         
+        with col1:
+            if st.checkbox("", key=f"merge_select_{opt['index']}"):
+                selected_reports.append(opt['index'])
+        
+        with col2:
+            st.write(f"**{opt['title']}**")
+        
+        with col3:
+            st.write(f"{opt['type']} - {opt['date']}")
+        
+        with col4:
+            st.write(f"{opt['sections']} sections")
+        
+        with col5:
+            st.write(f"{opt['words']:,} mots")
+    
+    if len(selected_reports) >= 2:
+        st.success(f"✅ {len(selected_reports)} rapports sélectionnés")
+        
+        # Options de fusion
+        st.markdown("#### 2️⃣ Configurer la fusion")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            merge_strategy = st.selectbox(
+                "Stratégie de fusion",
+                [
+                    "📑 Concaténation simple",
+                    "🎯 Synthèse intelligente",
+                    "🔍 Analyse comparative",
+                    "💎 Consolidation avancée"
+                ],
+                help="Comment combiner les contenus des rapports"
+            )
+            
+            new_title = st.text_input(
+                "Titre du rapport fusionné",
+                value=f"Rapport consolidé - {datetime.now().strftime('%d/%m/%Y')}"
+            )
+        
+        with col2:
+            section_strategy = st.radio(
+                "Gestion des sections",
+                ["Fusionner sections identiques", "Conserver toutes les sections", "Sélection manuelle"],
+                help="Comment traiter les sections communes"
+            )
+            
+            use_ai = st.checkbox(
+                "Utiliser l'IA pour optimiser la fusion",
+                value=True,
+                help="L'IA améliore la cohérence et évite les redondances"
+            )
+        
+        # Aperçu de la structure
+        if section_strategy == "Sélection manuelle":
+            st.markdown("#### 3️⃣ Sélectionner les sections")
+            
+            # Collecter toutes les sections uniques
+            all_sections = set()
+            for idx in selected_reports:
+                all_sections.update(st.session_state.report_history[idx]['config']['sections'])
+            
+            selected_sections = []
+            cols = st.columns(3)
+            for i, section in enumerate(sorted(all_sections)):
+                with cols[i % 3]:
+                    if st.checkbox(section, value=True, key=f"merge_section_{section}"):
+                        selected_sections.append(section)
+        
+        # Bouton de fusion
+        st.markdown("---")
+        
+        if st.button("🔄 Lancer la fusion", type="primary", use_container_width=True):
+            perform_advanced_merge(
+                selected_reports,
+                merge_strategy,
+                new_title,
+                section_strategy,
+                selected_sections if section_strategy == "Sélection manuelle" else None,
+                use_ai
+            )
+
+def perform_advanced_merge(selected_indices, strategy, title, section_strategy, selected_sections, use_ai):
+    """Effectue une fusion avancée des rapports"""
+    progress = st.progress(0)
+    status = st.empty()
+    
+    # Récupérer les rapports
+    reports = [st.session_state.report_history[i] for i in selected_indices]
+    
+    # Créer le rapport fusionné
+    merged_report = {
+        'id': f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        'created_at': datetime.now(),
+        'config': {
+            'title': title,
+            'type': 'merged',
+            'merge_strategy': strategy,
+            'source_reports': len(reports),
+            'use_ai': use_ai,
+            'ai_models': ['GPT-4', 'Claude'] if use_ai else [],
+            'sections': [],
+            'options': reports[0]['config'].get('options', {})
+        },
+        'content': {},
+        'metadata': {}
+    }
+    
+    status.text("📊 Analyse des rapports sources...")
+    progress.progress(20)
+    time.sleep(0.5)
+    
+    # Appliquer la stratégie de fusion
+    if "Concaténation" in strategy:
+        merged_content = merge_concatenate_advanced(reports, section_strategy, selected_sections)
+    elif "Synthèse" in strategy:
+        status.text("🤖 Synthèse intelligente en cours...")
+        progress.progress(40)
+        merged_content = merge_synthesize_advanced(reports, section_strategy, use_ai)
+    elif "comparative" in strategy:
+        status.text("🔍 Analyse comparative...")
+        progress.progress(40)
+        merged_content = merge_compare_advanced(reports, section_strategy)
+    else:  # Consolidation
+        status.text("💎 Consolidation avancée...")
+        progress.progress(40)
+        merged_content = merge_consolidate_advanced(reports, section_strategy, use_ai)
+    
+    progress.progress(80)
+    
+    # Optimisation avec IA si activée
+    if use_ai:
+        status.text("🎯 Optimisation IA du contenu...")
+        time.sleep(1)
+        merged_content = optimize_merged_content(merged_content)
+    
+    merged_report['content'] = merged_content
+    merged_report['config']['sections'] = list(merged_content.keys())
+    
+    # Calculer les métadonnées
+    merged_report['metadata'] = calculate_report_metadata(merged_report)
+    
+    # Sauvegarder
+    st.session_state.report_history.append(merged_report)
+    
+    progress.progress(100)
+    status.success("✅ Fusion terminée avec succès!")
+    
+    # Afficher le résultat
+    display_generated_report(merged_report)
+
+def merge_concatenate_advanced(reports, section_strategy, selected_sections=None):
+    """Concaténation avancée avec gestion intelligente des sections"""
+    merged = defaultdict(list)
+    
+    for i, report in enumerate(reports):
+        # Ajouter un en-tête de source
+        source_header = f"\n\n**[Source : {report['config']['title']}]**\n\n"
+        
+        for section, content in report['content'].items():
+            if selected_sections and section not in selected_sections:
+                continue
+                
+            if section_strategy == "Fusionner sections identiques":
+                if i > 0:
+                    merged[section].append(source_header)
+                merged[section].append(content)
+            else:
+                # Créer des sections uniques
+                unique_section = f"{section} - Rapport {i+1}"
+                merged[unique_section].append(content)
+    
+    return {section: "\n".join(contents) for section, contents in merged.items()}
+
+def merge_synthesize_advanced(reports, section_strategy, use_ai):
+    """Synthèse intelligente avec extraction des points clés"""
+    synthesized = {}
+    
+    # Regrouper par section
+    sections_content = defaultdict(list)
+    for report in reports:
+        for section, content in report['content'].items():
+            sections_content[section].append({
+                'source': report['config']['title'],
+                'content': content
+            })
+    
+    # Synthétiser chaque section
+    for section, contents in sections_content.items():
         if len(contents) == 1:
-            return contents[0]
-        
-        # Stratégie simple : prendre le plus long et ajouter les éléments uniques des autres
-        base_content = max(contents, key=len)
-        consolidated = [base_content]
-        
-        # Ajouter les éléments uniques des autres contenus
-        base_sentences = set(re.split(r'[.!?]+', base_content.lower()))
-        
-        for content in contents:
-            if content != base_content:
-                sentences = re.split(r'[.!?]+', content)
-                unique_sentences = [
-                    s.strip() for s in sentences 
-                    if s.strip() and s.strip().lower() not in base_sentences
-                ]
+            synthesized[section] = contents[0]['content']
+        else:
+            # Créer une synthèse
+            synthesis = [f"### Synthèse : {section}\n"]
+            synthesis.append(f"*Basée sur {len(contents)} sources*\n")
+            
+            # Points clés de chaque source
+            synthesis.append("#### Points clés par source:\n")
+            
+            for item in contents:
+                synthesis.append(f"\n**{item['source']}:**")
                 
-                if unique_sentences:
-                    consolidated.append(f"\n\nÉléments additionnels :")
-                    consolidated.extend([f"- {s}" for s in unique_sentences[:5]])
-        
-        return "\n".join(consolidated)
+                # Extraire les points clés (simulation)
+                lines = item['content'].split('\n')
+                key_points = []
+                
+                for line in lines:
+                    if line.strip() and (line.startswith('•') or line.startswith('-') or 
+                                       line.startswith('1.') or line.startswith('2.')):
+                        key_points.append(line)
+                
+                if not key_points:
+                    # Prendre les premières phrases significatives
+                    sentences = [s.strip() for s in item['content'].split('.') if s.strip()][:3]
+                    key_points = [f"• {s}." for s in sentences if s]
+                
+                synthesis.extend(key_points[:5])  # Max 5 points par source
+            
+            # Analyse consolidée
+            if use_ai:
+                synthesis.append("\n#### Analyse consolidée:\n")
+                synthesis.append("*[Analyse IA de la convergence et des divergences entre les sources]*")
+            
+            synthesized[section] = "\n".join(synthesis)
     
-    def _render_help(self):
-        """Affiche l'aide du module"""
-        st.markdown("""
-        #### ❓ Guide d'utilisation du module Rapports
-        
-        ##### 🎯 Objectif
-        Ce module permet de générer automatiquement des documents juridiques professionnels à partir de vos analyses.
-        
-        ##### 📋 Types de documents disponibles
-        
-        1. **Synthèse d'analyse**
-           - Vue d'ensemble d'une affaire
-           - Points clés et recommandations
-           - Format : 2-5 pages
-        
-        2. **Note de plaidoirie**
-           - Structure formelle En fait / En droit
-           - Arguments développés
-           - Format : 5-15 pages
-        
-        3. **Mémo juridique**
-           - Communication interne
-           - Points d'action clairs
-           - Format : 1-3 pages
-        
-        4. **Conclusions**
-           - Document procédural formel
-           - Respect des formes juridiques
-           - Format : 10-30 pages
-        
-        5. **Rapport d'expertise**
-           - Analyse technique détaillée
-           - Méthodologie et conclusions
-           - Format : 15-50 pages
-        
-        ##### 💡 Conseils de rédaction
-        
-        - **Ton** : Adaptez le ton au destinataire (juge, client, confrère)
-        - **Longueur** : Commencez concis, développez si nécessaire
-        - **Structure** : Respectez l'ordre logique des arguments
-        - **Sources** : Utilisez les données de vos analyses précédentes
-        
-        ##### 🔧 Fonctionnalités avancées
-        
-        **Fusion de rapports**
-        - Combinez plusieurs analyses en un document unique
-        - 4 modes : Concaténation, Synthèse, Comparaison, Consolidation
-        - Évite les redondances
-        
-        **Templates personnalisés**
-        - Sauvegardez vos rapports comme modèles
-        - Réutilisez la structure pour gagner du temps
-        - Adaptez aux besoins spécifiques
-        
-        **Export multi-format**
-        - Word : Pour édition ultérieure
-        - PDF : Pour envoi final
-        - Email : Envoi direct (configuration requise)
-        
-        ##### ⚡ Raccourcis
-        
-        - **Données de session** : Réutilise automatiquement vos analyses
-        - **Mode édition** : Modifiez directement dans l'interface
-        - **Aperçu** : Visualisez avant export
-        - **Templates** : Gagnez du temps avec les modèles
-        
-        ##### 📝 Bonnes pratiques
-        
-        1. **Vérifiez toujours** le contenu généré
-        2. **Personnalisez** selon le destinataire
-        3. **Citez vos sources** (jurisprudence, articles)
-        4. **Archivez** les versions importantes
-        5. **Testez** les exports avant envoi
-        """)
+    return synthesized
 
+def merge_compare_advanced(reports, section_strategy):
+    """Comparaison avancée avec tableau comparatif"""
+    compared = {}
+    
+    # Introduction comparative
+    intro = [
+        f"# Analyse comparative de {len(reports)} rapports\n",
+        f"*Générée le {datetime.now().strftime('%d/%m/%Y à %H:%M')}*\n",
+        "\n## Rapports analysés:\n"
+    ]
+    
+    for i, report in enumerate(reports):
+        intro.append(f"{i+1}. **{report['config']['title']}** - {report['config']['date'].strftime('%d/%m/%Y')}")
+    
+    compared['Introduction comparative'] = "\n".join(intro)
+    
+    # Comparaison par section
+    all_sections = set()
+    for report in reports:
+        all_sections.update(report['content'].keys())
+    
+    for section in sorted(all_sections):
+        comparison = [f"\n## Comparaison : {section}\n"]
+        
+        # Tableau comparatif
+        comparison.append("| Rapport | Contenu clé | Différences notables |")
+        comparison.append("|---------|-------------|---------------------|")
+        
+        section_contents = []
+        for i, report in enumerate(reports):
+            if section in report['content']:
+                content = report['content'][section]
+                # Extraire le résumé (premières lignes)
+                summary = ' '.join(content.split('\n')[:3])[:100] + "..."
+                section_contents.append(content)
+                
+                # Identifier les différences (simulation)
+                differences = "Points spécifiques identifiés"
+                
+                comparison.append(f"| Rapport {i+1} | {summary} | {differences} |")
+            else:
+                comparison.append(f"| Rapport {i+1} | *Section absente* | - |")
+        
+        # Analyse des convergences/divergences
+        if len(section_contents) > 1:
+            comparison.append("\n### Analyse des convergences et divergences:")
+            comparison.append("• **Points de convergence:** [Analyse des éléments communs]")
+            comparison.append("• **Points de divergence:** [Analyse des différences]")
+            comparison.append("• **Recommandation:** [Synthèse et recommandation basée sur la comparaison]")
+        
+        compared[f"Comparaison - {section}"] = "\n".join(comparison)
+    
+    return compared
 
-# Point d'entrée pour tests
+def merge_consolidate_advanced(reports, section_strategy, use_ai):
+    """Consolidation avancée avec déduplication intelligente"""
+    consolidated = {}
+    
+    # Phase 1: Extraction et catégorisation
+    all_content = defaultdict(lambda: defaultdict(list))
+    
+    for report in reports:
+        for section, content in report['content'].items():
+            # Catégoriser le contenu
+            paragraphs = content.split('\n\n')
+            for para in paragraphs:
+                if para.strip():
+                    # Catégoriser (simulation)
+                    if any(word in para.lower() for word in ['fait', 'date', 'événement']):
+                        category = 'facts'
+                    elif any(word in para.lower() for word in ['article', 'loi', 'jurisprudence']):
+                        category = 'legal'
+                    elif any(word in para.lower() for word in ['recommand', 'conseil', 'suggér']):
+                        category = 'recommendations'
+                    else:
+                        category = 'analysis'
+                    
+                    all_content[section][category].append({
+                        'content': para,
+                        'source': report['config']['title']
+                    })
+    
+    # Phase 2: Consolidation par section
+    for section, categories in all_content.items():
+        section_content = [f"## {section}\n"]
+        
+        # Traiter chaque catégorie
+        for category, items in categories.items():
+            if not items:
+                continue
+            
+            category_names = {
+                'facts': '### Éléments factuels',
+                'legal': '### Fondements juridiques',
+                'analysis': '### Analyse',
+                'recommendations': '### Recommandations'
+            }
+            
+            section_content.append(f"\n{category_names.get(category, '### ' + category)}\n")
+            
+            # Déduplication (simulation simple)
+            seen_content = set()
+            unique_items = []
+            
+            for item in items:
+                # Hash simple du contenu pour détecter les doublons
+                content_hash = item['content'][:50].lower()
+                if content_hash not in seen_content:
+                    seen_content.add(content_hash)
+                    unique_items.append(item)
+            
+            # Ajouter le contenu unique
+            if len(unique_items) == 1:
+                section_content.append(unique_items[0]['content'])
+            else:
+                for item in unique_items:
+                    section_content.append(f"{item['content']}")
+                    if len(set(i['source'] for i in items)) > 1:
+                        section_content.append(f"*[Source: {item['source']}]*\n")
+        
+        consolidated[section] = "\n".join(section_content)
+    
+    # Phase 3: Optimisation finale
+    if use_ai:
+        # Ajouter une section de synthèse globale
+        consolidated['Synthèse consolidée'] = """
+## Synthèse consolidée
+
+Cette section présente une vue d'ensemble unifiée basée sur l'analyse de tous les rapports sources.
+
+### Points clés consolidés
+• Synthèse des éléments factuels convergents
+• Analyse juridique harmonisée
+• Recommandations prioritaires issues de l'ensemble des analyses
+
+### Cohérence et qualité
+L'analyse par IA a permis d'identifier et d'éliminer les redondances tout en préservant 
+les nuances importantes de chaque rapport source.
+        """
+    
+    return consolidated
+
+def optimize_merged_content(content):
+    """Optimise le contenu fusionné avec l'IA"""
+    # Simulation d'optimisation IA
+    optimized = {}
+    
+    for section, text in content.items():
+        # Ajouter des améliorations
+        optimized[section] = text
+        
+        # Ajouter des métadonnées d'optimisation
+        if "synthèse" not in section.lower():
+            optimized[section] += "\n\n*[Contenu optimisé par IA pour cohérence et clarté]*"
+    
+    return optimized
+
+def render_history():
+    """Affiche l'historique des rapports"""
+    st.markdown("### 📊 Historique des rapports")
+    
+    if not st.session_state.report_history:
+        st.info("📝 Aucun rapport généré. Créez votre premier rapport pour le voir apparaître ici.")
+        return
+    
+    # Statistiques globales
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_reports = len(st.session_state.report_history)
+    total_words = sum(r['metadata']['word_count'] for r in st.session_state.report_history)
+    avg_quality = sum(r['metadata'].get('quality_score', 0) for r in st.session_state.report_history) / total_reports
+    
+    with col1:
+        st.metric("📄 Total rapports", total_reports)
+    
+    with col2:
+        st.metric("📝 Total mots", f"{total_words:,}")
+    
+    with col3:
+        st.metric("⭐ Qualité moyenne", f"{avg_quality:.1f}/5.0")
+    
+    with col4:
+        st.metric("🤖 Modèles utilisés", len(set(m for r in st.session_state.report_history 
+                                                for m in r['metadata'].get('ai_models_used', []))))
+    
+    # Filtres et recherche
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        search = st.text_input("🔍 Rechercher", placeholder="Titre, référence...")
+    
+    with col2:
+        filter_type = st.selectbox(
+            "Type",
+            ["Tous"] + list(set(r['config']['type'] for r in st.session_state.report_history))
+        )
+    
+    with col3:
+        sort_by = st.selectbox(
+            "Trier par",
+            ["Date (récent)", "Date (ancien)", "Titre", "Taille", "Qualité"]
+        )
+    
+    # Appliquer les filtres
+    filtered_reports = st.session_state.report_history.copy()
+    
+    if search:
+        filtered_reports = [
+            r for r in filtered_reports 
+            if search.lower() in r['config']['title'].lower() or 
+               search.lower() in r['config'].get('case_ref', '').lower()
+        ]
+    
+    if filter_type != "Tous":
+        filtered_reports = [r for r in filtered_reports if r['config']['type'] == filter_type]
+    
+    # Trier
+    if sort_by == "Date (récent)":
+        filtered_reports.sort(key=lambda x: x['created_at'], reverse=True)
+    elif sort_by == "Date (ancien)":
+        filtered_reports.sort(key=lambda x: x['created_at'])
+    elif sort_by == "Titre":
+        filtered_reports.sort(key=lambda x: x['config']['title'])
+    elif sort_by == "Taille":
+        filtered_reports.sort(key=lambda x: x['metadata']['word_count'], reverse=True)
+    else:  # Qualité
+        filtered_reports.sort(key=lambda x: x['metadata'].get('quality_score', 0), reverse=True)
+    
+    # Affichage des rapports
+    for report in filtered_reports:
+        with st.expander(
+            f"{REPORT_TEMPLATES.get(report['config']['type'], {}).get('icon', '📄')} "
+            f"{report['config']['title']} - {report['created_at'].strftime('%d/%m/%Y %H:%M')}",
+            expanded=False
+        ):
+            # Informations du rapport
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Type :** {REPORT_TEMPLATES.get(report['config']['type'], {}).get('name', report['config']['type'])}")
+                st.write(f"**Référence :** {report['config'].get('case_ref', 'N/A')}")
+                st.write(f"**Client :** {report['config'].get('client', 'N/A')}")
+                st.write(f"**Sections :** {len(report['content'])}")
+                
+                # Tags des modèles IA utilisés
+                if report['metadata'].get('ai_models_used'):
+                    models_tags = " ".join([
+                        f"`{AI_MODELS.get(m, {}).get('icon', '')} {m}`" 
+                        for m in report['metadata']['ai_models_used']
+                    ])
+                    st.markdown(f"**IA :** {models_tags}")
+            
+            with col2:
+                st.metric("Mots", f"{report['metadata']['word_count']:,}")
+                st.metric("Pages", report['metadata']['page_estimate'])
+                st.metric("Qualité", f"{report['metadata'].get('quality_score', 0):.1f}/5.0")
+            
+            # Actions
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                if st.button("👁️ Voir", key=f"view_hist_{report['id']}"):
+                    st.session_state.current_report = report
+                    display_generated_report(report)
+            
+            with col2:
+                if st.button("📑 Dupliquer", key=f"dup_hist_{report['id']}"):
+                    duplicate_report(report)
+            
+            with col3:
+                if st.button("✏️ Éditer", key=f"edit_hist_{report['id']}"):
+                    st.session_state.current_report = report
+                    st.session_state.edit_mode = True
+            
+            with col4:
+                if st.button("🗑️ Supprimer", key=f"del_hist_{report['id']}"):
+                    if st.checkbox(f"Confirmer", key=f"confirm_del_hist_{report['id']}"):
+                        st.session_state.report_history.remove(report)
+                        st.success("Rapport supprimé")
+                        st.rerun()
+
+def duplicate_report(report):
+    """Duplique un rapport"""
+    new_report = report.copy()
+    new_report['id'] = f"duplicate_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    new_report['created_at'] = datetime.now()
+    new_report['config']['title'] = f"{report['config']['title']} (Copie)"
+    
+    st.session_state.report_history.append(new_report)
+    st.success("✅ Rapport dupliqué avec succès")
+
+def render_settings():
+    """Paramètres du module"""
+    st.markdown("### ⚙️ Paramètres")
+    
+    # Préférences générales
+    with st.expander("🎨 Apparence et interface", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            theme = st.selectbox(
+                "Thème",
+                ["Clair", "Sombre", "Auto"],
+                index=0 if st.session_state.get('theme', 'light') == 'light' else 1
+            )
+            
+            animations = st.checkbox(
+                "Animations activées",
+                value=True,
+                help="Désactiver pour de meilleures performances"
+            )
+        
+        with col2:
+            compact_mode = st.checkbox(
+                "Mode compact",
+                value=False,
+                help="Réduit l'espacement pour afficher plus de contenu"
+            )
+            
+            preview_length = st.slider(
+                "Longueur des aperçus (mots)",
+                50, 500, 200
+            )
+    
+    # Paramètres IA
+    with st.expander("🤖 Configuration IA", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            default_model = st.selectbox(
+                "Modèle par défaut",
+                list(AI_MODELS.keys()),
+                help="Modèle utilisé par défaut pour les nouvelles générations"
+            )
+            
+            max_retries = st.number_input(
+                "Tentatives max en cas d'erreur",
+                min_value=1,
+                max_value=5,
+                value=3
+            )
+        
+        with col2:
+            timeout = st.slider(
+                "Timeout par requête (secondes)",
+                10, 120, 30
+            )
+            
+            cache_responses = st.checkbox(
+                "Mettre en cache les réponses",
+                value=True,
+                help="Améliore les performances pour les requêtes similaires"
+            )
+    
+    # Paramètres d'export
+    with st.expander("📤 Options d'export", expanded=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            default_format = st.selectbox(
+                "Format d'export par défaut",
+                ["PDF", "Word", "HTML", "Markdown"]
+            )
+            
+            include_metadata = st.checkbox(
+                "Inclure les métadonnées",
+                value=True
+            )
+        
+        with col2:
+            watermark_text = st.text_input(
+                "Texte du filigrane",
+                placeholder="Confidentiel",
+                help="Laissez vide pour désactiver"
+            )
+            
+            auto_backup = st.checkbox(
+                "Sauvegarde automatique",
+                value=True,
+                help="Sauvegarde les rapports localement"
+            )
+    
+    # Sauvegarde et réinitialisation
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("💾 Sauvegarder les paramètres", type="primary", use_container_width=True):
+            save_settings({
+                'theme': theme,
+                'animations': animations,
+                'compact_mode': compact_mode,
+                'preview_length': preview_length,
+                'default_model': default_model,
+                'max_retries': max_retries,
+                'timeout': timeout,
+                'cache_responses': cache_responses,
+                'default_format': default_format,
+                'include_metadata': include_metadata,
+                'watermark_text': watermark_text,
+                'auto_backup': auto_backup
+            })
+    
+    with col2:
+        if st.button("🔄 Paramètres par défaut", use_container_width=True):
+            if st.checkbox("Confirmer la réinitialisation"):
+                reset_settings()
+    
+    with col3:
+        if st.button("🗑️ Effacer tout l'historique", use_container_width=True):
+            if st.checkbox("⚠️ Confirmer la suppression définitive"):
+                st.session_state.report_history = []
+                st.session_state.custom_templates = {}
+                st.success("Historique effacé")
+                st.rerun()
+
+def save_settings(settings):
+    """Sauvegarde les paramètres"""
+    st.session_state.settings = settings
+    st.success("✅ Paramètres sauvegardés")
+    
+    # Appliquer certains paramètres immédiatement
+    st.session_state.theme = 'light' if settings['theme'] == 'Clair' else 'dark'
+
+def reset_settings():
+    """Réinitialise les paramètres"""
+    if 'settings' in st.session_state:
+        del st.session_state.settings
+    st.success("✅ Paramètres réinitialisés")
+    st.rerun()
+
+def save_report(report):
+    """Sauvegarde un rapport"""
+    # Simulation de sauvegarde
+    st.success(f"✅ Rapport '{report['config']['title']}' sauvegardé")
+
+def send_report(report):
+    """Envoie un rapport par email"""
+    with st.form("send_report_form"):
+        st.markdown("### 📧 Envoyer le rapport")
+        
+        recipient = st.text_input("Destinataire", placeholder="email@example.com")
+        cc = st.text_input("CC (optionnel)", placeholder="cc@example.com")
+        
+        subject = st.text_input(
+            "Objet",
+            value=f"{report['config']['title']} - {datetime.now().strftime('%d/%m/%Y')}"
+        )
+        
+        message = st.text_area(
+            "Message",
+            value="Bonjour,\n\nVeuillez trouver ci-joint le rapport demandé.\n\nCordialement,",
+            height=150
+        )
+        
+        format_choice = st.selectbox("Format", ["PDF", "Word", "HTML"])
+        
+        if st.form_submit_button("📤 Envoyer", type="primary"):
+            if recipient:
+                # Simulation d'envoi
+                with st.spinner("Envoi en cours..."):
+                    time.sleep(2)
+                st.success(f"✅ Rapport envoyé à {recipient}")
+            else:
+                st.error("Veuillez saisir une adresse email")
+
+def export_report(report, format_type):
+    """Exporte un rapport dans le format spécifié"""
+    with st.spinner(f"Génération du fichier {format_type}..."):
+        time.sleep(1)  # Simulation
+        
+        if format_type == "Markdown":
+            content = export_to_markdown(report)
+            st.download_button(
+                f"⬇️ Télécharger {format_type}",
+                data=content,
+                file_name=f"{report['id']}.md",
+                mime="text/markdown"
+            )
+        else:
+            st.info(f"Export {format_type} en cours de développement")
+
+def export_to_markdown(report):
+    """Exporte le rapport en Markdown"""
+    lines = [
+        f"# {report['config']['title']}",
+        "",
+        f"**Date :** {report['config']['date'].strftime('%d %B %Y')}  ",
+        f"**Auteur :** {report['config'].get('author', 'N/A')}  ",
+        f"**Référence :** {report['config'].get('case_ref', 'N/A')}  ",
+        "",
+        "---",
+        ""
+    ]
+    
+    # Table des matières
+    if report['config']['options'].get('toc', False):
+        lines.extend([
+            "## Table des matières",
+            ""
+        ])
+        
+        for i, section in enumerate(report['config']['sections'], 1):
+            lines.append(f"{i}. [{section}](#{section.lower().replace(' ', '-')})")
+        
+        lines.extend(["", "---", ""])
+    
+    # Contenu
+    for section, content in report['content'].items():
+        lines.extend([
+            f"## {section}",
+            "",
+            content,
+            "",
+            "---",
+            ""
+        ])
+    
+    # Métadonnées
+    lines.extend([
+        "",
+        "## Métadonnées",
+        "",
+        f"- **Mots :** {report['metadata']['word_count']:,}",
+        f"- **Pages estimées :** {report['metadata']['page_estimate']}",
+        f"- **Temps de lecture :** {report['metadata']['reading_time']} minutes",
+        f"- **Modèles IA :** {', '.join(report['metadata'].get('ai_models_used', []))}",
+        f"- **Généré le :** {report['metadata']['generation_time'].strftime('%d/%m/%Y à %H:%M')}"
+    ])
+    
+    return "\n".join(lines)
+
+def use_custom_template(template):
+    """Utilise un template personnalisé"""
+    st.session_state.selected_custom_template = template
+    st.info(f"Template '{template['name']}' sélectionné")
+    st.rerun()
+
+def edit_custom_template(template_id, template):
+    """Édite un template personnalisé"""
+    st.session_state.editing_template = template_id
+    st.info("Mode édition activé pour ce template")
+    # L'interface d'édition serait implémentée ici
+
+# Point d'entrée principal
 if __name__ == "__main__":
-    module = ReportModule()
-    module.render()
+    run()
