@@ -7,6 +7,8 @@ Test simple du générateur unifié de documents
 import asyncio
 from datetime import datetime
 
+import pytest
+pytest.importorskip("streamlit")
 import streamlit as st
 
 # Import du générateur unifié

@@ -6,7 +6,7 @@ import re
 import string
 import unicodedata
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def clean_text(text: str) -> str:

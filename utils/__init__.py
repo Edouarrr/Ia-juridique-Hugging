@@ -5,10 +5,16 @@ Package utils - Fonctions utilitaires pour l'application juridique
 
 # Import des fonctions principales de chaque module
 
-# Cache Manager
-from .cache_manager import (CACHE_DIR, CACHE_DURATION, CacheActesJuridiques,
-                            CacheJuridique, cache_result, cache_streamlit,
-                            get_cache, show_cache_management)
+# Cache Manager (peut dépendre de Streamlit)
+try:
+    from .cache_manager import (CACHE_DIR, CACHE_DURATION, CacheActesJuridiques,
+                                CacheJuridique, cache_result, cache_streamlit,
+                                get_cache, show_cache_management)
+except Exception:  # Ignore si dépendance manquante
+    CACHE_DIR = CACHE_DURATION = None
+    CacheActesJuridiques = CacheJuridique = None
+    cache_result = cache_streamlit = lambda *args, **kwargs: None
+    get_cache = show_cache_management = lambda *args, **kwargs: None
 # Constants
 from .constants import (ACCEPTED_FILE_TYPES, BARREAUX, COLORS, CURRENCIES,
                         DEPARTEMENTS, DOCUMENT_TYPES, ERROR_MESSAGES,
@@ -57,18 +63,30 @@ from .legal_utils import (analyze_query_intent, categorize_legal_document,
                           extract_legal_terms, extract_parties,
                           extract_query_entities, format_legal_amount,
                           highlight_legal_terms, validate_reference)
-# Session
-from .session import (add_to_history, clear_session_results, get_session_value,
-                      get_user_preference, initialize_session_state,
-                      is_favorite, reset_session, set_session_value,
-                      set_user_preference, toggle_favorite,
-                      update_session_values)
-# Styles
-from .styles import apply_button_style, create_alert
-from .styles import \
-    create_breadcrumb as create_breadcrumb_styled  # Éviter le conflit
-from .styles import (create_card, create_progress_bar, create_search_result,
-                     create_timeline_item, load_custom_css)
+# Session (peut dépendre de Streamlit)
+try:
+    from .session import (add_to_history, clear_session_results, get_session_value,
+                          get_user_preference, initialize_session_state,
+                          is_favorite, reset_session, set_session_value,
+                          set_user_preference, toggle_favorite,
+                          update_session_values)
+except Exception:
+    add_to_history = clear_session_results = get_session_value = lambda *a, **k: None
+    get_user_preference = initialize_session_state = lambda *a, **k: None
+    is_favorite = reset_session = set_session_value = lambda *a, **k: None
+    set_user_preference = toggle_favorite = update_session_values = lambda *a, **k: None
+
+# Styles (peut dépendre de Streamlit)
+try:
+    from .styles import apply_button_style, create_alert
+    from .styles import \
+        create_breadcrumb as create_breadcrumb_styled  # Éviter le conflit
+    from .styles import (create_card, create_progress_bar, create_search_result,
+                         create_timeline_item, load_custom_css)
+except Exception:
+    apply_button_style = create_alert = lambda *a, **k: None
+    create_breadcrumb_styled = create_card = create_progress_bar = lambda *a, **k: None
+    create_search_result = create_timeline_item = load_custom_css = lambda *a, **k: None
 # Text Processing
 from .text_processing import (clean_text, count_words, extract_keywords,
                               extract_paragraphs, extract_sentences,

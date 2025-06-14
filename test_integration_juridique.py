@@ -3,6 +3,8 @@
 import os
 import sys
 
+import pytest
+pytest.importorskip("streamlit")
 import streamlit as st
 
 # Ajouter le répertoire parent au path si nécessaire
