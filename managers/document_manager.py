@@ -825,6 +825,26 @@ class DocumentManager:
             'latest': self.imported_documents[-1]['filename'] if self.imported_documents else None
         }
 
+    def get_summary(self, folder: str) -> str:
+        """Retourne un bref résumé des documents d'un dossier.
+
+        Cette implémentation se contente de parcourir les documents déjà
+        importés dont le chemin contient ``folder`` et d'en résumer le contenu.
+        """
+        from utils.helpers import generate_document_summary
+
+        texts = []
+        for doc in self.imported_documents:
+            if folder.lower() in doc['filename'].lower():
+                content = doc.get('content', '')
+                if content:
+                    texts.append(generate_document_summary(content))
+
+        if not texts:
+            return ""
+
+        return " ".join(texts[:5])
+
 
 # ========== FONCTIONS D'INTERFACE STREAMLIT ==========
 
