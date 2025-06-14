@@ -23,7 +23,7 @@ def test_text_processing():
         extract_monetary_amounts,
         normalize_whitespace,
     )
-    from utils.helpers import clean_key, truncate_text
+    from utils import clean_key, truncate_text
 
     # Test clean_key
     assert clean_key("Test String 123!") == "test_string_123"
@@ -58,8 +58,13 @@ def test_date_time():
     """Test des fonctions de date/temps"""
     print("\n=== TEST DATE TIME ===")
     
-    from utils.date_time import (extract_dates, format_date, format_duration,
-                                 format_legal_date, is_business_day)
+    from utils import (
+        extract_dates,
+        format_date,
+        format_duration,
+        format_legal_date,
+        is_business_day,
+    )
 
     # Test format_date
     date = datetime(2024, 1, 15)
@@ -124,9 +129,13 @@ def test_file_utils():
     """Test des fonctions fichiers"""
     print("\n=== TEST FILE UTILS ===")
     
-    from utils.file_utils import (format_file_size, get_file_extension,
-                                  get_file_icon, is_valid_email,
-                                  sanitize_filename)
+    from utils import (
+        format_file_size,
+        get_file_extension,
+        get_file_icon,
+        is_valid_email,
+        sanitize_filename,
+    )
 
     # Test sanitize_filename
     unsafe = "fichier<>:|?*.txt"
@@ -223,8 +232,12 @@ def test_formatters():
     """Test des formatters"""
     print("\n=== TEST FORMATTERS ===")
     
-    from utils.formatters import (_to_roman, apply_legal_numbering,
-                                  format_legal_list, format_signature_block)
+    from utils import (
+        _to_roman,
+        apply_legal_numbering,
+        format_legal_list,
+        format_signature_block,
+    )
 
     # Test numérotation romaine
     assert _to_roman(1) == "I"

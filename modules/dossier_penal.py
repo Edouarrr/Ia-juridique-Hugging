@@ -23,7 +23,7 @@ import streamlit as st
 sys.path.append(str(Path(__file__).parent.parent))
 
 from utils import clean_key, format_legal_date, truncate_text
-from utils.file_utils import (
+from utils import (
     EmailConfig,
     is_valid_email,
     format_file_size,
