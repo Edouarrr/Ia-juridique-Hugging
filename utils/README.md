@@ -4,6 +4,8 @@
 
 Le module `utils` contient l'ensemble des fonctions utilitaires pour l'application juridique. Il est organisé en plusieurs sous-modules spécialisés pour une meilleure maintenabilité.
 
+Toutes les fonctions sont exportées directement via `utils/__init__.py`. L'ancien fichier `exports.py` a été supprimé.
+
 ## Structure du module
 
 ```
