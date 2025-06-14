@@ -16,11 +16,11 @@ from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
 from modules.dataclasses import (JurisprudenceCase, LetterheadTemplate,
                                  RedactionResult, StylePattern)
-from utils.helpers import (
+from utils.formatters import (
     create_formatted_docx,
     create_letterhead_from_template,
-    extract_legal_references,
 )
+from utils.legal_utils import extract_legal_references
 from utils import clean_key, format_legal_date
 
 from docx import Document as DocxDocument
