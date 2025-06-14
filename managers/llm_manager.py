@@ -106,6 +106,8 @@ class LLMManager:
         Returns:
             La réponse générée
         """
+        prompt = MultiLLMManager._prepend_prioritized_pieces(prompt)
+
         try:
             # Utiliser MultiLLMManager si disponible
             if self.multi_llm and (provider in self.multi_llm.get_available_providers() or not provider):

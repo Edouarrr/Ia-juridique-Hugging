@@ -261,6 +261,7 @@ class UniversalSearchService:
             if ref_match:
                 analysis.reference = ref_match.group(1).upper()
                 analysis.search_type = 'dossier'
+                st.session_state.selected_folder = analysis.reference
                 break
         
         # Type de document

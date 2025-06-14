@@ -46,10 +46,12 @@ def initialize_session_state():
         'theme': 'light',
         'recent_actions': [],
         'favorites': [],
-        
+
         # Module juridique
         'acte_genere': None,
         'current_dossier': None,
+        'selected_folder': None,
+        'selected_module': None,
         'infractions_selectionnees': [],
         'parties_dict': {'demandeurs': [], 'defendeurs': []},
         'enrichissement_results': {},

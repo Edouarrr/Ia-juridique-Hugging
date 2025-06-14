@@ -72,6 +72,19 @@ class MultiLLMManager:
     def __init__(self):
         self.clients = {}
         self._initialize_clients()
+
+    @staticmethod
+    def _prepend_prioritized_pieces(prompt: str) -> str:
+        """Ajoute les pièces prioritaires au début du prompt si présent."""
+        pieces = st.session_state.get("pieces_prioritaires")
+        if pieces:
+            prefix = (
+                "Les documents suivants doivent être considérés comme prioritaires : "
+                + ", ".join(pieces)
+                + ".\n\n"
+            )
+            return prefix + prompt
+        return prompt
     
     def _initialize_clients(self):
         """Initialise les clients pour chaque LLM disponible"""
@@ -140,7 +153,7 @@ class MultiLLMManager:
     def query_single_llm(
         self, 
         provider: Any,  # Peut être string ou enum
-        prompt: str, 
+        prompt: str,
         system_prompt: str = "Tu es un assistant juridique expert en droit pénal des affaires français.",
         temperature: float = 0.7,
         max_tokens: int = 4000
@@ -176,6 +189,8 @@ class MultiLLMManager:
                 'provider': provider_name,
                 'error': f"Provider {provider_name} non disponible. Providers disponibles: {list(self.clients.keys())}"
             }
+        
+        prompt = self._prepend_prioritized_pieces(prompt)
 
         try:
             start_time = time.time()
@@ -312,6 +327,8 @@ class MultiLLMManager:
         parallel: bool = True
     ) -> List[Dict[str, Any]]:
         """Interroge plusieurs LLMs"""
+
+        prompt = self._prepend_prioritized_pieces(prompt)
         
         # Normaliser les providers
         normalized_providers = []

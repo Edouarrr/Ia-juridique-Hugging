@@ -270,6 +270,13 @@ def create_search_interface():
         selected_module = None
         merge_option = "synthétique"
 
+        # Pièces à mettre en avant
+        liste_pieces = [
+            "PV de perquisition",
+            "plainte pénale",
+            "rapport d’expertise"
+        ]
+
         if search_mode == "Recherche multi-IA":
             llm_manager = MultiLLMManager()
             providers = llm_manager.get_available_providers()
@@ -279,6 +286,8 @@ def create_search_interface():
                 default=providers,
                 key="multi_models_select"
             )
+
+            st.session_state.selected_module = None
 
             merge_option = st.radio(
                 "Fusion des réponses",
@@ -296,6 +305,18 @@ def create_search_interface():
                     modules,
                     key="module_select"
                 )
+
+                st.session_state.selected_module = selected_module
+            else:
+                st.session_state.selected_module = None
+
+        # Sélection des pièces prioritaires
+        pieces_selection = st.multiselect(
+            "Pièces prioritaires :",
+            options=liste_pieces,
+            key="pieces_prioritaires"
+        )
+        st.session_state.pieces_prioritaires = pieces_selection
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Espacement
@@ -341,9 +362,11 @@ def create_modern_sidebar():
             <p style="color: #5f6368; margin: 5px 0;">Assistant Juridique Intelligent</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         st.markdown("---")
-        
+        st.markdown(f"📌 Dossier courant : @{st.session_state.selected_folder}")
+        st.markdown(f"📌 Module courant : #{st.session_state.selected_module}")
+
         # Navigation principale avec icônes
         st.markdown("### 🧭 Navigation")
         
@@ -585,6 +608,7 @@ def enhanced_main_interface():
                     manager.discover_modules()
                     if module_name in manager.available_modules:
                         manager.run_module(module_name)
+                        st.session_state.selected_module = module_name
                 st.success("✅ Traitement terminé")
         
         # Dashboard principal
