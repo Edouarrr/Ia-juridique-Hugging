@@ -17,20 +17,7 @@ from streamlit_shortcuts import add_keyboard_shortcuts
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-try:
-    from utils import clean_key, format_legal_date, truncate_text
-except ImportError:
-    # Fonctions de fallback si utils n'est pas disponible
-    def truncate_text(text, max_length=100):
-        return text[:max_length] + "..." if len(text) > max_length else text
-    
-    def clean_key(key):
-        return re.sub(r'[^a-zA-Z0-9_]', '_', str(key))
-    
-    def format_legal_date(date):
-        if isinstance(date, datetime):
-            return date.strftime('%d/%m/%Y')
-        return str(date)
+from utils import clean_key, format_legal_date, truncate_text
 
 # ========================= LAZY LOADING & IMPORTS =========================
 

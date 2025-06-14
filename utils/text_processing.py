@@ -8,6 +8,8 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
+from .helpers import truncate_text, clean_key
+
 
 def clean_text(text: str) -> str:
     """
@@ -39,21 +41,6 @@ def clean_text(text: str) -> str:
     
     return text
 
-def clean_key(key: str) -> str:
-    """
-    Nettoie une clé pour la rendre utilisable comme identifiant
-    """
-    if not key:
-        return ""
-    key = str(key)
-    # Supprimer les accents
-    key = ''.join(c for c in unicodedata.normalize('NFD', key) 
-                  if unicodedata.category(c) != 'Mn')
-    key = key.lower()
-    key = re.sub(r'[^a-z0-9]+', '_', key)
-    key = key.strip('_')
-    key = re.sub(r'_+', '_', key)
-    return key
 
 def normalize_whitespace(text: str) -> str:
     """
@@ -70,17 +57,6 @@ def normalize_whitespace(text: str) -> str:
     
     return text
 
-def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
-    """
-    Tronque un texte à une longueur maximale
-    """
-    if not text:
-        return ""
-    text = str(text)
-    if len(text) <= max_length:
-        return text
-    available_length = max_length - len(suffix)
-    return text[:available_length] + suffix
 
 def extract_section(text: str, start_marker: str, end_marker: str = None) -> str:
     """

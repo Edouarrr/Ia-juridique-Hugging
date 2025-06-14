@@ -18,9 +18,12 @@ def test_text_processing():
     """Test des fonctions de traitement de texte"""
     print("\n=== TEST TEXT PROCESSING ===")
     
-    from utils.text_processing import (calculate_text_similarity, clean_key,
-                                       extract_monetary_amounts,
-                                       normalize_whitespace, truncate_text)
+    from utils.text_processing import (
+        calculate_text_similarity,
+        extract_monetary_amounts,
+        normalize_whitespace,
+    )
+    from utils.helpers import clean_key, truncate_text
 
     # Test clean_key
     assert clean_key("Test String 123!") == "test_string_123"
