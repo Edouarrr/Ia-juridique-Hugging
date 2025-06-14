@@ -20,6 +20,24 @@ from utils.file_utils import (
 )
 
 import streamlit as st
+from utils import format_file_size, is_valid_email
+
+
+from modules.dataclasses import EmailConfig
+
+
+
+# Types MIME pour les pièces jointes
+ATTACHMENT_MIME_TYPES = {
+    'pdf': 'application/pdf',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'txt': 'text/plain',
+    'html': 'text/html',
+    'json': 'application/json',
+    'csv': 'text/csv',
+    'zip': 'application/zip'
+}
 
 def process_email_request(query: str, analysis: dict):
     """Traite une demande d'envoi par email"""

@@ -22,7 +22,10 @@ from config.ai_models import AI_MODELS
 # Imports des dépendances
 from modules.dataclasses import Document
 from modules.export_manager import ExportConfig, export_manager
-from utils.helpers import clean_key, format_legal_date, truncate_text
+try:
+    from utils import clean_key, format_legal_date, truncate_text
+except Exception:  # pragma: no cover - fallback for standalone use
+    from utils.fallback import clean_key, format_legal_date, truncate_text
 
 # Configuration des modèles IA importée depuis config.ai_models
 

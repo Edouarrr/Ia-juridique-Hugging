@@ -15,8 +15,11 @@ import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils.helpers import (clean_key, extract_entities, format_legal_date,
-                           truncate_text)
+from utils.helpers import extract_entities
+try:
+    from utils import clean_key, format_legal_date, truncate_text
+except Exception:  # pragma: no cover - fallback for standalone use
+    from utils.fallback import clean_key, format_legal_date, truncate_text
 
 try:
     import networkx as nx
