@@ -1,29 +1,25 @@
 """Module de rédaction juridique avancé avec IA - Nexora Law"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import os
-import sys
-from pathlib import Path
-import time
 import asyncio
-import re
-from typing import List, Dict, Any, Optional, Tuple
 import json
+import os
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
-
 # Import des configurations et classes
-from config.app_config import (
-    REDACTION_STYLES, 
-    DOCUMENT_TEMPLATES,
-    LEGAL_PHRASES,
-    DocumentType,
-    LLMProvider
-)
+from config.app_config import (DOCUMENT_TEMPLATES, LEGAL_PHRASES,
+                               REDACTION_STYLES, DocumentType, LLMProvider)
+from utils import clean_key, format_legal_date, truncate_text
+
 
 # Classes de données simplifiées
 class RedactionResult:

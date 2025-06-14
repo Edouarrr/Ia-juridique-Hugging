@@ -4,10 +4,11 @@ Interface utilisateur optimisée pour l'application juridique
 Amélioration de l'UX, du design et de la fluidité
 """
 
+import time
+from datetime import datetime
+
 import streamlit as st
 import streamlit.components.v1 as components
-from datetime import datetime
-import time
 
 # Configuration de la page avec un design moderne
 st.set_page_config(

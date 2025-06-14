@@ -1,39 +1,39 @@
 """
 Gestionnaire de documents juridiques - Import, export, création et analyse
 """
-import streamlit as st
-from datetime import datetime
+import asyncio
+import base64
+import io
 import json
+import logging
+import os
 import re
-from typing import Dict, List, Optional, Any, Tuple
 import uuid
 from dataclasses import dataclass, field
-import asyncio
-import os
-import pandas as pd
-import io
-import base64
+from datetime import datetime
 from pathlib import Path
-import logging
+from typing import Any, Dict, List, Optional, Tuple
 
+import openpyxl
+import pandas as pd
+import PyPDF2
+import streamlit as st
 # Import des bibliothèques de traitement de documents
 from docx import Document
-from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import PyPDF2
+from docx.shared import Pt, RGBColor
+from openpyxl.styles import Alignment, Font, PatternFill
 from PIL import Image
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
 
+from managers.azure_search_manager import AzureSearchManager
+from managers.export_manager import ExportManager
+from managers.jurisprudence_verifier import JurisprudenceVerifier
 # Import des gestionnaires
 from managers.llm_manager import LLMManager
 from managers.template_manager import TemplateManager
-from managers.export_manager import ExportManager
-from managers.jurisprudence_verifier import JurisprudenceVerifier
-from managers.azure_search_manager import AzureSearchManager
-
 # CORRECTION : Import depuis modules au lieu de models
-from modules.dataclasses import AnalyseJuridique, CasJuridique, DocumentJuridique
+from modules.dataclasses import (AnalyseJuridique, CasJuridique,
+                                 DocumentJuridique)
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)

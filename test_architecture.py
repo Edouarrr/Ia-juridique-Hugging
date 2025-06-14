@@ -3,9 +3,10 @@
 Test complet de l'architecture pour vérifier que tout fonctionne
 """
 
-import sys
 import asyncio
+import sys
 from datetime import datetime
+
 
 def test_step(step_name: str, test_func):
     """Exécute une étape de test"""
@@ -27,7 +28,7 @@ def test_imports():
     print("📦 Test des imports principaux...")
     
     # Dataclasses
-    from modules.dataclasses import Document, TypeDocument, Partie
+    from modules.dataclasses import Document, Partie, TypeDocument
     print("  ✓ modules.dataclasses")
     
     # Managers essentiels
@@ -79,17 +80,11 @@ def test_document_generation():
     """Test 3: Génération basique de document"""
     print("📄 Test de génération de document...")
     
-    from managers.unified_document_generator import (
-        UnifiedDocumentGenerator,
-        UnifiedGenerationRequest,
-        DocumentLength
-    )
-    from modules.dataclasses import (
-        TypeDocument,
-        Partie,
-        StyleRedaction
-    )
-    
+    from managers.unified_document_generator import (DocumentLength,
+                                                     UnifiedDocumentGenerator,
+                                                     UnifiedGenerationRequest)
+    from modules.dataclasses import Partie, StyleRedaction, TypeDocument
+
     # Créer une requête simple
     request = UnifiedGenerationRequest(
         document_type=TypeDocument.CONCLUSIONS,
@@ -146,7 +141,7 @@ def test_export_capabilities():
     
     from managers.export_manager import ExportManager
     from modules.dataclasses import Document
-    
+
     # Créer un document test
     doc = Document(
         id="test_001",

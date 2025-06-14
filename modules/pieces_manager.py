@@ -3,38 +3,34 @@
 Version améliorée avec lazy loading et multi-LLM
 """
 
-import streamlit as st
-from datetime import datetime
-from typing import List, Dict, Optional, Any, Tuple
-import uuid
 import json
-import pandas as pd
-from dataclasses import dataclass, field
-import traceback
-import time
 import os
 import sys
+import time
+import traceback
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
 
 # Ajouter le chemin parent pour les imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Import des modèles
-from models.dataclasses import (
-    PieceSelectionnee, Document, PieceProcedurale,
-    NaturePiece, ForceProbante, ElementProcedure
-)
-
-# Import des gestionnaires
-from managers.multi_llm_manager import MultiLLMManager
 from managers.azure_search_manager import AzureSearchManager
 from managers.export_manager import ExportManager
-
+# Import des gestionnaires
+from managers.multi_llm_manager import MultiLLMManager
+# Import des modèles
+from models.dataclasses import (Document, ElementProcedure, ForceProbante,
+                                NaturePiece, PieceProcedurale,
+                                PieceSelectionnee)
 # Import des utilitaires
-from utils.helpers import (
-    truncate_text, clean_filename, format_file_size,
-    extract_key_phrases, clean_key, format_legal_date
-)
+from utils.helpers import (clean_filename, clean_key, extract_key_phrases,
+                           format_file_size, format_legal_date, truncate_text)
 
 # ==================================================
 # FONCTION PRINCIPALE (POINT D'ENTRÉE LAZY LOADING)

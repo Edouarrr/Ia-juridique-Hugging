@@ -3,8 +3,9 @@
 Gestion de la session Streamlit
 """
 
+from typing import Any, Dict, List
+
 import streamlit as st
-from typing import Dict, Any, List
 
 
 def initialize_session_state():

@@ -1,17 +1,19 @@
 # managers/azure_blob_manager.py
 """Gestionnaire Azure Blob Storage avec diagnostics renforcés"""
 
-import os
-import streamlit as st
-from typing import List, Dict, Optional, Any
-from datetime import datetime
 import logging
+import os
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import streamlit as st
 
 logger = logging.getLogger(__name__)
 
 try:
+    from azure.core.exceptions import (ClientAuthenticationError,
+                                       ResourceNotFoundError)
     from azure.storage.blob import BlobServiceClient, ContainerClient
-    from azure.core.exceptions import ResourceNotFoundError, ClientAuthenticationError
     AZURE_AVAILABLE = True
     print("[AzureBlobManager] ✅ Azure SDK importé avec succès")
 except ImportError as e:

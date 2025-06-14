@@ -1,25 +1,26 @@
 """Module d'analyse IA avancée avec multi-modèles et fusion - Nexora Law IA"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
+import asyncio
+import hashlib
+import json
 import os
 import sys
-from pathlib import Path
 import time
-import json
-import hashlib
-from typing import Dict, List, Any, Optional, Tuple
-import plotly.graph_objects as go
-import plotly.express as px
-from dataclasses import dataclass, field
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
 
 # ========================= CONFIGURATION =========================
 

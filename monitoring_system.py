@@ -3,14 +3,16 @@
 Système de monitoring pour suivre l'utilisation et les performances
 """
 
-import streamlit as st
-from datetime import datetime, timedelta
 import json
+from collections import defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from collections import defaultdict
+import streamlit as st
+
 
 class MonitoringSystem:
     """Système de monitoring de l'application juridique"""

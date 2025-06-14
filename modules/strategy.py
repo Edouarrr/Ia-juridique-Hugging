@@ -1,21 +1,22 @@
 """Module de stratégie juridique avec IA - Version améliorée avec multi-modèles"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime, timedelta
+import json
+import logging
 import os
 import sys
-from pathlib import Path
 import time
-import json
-from typing import List, Dict, Any, Optional
-import logging
-import plotly.graph_objects as go
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
 
 logger = logging.getLogger(__name__)
 

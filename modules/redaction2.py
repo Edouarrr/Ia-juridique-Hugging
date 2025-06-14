@@ -1,36 +1,24 @@
 # modules/redaction_unified.py
 """Module unifié de rédaction de documents juridiques avec IA"""
 
-import streamlit as st
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
-import re
 import asyncio
 import io
+import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
-from config.app_config import (
-    REDACTION_STYLES, 
-    DOCUMENT_TEMPLATES,
-    LEGAL_PHRASES,
-    DocumentType,
-    LLMProvider
-)
+import streamlit as st
+
+from config.app_config import (DOCUMENT_TEMPLATES, LEGAL_PHRASES,
+                               REDACTION_STYLES, DocumentType, LLMProvider)
+from managers.dynamic_generators import generate_dynamic_templates
 from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
-from managers.dynamic_generators import generate_dynamic_templates
-from modules.dataclasses import (
-    RedactionResult, 
-    JurisprudenceCase, 
-    StylePattern,
-    LetterheadTemplate
-)
-from utils.helpers import (
-    clean_key, 
-    format_legal_date, 
-    extract_legal_references,
-    create_letterhead_from_template,
-    create_formatted_docx
-)
+from modules.dataclasses import (JurisprudenceCase, LetterheadTemplate,
+                                 RedactionResult, StylePattern)
+from utils.helpers import (clean_key, create_formatted_docx,
+                           create_letterhead_from_template,
+                           extract_legal_references, format_legal_date)
 
 try:
     from docx import Document as DocxDocument

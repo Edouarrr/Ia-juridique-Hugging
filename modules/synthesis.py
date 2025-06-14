@@ -2,14 +2,16 @@
 """
 Module de synthèse pour l'application juridique
 """
-import streamlit as st
-from typing import Dict, List, Optional, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-# Import des utilitaires depuis le package utils
-from utils.helpers import truncate_text, clean_key
-from utils.text_processing import clean_text, process_text
+import streamlit as st
+
 from utils.formatters import format_date
+# Import des utilitaires depuis le package utils
+from utils.helpers import clean_key, truncate_text
+from utils.text_processing import clean_text, process_text
+
 
 class SynthesisModule:
     """Classe pour gérer les synthèses juridiques"""

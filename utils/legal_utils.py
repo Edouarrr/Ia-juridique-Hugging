@@ -4,8 +4,8 @@ Fonctions utilitaires spécifiques au domaine juridique
 """
 
 import re
-from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import des types avec gestion d'erreur
 try:

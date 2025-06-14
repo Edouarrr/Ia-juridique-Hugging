@@ -1,23 +1,25 @@
 """Template de module amélioré pour Nexora Law IA avec IA Multi-Modèles"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
+import asyncio
+import hashlib
+import json
 import os
 import sys
-from pathlib import Path
 import time
-import json
-import plotly.graph_objects as go
-import plotly.express as px
-from typing import Dict, List, Any, Optional
-import asyncio
 from dataclasses import dataclass
-import hashlib
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
+
 
 # Configuration des modèles IA disponibles
 @dataclass

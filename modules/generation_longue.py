@@ -1,30 +1,29 @@
 """Module de génération pour documents juridiques longs (25-50+ pages)"""
 
-import streamlit as st
-import pandas as pd
-from datetime import datetime
+import asyncio
+import json
 import os
 import sys
-from pathlib import Path
 import time
-import asyncio
-from typing import Dict, List, Optional, Any
-import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import truncate_text, clean_key, format_legal_date
+from utils import clean_key, format_legal_date, truncate_text
 
 # Import des configurations
 try:
-    from config.cahier_des_charges import (
-        STRUCTURES_ACTES, 
-        PROMPTS_GENERATION,
-        INFRACTIONS_PENALES,
-        FORMULES_JURIDIQUES
-    )
+    from config.cahier_des_charges import (FORMULES_JURIDIQUES,
+                                           INFRACTIONS_PENALES,
+                                           PROMPTS_GENERATION,
+                                           STRUCTURES_ACTES)
 except ImportError:
     # Configurations par défaut si imports échouent
     STRUCTURES_ACTES = {}
@@ -1184,7 +1183,7 @@ def run():
                 try:
                     # Créer une tâche asynchrone
                     import asyncio
-                    
+
                     # Générer le document
                     document = asyncio.run(
                         generateur.generer_document_long(config['type'], params)

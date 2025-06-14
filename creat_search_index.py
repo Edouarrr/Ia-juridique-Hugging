@@ -1,15 +1,14 @@
 """Script pour créer l'index Azure Search pour les documents juridiques"""
 
 import os
-from azure.search.documents.indexes import SearchIndexClient
-from azure.search.documents.indexes.models import (
-    SearchIndex,
-    SimpleField,
-    SearchableField,
-    SearchField,
-    SearchFieldDataType
-)
+
 from azure.core.credentials import AzureKeyCredential
+from azure.search.documents.indexes import SearchIndexClient
+from azure.search.documents.indexes.models import (SearchableField,
+                                                   SearchField,
+                                                   SearchFieldDataType,
+                                                   SearchIndex, SimpleField)
+
 
 def create_juridique_index():
     """Crée l'index pour les documents juridiques"""

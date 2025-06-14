@@ -1,23 +1,24 @@
 # modules/recherche_analyse_unifiee.py
 """Module unifié de recherche universelle et analyse IA avec compréhension du langage naturel"""
 
-import streamlit as st
 import asyncio
-import re
 import html
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
-from difflib import SequenceMatcher
-from streamlit_shortcuts import add_keyboard_shortcuts
-import time
-import pandas as pd
-from pathlib import Path
+import re
 import sys
+import time
+from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
+from streamlit_shortcuts import add_keyboard_shortcuts
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from utils import truncate_text, clean_key, format_legal_date
+    from utils import clean_key, format_legal_date, truncate_text
 except ImportError:
     # Fonctions de fallback si utils n'est pas disponible
     def truncate_text(text, max_length=100):
@@ -52,7 +53,8 @@ def lazy_load_imports():
         status.text("⏳ Chargement des configurations...")
         progress_bar.progress(10)
         
-        from config.app_config import InfractionAffaires, ANALYSIS_PROMPTS_AFFAIRES, LLMProvider
+        from config.app_config import (ANALYSIS_PROMPTS_AFFAIRES,
+                                       InfractionAffaires, LLMProvider)
         _modules_cache['config'] = {
             'InfractionAffaires': InfractionAffaires,
             'ANALYSIS_PROMPTS_AFFAIRES': ANALYSIS_PROMPTS_AFFAIRES,
@@ -64,7 +66,8 @@ def lazy_load_imports():
         progress_bar.progress(25)
         
         try:
-            from managers.universal_search_service import UniversalSearchService, get_universal_search_service
+            from managers.universal_search_service import (
+                UniversalSearchService, get_universal_search_service)
             _modules_cache['search_service'] = {
                 'UniversalSearchService': UniversalSearchService,
                 'get_universal_search_service': get_universal_search_service,
@@ -84,7 +87,8 @@ def lazy_load_imports():
             _modules_cache['multi_llm'] = {'available': False}
         
         try:
-            from managers.jurisprudence_verifier import JurisprudenceVerifier, display_jurisprudence_verification
+            from managers.jurisprudence_verifier import (
+                JurisprudenceVerifier, display_jurisprudence_verification)
             _modules_cache['jurisprudence'] = {
                 'JurisprudenceVerifier': JurisprudenceVerifier,
                 'display_jurisprudence_verification': display_jurisprudence_verification,
@@ -98,7 +102,7 @@ def lazy_load_imports():
         progress_bar.progress(60)
         
         try:
-            from utils.api_utils import get_available_models, call_llm_api
+            from utils.api_utils import call_llm_api, get_available_models
             _modules_cache['api_utils'] = {
                 'get_available_models': get_available_models,
                 'call_llm_api': call_llm_api,
@@ -112,7 +116,8 @@ def lazy_load_imports():
         progress_bar.progress(80)
         
         try:
-            from modules.generation_longue import GenerateurDocumentsLongs, show_generation_longue_interface
+            from modules.generation_longue import (
+                GenerateurDocumentsLongs, show_generation_longue_interface)
             _modules_cache['generation_longue'] = {
                 'GenerateurDocumentsLongs': GenerateurDocumentsLongs,
                 'show_generation_longue_interface': show_generation_longue_interface,

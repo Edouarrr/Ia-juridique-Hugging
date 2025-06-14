@@ -5,8 +5,7 @@ Fonctions de gestion des dates et du temps
 
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Union, Optional
-
+from typing import Any, Dict, List, Optional, Union
 
 # Mois français
 MOIS_FR = [

@@ -1,30 +1,25 @@
 """Module explorateur de fichiers et documents avec IA intégrée"""
 
-import streamlit as st
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
-import os
-import sys
-from pathlib import Path
-import time
 import asyncio
 import json
+import os
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import pandas as pd
+import streamlit as st
 
 # Configuration pour imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from models.dataclasses import Document
 from managers.azure_blob_manager import AzureBlobManager
-from utils.helpers import (
-    clean_key,
-    get_file_icon,
-    format_file_size,
-    sanitize_filename,
-    calculate_read_time,
-    truncate_text,
-    format_legal_date
-)
+from models.dataclasses import Document
+from utils.helpers import (calculate_read_time, clean_key, format_file_size,
+                           format_legal_date, get_file_icon, sanitize_filename,
+                           truncate_text)
 
 # Configuration de l'explorateur
 EXPLORER_CONFIG = {
@@ -912,7 +907,7 @@ def show_global_statistics(documents: Dict[str, Document]):
     try:
         import plotly.express as px
         import plotly.graph_objects as go
-        
+
         # Répartition par type
         fig1 = px.pie(
             df.groupby('Type').size().reset_index(name='count'),

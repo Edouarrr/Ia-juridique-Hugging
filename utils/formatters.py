@@ -2,10 +2,10 @@
 """
 Fonctions de formatage pour l'application juridique
 """
-from datetime import datetime, date
-from typing import Union, Optional, Any, List, Dict
 import locale
 import re
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Union
 
 # Essayer de définir la locale française
 try:

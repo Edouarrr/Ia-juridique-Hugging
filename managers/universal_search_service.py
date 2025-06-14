@@ -1,12 +1,13 @@
 # managers/universal_search_service.py
 """Service de recherche universelle avec améliorations UX - Version optimisée"""
 
-from typing import List, Dict, Any, Optional, Union, Tuple
-from datetime import datetime
-import re
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import difflib
+import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 
 # Classes de données nécessaires
 class Partie:
@@ -448,7 +449,7 @@ class UniversalSearchService:
         
         try:
             import streamlit as st
-            
+
             # Rechercher dans tous les documents stockés
             all_docs = {}
             all_docs.update(st.session_state.get('azure_documents', {}))
@@ -478,7 +479,7 @@ class UniversalSearchService:
         
         try:
             import streamlit as st
-            
+
             # Collecter tous les documents
             all_documents = {}
             all_documents.update(st.session_state.get('azure_documents', {}))

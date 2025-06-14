@@ -1,12 +1,13 @@
 """Service de recherche universelle pour l'application"""
 
-from typing import List, Dict, Any, Optional, Union, Tuple
-from datetime import datetime
-import re
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import difflib
+import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import streamlit as st
 
 # ========================= CLASSES DE DONNÉES =========================

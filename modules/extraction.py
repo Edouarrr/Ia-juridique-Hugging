@@ -1,17 +1,18 @@
 """Module d'extraction d'informations juridiques - Version améliorée"""
 
-import streamlit as st
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
-import re
-from collections import defaultdict, Counter
-import logging
-import json
-import pandas as pd
-import time
 import hashlib
-from pathlib import Path
+import json
+import logging
+import re
 import sys
+import time
+from collections import Counter, defaultdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
 
 # Configuration du logger
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Ajout du chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from utils import truncate_text, clean_key, format_legal_date
+    from utils import clean_key, format_legal_date, truncate_text
 except ImportError:
     # Fonctions utilitaires de base si import échoue
     def truncate_text(text, max_length=100):

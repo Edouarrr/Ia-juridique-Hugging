@@ -3,11 +3,11 @@
 Gestionnaire LLM principal pour l'application juridique
 """
 
-import os
 import logging
-from typing import Dict, List, Optional, Any
+import os
 import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 # Import du gestionnaire multi-LLM
 try:

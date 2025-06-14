@@ -6,6 +6,7 @@ Vérifie l'état de tous les managers et leurs imports
 import os
 import re
 
+
 def verify_all_managers():
     """Vérifie tous les fichiers managers"""
     

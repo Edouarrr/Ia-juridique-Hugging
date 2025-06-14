@@ -7,6 +7,7 @@ Exécutez ce script pour identifier les problèmes d'import
 import sys
 import traceback
 
+
 def check_import(module_path, items=None):
     """Vérifie qu'un module peut être importé"""
     try:
@@ -82,7 +83,8 @@ def main():
     print("-" * 30)
     
     try:
-        from managers.unified_document_generator import UnifiedDocumentGenerator
+        from managers.unified_document_generator import \
+            UnifiedDocumentGenerator
         generator = UnifiedDocumentGenerator()
         print("✅ UnifiedDocumentGenerator instancié avec succès")
         
@@ -99,8 +101,8 @@ def main():
     
     try:
         # Importer dans l'ordre inverse pour détecter les cycles
-        import modules.dataclasses
         import managers.unified_document_generator
+        import modules.dataclasses
         import modules.redaction_acte
         print("✅ Pas de dépendances circulaires détectées")
     except Exception as e:

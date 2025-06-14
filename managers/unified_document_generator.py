@@ -5,24 +5,22 @@ Préserve TOUTES les fonctionnalités existantes
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any, Union, Protocol
+import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from abc import ABC, abstractmethod
-import logging
 from enum import Enum
+from typing import Any, Dict, List, Optional, Protocol, Union
 
+from managers.jurisprudence_verifier import JurisprudenceVerifier
 # Import des gestionnaires existants
 from managers.multi_llm_manager import MultiLLMManager
-from managers.template_manager import TemplateManager
 from managers.style_analyzer import StyleAnalyzer
-from managers.jurisprudence_verifier import JurisprudenceVerifier
-
+from managers.template_manager import TemplateManager
 # Import des dataclasses
-from modules.dataclasses import (
-    DocumentJuridique, Partie, InfractionIdentifiee,
-    StyleRedaction, TypeDocument, PhaseProcedure
-)
+from modules.dataclasses import (DocumentJuridique, InfractionIdentifiee,
+                                 Partie, PhaseProcedure, StyleRedaction,
+                                 TypeDocument)
 
 logger = logging.getLogger(__name__)
 

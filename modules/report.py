@@ -1,16 +1,17 @@
 """Module de génération de rapports juridiques avec IA multi-modèles"""
 
-import streamlit as st
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+import json
 import logging
 import re
-from collections import defaultdict
-import pandas as pd
-import time
-import json
-from pathlib import Path
 import sys
+import time
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+import streamlit as st
 
 # Configuration du logger
 logger = logging.getLogger(__name__)

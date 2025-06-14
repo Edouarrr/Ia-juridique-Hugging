@@ -1,19 +1,20 @@
 """Module de comparaison de documents juridiques v3 - Lazy Loading avec Multi-IA"""
 
-import streamlit as st
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple, Set
-import re
-from collections import defaultdict, Counter
-from difflib import SequenceMatcher
-import logging
-import json
 import base64
-from io import BytesIO
 import hashlib
-import time
+import json
+import logging
+import re
 import sys
+import time
+from collections import Counter, defaultdict
+from datetime import datetime
+from difflib import SequenceMatcher
+from io import BytesIO
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import streamlit as st
 
 # Configuration du logger
 logger = logging.getLogger(__name__)
@@ -28,8 +29,8 @@ except ImportError:
     logger.warning("pandas non disponible - certaines fonctionnalités seront limitées")
 
 try:
-    import plotly.graph_objects as go
     import plotly.express as px
+    import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     PLOTLY_AVAILABLE = True
 except ImportError:
@@ -39,7 +40,7 @@ except ImportError:
 # Gestion des imports de modules locaux
 try:
     sys.path.append(str(Path(__file__).parent.parent))
-    from utils import truncate_text, clean_key, format_legal_date
+    from utils import clean_key, format_legal_date, truncate_text
     UTILS_AVAILABLE = True
 except ImportError:
     UTILS_AVAILABLE = False

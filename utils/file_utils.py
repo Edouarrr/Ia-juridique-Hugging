@@ -3,11 +3,11 @@
 Fonctions utilitaires pour la gestion des fichiers
 """
 
+import mimetypes
 import os
 import re
-import mimetypes
-from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
 
 def sanitize_filename(filename: str) -> str:

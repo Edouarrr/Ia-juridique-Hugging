@@ -58,7 +58,7 @@ def check_file():
     # Test 5: Test avec un document fictif
     try:
         from modules.dataclasses import Document
-        
+
         # Créer un document de test
         test_doc = Document(
             id="test_001",

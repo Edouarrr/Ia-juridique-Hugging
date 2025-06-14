@@ -3,10 +3,11 @@
 Fonctions de traitement de texte pour l'application juridique
 """
 import re
-import unicodedata
-from typing import List, Tuple, Optional, Dict
 import string
+import unicodedata
 from difflib import SequenceMatcher
+from typing import Dict, List, Optional, Tuple
+
 
 def clean_text(text: str) -> str:
     """

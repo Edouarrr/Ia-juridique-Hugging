@@ -4,9 +4,9 @@ Fonctions utilitaires pour la gestion des documents
 """
 
 import hashlib
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Union
 import re
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
 # Import des types nécessaires avec gestion d'erreur
 try:

@@ -1,20 +1,16 @@
 """Package services - Contient tous les services de l'application"""
 
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # Import des services principaux
 try:
-    from .company_info_service import (
-        CompanyInfoService, 
-        get_company_info_service,
-        InfosSociete,
-        CacheSocietes,
-        show_enrichissement_interface,
-        enrichir_parties_acte
-    )
+    from .company_info_service import (CacheSocietes, CompanyInfoService,
+                                       InfosSociete, enrichir_parties_acte,
+                                       get_company_info_service,
+                                       show_enrichissement_interface)
     logger.info("✅ CompanyInfoService importé")
 except ImportError as e:
     logger.warning(f"⚠️ CompanyInfoService non disponible: {e}")
@@ -22,12 +18,10 @@ except ImportError as e:
     get_company_info_service = None
 
 try:
-    from .style_learning_service import (
-        StyleLearningService, 
-        get_style_learning_service,
-        StyleLearningResult,
-        Document as StyleDocument
-    )
+    from .style_learning_service import Document as StyleDocument
+    from .style_learning_service import (StyleLearningResult,
+                                         StyleLearningService,
+                                         get_style_learning_service)
     logger.info("✅ StyleLearningService importé")
 except ImportError as e:
     logger.warning(f"⚠️ StyleLearningService non disponible: {e}")
@@ -35,14 +29,10 @@ except ImportError as e:
     get_style_learning_service = None
 
 try:
-    from .universal_search_service import (
-        UniversalSearchService, 
-        get_universal_search_service,
-        Document,
-        QueryAnalysis,
-        SearchResult,
-        Partie
-    )
+    from .universal_search_service import (Document, Partie, QueryAnalysis,
+                                           SearchResult,
+                                           UniversalSearchService,
+                                           get_universal_search_service)
     logger.info("✅ UniversalSearchService importé")
 except ImportError as e:
     logger.warning(f"⚠️ UniversalSearchService non disponible: {e}")

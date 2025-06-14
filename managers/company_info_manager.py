@@ -2,12 +2,12 @@
 """Gestionnaire des informations d'entreprises depuis Pappers et Societe.com"""
 
 import asyncio
-import re
-import logging
-from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime, timedelta
 import json
+import logging
+import re
 from dataclasses import asdict
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +26,11 @@ except ImportError:
     logger.warning("Module beautifulsoup4 non disponible")
 
 import streamlit as st
-from models.dataclasses import (
-    InformationEntreprise, SourceEntreprise, Partie, TypePartie,
-    PhaseProcedure, StatutProcedural, create_partie_from_name_with_lookup
-)
+
+from models.dataclasses import (InformationEntreprise, Partie, PhaseProcedure,
+                                SourceEntreprise, StatutProcedural, TypePartie,
+                                create_partie_from_name_with_lookup)
+
 
 class CompanyInfoManager:
     """Gestionnaire pour récupérer les informations légales des entreprises"""

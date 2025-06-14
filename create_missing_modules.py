@@ -7,6 +7,7 @@ Script pour créer les modules manquants et corriger les noms
 import os
 import shutil
 
+
 def create_module_if_missing(module_path: str, content: str):
     """Crée un module s'il n'existe pas"""
     if not os.path.exists(module_path):

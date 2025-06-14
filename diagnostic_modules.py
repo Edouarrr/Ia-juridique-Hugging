@@ -1,9 +1,9 @@
 """Diagnostic détaillé des modules"""
 
-import os
-import sys
 import importlib
 import logging
+import os
+import sys
 from datetime import datetime
 
 # Configuration du logging

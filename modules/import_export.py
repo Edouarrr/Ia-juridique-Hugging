@@ -1,24 +1,25 @@
 # modules/import_export.py
 """Module d'import/export avec analyse IA multi-modèles et mode fusion"""
 
-import streamlit as st
-from datetime import datetime
-from typing import Dict, Any, List, Optional, Union, Tuple
-import json
+import asyncio
 import io
+import json
 import re
 import time
-import pandas as pd
-from pathlib import Path
 from collections import defaultdict
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
+import pandas as pd
+import streamlit as st
 
 # Imports des dépendances
 from modules.dataclasses import Document
-from utils.helpers import clean_key, truncate_text, format_legal_date
-from modules.export_manager import export_manager, ExportConfig
+from modules.export_manager import ExportConfig, export_manager
+from utils.helpers import clean_key, format_legal_date, truncate_text
 
 # Configuration des modèles IA disponibles
 AI_MODELS = {

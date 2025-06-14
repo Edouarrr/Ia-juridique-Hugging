@@ -5,23 +5,20 @@ Recherche simultanée sur Judilibre, Légifrance et via IA
 """
 
 import asyncio
-import aiohttp
-from typing import List, Dict, Optional, Any, Set
+import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import logging
-import json
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote, urlencode
+
+import aiohttp
 import streamlit as st
 
-from modules.dataclasses import (
-    JurisprudenceReference, 
-    JurisprudenceSearch,
-    DocumentJuridique,
-    SourceJurisprudence,
-    TypeJuridiction
-)
 from managers.multi_llm_manager import MultiLLMManager
+from modules.dataclasses import (DocumentJuridique, JurisprudenceReference,
+                                 JurisprudenceSearch, SourceJurisprudence,
+                                 TypeJuridiction)
 
 logger = logging.getLogger(__name__)
 
@@ -679,7 +676,7 @@ def display_documents_list(documents: List[DocumentJuridique]):
 def add_jurisprudence_to_documents(doc: DocumentJuridique):
     """Ajoute une jurisprudence aux documents de l'affaire"""
     from models.dataclasses import Document
-    
+
     # Créer un document à partir de la jurisprudence
     new_doc = Document(
         id=f"juris_{doc.id}",

@@ -3,10 +3,12 @@ Exemple d'utilisation de l'API de génération juridique
 Ce fichier montre comment générer des actes sans passer par l'interface Streamlit
 """
 
-from modules.generation_juridique import GenerateurActesJuridiques
-from config.cahier_des_charges import validate_acte, get_infraction_details
-from datetime import datetime
 import json
+from datetime import datetime
+
+from config.cahier_des_charges import get_infraction_details, validate_acte
+from modules.generation_juridique import GenerateurActesJuridiques
+
 
 def exemple_generation_plainte_simple():
     """Exemple : Générer une plainte simple"""

@@ -1,18 +1,20 @@
 # modules/email.py
 """Module de gestion des emails pour l'application juridique"""
 
-import streamlit as st
-from datetime import datetime
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
-from typing import Dict, List, Any, Optional
-import re
-import json
 import io
+import json
+import re
+import smtplib
 from dataclasses import dataclass, field
+from datetime import datetime
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Any, Dict, List, Optional
+
+import streamlit as st
+
 
 # Dataclasses intégrées
 @dataclass
@@ -622,7 +624,7 @@ def compress_email_attachments(email_config: EmailConfig):
     
     try:
         import zipfile
-        
+
         # Créer un buffer pour le ZIP
         zip_buffer = io.BytesIO()
         
@@ -723,10 +725,10 @@ def create_pdf_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe PDF"""
     try:
         # Essayer d'utiliser reportlab s'il est disponible
-        from reportlab.lib.pagesizes import letter, A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.pagesizes import A4, letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
         
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -845,8 +847,8 @@ def create_docx_attachment(content: Any, doc_type: str) -> bytes:
     """Crée une pièce jointe DOCX"""
     try:
         from docx import Document
-        from docx.shared import Pt, Inches
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Inches, Pt
         
         doc = Document()
         
@@ -2285,9 +2287,10 @@ def export_email_history(history: List[Dict[str, Any]], format: str = 'json'):
     
     elif format == 'excel':
         try:
-            import pandas as pd
             import io
-            
+
+            import pandas as pd
+
             # Préparer les données pour DataFrame
             data_rows = []
             
