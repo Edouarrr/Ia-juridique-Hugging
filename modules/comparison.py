@@ -39,6 +39,14 @@ except ImportError:
     logger.warning("plotly non disponible - les graphiques seront désactivés")
 
 # Gestion des imports de modules locaux
+
+try:
+    sys.path.append(str(Path(__file__).parent.parent))
+    from utils import clean_key, format_legal_date, truncate_text
+    UTILS_AVAILABLE = True
+except ImportError:
+    UTILS_AVAILABLE = False
+    logger.warning("utils non disponible - certaines fonctionnalités seront limitées")
 sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
 
