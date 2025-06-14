@@ -283,3 +283,13 @@ DEPARTEMENTS = {
     '95': 'Val-d\'Oise', '971': 'Guadeloupe', '972': 'Martinique', '973': 'Guyane',
     '974': 'La Réunion', '976': 'Mayotte'
 }
+
+# ========== SUGGESTIONS LÉGALES ==========
+LEGAL_SUGGESTIONS = [
+    'Plainte pour abus de biens sociaux',
+    'Assignation en référé',
+    'Contrat de bail commercial',
+    'Consultation jurisprudence récente',
+    'Procédure de CJIP',
+]
+
