@@ -24,9 +24,7 @@ utils/
 └── README.md            # Cette documentation
 ```
 
-> **Note** : toutes les fonctions exportées sont désormais accessibles
-> directement via `utils`. L'ancien fichier `utils/exports.py` a été
-> supprimé.
+> **Note** : toutes les fonctions sont accessibles via `utils` (fichier `utils/__init__.py`).
 
 ## Utilisation
 
