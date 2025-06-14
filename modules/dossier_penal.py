@@ -9,7 +9,6 @@ import smtplib
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from datetime import datetime
 from email import encoders
 from email.mime.base import MIMEBase
@@ -22,12 +21,25 @@ import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
+
 from utils import clean_key, format_legal_date, truncate_text
 from modules.email import EmailConfig, ATTACHMENT_MIME_TYPES
 from utils.file_utils import format_file_size, is_valid_email
+)
+from config.ai_models import AI_MODELS
+
+
+# Configuration des modèles IA importée depuis config.ai_models
+
+from utils import (clean_key, format_legal_date, truncate_text,
+                   is_valid_email, format_file_size)
 from config.ai_models import AI_MODELS
 
 # Configuration des modèles IA importée depuis config.ai_models
+
+from modules.dataclasses import EmailConfig
+
+# Fonctions helper intégrées importées de utils
 
 def run():
     """Fonction principale du module - Point d'entrée pour lazy loading"""

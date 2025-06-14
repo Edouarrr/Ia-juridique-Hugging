@@ -22,6 +22,12 @@ import streamlit as st
 
 # Import du manager multi-LLM existant dans le projet
 sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from modules.multi_llm_manager import LLMModel, MultiLLMManager
+    from utils import clean_key, format_legal_date, truncate_text
+except ImportError:
+    # Les dépendances optionnelles ne sont pas disponibles
+    pass
 from modules.multi_llm_manager import LLMModel, MultiLLMManager
 from utils import clean_key, format_legal_date, truncate_text
 

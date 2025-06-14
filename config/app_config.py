@@ -29,6 +29,7 @@ class DocumentType(Enum):
     """Types de documents juridiques"""
     CONCLUSIONS = "conclusions"
     PLAINTE = "plainte"
+    PLAINTE_CPC = "plainte_avec_cpc"
     CONSTITUTION_PC = "constitution_pc"
     MISE_EN_DEMEURE = "mise_en_demeure"
     ASSIGNATION = "assignation"
@@ -37,6 +38,15 @@ class DocumentType(Enum):
     COURRIER = "courrier"
     NOTE = "note"
     CONTRAT = "contrat"
+    PLAIDOIRIE = "plaidoirie"
+    DECISION = "decision"
+    ARRET = "arret"
+    ORDONNANCE = "ordonnance"
+    JUGEMENT = "jugement"
+    AVIS = "avis"
+    RAPPORT = "rapport"
+    COMMENTAIRE = "commentaire"
+    CONSULTATION = "consultation"
 
 class IntentType(Enum):
     """Types d'intentions détectées"""

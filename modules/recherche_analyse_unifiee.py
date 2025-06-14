@@ -17,6 +17,11 @@ from streamlit_shortcuts import add_keyboard_shortcuts
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from utils import clean_key, format_legal_date, truncate_text
+except ImportError:
+    # Les utilitaires ne sont pas disponibles
+    pass
 from utils import clean_key, format_legal_date, truncate_text
 
 # ========================= LAZY LOADING & IMPORTS =========================

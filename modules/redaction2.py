@@ -16,9 +16,13 @@ from managers.multi_llm_manager import MultiLLMManager
 from managers.style_analyzer import StyleAnalyzer
 from modules.dataclasses import (JurisprudenceCase, LetterheadTemplate,
                                  RedactionResult, StylePattern)
-from utils.helpers import (clean_key, create_formatted_docx,
+from utils.helpers import (create_formatted_docx,
                            create_letterhead_from_template,
-                           extract_legal_references, format_legal_date)
+                           extract_legal_references)
+try:
+    from utils import clean_key, format_legal_date
+except Exception:  # pragma: no cover - fallback for standalone use
+    from utils.fallback import clean_key, format_legal_date
 
 try:
     from docx import Document as DocxDocument

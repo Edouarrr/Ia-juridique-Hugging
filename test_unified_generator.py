@@ -16,8 +16,8 @@ from managers.unified_document_generator import (DocumentLength,
                                                  UnifiedDocumentGenerator,
                                                  UnifiedGenerationRequest)
 # Import des dataclasses
-from modules.dataclasses import (InfractionIdentifiee, Partie, StyleRedaction,
-                                 TypeDocument)
+from config.app_config import DocumentType
+from modules.dataclasses import (InfractionIdentifiee, Partie, StyleRedaction)
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
     # Type de document
     doc_type = st.selectbox(
         "Type de document",
-        [TypeDocument.CONCLUSIONS, TypeDocument.ASSIGNATION, TypeDocument.PLAIDOIRIE]
+        [DocumentType.CONCLUSIONS, DocumentType.ASSIGNATION, DocumentType.PLAIDOIRIE]
     )
     
     # Contexte

@@ -29,8 +29,12 @@ from models.dataclasses import (Document, ElementProcedure, ForceProbante,
                                 NaturePiece, PieceProcedurale,
                                 PieceSelectionnee)
 # Import des utilitaires
-from utils.helpers import (clean_filename, clean_key, extract_key_phrases,
-                           format_file_size, format_legal_date, truncate_text)
+from utils.helpers import clean_filename, extract_key_phrases
+try:
+    from utils import clean_key, format_file_size, format_legal_date, truncate_text
+except Exception:  # pragma: no cover - fallback for standalone use
+    from utils.fallback import clean_key, format_legal_date, truncate_text
+    from utils import format_file_size
 
 # ==================================================
 # FONCTION PRINCIPALE (POINT D'ENTRÉE LAZY LOADING)

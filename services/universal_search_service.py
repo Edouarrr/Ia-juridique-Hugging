@@ -180,6 +180,15 @@ class UniversalSearchService:
                 )
                 # Réanalyser la requête avec le contexte
                 query_analysis = self.analyze_query_advanced(contextual_prompt)
+
+        # Recherche sur tous les dossiers si la requête le demande
+        if (
+            not query_analysis.reference
+            and re.search(r"\b(tous|ensemble)\b", query_analysis.query_lower)
+            and "@" not in query
+            and "#" not in query
+        ):
+            return await self.search_all_dossiers(query)
         
         # Recherches parallèles
         search_tasks = []
@@ -771,8 +780,47 @@ class UniversalSearchService:
         )
         
         doc.highlights = result.get('highlights', [])
-        
+
         return doc
+
+    async def search_all_dossiers(self, query: str, filters: Optional[Dict[str, Any]] = None) -> Dict[str, SearchResult]:
+        """Recherche la requête sur l'ensemble des dossiers connus."""
+        query_analysis = self.analyze_query_advanced(query)
+
+        search_tasks = [self._search_local_documents(query_analysis, filters)]
+        if 'azure_search_manager' in st.session_state:
+            search_tasks.append(self._search_azure_documents(query_analysis, filters))
+
+        all_results = []
+        for result in await asyncio.gather(*search_tasks, return_exceptions=True):
+            if isinstance(result, list):
+                all_results.extend(result)
+
+        grouped: Dict[str, List[Dict]] = {}
+        for res in all_results:
+            dossier = (
+                res.get('metadata', {}).get('dossier')
+                or res.get('metadata', {}).get('reference')
+                or str(res.get('id', '')).split('_')[0]
+            )
+            grouped.setdefault(dossier, []).append(res)
+
+        final_results: Dict[str, SearchResult] = {}
+        for dossier, docs in grouped.items():
+            unique = self._deduplicate_results(docs)
+            scored = self._intelligent_scoring(unique, query_analysis)
+            highlighted = self._extract_highlights(scored, query_analysis)
+            sorted_docs = sorted(highlighted, key=lambda x: x.get('score', 0), reverse=True)
+            documents = [self._convert_to_document(r) for r in sorted_docs]
+            final_results[dossier] = SearchResult(
+                documents=documents,
+                query=query,
+                total_count=len(sorted_docs),
+                facets=self._create_facets(sorted_docs),
+                suggestions=self._generate_suggestions(query_analysis, len(sorted_docs)),
+            )
+
+        return final_results
     
     async def get_search_statistics(self) -> Dict[str, Any]:
         """Statistiques de recherche"""

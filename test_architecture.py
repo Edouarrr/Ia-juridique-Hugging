@@ -34,7 +34,8 @@ def test_imports():
     print("📦 Test des imports principaux...")
     
     # Dataclasses
-    from modules.dataclasses import Document, Partie, TypeDocument
+    from config.app_config import DocumentType
+    from modules.dataclasses import Document, Partie
     print("  ✓ modules.dataclasses")
     
     # Managers essentiels
@@ -89,11 +90,12 @@ def test_document_generation():
     from managers.unified_document_generator import (DocumentLength,
                                                      UnifiedDocumentGenerator,
                                                      UnifiedGenerationRequest)
-    from modules.dataclasses import Partie, StyleRedaction, TypeDocument
+    from config.app_config import DocumentType
+    from modules.dataclasses import Partie, StyleRedaction
 
     # Créer une requête simple
     request = UnifiedGenerationRequest(
-        document_type=TypeDocument.CONCLUSIONS,
+        document_type=DocumentType.CONCLUSIONS,
         parties={
             "demandeur": [Partie(
                 nom="Test SA",

@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
-from config.app_config import DOCUMENT_TEMPLATES, LEGAL_PHRASES
+from config.app_config import DOCUMENT_TEMPLATES, LEGAL_PHRASES, DocumentType
 from modules.dataclasses import (DocumentTemplate, StyleRedaction,
-                                 TemplateDocument, TypeDocument)
+                                 TemplateDocument)
 
 
 class TemplateManager:
