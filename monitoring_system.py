@@ -299,3 +299,12 @@ def generate_document_with_monitoring(request):
     """Exemple de fonction monitorée"""
     # Votre code de génération
     pass
+
+
+def main():
+    """Affiche le tableau de bord de monitoring."""
+    monitor.show_dashboard()
+
+
+if __name__ == "__main__":
+    main()
