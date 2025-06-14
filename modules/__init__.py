@@ -6,7 +6,9 @@ import importlib
 import logging
 from typing import Any, Dict
 
-logger = logging.getLogger(__name__)
+from utils.logging import decorate_public_functions, setup_logger
+
+logger = setup_logger(__name__)
 
 __all__ = [
     "ComparisonModule",
@@ -35,6 +37,8 @@ _import_status = {"loaded": [], "failed": {}}
 for module_name, class_name in AVAILABLE_MODULES.items():
     try:
         module = importlib.import_module(f".{module_name}", package=__package__)
+        decorate_public_functions(module)
+        # Extraire la classe et l'ajouter au namespace
         if hasattr(module, class_name):
             globals()[class_name] = getattr(module, class_name)
             _import_status["loaded"].append(class_name)
@@ -79,7 +83,12 @@ def test_modules() -> Dict[str, Any]:
             print(f"  - {mod}")
     return status
 
-
+decorate_public_functions(sys.modules[__name__])
 if __name__ == "__main__":  # pragma: no cover - manual test
     test_modules()
 
+# Test automatique si exécuté directement
+decorate_public_functions(sys.modules[__name__])
+
+if __name__ == "__main__":
+    test_modules()

@@ -47,6 +47,7 @@ from .file_utils import (
     is_image_file,
     is_text_file,
     is_valid_email,
+    validate_uploaded_file,
     is_valid_filename,
     organize_files_by_type,
     sanitize_filename,
@@ -166,6 +167,7 @@ __all__ = [
     'sanitize_filename',
     'format_file_size',
     'is_valid_email',
+    'validate_uploaded_file',
     'EmailConfig',
     'ATTACHMENT_MIME_TYPES',
     
