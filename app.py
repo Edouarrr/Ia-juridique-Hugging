@@ -679,41 +679,7 @@ def show_diagnostic():
         if st.button("📥 Exporter diagnostic"):
             export_diagnostic()
 
-def show_modules_unconfigured():
-    """Affiche les modules non configurés"""
-    modules_path = Path(__file__).parent / "modules"
-    if modules_path.exists():
-        all_py_files = [f.stem for f in modules_path.glob("*.py") if not f.name.startswith("_")]
-        configured_modules = set(MODULES_CONFIG.keys()) | set(MODULES_TO_CREATE.keys())
-        unconfigured = set(all_py_files) - configured_modules
-        
-        if unconfigured:
-            st.warning(f"### ⚠️ Modules non configurés ({len(unconfigured)})")
-            st.info("Ces modules existent mais ne sont pas dans la configuration :")
-            
-            cols = st.columns(3)
-            for i, module in enumerate(sorted(unconfigured)):
-                with cols[i % 3]:
-                    st.code(f"{module}.py")
-            
-            st.markdown("""
-            **Pour les utiliser :**
-            1. Ajoutez-les à `MODULES_CONFIG` dans `app.py`
-            2. Spécifiez leur nom, description et catégorie
-            3. Redémarrez l'application
-            """)
-            
-            # Proposer un template de configuration
-            if st.button("📋 Générer template de configuration"):
-                config_template = {}
-                for module in sorted(unconfigured):
-                    config_template[module] = {
-                        "name": f"📄 {module.replace('_', ' ').title()}",
-                        "desc": f"Module {module}",
-                        "category": "autre",
-                        "priority": 10
-                    }
-                st.code(json.dumps(config_template, indent=2))
+
 
 def show_troubleshooting():
     """Affiche l'aide au dépannage"""
