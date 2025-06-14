@@ -59,35 +59,11 @@ st.markdown("""
 # ========== CONFIGURATION DES MODULES ==========
 MODULES_CONFIG = {
     # Modules d'analyse
-    "search_unified": {
-        "name": "🔍 Recherche & Analyse unifiée",
-        "desc": "Recherche intelligente multi-sources avec IA",
-        "category": "analyse",
-        "priority": 1
-    },
     "comparison": {
         "name": "📊 Comparaison de documents",
         "desc": "Analyse comparative avec détection des contradictions",
         "category": "analyse",
-        "priority": 2
-    },
-    "timeline_juridique": {
-        "name": "📅 Timeline juridique",
-        "desc": "Chronologie des infractions et procédures",
-        "category": "analyse",
-        "priority": 3
-    },
-    "extract_information": {
-        "name": "📑 Extraction d'informations",
-        "desc": "Extraction des éléments constitutifs",
-        "category": "analyse",
-        "priority": 4
-    },
-    "contradiction_analysis": {
-        "name": "⚡ Analyse des contradictions",
-        "desc": "Détection automatique des incohérences",
-        "category": "analyse",
-        "priority": 5
+        "priority": 1
     },
     
     # Modules de stratégie
@@ -117,18 +93,6 @@ MODULES_CONFIG = {
         "category": "redaction",
         "priority": 1
     },
-    "conclusions": {
-        "name": "📝 Conclusions pénales",
-        "desc": "Rédaction de conclusions",
-        "category": "redaction",
-        "priority": 2
-    },
-    "courrier": {
-        "name": "📧 Courriers juridiques",
-        "desc": "Correspondances et notifications",
-        "category": "redaction",
-        "priority": 3
-    },
     
     # Modules de gestion
     "import_export": {
@@ -148,6 +112,58 @@ MODULES_CONFIG = {
         "desc": "Vue d'ensemble du dossier",
         "category": "gestion",
         "priority": 3
+    }
+}
+
+# Configuration des modules supplémentaires à créer
+MODULES_TO_CREATE = {
+    "search_module": {
+        "name": "🔍 Recherche & Analyse",
+        "desc": "Recherche intelligente multi-sources avec IA",
+        "category": "analyse",
+        "priority": 2
+    },
+    "timeline_juridique": {
+        "name": "📅 Timeline juridique",
+        "desc": "Chronologie des infractions et procédures",
+        "category": "analyse",
+        "priority": 3
+    },
+    "extract_information": {
+        "name": "📑 Extraction d'informations",
+        "desc": "Extraction des éléments constitutifs",
+        "category": "analyse",
+        "priority": 4
+    },
+    "contradiction_analysis": {
+        "name": "⚡ Analyse contradictions",
+        "desc": "Détection automatique des incohérences",
+        "category": "analyse",
+        "priority": 5
+    },
+    "conclusions": {
+        "name": "📝 Conclusions pénales",
+        "desc": "Rédaction de conclusions",
+        "category": "redaction",
+        "priority": 2
+    },
+    "courrier_juridique": {
+        "name": "📧 Courriers juridiques",
+        "desc": "Correspondances et notifications",
+        "category": "redaction",
+        "priority": 3
+    },
+    "jurisprudence": {
+        "name": "⚖️ Jurisprudence",
+        "desc": "Recherche et analyse de jurisprudence",
+        "category": "specialise",
+        "priority": 1
+    },
+    "calcul_prejudice": {
+        "name": "💰 Calcul préjudice",
+        "desc": "Évaluation des préjudices",
+        "category": "specialise",
+        "priority": 2
     }
 }
 
@@ -175,10 +191,19 @@ class ModuleManager:
                 continue
                 
             module_name = module_file.stem
+            
+            # Chercher d'abord dans MODULES_CONFIG
             if module_name in MODULES_CONFIG:
                 self.available_modules[module_name] = {
                     "path": module_file,
                     "config": MODULES_CONFIG[module_name],
+                    "loaded": False
+                }
+            # Puis dans MODULES_TO_CREATE (au cas où ils ont été créés)
+            elif module_name in MODULES_TO_CREATE:
+                self.available_modules[module_name] = {
+                    "path": module_file,
+                    "config": MODULES_TO_CREATE[module_name],
                     "loaded": False
                 }
     
@@ -323,6 +348,24 @@ def show_dashboard():
     
     st.markdown("---")
     
+    # Alerte si des modules manquent
+    missing_modules = []
+    for module_id in MODULES_TO_CREATE:
+        module_path = Path(__file__).parent / "modules" / f"{module_id}.py"
+        if not module_path.exists():
+            missing_modules.append(module_id)
+    
+    if missing_modules:
+        st.warning(f"⚠️ {len(missing_modules)} modules manquants détectés")
+        with st.expander("Voir les modules manquants"):
+            for module_id in missing_modules:
+                config = MODULES_TO_CREATE[module_id]
+                st.write(f"• **{config['name']}** - {config['desc']}")
+            
+            if st.button("🔧 Créer tous les modules manquants", type="primary"):
+                create_missing_modules()
+                st.rerun()
+    
     # Modules par catégorie
     modules_by_cat = st.session_state.module_manager.get_modules_by_category()
     
@@ -336,7 +379,8 @@ def show_dashboard():
         "analyse": ("📊 Analyse", "Modules d'analyse et extraction"),
         "strategie": ("⚖️ Stratégie", "Modules de stratégie juridique"),
         "redaction": ("✍️ Rédaction", "Modules de génération de documents"),
-        "gestion": ("📁 Gestion", "Modules de gestion des dossiers")
+        "gestion": ("📁 Gestion", "Modules de gestion des dossiers"),
+        "specialise": ("🎯 Spécialisé", "Modules spécialisés")
     }
     
     for cat_key, (cat_title, cat_desc) in categories_display.items():
@@ -380,9 +424,9 @@ def show_sidebar():
         
         st.markdown("---")
         
-        # Modules rapides
+        # Modules rapides (seulement ceux qui existent)
         st.markdown("### 🚀 Accès rapide")
-        quick_modules = ["search_unified", "import_export", "strategy", "redaction_unified"]
+        quick_modules = ["import_export", "strategy", "redaction_unified", "comparison"]
         
         for module_id in quick_modules:
             if module_id in st.session_state.module_manager.available_modules:
@@ -396,19 +440,34 @@ def show_sidebar():
         # Statut système
         st.markdown("### 📊 Statut système")
         
-        # Statut des modules
+        # Modules existants
+        available = len(st.session_state.module_manager.available_modules)
+        missing = len(MODULES_TO_CREATE)
+        
+        st.metric("📦 Modules existants", available)
+        if missing > 0:
+            st.metric("⚠️ Modules à créer", missing)
+        
+        # Statut des chargements
         status = st.session_state.module_manager.load_status
         if status["success"]:
-            st.success(f"✅ {len(status['success'])} modules OK")
+            st.success(f"✅ {len(status['success'])} chargés")
         if status["failed"]:
             st.error(f"❌ {len(status['failed'])} erreurs")
         if status["warnings"]:
             st.warning(f"⚠️ {len(status['warnings'])} avertissements")
         
-        # Bouton diagnostic
+        # Boutons d'action
+        st.markdown("---")
+        
         if st.button("🔧 Diagnostic", use_container_width=True):
             st.session_state.current_view = 'diagnostic'
             st.rerun()
+        
+        if missing > 0:
+            if st.button("➕ Créer modules manquants", use_container_width=True, type="primary"):
+                st.session_state.current_view = 'create_modules'
+                st.rerun()
 
 def show_diagnostic():
     """Affiche la page de diagnostic"""
@@ -506,7 +565,19 @@ def run():
 '''
     
     created = []
+    # Créer les modules existants manquants
     for module_id, config in MODULES_CONFIG.items():
+        module_path = modules_path / f"{module_id}.py"
+        if not module_path.exists():
+            content = template.format(
+                name=module_id,
+                title=config["name"]
+            )
+            module_path.write_text(content, encoding='utf-8')
+            created.append(module_id)
+    
+    # Créer les modules supplémentaires
+    for module_id, config in MODULES_TO_CREATE.items():
         module_path = modules_path / f"{module_id}.py"
         if not module_path.exists():
             content = template.format(
@@ -518,6 +589,7 @@ def run():
     
     if created:
         st.success(f"✅ {len(created)} modules créés : {', '.join(created)}")
+        st.info("Relancez l'application pour charger les nouveaux modules")
     else:
         st.info("Tous les modules existent déjà")
 
@@ -564,6 +636,12 @@ def main():
         show_dashboard()
     elif current_view == 'diagnostic':
         show_diagnostic()
+    elif current_view == 'create_modules':
+        st.markdown("## ➕ Création des modules manquants")
+        create_missing_modules()
+        if st.button("↩️ Retour au tableau de bord"):
+            st.session_state.current_view = 'dashboard'
+            st.rerun()
     elif current_view in st.session_state.module_manager.available_modules:
         # Charger et exécuter le module
         st.session_state.module_manager.run_module(current_view)
