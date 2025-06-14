@@ -3622,8 +3622,9 @@ Document à analyser :
             'metadata': e.metadata
         } for e in events], ensure_ascii=False, indent=2)
         
-         # Export CSV
-            df = pd.DataFrame([{
+        # Export CSV
+        df = pd.DataFrame([
+            {
                 'Date': e.date.strftime('%d/%m/%Y'),
                 'Description': e.description,
                 'Importance': e.importance,
@@ -3631,8 +3632,10 @@ Document à analyser :
                 'Acteurs': ', '.join(e.actors),
                 'Confiance': f"{e.confidence:.0%}",
                 'Source IA': e.metadata.get('ai_model', '') if e.ai_extracted else ''
-            } for e in events])
-            exports['csv'] = df.to_csv(index=False)
+            }
+            for e in events
+        ])
+        exports['csv'] = df.to_csv(index=False)
         
         # Export texte structuré
         exports['txt'] = self._export_to_structured_text(events, config)
