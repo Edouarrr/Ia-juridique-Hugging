@@ -332,8 +332,8 @@ class ModuleManager:
                 sys.modules[f"modules.{module_name}"] = module
                 spec.loader.exec_module(module)
                 
-                # Vérifier que le module a une fonction run()
-                if hasattr(module, 'run'):
+                # Vérifier que le module a une fonction run() exécutable
+                if callable(getattr(module, 'run', None)):
                     self.loaded_modules[module_name] = module
                     module_info["loaded"] = True
                     self.load_status["success"].append(module_name)
