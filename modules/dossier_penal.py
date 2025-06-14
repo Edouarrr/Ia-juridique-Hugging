@@ -21,6 +21,19 @@ import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
+
+from utils import clean_key, format_legal_date, truncate_text
+from utils.file_utils import (
+    EmailConfig,
+    is_valid_email,
+    format_file_size,
+    ATTACHMENT_MIME_TYPES,
+)
+from config.ai_models import AI_MODELS
+
+
+# Configuration des modèles IA importée depuis config.ai_models
+
 from utils import (clean_key, format_legal_date, truncate_text,
                    is_valid_email, format_file_size)
 from config.ai_models import AI_MODELS
@@ -30,18 +43,6 @@ from config.ai_models import AI_MODELS
 from modules.dataclasses import EmailConfig
 
 # Fonctions helper intégrées importées de utils
-
-# Types MIME pour les pièces jointes
-ATTACHMENT_MIME_TYPES = {
-    'pdf': 'application/pdf',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'txt': 'text/plain',
-    'html': 'text/html',
-    'json': 'application/json',
-    'csv': 'text/csv',
-    'zip': 'application/zip'
-}
 
 def run():
     """Fonction principale du module - Point d'entrée pour lazy loading"""

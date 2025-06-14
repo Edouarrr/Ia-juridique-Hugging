@@ -12,6 +12,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Dict, List, Optional
 
+from utils.file_utils import (
+    EmailConfig,
+    is_valid_email,
+    format_file_size,
+    ATTACHMENT_MIME_TYPES,
+)
+
 import streamlit as st
 from utils import format_file_size, is_valid_email
 

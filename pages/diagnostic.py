@@ -208,16 +208,6 @@ with col2:
             
             classes_to_add = []
             
-            if 'class EmailConfig' not in content:
-                classes_to_add.append("""
-@dataclass
-class EmailConfig:
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    sender: str = ""
-    password: str = ""
-    use_tls: bool = True""")
-            
             if 'class Relationship' not in content:
                 classes_to_add.append("""
 @dataclass
