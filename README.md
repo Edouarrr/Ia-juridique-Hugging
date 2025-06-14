@@ -87,6 +87,9 @@ dm.batch_import(files)
 
 Développé pour les avocats spécialisés en droit pénal des affaires, cet assistant combine l'expertise juridique avec les dernières avancées en IA pour optimiser la gestion des dossiers complexes.
 
+## 📄 Licence
+Ce projet est distribué sous licence [MIT](LICENSE).
+
 ---
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
