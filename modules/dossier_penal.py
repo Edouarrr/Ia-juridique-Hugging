@@ -30,6 +30,10 @@ from utils import (
     ATTACHMENT_MIME_TYPES,
 )
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 
 # Configuration des modèles IA importée depuis config.ai_models

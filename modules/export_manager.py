@@ -22,6 +22,10 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
 from utils.file_utils import get_file_icon
 from config.ai_models import AI_MODELS
+from utils.decorators import decorate_public_functions
+
+# Enregistrement automatique des fonctions publiques pour le module
+decorate_public_functions(sys.modules[__name__])
 
 # ========================= CONFIGURATION =========================
 
