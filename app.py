@@ -439,7 +439,17 @@ def init_session_state():
 def show_dashboard():
     """Affiche le tableau de bord principal"""
     st.markdown('<h1 class="main-header">⚖️ IA Juridique - Droit Pénal des Affaires</h1>', unsafe_allow_html=True)
-    
+
+    # Barre de recherche
+    query = st.text_input(
+        "Recherche",
+        placeholder="Ex: @DOSSIER123",
+        key="dashboard_search",
+    )
+    if query.startswith("@") and len(query) > 1:
+        dossier = query[1:].split()[0]
+        st.info(f"Recherche dossier : {dossier}")
+
     # Métriques principales
     col1, col2, col3, col4 = st.columns(4)
     
