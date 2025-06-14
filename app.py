@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
 from services.universal_search_service import UniversalSearchService
+from managers.document_manager import DocumentManager
 from utils import LEGAL_SUGGESTIONS
 
 import streamlit as st
@@ -448,22 +449,39 @@ def show_dashboard():
         placeholder="Ex: @DOSSIER123",
         key="dashboard_search",
     )
-    if search_query.startswith("@"):
-        st.info(f"Recherche dossier : {search_query[1:]}")
+if search_query.startswith("@"):
+    st.info(f"Recherche dossier : {search_query[1:]}")
+
+if search_query:
+    suggestion = next(
+        (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
+        None,
+    )
+    if suggestion:
+        st.markdown(f"💡 Suggestion : *{suggestion}*")
+
+search_service = UniversalSearchService()
 
     if search_query:
-        suggestion = next(
-            (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
-            None,
-        )
-        if suggestion:
-            st.markdown(f"💡 Suggestion : *{suggestion}*")
+        query_to_use = search_query
 
-    search_service = UniversalSearchService()
+        if search_query.startswith("@"):
+            folder = search_query[1:].split()[0]
+            st.info(f"Recherche dossier : {folder}")
 
-    if search_query and not search_query.startswith("@") and not search_query.startswith("#"):
-        results = search_service.search(search_query)
-        st.table(results)
+            # Obtenir le gestionnaire de documents
+            doc_manager = st.session_state.get("doc_manager")
+            if doc_manager is None:
+                doc_manager = DocumentManager()
+                st.session_state.doc_manager = doc_manager
+
+            folder_summary = doc_manager.get_summary(folder)
+            if folder_summary:
+                query_to_use = f"Contexte dossier : {folder_summary}\n\n{search_query}"
+
+        if not search_query.startswith("#"):
+            results = search_service.search(query_to_use)
+            st.table(results)
 
     # Métriques principales
     col1, col2, col3, col4 = st.columns(4)
