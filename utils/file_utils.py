@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
+from .constants import ERROR_MESSAGES, LIMITS
+
 
 def sanitize_filename(filename: str) -> str:
     """Nettoie un nom de fichier pour le rendre sûr"""
@@ -365,3 +367,46 @@ def is_valid_email(email: str) -> bool:
     """Vérifie si une adresse email est valide"""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return bool(re.match(pattern, email))
+
+
+def validate_uploaded_file(file, max_size_mb: int = LIMITS.get('max_file_size_mb', 50)) -> (bool, str):
+    """Valide un fichier uploadé.
+
+    Args:
+        file: Objet fichier (par ex. Streamlit UploadedFile).
+        max_size_mb: Taille maximale autorisée en mégaoctets.
+
+    Returns:
+        Tuple (is_valid, message). ``message`` est ``None`` si le fichier est valide.
+    """
+    if not file:
+        return False, "Aucun fichier fourni"
+
+    size = getattr(file, "size", None)
+    try:
+        if size is None:
+            data = file.getvalue()
+            size = len(data) if data else 0
+    except Exception:
+        size = 0
+
+    if size == 0:
+        return False, "Le fichier est vide"
+
+    if size > max_size_mb * 1024 * 1024:
+        return False, ERROR_MESSAGES['file_too_large'].format(limit=max_size_mb)
+
+    filename = getattr(file, "name", "")
+    if not is_text_file(filename):
+        return False, ERROR_MESSAGES['invalid_format']
+
+    try:
+        content = file.getvalue()
+        if isinstance(content, bytes):
+            content.decode('utf-8')
+        else:
+            str(content)
+    except Exception:
+        return False, "Le fichier semble corrompu ou illisible"
+
+    return True, None
