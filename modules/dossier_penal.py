@@ -22,7 +22,8 @@ import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
 sys.path.append(str(Path(__file__).parent.parent))
-from utils import clean_key, format_legal_date, truncate_text
+from utils import (clean_key, format_legal_date, truncate_text,
+                   is_valid_email, format_file_size)
 from config.ai_models import AI_MODELS
 
 # Configuration des modèles IA importée depuis config.ai_models
@@ -50,19 +51,7 @@ class EmailConfig:
             'mimetype': mimetype
         })
 
-# Fonctions helper intégrées
-def is_valid_email(email: str) -> bool:
-    """Vérifie si une adresse email est valide"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-def format_file_size(size_bytes: int) -> str:
-    """Formate la taille d'un fichier"""
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
+# Fonctions helper intégrées importées de utils
 
 # Types MIME pour les pièces jointes
 ATTACHMENT_MIME_TYPES = {
