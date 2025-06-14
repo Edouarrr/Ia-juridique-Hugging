@@ -1,5 +1,4 @@
-# app.py
-"""Application principale avec gestion Azure et interface de recherche améliorée"""
+"""Application principale avec interface optimisée et navigation intelligente"""
 
 import streamlit as st
 from datetime import datetime
@@ -17,887 +16,1449 @@ st.set_page_config(
     page_title="Assistant Pénal des Affaires IA",
     page_icon="⚖️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Import corrigé - utiliser app_config au lieu de APP_CONFIG
-from config.app_config import app_config, api_config
-from utils.helpers import initialize_session_state
-from utils.styles import load_custom_css
+# ========== SECTION 1: IMPORTS CENTRALISÉS ==========
 
-# Import des services - CORRIGÉ : depuis managers au lieu de services
-from managers.universal_search_service import UniversalSearchService
+# Import des gestionnaires Azure
+AZURE_AVAILABLE = False
+AZURE_ERROR = None
 
-# Styles CSS personnalisés fusionnés
+try:
+    import azure.search.documents
+    import azure.storage.blob
+    import azure.core
+    AZURE_AVAILABLE = True
+    print("✅ Modules Azure disponibles")
+except ImportError as e:
+    AZURE_ERROR = str(e)
+    print(f"⚠️ Modules Azure non disponibles: {AZURE_ERROR}")
+
+# Import de la configuration
+try:
+    from config.app_config import app_config, api_config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    print("⚠️ config.app_config non trouvé")
+    CONFIG_AVAILABLE = False
+    class DefaultConfig:
+        version = "2.0.0"
+        debug = False
+        max_file_size_mb = 10
+        max_files_per_upload = 5
+        enable_azure_storage = False
+        enable_azure_search = False
+        enable_multi_llm = True
+        enable_email = False
+    
+    app_config = DefaultConfig()
+    api_config = {}
+
+# Import des configurations de documents
+try:
+    from models.configurations import DocumentConfigurations
+    DOCUMENT_CONFIG_AVAILABLE = True
+    print("✅ Configurations de documents chargées")
+except ImportError:
+    DOCUMENT_CONFIG_AVAILABLE = False
+    print("⚠️ models.configurations non disponible")
+
+# Import des utilitaires de base
+try:
+    from utils.helpers import initialize_session_state, truncate_text
+    UTILS_AVAILABLE = True
+except ImportError:
+    UTILS_AVAILABLE = False
+    def initialize_session_state():
+        """Initialisation basique de session_state"""
+        if 'initialized' not in st.session_state:
+            st.session_state.initialized = True
+            st.session_state.search_history = []
+            st.session_state.azure_documents = {}
+            st.session_state.imported_documents = {}
+            st.session_state.pieces_selectionnees = {}
+            st.session_state.azure_blob_manager = None
+            st.session_state.azure_search_manager = None
+            st.session_state.current_view = "accueil"
+            st.session_state.current_module = None
+            st.session_state.workflow_active = None
+            st.session_state.multi_ia_active = True
+
+try:
+    from utils.styles import load_custom_css
+except ImportError:
+    def load_custom_css():
+        pass
+
+# Import du service de recherche universelle
+try:
+    from managers.universal_search_service import UniversalSearchService
+    SEARCH_SERVICE_AVAILABLE = True
+except ImportError:
+    SEARCH_SERVICE_AVAILABLE = False
+    class UniversalSearchService:
+        async def search(self, query: str, filters: Optional[Dict] = None):
+            from types import SimpleNamespace
+            return SimpleNamespace(
+                total_count=0,
+                documents=[],
+                suggestions=[],
+                facets={}
+            )
+
+# Import des managers principaux
+try:
+    from managers.multi_llm_manager import MultiLLMManager
+    MULTI_LLM_AVAILABLE = True
+except ImportError:
+    MULTI_LLM_AVAILABLE = False
+
+# Import des dataclasses
+try:
+    from models.dataclasses import (
+        Document, PieceSelectionnee, PieceProcedure,
+        EmailConfig, Relationship, PlaidoirieResult, 
+        PreparationClientResult
+    )
+    DATACLASSES_AVAILABLE = True
+except ImportError:
+    DATACLASSES_AVAILABLE = False
+    print("⚠️ models.dataclasses non disponible")
+
+# ========== IMPORTS DES MODULES MÉTIER (RÉORGANISÉS PAR CATÉGORIE) ==========
+
+modules_disponibles = {}
+
+# === 1. RECHERCHE ET ANALYSE ===
+# Module unifié de recherche et analyse (PRIORITAIRE)
+try:
+    from modules.recherche_analyse_unifiee import (
+        show_page as show_recherche_analyse_page,
+        UnifiedSearchAnalysisInterface,
+        NaturalLanguageAnalyzer
+    )
+    modules_disponibles['recherche_analyse_unifiee'] = True
+    print("✅ Module recherche_analyse_unifiee chargé")
+except ImportError as e:
+    modules_disponibles['recherche_analyse_unifiee'] = False
+    print(f"❌ Module recherche_analyse_unifiee non disponible: {e}")
+
+# Module de jurisprudence
+try:
+    from modules.jurisprudence import (
+        show_page as show_jurisprudence_page,
+        show_jurisprudence_interface,
+        get_jurisprudence_for_document,
+        format_jurisprudence_citation,
+        verify_and_update_citations
+    )
+    modules_disponibles['jurisprudence'] = True
+    print("✅ Module jurisprudence chargé")
+except ImportError:
+    modules_disponibles['jurisprudence'] = False
+
+# Module d'analyse des risques
+try:
+    from modules.risques import display_risques_interface
+    modules_disponibles['risques'] = True
+except ImportError:
+    modules_disponibles['risques'] = False
+
+# === 2. GESTION DOCUMENTAIRE ===
+# Module unifié de gestion des pièces (PRIORITAIRE)
+try:
+    from modules.pieces_manager import display_pieces_interface, init_pieces_manager
+    modules_disponibles['pieces_manager'] = True
+    if 'gestionnaire_pieces' not in st.session_state:
+        init_pieces_manager()
+    print("✅ Module pieces_manager chargé")
+except ImportError:
+    modules_disponibles['pieces_manager'] = False
+
+# Module unifié d'import/export
+try:
+    from modules.import_export import (
+        show_import_interface, 
+        show_import_export_tabs,
+        process_import_request,
+        process_export_request,
+        show_import_export_interface
+    )
+    modules_disponibles['import_export'] = True
+    print("✅ Module import_export chargé")
+except ImportError:
+    modules_disponibles['import_export'] = False
+
+# Module explorateur de documents
+try:
+    from modules.explorer import show_explorer_interface
+    modules_disponibles['explorer'] = True
+    print("✅ Module explorer chargé")
+except ImportError:
+    modules_disponibles['explorer'] = False
+
+# Module de dossiers pénaux
+try:
+    from modules.dossier_penal import display_dossier_penal_interface
+    modules_disponibles['dossier_penal'] = True
+    print("✅ Module dossier_penal chargé")
+except ImportError:
+    modules_disponibles['dossier_penal'] = False
+
+# === 3. RÉDACTION ET GÉNÉRATION ===
+# Module unifié de rédaction (REMPLACE generation_juridique)
+try:
+    from modules.redaction_unified import (
+        show_page as show_redaction_unified,
+        GenerateurActesJuridiques,
+        TypeActe,
+        StyleRedaction,
+        PhaseProcedurale
+    )
+    modules_disponibles['redaction_unified'] = True
+    print("✅ Module redaction_unified chargé")
+except ImportError:
+    modules_disponibles['redaction_unified'] = False
+
+# Module de génération longue
+try:
+    from modules.generation_longue import show_generation_longue_interface
+    modules_disponibles['generation_longue'] = True
+    print("✅ Module generation_longue chargé")
+except ImportError:
+    modules_disponibles['generation_longue'] = False
+
+# Module de gestion des templates
+try:
+    from modules.template import show_template_manager
+    modules_disponibles['template'] = True
+except ImportError:
+    modules_disponibles['template'] = False
+
+# === 4. PRODUCTION ET VISUALISATION ===
+# Module de bordereau
+try:
+    from modules.bordereau import (
+        display_bordereau_interface,
+        process_bordereau_request,
+        show_page as show_bordereau_page
+    )
+    modules_disponibles['bordereau'] = True
+    print("✅ Module bordereau chargé")
+except ImportError:
+    modules_disponibles['bordereau'] = False
+
+# Module Timeline
+try:
+    from modules.timeline import process_timeline_request
+    modules_disponibles['timeline'] = True
+    print("✅ Module timeline chargé")
+    
+    def show_timeline_page():
+        """Page principale du module timeline"""
+        st.markdown("## 📅 Timeline des événements")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            query = st.text_area(
+                "Décrivez la chronologie souhaitée",
+                placeholder="Ex: Créer une timeline des événements financiers dans le dossier VINCI\n"
+                           "Ou: Chronologie des auditions et témoignages\n"
+                           "Ou: Timeline procédurale de l'affaire",
+                height=100,
+                key="timeline_query"
+            )
+        
+        with col2:
+            st.markdown("#### Options rapides")
+            if st.button("📅 Timeline complète", use_container_width=True):
+                st.session_state.timeline_query = "Créer une timeline complète de tous les événements"
+            if st.button("⚖️ Timeline procédurale", use_container_width=True):
+                st.session_state.timeline_query = "Timeline des événements procéduraux"
+            if st.button("💰 Timeline financière", use_container_width=True):
+                st.session_state.timeline_query = "Timeline des transactions financiers"
+        
+        if query and st.button("🚀 Générer la timeline", type="primary", use_container_width=True):
+            process_timeline_request(query, {'reference': query})
+        
+        if st.session_state.get('timeline_result'):
+            st.markdown("---")
+            st.markdown("### 📊 Timeline générée")
+            from modules.timeline import display_timeline_results
+            display_timeline_results(st.session_state.timeline_result)
+            
+except ImportError:
+    modules_disponibles['timeline'] = False
+    def show_timeline_page():
+        st.error("Module timeline non disponible")
+
+# Module Comparison
+try:
+    from modules.comparison import process_comparison_request
+    modules_disponibles['comparison'] = True
+    print("✅ Module comparison chargé")
+    
+    def show_comparison_page():
+        """Page principale du module comparison"""
+        st.markdown("## 🔄 Comparaison de documents")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            query = st.text_area(
+                "Décrivez la comparaison souhaitée",
+                placeholder="Ex: Comparer les témoignages de Martin et Dupont\n"
+                           "Ou: Analyser les divergences entre les expertises\n"
+                           "Ou: Comparer les versions du contrat",
+                height=100,
+                key="comparison_query"
+            )
+        
+        with col2:
+            st.markdown("#### Comparaisons types")
+            if st.button("📋 Auditions", use_container_width=True):
+                st.session_state.comparison_query = "Comparer toutes les auditions"
+            if st.button("🔬 Expertises", use_container_width=True):
+                st.session_state.comparison_query = "Comparer les rapports d'expertise"
+            if st.button("📄 Versions", use_container_width=True):
+                st.session_state.comparison_query = "Comparer les versions des documents"
+        
+        if query and st.button("🚀 Lancer la comparaison", type="primary", use_container_width=True):
+            process_comparison_request(query, {'reference': query})
+        
+        if st.session_state.get('comparison_result'):
+            st.markdown("---")
+            st.markdown("### 📊 Résultats de la comparaison")
+            from modules.comparison import display_comparison_results
+            display_comparison_results(st.session_state.comparison_result)
+            
+except ImportError:
+    modules_disponibles['comparison'] = False
+    def show_comparison_page():
+        st.error("Module comparison non disponible")
+
+# Module de cartographie (mapping)
+try:
+    from modules.mapping import process_mapping_request
+    modules_disponibles['mapping'] = True
+except ImportError:
+    modules_disponibles['mapping'] = False
+
+# Module de synthèse
+try:
+    from modules.synthesis import show_page as show_synthesis_page
+    modules_disponibles['synthesis'] = True
+except ImportError:
+    modules_disponibles['synthesis'] = False
+
+# === 5. EXPORT ET COMMUNICATION ===
+# Module unifié d'export (REMPLACE export_juridique)
+try:
+    from modules.export_manager import export_manager, ExportConfig
+    modules_disponibles['export_manager'] = True
+    print("✅ Module export_manager chargé")
+except ImportError as e:
+    modules_disponibles['export_manager'] = False
+    print(f"❌ Module export_manager non disponible: {e}")
+
+# Module Email
+try:
+    from modules.email import (
+        process_email_request, 
+        show_email_interface,
+        prepare_and_send_document
+    )
+    modules_disponibles['email'] = True
+    print("✅ Module email chargé")
+    
+    def show_email_page():
+        """Page principale du module email"""
+        show_email_interface()
+        
+except ImportError:
+    modules_disponibles['email'] = False
+    def show_email_page():
+        st.error("Module email non disponible")
+
+# === 6. PRÉPARATION ET SUPPORT CLIENT ===
+# Module de préparation client
+try:
+    from modules.preparation_client import (
+        show_page as show_preparation_page,
+        process_preparation_client_request
+    )
+    modules_disponibles['preparation_client'] = True
+    print("✅ Module preparation_client chargé")
+except ImportError:
+    modules_disponibles['preparation_client'] = False
+
+# Module plaidoirie
+try:
+    from modules.plaidoirie import process_plaidoirie_request
+    modules_disponibles['plaidoirie'] = True
+except ImportError:
+    modules_disponibles['plaidoirie'] = False
+
+# === 7. CONFIGURATION ===
+# Module de configuration
+try:
+    from modules.configuration import show_page as show_configuration_page
+    modules_disponibles['configuration'] = True
+    print("✅ Module configuration chargé")
+except ImportError:
+    modules_disponibles['configuration'] = False
+
+# ========== SECTION 2: STYLES CSS MODERNES ==========
+
 st.markdown("""
 <style>
-    /* Styles de base */
-    .main-title {
-        text-align: center;
-        padding: 2rem 0;
+    /* === DESIGN MODERNE ET ÉPURÉ === */
+    .main {
+        padding: 0;
+        max-width: 100%;
     }
     
-    .main-title h1 {
-        color: #1a237e;
-        font-size: 3rem;
+    /* Navigation principale moderne */
+    .main-nav {
+        background: linear-gradient(135deg, #1a1f3a 0%, #2d3561 100%);
+        padding: 1rem 2rem;
+        margin: 0 -1rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        position: sticky;
+        top: 0;
+        z-index: 100;
     }
     
-    .main-title p {
+    /* Conteneur principal avec sidebar */
+    .app-container {
+        display: flex;
+        min-height: calc(100vh - 80px);
+        gap: 0;
+    }
+    
+    /* Sidebar moderne */
+    .modern-sidebar {
+        width: 280px;
+        background: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+        padding: 1.5rem 1rem;
+        overflow-y: auto;
+        transition: all 0.3s ease;
+    }
+    
+    .modern-sidebar.collapsed {
+        width: 60px;
+    }
+    
+    /* Menu items */
+    .menu-section {
+        margin-bottom: 2rem;
+    }
+    
+    .menu-section-title {
+        font-size: 0.85rem;
         color: #666;
-        font-size: 1.2rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+        padding-left: 0.5rem;
     }
     
-    /* Styles pour la barre de recherche */
-    .search-container {
-        background-color: #f0f2f6;
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-    }
-    
-    /* Style pour les résultats */
-    .result-card {
-        background-color: white;
-        padding: 15px;
+    .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0.75rem 1rem;
+        margin: 0.25rem 0;
         border-radius: 8px;
-        margin-bottom: 10px;
-        border-left: 4px solid #1f77b4;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: #333;
+        text-decoration: none;
     }
     
-    .result-card:hover {
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        transform: translateY(-2px);
+    .menu-item:hover {
+        background: #e3f2fd;
+        color: #1976d2;
+        transform: translateX(4px);
     }
     
-    /* Style pour les tags */
-    .tag {
-        display: inline-block;
-        padding: 4px 8px;
-        margin: 2px;
-        background-color: #e1ecf4;
-        border-radius: 3px;
-        font-size: 0.85em;
-        color: #39739d;
-    }
-    
-    /* Style pour la référence @ */
-    .reference-tag {
-        background-color: #ffd93d;
-        color: #6c4a00;
-        font-weight: bold;
-    }
-    
-    /* Indicateur de recherche */
-    .search-indicator {
-        text-align: center;
-        color: #666;
-        font-style: italic;
-        margin: 20px 0;
-    }
-    
-    /* Bouton de recherche amélioré */
-    .stButton > button {
-        background-color: #1f77b4;
+    .menu-item.active {
+        background: #1976d2;
         color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: bold;
+    }
+    
+    .menu-item .icon {
+        font-size: 1.2rem;
+        width: 24px;
+        text-align: center;
+    }
+    
+    /* Contenu principal */
+    .main-content {
+        flex: 1;
+        padding: 2rem;
+        background: #ffffff;
+        overflow-y: auto;
+    }
+    
+    /* Recherche universelle prominente */
+    .universal-search-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 3rem 2rem;
+        border-radius: 20px;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .universal-search-hero::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        animation: pulse 3s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.5; }
+        50% { transform: scale(1.1); opacity: 0.3; }
+    }
+    
+    /* Cards modernes */
+    .module-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border: 1px solid #f0f0f0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .module-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        border-color: #667eea;
+    }
+    
+    .module-card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 1rem;
+    }
+    
+    .module-card-icon {
+        font-size: 2rem;
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .module-card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1f3a;
+        margin: 0;
+    }
+    
+    .module-card-description {
+        color: #666;
+        font-size: 0.9rem;
+        flex-grow: 1;
+        margin-bottom: 1rem;
+    }
+    
+    /* Quick access grid */
+    .quick-access-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    /* Workflow cards */
+    .workflow-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 2rem;
+        border-radius: 16px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .workflow-card::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transform: scaleX(0);
+        transition: transform 0.3s ease;
+    }
+    
+    .workflow-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+    }
+    
+    .workflow-card:hover::after {
+        transform: scaleX(1);
+    }
+    
+    /* Status indicators */
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+    
+    .status-dot.online { background: #4caf50; }
+    .status-dot.offline { background: #f44336; }
+    .status-dot.warning { background: #ff9800; }
+    
+    /* Progress steps */
+    .progress-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        margin: 2rem 0;
+    }
+    
+    .progress-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+    
+    .progress-step-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #666;
         transition: all 0.3s ease;
     }
     
-    .stButton > button:hover {
-        background-color: #1557a0;
-        transform: translateY(-2px);
+    .progress-step.active .progress-step-circle {
+        background: #667eea;
+        color: white;
+        transform: scale(1.1);
     }
     
-    /* Styles pour les métriques Azure */
-    .azure-status {
-        padding: 10px;
-        border-radius: 5px;
-        margin: 5px 0;
+    .progress-step.completed .progress-step-circle {
+        background: #4caf50;
+        color: white;
     }
     
-    .azure-connected {
-        background-color: #d4edda;
-        color: #155724;
+    .progress-step-label {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
     }
     
-    .azure-disconnected {
-        background-color: #f8d7da;
-        color: #721c24;
+    .progress-line {
+        position: absolute;
+        top: 20px;
+        left: 40px;
+        width: calc(100% + 2rem);
+        height: 2px;
+        background: #e0e0e0;
+        z-index: -1;
     }
     
-    /* Style pour les highlights */
-    mark {
-        background-color: #ffd93d;
-        padding: 2px 4px;
-        border-radius: 3px;
+    .progress-line.completed {
+        background: #4caf50;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .modern-sidebar {
+            position: fixed;
+            left: -280px;
+            height: 100vh;
+            z-index: 200;
+        }
+        
+        .modern-sidebar.open {
+            left: 0;
+        }
+        
+        .main-content {
+            padding: 1rem;
+        }
+        
+        .universal-search-hero {
+            padding: 2rem 1rem;
+        }
+    }
+    
+    /* Animations fluides */
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    /* Tooltips modernes */
+    .tooltip-modern {
+        position: relative;
+    }
+    
+    .tooltip-modern::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    
+    .tooltip-modern:hover::after {
+        opacity: 1;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialisation du service de recherche
-@st.cache_resource
-def get_search_service():
-    """Initialise et retourne le service de recherche"""
-    return UniversalSearchService()
+# ========== SECTION 3: GESTIONNAIRES AZURE ==========
 
 def init_azure_managers():
     """Initialise les gestionnaires Azure avec logs détaillés"""
     
-    print("=== INITIALISATION AZURE ===")
+    if not AZURE_AVAILABLE:
+        print(f"⚠️ Azure non disponible: {AZURE_ERROR}")
+        st.session_state.azure_blob_manager = None
+        st.session_state.azure_search_manager = None
+        st.session_state.azure_error = AZURE_ERROR
+        return
     
     # Azure Blob Manager
     if 'azure_blob_manager' not in st.session_state or st.session_state.azure_blob_manager is None:
-        print("Initialisation Azure Blob Manager...")
         try:
-            from managers.azure_blob_manager import AzureBlobManager
-            
-            print("Import AzureBlobManager réussi")
-            manager = AzureBlobManager()
-            print(f"AzureBlobManager créé: {manager}")
-            
-            st.session_state.azure_blob_manager = manager
-            
-            if hasattr(manager, 'is_connected') and manager.is_connected():
-                print("✅ Azure Blob connecté avec succès")
-                containers = manager.list_containers()
-                print(f"Containers trouvés: {containers}")
+            if not os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
+                st.session_state.azure_blob_manager = None
+                st.session_state.azure_blob_error = "Connection string non définie"
             else:
-                print("❌ Azure Blob non connecté")
-                if hasattr(manager, 'get_connection_error'):
-                    error = manager.get_connection_error()
-                    print(f"Erreur: {error}")
-                    
+                from managers.azure_blob_manager import AzureBlobManager
+                manager = AzureBlobManager()
+                st.session_state.azure_blob_manager = manager
+                print("✅ Azure Blob connecté")
         except Exception as e:
-            print(f"❌ Erreur fatale Azure Blob: {e}")
-            print(traceback.format_exc())
+            print(f"❌ Erreur Azure Blob: {e}")
             st.session_state.azure_blob_manager = None
-    else:
-        print("Azure Blob Manager déjà initialisé")
+            st.session_state.azure_blob_error = str(e)
     
     # Azure Search Manager  
     if 'azure_search_manager' not in st.session_state or st.session_state.azure_search_manager is None:
-        print("Initialisation Azure Search Manager...")
         try:
-            from managers.azure_search_manager import AzureSearchManager
-            
-            print("Import AzureSearchManager réussi")
-            manager = AzureSearchManager()
-            print(f"AzureSearchManager créé: {manager}")
-            
-            st.session_state.azure_search_manager = manager
-            
-            if hasattr(manager, 'search_client') and manager.search_client:
-                print("✅ Azure Search connecté avec succès")
+            if not os.getenv('AZURE_SEARCH_ENDPOINT') or not os.getenv('AZURE_SEARCH_KEY'):
+                st.session_state.azure_search_manager = None
+                st.session_state.azure_search_error = "Endpoint ou clé non définis"
             else:
-                print("❌ Azure Search non connecté")
-                if hasattr(manager, 'get_connection_error'):
-                    error = manager.get_connection_error()
-                    print(f"Erreur: {error}")
-                    
+                from managers.azure_search_manager import AzureSearchManager
+                manager = AzureSearchManager()
+                st.session_state.azure_search_manager = manager
+                print("✅ Azure Search connecté")
         except Exception as e:
-            print(f"❌ Erreur fatale Azure Search: {e}")
-            print(traceback.format_exc())
+            print(f"❌ Erreur Azure Search: {e}")
             st.session_state.azure_search_manager = None
-    else:
-        print("Azure Search Manager déjà initialisé")
+            st.session_state.azure_search_error = str(e)
 
-def reinit_azure():
-    """Force la réinitialisation d'Azure"""
-    print("=== RÉINITIALISATION AZURE FORCÉE ===")
+# ========== SECTION 4: NAVIGATION MODERNE ==========
+
+def show_modern_navigation():
+    """Affiche la navigation principale moderne"""
+    st.markdown('<div class="main-nav">', unsafe_allow_html=True)
     
-    # Supprimer les managers existants
-    if 'azure_blob_manager' in st.session_state:
-        del st.session_state.azure_blob_manager
-    if 'azure_search_manager' in st.session_state:
-        del st.session_state.azure_search_manager
+    col1, col2, col3, col4 = st.columns([3, 4, 2, 1])
     
-    # Réinitialiser
-    init_azure_managers()
+    with col1:
+        st.markdown("# ⚖️ Assistant Juridique IA")
+    
+    with col2:
+        # Barre de recherche rapide dans la nav
+        search_query = st.text_input(
+            "Recherche rapide",
+            placeholder="Tapez votre recherche...",
+            key="nav_search",
+            label_visibility="collapsed"
+        )
+    
+    with col3:
+        # Indicateurs de statut
+        azure_connected = bool(st.session_state.get('azure_blob_manager') or st.session_state.get('azure_search_manager'))
+        multi_ia = st.session_state.get('multi_ia_active', True)
+        export_manager_ok = modules_disponibles.get('export_manager', False)
+        recherche_unifiee_ok = modules_disponibles.get('recherche_analyse_unifiee', False)
+        
+        status_html = f"""
+        <div style="display: flex; align-items: center; gap: 1rem; margin-top: 8px;">
+            <span><span class="status-dot {'online' if azure_connected else 'offline'}"></span>Azure</span>
+            <span><span class="status-dot {'online' if multi_ia else 'offline'}"></span>Multi-IA</span>
+            <span><span class="status-dot {'online' if recherche_unifiee_ok else 'offline'}"></span>Recherche IA</span>
+        </div>
+        """
+        st.markdown(status_html, unsafe_allow_html=True)
+    
+    with col4:
+        if st.button("⚙️", help="Paramètres"):
+            st.session_state.current_module = 'configuration'
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Traiter la recherche rapide
+    if search_query and st.session_state.get('nav_search') != st.session_state.get('last_nav_search'):
+        st.session_state.last_nav_search = search_query
+        st.session_state.universal_search_query = search_query
+        st.session_state.current_view = 'recherche_analyse'
+
+def show_modern_sidebar():
+    """Affiche la sidebar moderne avec menu organisé et optimisé"""
+    with st.sidebar:
+        # Logo/Titre
+        st.markdown("### 📚 Menu Principal")
+        
+        # Accueil
+        if st.button("🏠 Accueil", use_container_width=True, 
+                    type="primary" if st.session_state.get('current_view') == 'accueil' else "secondary"):
+            st.session_state.current_view = 'accueil'
+            st.session_state.current_module = None
+        
+        # Section Recherche & Analyse IA
+        st.markdown("#### 🔍 Recherche & Analyse")
+        
+        if st.button("🤖 Recherche & Analyse IA", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'recherche_analyse_unifiee' else "secondary"):
+            st.session_state.current_view = 'recherche_analyse'
+            st.session_state.current_module = 'recherche_analyse_unifiee'
+        
+        if st.button("⚖️ Jurisprudence", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'jurisprudence' else "secondary"):
+            st.session_state.current_view = 'jurisprudence'
+            st.session_state.current_module = 'jurisprudence'
+        
+        if modules_disponibles.get('risques'):
+            if st.button("⚠️ Analyse des risques", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'risques' else "secondary"):
+                st.session_state.current_view = 'risques'
+                st.session_state.current_module = 'risques'
+        
+        # Section Gestion documentaire
+        st.markdown("#### 📁 Documents & Pièces")
+        
+        if st.button("📎 Gestion des pièces", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'pieces_manager' else "secondary"):
+            st.session_state.current_view = 'pieces'
+            st.session_state.current_module = 'pieces_manager'
+        
+        if st.button("📥 Import/Export", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'import_export' else "secondary"):
+            st.session_state.current_view = 'import_export'
+            st.session_state.current_module = 'import_export'
+        
+        if modules_disponibles.get('dossier_penal'):
+            if st.button("📂 Dossiers pénaux", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'dossier_penal' else "secondary"):
+                st.session_state.current_view = 'dossiers'
+                st.session_state.current_module = 'dossier_penal'
+        
+        if modules_disponibles.get('explorer'):
+            if st.button("🗂️ Explorateur", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'explorer' else "secondary"):
+                st.session_state.current_view = 'explorer'
+                st.session_state.current_module = 'explorer'
+        
+        # Section Rédaction
+        st.markdown("#### ✍️ Rédaction & Production")
+        
+        if st.button("✍️ Rédaction d'actes", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'redaction_unified' else "secondary"):
+            st.session_state.current_view = 'redaction'
+            st.session_state.current_module = 'redaction_unified'
+        
+        if modules_disponibles.get('generation_longue'):
+            if st.button("📜 Documents longs", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'generation_longue' else "secondary"):
+                st.session_state.current_view = 'generation_longue'
+                st.session_state.current_module = 'generation_longue'
+        
+        if st.button("📋 Bordereau", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'bordereau' else "secondary"):
+            st.session_state.current_view = 'bordereau'
+            st.session_state.current_module = 'bordereau'
+        
+        # Section Visualisation & Analyse
+        st.markdown("#### 📊 Visualisation")
+        
+        tools = [
+            ("📅 Timeline", "timeline", "timeline"),
+            ("🔄 Comparaison", "comparison", "comparison"),
+            ("🗺️ Cartographie", "mapping", "mapping"),
+            ("📊 Synthèse", "synthesis", "synthesis"),
+        ]
+        
+        for label, view, module in tools:
+            if modules_disponibles.get(module):
+                if st.button(label, use_container_width=True,
+                            type="primary" if st.session_state.get('current_module') == module else "secondary"):
+                    st.session_state.current_view = view
+                    st.session_state.current_module = module
+        
+        # Section Communication & Support
+        st.markdown("#### 📧 Communication")
+        
+        if modules_disponibles.get('email'):
+            if st.button("📧 Emails", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'email' else "secondary"):
+                st.session_state.current_view = 'email'
+                st.session_state.current_module = 'email'
+        
+        if modules_disponibles.get('preparation_client'):
+            if st.button("👥 Préparation client", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'preparation_client' else "secondary"):
+                st.session_state.current_view = 'preparation_client'
+                st.session_state.current_module = 'preparation_client'
+        
+        if modules_disponibles.get('plaidoirie'):
+            if st.button("🎤 Plaidoirie", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'plaidoirie' else "secondary"):
+                st.session_state.current_view = 'plaidoirie'
+                st.session_state.current_module = 'plaidoirie'
+        
+        # Section Configuration
+        st.markdown("#### ⚙️ Configuration")
+        
+        if modules_disponibles.get('template'):
+            if st.button("📋 Templates", use_container_width=True,
+                        type="primary" if st.session_state.get('current_module') == 'template' else "secondary"):
+                st.session_state.current_module = 'template'
+        
+        if st.button("🔧 Paramètres", use_container_width=True,
+                    type="primary" if st.session_state.get('current_module') == 'configuration' else "secondary"):
+            st.session_state.current_module = 'configuration'
+
+# ========== SECTION 5: PAGE D'ACCUEIL ==========
+
+def show_home_page():
+    """Page d'accueil moderne avec recherche universelle et accès rapide"""
+    
+    # Hero section avec recherche universelle
+    st.markdown('<div class="universal-search-hero fade-in">', unsafe_allow_html=True)
+    st.markdown("## 🔍 Recherche Intelligente Universelle avec IA")
+    st.markdown("Décrivez ce que vous voulez faire en langage naturel")
+    
+    query = st.text_area(
+        "Votre requête",
+        placeholder="Ex: J'ai besoin de préparer l'audience de demain pour l'affaire Martin...\n"
+                   "Ou: Rédige une plainte pour abus de biens sociaux contre la société XYZ...\n"
+                   "Ou: Analyse tous les documents concernant la corruption...",
+        height=100,
+        key="universal_search",
+        label_visibility="collapsed"
+    )
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col2:
+        if st.button("🔍 Rechercher", type="primary", use_container_width=True):
+            if query:
+                handle_universal_search(query)
+    
+    with col3:
+        if st.button("🎲 Exemple", use_container_width=True):
+            examples = [
+                "Rédige une plainte avec constitution de partie civile pour abus de biens sociaux de 50 pages",
+                "Explore tous les documents du dossier VINCI",
+                "Analyse les risques juridiques dans le dossier @VINCI2024",
+                "Trouve la jurisprudence sur la corruption dans le secteur public",
+                "Prépare un bordereau de communication pour l'audience du 15 janvier",
+                "Compare les témoignages de Martin et Dupont dans l'affaire ABC",
+                "Import tous les documents PDF du dossier Dupont",
+                "Créer une timeline des événements financiers",
+                "Prépare mon client pour son audition de demain"
+            ]
+            import random
+            st.session_state.universal_search = random.choice(examples)
+            st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Workflows principaux réorganisés
+    st.markdown("### 🎯 Workflows principaux")
+    
+    workflows = [
+        {
+            'icon': '🔍',
+            'title': 'Recherche & Analyse',
+            'description': 'Recherche IA, jurisprudence et analyse des risques',
+            'modules': ['recherche_analyse_unifiee', 'jurisprudence', 'risques'],
+            'primary': 'recherche_analyse_unifiee'
+        },
+        {
+            'icon': '📁',
+            'title': 'Gestion documentaire',
+            'description': 'Import, organisation et gestion des pièces',
+            'modules': ['pieces_manager', 'import_export', 'dossier_penal'],
+            'primary': 'pieces_manager'
+        },
+        {
+            'icon': '✍️',
+            'title': 'Rédaction & Production',
+            'description': 'Rédaction d\'actes et documents longs',
+            'modules': ['redaction_unified', 'generation_longue', 'bordereau'],
+            'primary': 'redaction_unified'
+        },
+        {
+            'icon': '📊',
+            'title': 'Visualisation & Export',
+            'description': 'Timeline, comparaisons et exports',
+            'modules': ['timeline', 'comparison', 'export_manager'],
+            'primary': 'timeline'
+        }
+    ]
+    
+    cols = st.columns(4)
+    for idx, workflow in enumerate(workflows):
+        with cols[idx]:
+            with st.container():
+                st.markdown('<div class="workflow-card">', unsafe_allow_html=True)
+                st.markdown(f"#### {workflow['icon']} {workflow['title']}")
+                st.markdown(workflow['description'])
+                
+                # Vérifier la disponibilité des modules
+                available = sum(1 for m in workflow['modules'] if modules_disponibles.get(m, False))
+                total = len(workflow['modules'])
+                
+                if available > 0:
+                    st.caption(f"✅ {available}/{total} modules actifs")
+                    if st.button("Commencer", key=f"start_{workflow['primary']}", use_container_width=True):
+                        st.session_state.current_module = workflow['primary']
+                        st.rerun()
+                else:
+                    st.caption(f"❌ Modules non disponibles")
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Accès rapide aux modules (réorganisé et simplifié)
+    st.markdown("### ⚡ Accès rapide aux fonctionnalités")
+    
+    # Nouvelle organisation par catégories optimisées
+    categories = {
+        "Intelligence Artificielle": [
+            ("🤖", "Recherche & Analyse IA", "Recherche et analyse unifiées par IA", "recherche_analyse_unifiee"),
+            ("⚖️", "Jurisprudence", "Base de jurisprudence avec vérification", "jurisprudence"),
+            ("⚠️", "Risques", "Analyse des risques juridiques", "risques"),
+            ("📊", "Synthèse", "Synthèse automatique", "synthesis"),
+        ],
+        "Documents & Dossiers": [
+            ("📎", "Gestion des pièces", "Organisez vos pièces et documents", "pieces_manager"),
+            ("📥", "Import/Export", "Import/Export unifié de documents", "import_export"),
+            ("📂", "Dossiers pénaux", "Gestion des dossiers", "dossier_penal"),
+            ("🗂️", "Explorateur", "Explorez vos fichiers", "explorer"),
+        ],
+        "Production": [
+            ("✍️", "Rédaction", "Rédaction d'actes juridiques avec IA", "redaction_unified"),
+            ("📜", "Documents longs", "Documents de 25-50+ pages", "generation_longue"),
+            ("📋", "Bordereau", "Création de bordereaux", "bordereau"),
+            ("📋", "Templates", "Gestion des modèles", "template"),
+        ],
+        "Analyse & Communication": [
+            ("📅", "Timeline", "Chronologies visuelles", "timeline"),
+            ("🔄", "Comparaison", "Comparez des documents", "comparison"),
+            ("📧", "Emails", "Gestion des emails", "email"),
+            ("👥", "Préparation client", "Préparez vos clients (audition, interrogatoire)", "preparation_client"),
+        ]
+    }
+    
+    for cat_name, modules in categories.items():
+        st.markdown(f"#### {cat_name}")
+        cols = st.columns(4)
+        
+        for idx, (icon, title, desc, module) in enumerate(modules):
+            if modules_disponibles.get(module):
+                with cols[idx % 4]:
+                    with st.container():
+                        st.markdown('<div class="module-card">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="module-card-header">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="module-card-icon">{icon}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<h3 class="module-card-title">{title}</h3>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="module-card-description">{desc}</p>', unsafe_allow_html=True)
+                        if st.button("Ouvrir", key=f"quick_{module}", use_container_width=True):
+                            st.session_state.current_module = module
+                            st.rerun()
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+# ========== SECTION 6: GESTION DE LA RECHERCHE UNIVERSELLE ==========
+
+def handle_universal_search(query: str):
+    """Traite la recherche universelle et redirige vers le bon module"""
+    query_lower = query.lower()
+    
+    # Si le module recherche unifié est disponible, l'utiliser directement
+    if modules_disponibles.get('recherche_analyse_unifiee'):
+        st.session_state.current_view = 'recherche_analyse'
+        st.session_state.current_module = 'recherche_analyse_unifiee'
+        st.session_state.universal_search_query = query
+        st.session_state.pending_query = query
+        st.rerun()
+        return
+    
+    # Sinon, utiliser l'analyse de patterns comme fallback
+    patterns = {
+        'import': {
+            'keywords': ['import', 'importer', 'charger', 'upload', 'télécharger', 'ajouter des documents', 'pdf', 'xlsx', 'csv'],
+            'module': 'import_export',
+            'view': 'import_export'
+        },
+        'export': {
+            'keywords': ['export', 'exporter', 'télécharger', 'sauvegarder', 'extraire', 'download', 'word', 'excel'],
+            'module': 'import_export',
+            'view': 'import_export',
+            'context': 'export'
+        },
+        'timeline': {
+            'keywords': ['timeline', 'chronologie', 'calendrier', 'événements', 'dates', 'temporel', 'historique'],
+            'module': 'timeline',
+            'view': 'timeline'
+        },
+        'comparison': {
+            'keywords': ['comparer', 'comparaison', 'différence', 'confronter', 'analyser les divergences', 'témoignages'],
+            'module': 'comparison',
+            'view': 'comparison'
+        },
+        'email': {
+            'keywords': ['email', 'mail', 'envoyer', 'courrier', 'correspondance', 'transmettre', 'destinataire'],
+            'module': 'email',
+            'view': 'email'
+        },
+        'pieces': {
+            'keywords': ['pièce', 'document', 'fichier', 'gérer les pièces', 'organiser', 'sélectionner', 'sélection', 'communication'],
+            'module': 'pieces_manager',
+            'view': 'pieces'
+        },
+        'redaction': {
+            'keywords': ['rédiger', 'rédige', 'créer', 'générer', 'préparer', 'établir', 'plainte', 'conclusions', 'assignation'],
+            'module': 'redaction_unified',
+            'view': 'redaction'
+        },
+        'preparation': {
+            'keywords': ['préparer', 'préparation', 'client', 'audition', 'interrogatoire', 'audience', 'rendez-vous'],
+            'module': 'preparation_client',
+            'view': 'preparation_client'
+        },
+        'jurisprudence': {
+            'keywords': ['jurisprudence', 'arrêt', 'décision', 'cour de cassation', 'juridique', 'judilibre', 'légifrance'],
+            'module': 'jurisprudence',
+            'view': 'jurisprudence'
+        },
+        'bordereau': {
+            'keywords': ['bordereau', 'communication de pièces', 'liste des pièces'],
+            'module': 'bordereau',
+            'view': 'bordereau'
+        },
+        'risques': {
+            'keywords': ['risque', 'danger', 'menace', 'vulnérabilité', 'évaluation des risques'],
+            'module': 'risques',
+            'view': 'risques'
+        },
+        'dossier': {
+            'keywords': ['dossier', 'affaire', 'dossier pénal', 'organiser dossier'],
+            'module': 'dossier_penal',
+            'view': 'dossiers'
+        }
+    }
+    
+    # Détection du module approprié
+    best_match = None
+    best_score = 0
+    
+    for pattern_name, pattern_data in patterns.items():
+        score = sum(1 for keyword in pattern_data['keywords'] if keyword in query_lower)
+        if score > best_score:
+            best_score = score
+            best_match = pattern_data
+    
+    # Cas spécial : documents longs
+    if any(word in query_lower for word in ['50 pages', '40 pages', 'long', 'exhaustif']):
+        best_match = {'module': 'generation_longue', 'view': 'generation_longue'}
+        best_score = 10
+    
+    if best_match and best_score > 0:
+        st.session_state.current_view = best_match['view']
+        st.session_state.current_module = best_match['module']
+        st.session_state.search_context = query
+        if 'context' in best_match:
+            st.session_state.module_context = best_match['context']
+    else:
+        # Par défaut, utiliser le module de recherche unifié
+        st.session_state.current_view = 'recherche_analyse'
+        st.session_state.current_module = 'recherche_analyse_unifiee'
+        st.session_state.search_query = query
     
     st.rerun()
 
-def show_azure_status_detailed():
-    """Affichage détaillé du statut Azure avec diagnostics"""
-    
-    # Test des variables d'environnement
-    conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-    search_endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-    search_key = os.getenv('AZURE_SEARCH_KEY')
-    
-    # Azure Blob
-    st.markdown("**Azure Blob Storage**")
-    blob_manager = st.session_state.get('azure_blob_manager')
-    
-    if not conn_str:
-        st.error("❌ Connection String manquante")
-    elif not blob_manager:
-        st.error("❌ Manager non initialisé")
-    elif hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
-        st.success("✅ Connecté")
-        containers = blob_manager.list_containers()
-        if containers:
-            st.caption(f"{len(containers)} containers")
-        else:
-            st.caption("0 containers")
-    else:
-        st.error("❌ Non connecté")
-        if hasattr(blob_manager, 'get_connection_error'):
-            error = blob_manager.get_connection_error()
-            st.caption(error[:40] + "..." if error and len(error) > 40 else error or "Erreur inconnue")
-    
-    # Azure Search
-    st.markdown("**Azure Search**")
-    search_manager = st.session_state.get('azure_search_manager')
-    
-    if not search_endpoint or not search_key:
-        st.error("❌ Endpoint/Key manquant")
-    elif not search_manager:
-        st.error("❌ Manager non initialisé")
-    elif hasattr(search_manager, 'search_client') and search_manager.search_client:
-        st.success("✅ Connecté")
-        st.caption("Index: juridique-index")
-    else:
-        st.error("❌ Non connecté")
-        if hasattr(search_manager, 'get_connection_error'):
-            error = search_manager.get_connection_error()
-            st.caption(error[:40] + "..." if error and len(error) > 40 else error or "Erreur inconnue")
+# ========== SECTION 7: AFFICHAGE DES MODULES ==========
 
-def show_configuration_modal():
-    """Affiche la configuration dans un modal"""
-    with st.container():
-        st.markdown("---")
-        st.header("⚙️ Configuration")
-        
-        tabs = st.tabs(["🔑 Variables", "🔧 Azure", "🧪 Tests"])
-        
-        with tabs[0]:
-            st.subheader("Variables d'environnement")
-            
-            vars_to_check = [
-                ("AZURE_STORAGE_CONNECTION_STRING", "Azure Blob Storage"),
-                ("AZURE_SEARCH_ENDPOINT", "Azure Search URL"),
-                ("AZURE_SEARCH_KEY", "Azure Search Key"),
-                ("ANTHROPIC_API_KEY", "Claude API"),
-                ("OPENAI_API_KEY", "OpenAI API"),
-                ("GOOGLE_API_KEY", "Google Gemini API")
-            ]
-            
-            for var, desc in vars_to_check:
-                col1, col2, col3 = st.columns([3, 1, 2])
-                with col1:
-                    st.text(desc)
-                with col2:
-                    if os.getenv(var):
-                        st.success("✅")
-                    else:
-                        st.error("❌")
-                with col3:
-                    if os.getenv(var):
-                        value = os.getenv(var)
-                        st.caption(f"{value[:20]}...")
-        
-        with tabs[1]:
-            st.subheader("Diagnostics Azure détaillés")
-            
-            # Azure Blob
-            with st.expander("🗄️ Azure Blob Storage", expanded=True):
-                blob_manager = st.session_state.get('azure_blob_manager')
-                
-                conn_str = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-                st.write(f"**Connection String:** {'✅ Présente' if conn_str else '❌ Manquante'}")
-                
-                if blob_manager:
-                    st.write(f"**Manager:** ✅ Initialisé")
-                    if hasattr(blob_manager, 'is_connected') and blob_manager.is_connected():
-                        st.success("✅ Connexion active")
-                        containers = blob_manager.list_containers()
-                        st.write(f"**Containers:** {len(containers)}")
-                        for container in containers[:5]:
-                            st.text(f"• {container}")
-                    else:
-                        st.error("❌ Connexion échouée")
-                        if hasattr(blob_manager, 'get_connection_error'):
-                            error = blob_manager.get_connection_error()
-                            st.error(f"**Erreur:** {error}")
-                else:
-                    st.error("❌ Manager non initialisé")
-            
-            # Azure Search
-            with st.expander("🔍 Azure Search", expanded=True):
-                search_manager = st.session_state.get('azure_search_manager')
-                
-                endpoint = os.getenv('AZURE_SEARCH_ENDPOINT')
-                key = os.getenv('AZURE_SEARCH_KEY')
-                st.write(f"**Endpoint:** {'✅ Présent' if endpoint else '❌ Manquant'}")
-                st.write(f"**Key:** {'✅ Présente' if key else '❌ Manquante'}")
-                
-                if search_manager:
-                    st.write(f"**Manager:** ✅ Initialisé")
-                    if hasattr(search_manager, 'search_client') and search_manager.search_client:
-                        st.success("✅ Connexion active")
-                        st.write(f"**Index:** {getattr(search_manager, 'index_name', 'juridique-index')}")
-                    else:
-                        st.error("❌ Connexion échouée")
-                        if hasattr(search_manager, 'get_connection_error'):
-                            error = search_manager.get_connection_error()
-                            st.error(f"**Erreur:** {error}")
-                else:
-                    st.error("❌ Manager non initialisé")
-        
-        with tabs[2]:
-            st.subheader("Tests de connexion")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("🧪 Tester Azure Blob", key="test_blob", use_container_width=True):
-                    test_azure_blob()
-            
-            with col2:
-                if st.button("🧪 Tester Azure Search", key="test_search", use_container_width=True):
-                    test_azure_search()
-            
-            with col3:
-                if st.button("🧪 Tester tout", key="test_all", use_container_width=True):
-                    test_azure_blob()
-                    test_azure_search()
-            
-            # Affichage des informations de configuration
-            if app_config:
-                st.markdown("---")
-                st.subheader("Configuration actuelle")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Version app:** {app_config.version}")
-                    st.write(f"**Debug mode:** {app_config.debug}")
-                    st.write(f"**Max file size:** {app_config.max_file_size_mb} MB")
-                    st.write(f"**Max files:** {app_config.max_files_per_upload}")
-                
-                with col2:
-                    st.write(f"**Azure Storage:** {'✅' if app_config.enable_azure_storage else '❌'}")
-                    st.write(f"**Azure Search:** {'✅' if app_config.enable_azure_search else '❌'}")
-                    st.write(f"**Multi-LLM:** {'✅' if app_config.enable_multi_llm else '❌'}")
-                    st.write(f"**Email:** {'✅' if app_config.enable_email else '❌'}")
-        
-        if st.button("❌ Fermer", key="close_config"):
-            st.session_state.show_config_modal = False
-            st.rerun()
-
-def test_azure_blob():
-    """Test de connexion Azure Blob"""
-    with st.spinner("Test Azure Blob..."):
-        try:
-            from managers.azure_blob_manager import AzureBlobManager
-            test_manager = AzureBlobManager()
-            
-            if test_manager.is_connected():
-                containers = test_manager.list_containers()
-                st.success(f"✅ Azure Blob OK - {len(containers)} containers")
-            else:
-                error = test_manager.get_connection_error()
-                st.error(f"❌ Azure Blob KO: {error}")
-        except Exception as e:
-            st.error(f"❌ Erreur test Azure Blob: {e}")
-
-def test_azure_search():
-    """Test de connexion Azure Search"""
-    with st.spinner("Test Azure Search..."):
-        try:
-            from managers.azure_search_manager import AzureSearchManager
-            test_manager = AzureSearchManager()
-            
-            if test_manager.search_client:
-                st.success("✅ Azure Search OK")
-            else:
-                error = test_manager.get_connection_error()
-                st.error(f"❌ Azure Search KO: {error}")
-        except Exception as e:
-            st.error(f"❌ Erreur test Azure Search: {e}")
-
-# Fonction pour afficher les suggestions
-def show_search_suggestions(query: str):
-    """Affiche des suggestions basées sur la requête"""
-    suggestions = []
+def show_module_content():
+    """Affiche le contenu du module actuel"""
+    module = st.session_state.get('current_module')
     
-    if query:
-        # Suggestions de références @
-        if '@' in query and not re.search(r'@\w+', query):
-            suggestions.extend([
-                "@VINCI2024", "@SOGEPROM", "@PERINET", "@ABS001"
-            ])
-        
-        # Suggestions de types de documents
-        if len(query) > 2:
-            doc_types = ["conclusions", "plainte", "assignation", "courrier", "expertise"]
-            for doc_type in doc_types:
-                if doc_type.startswith(query.lower()):
-                    suggestions.append(doc_type)
-        
-        # Suggestions d'infractions
-        if "infraction" in query.lower() or "abus" in query.lower():
-            suggestions.extend([
-                "abus de biens sociaux", "corruption", "escroquerie"
-            ])
+    if not module:
+        return
     
-    if suggestions:
-        st.caption("💡 Suggestions:")
-        cols = st.columns(min(len(suggestions), 4))
-        for idx, suggestion in enumerate(suggestions[:4]):
-            with cols[idx]:
-                if st.button(suggestion, key=f"sugg_{idx}"):
-                    st.session_state.search_query = query + " " + suggestion
-
-# Fonction principale de recherche
-async def perform_search(query: str, filters: Optional[Dict] = None):
-    """Effectue la recherche et affiche les résultats"""
-    search_service = get_search_service()
+    # Titre du module avec breadcrumb
+    module_titles = {
+        'recherche_analyse_unifiee': "🤖 Recherche & Analyse IA",
+        'jurisprudence': "⚖️ Recherche de jurisprudence",
+        'risques': "⚠️ Analyse des risques",
+        'pieces_manager': "📎 Gestion des pièces",
+        'import_export': "📥📤 Import/Export",
+        'dossier_penal': "📂 Dossiers pénaux",
+        'explorer': "🗂️ Explorateur de documents",
+        'redaction_unified': "✍️ Rédaction d'actes juridiques",
+        'generation_longue': "📜 Génération de documents longs",
+        'bordereau': "📋 Création de bordereau",
+        'template': "📋 Gestion des templates",
+        'timeline': "📅 Timeline des événements",
+        'comparison': "🔄 Comparaison de documents",
+        'synthesis': "📊 Synthèse",
+        'email': "📧 Gestion des emails",
+        'preparation_client': "👥 Préparation client",
+        'plaidoirie': "🎤 Plaidoirie",
+        'mapping': "🗺️ Cartographie",
+        'configuration': "⚙️ Configuration"
+    }
     
-    # Indicateur de recherche en cours
-    with st.spinner(f"🔍 Recherche en cours pour : **{query}**"):
-        results = await search_service.search(query, filters)
-    
-    return results
-
-# Fonction pour afficher un résultat améliorée
-def display_result_enhanced(doc, index: int):
-    """Affiche un résultat de recherche avec highlights"""
-    with st.container():
-        col1, col2 = st.columns([10, 2])
-        
+    if module in module_titles:
+        col1, col2 = st.columns([10, 1])
         with col1:
-            # Titre avec numéro et score
-            score_badge = ""
-            if doc.metadata.get('score', 0) >= 20:
-                score_badge = "🔥"  # Haute pertinence
-            elif doc.metadata.get('score', 0) >= 10:
-                score_badge = "⭐"  # Pertinence moyenne
-            
-            st.markdown(f"### {index}. {doc.title} {score_badge}")
-            
-            # Afficher les métadonnées
-            metadata_cols = st.columns(4)
-            with metadata_cols[0]:
-                st.caption(f"📄 Source: {doc.source}")
-            with metadata_cols[1]:
-                st.caption(f"🆔 ID: {doc.id[:8]}...")
-            with metadata_cols[2]:
-                if doc.metadata.get('score'):
-                    st.caption(f"⭐ Score: {doc.metadata['score']:.2f}")
-            with metadata_cols[3]:
-                if doc.metadata.get('type'):
-                    st.caption(f"📁 Type: {doc.metadata['type']}")
-            
-            # Afficher les highlights s'ils existent
-            if hasattr(doc, 'highlights') and doc.highlights:
-                st.markdown("**Extraits pertinents:**")
-                for highlight in doc.highlights[:3]:
-                    st.markdown(f"> *...{highlight}...*")
-            else:
-                # Sinon, afficher un extrait du contenu
-                content_preview = doc.content[:300] + "..." if len(doc.content) > 300 else doc.content
-                st.markdown(f"<div class='result-card'>{content_preview}</div>", unsafe_allow_html=True)
-            
-            # Afficher la date si disponible
-            if doc.metadata.get('date'):
-                st.caption(f"📅 Date: {doc.metadata['date']}")
-        
+            st.markdown(f"## {module_titles[module]}")
         with col2:
-            # Boutons d'action
-            if st.button("📖 Voir détails", key=f"view_{index}"):
-                st.session_state.selected_document = doc
-                st.session_state.show_document_modal = True
-            
-            if st.button("📥 Télécharger", key=f"download_{index}"):
-                # Implémenter le téléchargement
-                pass
-            
-            if st.button("🔗 Partager", key=f"share_{index}"):
-                # Implémenter le partage
-                pass
-
-def display_search_facets(facets: Dict[str, Dict[str, int]]):
-    """Affiche les facettes de recherche pour filtrage dynamique"""
-    if not facets:
-        return
-    
-    st.markdown("### 📊 Affiner la recherche")
-    
-    cols = st.columns(3)
-    
-    # Facette Sources
-    with cols[0]:
-        if facets.get('sources'):
-            st.markdown("**Sources**")
-            for source, count in sorted(facets['sources'].items(), key=lambda x: x[1], reverse=True)[:5]:
-                if st.checkbox(f"{source} ({count})", key=f"facet_source_{source}"):
-                    # Ajouter au filtre
-                    if 'active_filters' not in st.session_state:
-                        st.session_state.active_filters = {}
-                    st.session_state.active_filters['source'] = source
-    
-    # Facette Types
-    with cols[1]:
-        if facets.get('types'):
-            st.markdown("**Types de documents**")
-            for doc_type, count in sorted(facets['types'].items(), key=lambda x: x[1], reverse=True)[:5]:
-                type_display = doc_type.upper() if doc_type != 'unknown' else 'Non classé'
-                if st.checkbox(f"{type_display} ({count})", key=f"facet_type_{doc_type}"):
-                    # Ajouter au filtre
-                    if 'active_filters' not in st.session_state:
-                        st.session_state.active_filters = {}
-                    st.session_state.active_filters['type'] = doc_type
-    
-    # Facette Scores
-    with cols[2]:
-        if facets.get('scores'):
-            st.markdown("**Pertinence**")
-            scores = facets['scores']
-            if scores.get('high', 0) > 0:
-                if st.checkbox(f"🔥 Très pertinent ({scores['high']})", key="facet_score_high"):
-                    st.session_state.filter_high_score = True
-            if scores.get('medium', 0) > 0:
-                if st.checkbox(f"⭐ Pertinent ({scores['medium']})", key="facet_score_medium"):
-                    st.session_state.filter_medium_score = True
-            if scores.get('low', 0) > 0:
-                if st.checkbox(f"📄 Peu pertinent ({scores['low']})", key="facet_score_low"):
-                    st.session_state.filter_low_score = True
-
-def display_search_suggestions(suggestions: List[str]):
-    """Affiche les suggestions de recherche alternative"""
-    if not suggestions:
-        return
-    
-    st.markdown("### 💡 Essayez aussi")
-    
-    cols = st.columns(len(suggestions))
-    for idx, suggestion in enumerate(suggestions):
-        with cols[idx]:
-            if st.button(f"🔍 {suggestion}", key=f"suggestion_{idx}", use_container_width=True):
-                # Relancer la recherche avec la suggestion
-                st.session_state.search_input = suggestion
+            if st.button("❌", help="Fermer"):
+                st.session_state.current_module = None
+                st.session_state.current_view = 'accueil'
                 st.rerun()
-
-def show_document_modal():
-    """Affiche le modal de détail d'un document"""
-    if st.session_state.get('show_document_modal') and st.session_state.get('selected_document'):
-        doc = st.session_state.selected_document
-        
-        with st.container():
-            st.markdown("---")
-            st.markdown(f"## 📄 {doc.title}")
-            
-            # Métadonnées
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.write(f"**Source:** {doc.source}")
-            with col2:
-                st.write(f"**Type:** {doc.metadata.get('type', 'Document')}")
-            with col3:
-                if doc.metadata.get('date'):
-                    st.write(f"**Date:** {doc.metadata['date']}")
-            
-            # Contenu complet
-            st.markdown("### Contenu")
-            
-            # Si highlights disponibles, les mettre en évidence
-            if hasattr(doc, 'highlights') and doc.highlights:
-                content_with_highlights = doc.content
-                for highlight in doc.highlights:
-                    # Mettre en surbrillance les passages
-                    content_with_highlights = content_with_highlights.replace(
-                        highlight, 
-                        f"<mark style='background-color: #ffd93d;'>{highlight}</mark>"
-                    )
-                st.markdown(content_with_highlights, unsafe_allow_html=True)
-            else:
-                st.text_area("", doc.content, height=400, disabled=True)
-            
-            # Actions
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("📥 Télécharger", key="modal_download"):
-                    # Implémenter le téléchargement
-                    pass
-            with col2:
-                if st.button("📧 Envoyer par email", key="modal_email"):
-                    # Implémenter l'envoi
-                    pass
-            with col3:
-                if st.button("❌ Fermer", key="modal_close"):
-                    st.session_state.show_document_modal = False
-                    st.session_state.selected_document = None
-                    st.rerun()
-
-# Interface principale
-def main():
-    """Interface principale de l'application"""
     
-    print("=== DÉBUT MAIN ===")
+    # Afficher le module
+    try:
+        # === Modules de recherche et analyse ===
+        if module == 'recherche_analyse_unifiee' and modules_disponibles.get('recherche_analyse_unifiee'):
+            show_recherche_analyse_page()
+            
+        elif module == 'jurisprudence' and modules_disponibles.get('jurisprudence'):
+            # Passer la requête si elle existe
+            query = st.session_state.get('search_context', '')
+            show_jurisprudence_interface(query)
+            
+        elif module == 'risques' and modules_disponibles.get('risques'):
+            display_risques_interface()
+            
+        # === Modules de gestion documentaire ===
+        elif module == 'pieces_manager' and modules_disponibles.get('pieces_manager'):
+            display_pieces_interface()
+            
+        elif module == 'import_export' and modules_disponibles.get('import_export'):
+            if 'show_import_export_tabs' in globals():
+                show_import_export_tabs()
+            elif 'show_import_export_interface' in globals():
+                show_import_export_interface()
+            else:
+                show_import_interface()
+            
+        elif module == 'dossier_penal' and modules_disponibles.get('dossier_penal'):
+            display_dossier_penal_interface()
+            
+        elif module == 'explorer' and modules_disponibles.get('explorer'):
+            show_explorer_interface()
+            
+        # === Modules de rédaction ===
+        elif module == 'redaction_unified' and modules_disponibles.get('redaction_unified'):
+            show_redaction_unified()
+            
+        elif module == 'generation_longue' and modules_disponibles.get('generation_longue'):
+            show_generation_longue_interface()
+            
+        elif module == 'bordereau' and modules_disponibles.get('bordereau'):
+            if st.session_state.get('current_bordereau'):
+                display_bordereau_interface(
+                    st.session_state['current_bordereau'], 
+                    st.session_state.get('selected_pieces', [])
+                )
+            elif 'show_bordereau_page' in globals():
+                show_bordereau_page()
+            else:
+                st.info("Aucun bordereau actif. Sélectionnez des pièces d'abord.")
+                if st.button("📎 Aller à la gestion des pièces"):
+                    st.session_state.current_module = 'pieces_manager'
+                    st.rerun()
+            
+        elif module == 'template' and modules_disponibles.get('template'):
+            show_template_manager()
+            
+        # === Modules de visualisation ===
+        elif module == 'timeline' and modules_disponibles.get('timeline'):
+            show_timeline_page()
+            
+        elif module == 'comparison' and modules_disponibles.get('comparison'):
+            show_comparison_page()
+            
+        elif module == 'synthesis' and modules_disponibles.get('synthesis'):
+            show_synthesis_page()
+            
+        elif module == 'mapping' and modules_disponibles.get('mapping'):
+            query = st.text_input("Décrivez la cartographie souhaitée")
+            if query:
+                process_mapping_request(query, {})
+                
+        # === Modules de communication ===
+        elif module == 'email' and modules_disponibles.get('email'):
+            show_email_page()
+            
+        elif module == 'preparation_client' and modules_disponibles.get('preparation_client'):
+            # Passer la requête si elle existe
+            query = st.session_state.get('search_context', '')
+            if query:
+                process_preparation_client_request(query, {'query': query})
+            else:
+                show_preparation_page()
+            
+        elif module == 'plaidoirie' and modules_disponibles.get('plaidoirie'):
+            st.markdown("## 🎤 Génération de plaidoirie")
+            query = st.text_area(
+                "Décrivez la plaidoirie souhaitée",
+                placeholder="Ex: Plaidoirie pour la défense dans l'affaire d'abus de biens sociaux...",
+                height=100
+            )
+            if query and st.button("🚀 Générer la plaidoirie", type="primary"):
+                process_plaidoirie_request(query, {})
+                
+        # === Configuration ===
+        elif module == 'configuration' and modules_disponibles.get('configuration'):
+            show_configuration_page()
+            
+        else:
+            st.error(f"Module {module} non disponible ou non reconnu")
+            
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du module : {str(e)}")
+        if app_config.debug:
+            st.code(traceback.format_exc())
+
+# ========== SECTION 8: FONCTION PRINCIPALE ==========
+
+def main():
+    """Fonction principale avec interface moderne et navigation intuitive"""
     
     # Initialisation
     initialize_session_state()
     load_custom_css()
-    
-    # FORCER l'initialisation Azure AU DÉBUT
     init_azure_managers()
     
-    # Titre principal
-    st.markdown("""
-    <div class='main-title'>
-        <h1>⚖️ Assistant Pénal des Affaires IA</h1>
-        <p>Intelligence artificielle au service du droit pénal économique</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Navigation principale
+    show_modern_navigation()
     
+    # Layout avec sidebar
+    show_modern_sidebar()
+    
+    # Contenu principal
+    if st.session_state.get('current_view') == 'accueil' and not st.session_state.get('current_module'):
+        show_home_page()
+    else:
+        show_module_content()
+    
+    # Footer minimal
     st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.caption(f"© 2024 Assistant Juridique IA v{app_config.version} - {datetime.now().strftime('%H:%M')}")
     
-    # Barre latérale avec statut Azure et filtres
-    with st.sidebar:
-        # État du système Azure
-        st.header("📊 État du système")
-        show_azure_status_detailed()
-        
-        # Métriques
-        st.markdown("---")
-        nb_docs = len(st.session_state.get('azure_documents', {}))
-        nb_pieces = len(st.session_state.get('pieces_selectionnees', {}))
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Documents", nb_docs)
-        with col2:
-            st.metric("Pièces", nb_pieces)
-        
-        # Boutons utilitaires
-        st.markdown("---")
-        if st.button("🔄 Réinitialiser Azure", key="reinit_azure"):
-            reinit_azure()
-        
-        if st.button("⚙️ Configuration", key="show_config"):
-            st.session_state.show_config_modal = True
-        
-        # Filtres de recherche
-        st.markdown("---")
-        st.header("🔧 Filtres de recherche")
-        
-        # Filtre par type de document
-        doc_type_filter = st.selectbox(
-            "Type de document",
-            ["Tous", "CONCLUSIONS", "PLAINTE", "ASSIGNATION", "COURRIER", "EXPERTISE"],
-            index=0
-        )
-        
-        # Filtre par date
-        date_range = st.date_input(
-            "Période",
-            value=[],
-            key="date_range"
-        )
-        
-        # Filtre par partie
-        partie_filter = st.text_input(
-            "Nom de partie",
-            placeholder="Ex: VINCI, SOGEPROM..."
-        )
-        
-        # Filtre par infraction
-        infraction_filter = st.multiselect(
-            "Infractions",
-            ["Abus de biens sociaux", "Corruption", "Escroquerie", "Abus de confiance", "Blanchiment"]
-        )
-        
-        # Aide
-        with st.expander("📚 Aide à la recherche"):
-            st.markdown("""
-            **Conseils de recherche:**
-            
-            🔹 **Référence dossier** : Utilisez @ suivi du code  
-               Ex: `@VINCI2024`
-            
-            🔹 **Recherche par partie** : Nom contre Nom  
-               Ex: `VINCI contre PERINET`
-            
-            🔹 **Type de document** : Ajoutez le type  
-               Ex: `conclusions @VINCI2024`
-            
-            🔹 **Infractions** : Mentionnez l'infraction  
-               Ex: `abus de biens sociaux SOGEPROM`
-            
-            🔹 **Recherche combinée** :  
-               Ex: `@VINCI2024 conclusions corruption`
-            """)
-    
-    # Zone de recherche principale
-    st.markdown("<div class='search-container'>", unsafe_allow_html=True)
-    
-    # Créer un conteneur pour la barre de recherche
-    search_container = st.container()
-    
-    with search_container:
-        # Utilisation de form pour permettre la soumission avec Entrée
-        with st.form(key="search_form", clear_on_submit=False):
-            col1, col2 = st.columns([5, 1])
+    # Mode développeur (caché par défaut)
+    if st.checkbox("🔧 Mode développeur", key="dev_mode", value=False):
+        with st.expander("Informations système"):
+            col1, col2 = st.columns(2)
             
             with col1:
-                # Champ de recherche avec placeholder informatif
-                search_query = st.text_input(
-                    "Rechercher",
-                    placeholder="Tapez votre recherche... (Ex: @VINCI2024 conclusions, abus de biens sociaux, etc.)",
-                    label_visibility="hidden",
-                    key="search_input"
-                )
+                st.write("**Modules disponibles:**")
+                available = sum(1 for v in modules_disponibles.values() if v)
+                st.metric("Modules actifs", f"{available}/{len(modules_disponibles)}")
+                
+                # Liste détaillée
+                for module, status in sorted(modules_disponibles.items()):
+                    st.write(f"{'✅' if status else '❌'} {module}")
             
             with col2:
-                # Bouton de recherche
-                search_button = st.form_submit_button(
-                    "🔍 Rechercher",
-                    use_container_width=True,
-                    type="primary"
-                )
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Afficher les suggestions (hors du form)
-    if 'search_query' not in st.session_state:
-        st.session_state.search_query = ""
-    
-    # Mettre à jour la requête si elle a changé
-    if search_query and search_query != st.session_state.search_query:
-        st.session_state.search_query = search_query
-        show_search_suggestions(search_query)
-    
-    # Construire les filtres
-    filters = {}
-    if doc_type_filter != "Tous":
-        filters['document_type'] = doc_type_filter
-    if partie_filter:
-        filters['partie'] = partie_filter
-    if infraction_filter:
-        filters['infractions'] = infraction_filter
-    if len(date_range) == 2:
-        filters['date_range'] = date_range
-    
-    # Effectuer la recherche si le bouton est cliqué ou Entrée est pressée
-    if search_button and search_query:
-        # Stocker la requête dans session state
-        st.session_state.last_search = search_query
-        st.session_state.search_results = None
-        
-        # Analyser la requête pour extraire la référence @
-        ref_match = re.search(r'@(\w+)', search_query)
-        if ref_match:
-            st.info(f"🎯 Recherche dans le dossier : **{ref_match.group(1)}**")
-        
-        # Effectuer la recherche
-        try:
-            results = asyncio.run(perform_search(search_query, filters))
-            st.session_state.search_results = results
-        except Exception as e:
-            st.error(f"❌ Erreur lors de la recherche: {str(e)}")
-            with st.expander("Détails de l'erreur"):
-                st.code(traceback.format_exc())
-    
-    # Afficher les résultats
-    if 'search_results' in st.session_state and st.session_state.search_results:
-        results = st.session_state.search_results
-        
-        # Statistiques de recherche
-        st.markdown("---")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Documents trouvés", results.total_count)
-        with col2:
-            st.metric("Documents affichés", len(results.documents))
-        with col3:
-            if 'last_search' in st.session_state:
-                st.metric("Dernière recherche", st.session_state.last_search[:20] + "...")
-        
-        # Afficher les suggestions si disponibles
-        if hasattr(results, 'suggestions') and results.suggestions:
-            display_search_suggestions(results.suggestions)
-        
-        # Afficher les facettes si disponibles
-        if hasattr(results, 'facets') and results.facets:
-            with st.expander("🔧 Affiner les résultats", expanded=False):
-                display_search_facets(results.facets)
-        
-        # Afficher les résultats
-        st.markdown("## 📊 Résultats de recherche")
-        
-        if results.documents:
-            # Filtrer selon les facettes actives si nécessaire
-            filtered_docs = results.documents
-            
-            # Appliquer les filtres de score si activés
-            if st.session_state.get('filter_high_score'):
-                filtered_docs = [d for d in filtered_docs if d.metadata.get('score', 0) >= 20]
-            elif st.session_state.get('filter_medium_score'):
-                filtered_docs = [d for d in filtered_docs if 10 <= d.metadata.get('score', 0) < 20]
-            elif st.session_state.get('filter_low_score'):
-                filtered_docs = [d for d in filtered_docs if d.metadata.get('score', 0) < 10]
-            
-            # Afficher les documents filtrés
-            for idx, doc in enumerate(filtered_docs, 1):
-                display_result_enhanced(doc, idx)
-                if idx < len(filtered_docs):
-                    st.markdown("---")
-        else:
-            st.warning("Aucun document trouvé pour cette recherche.")
-        
-        # Afficher les statistiques de recherche
-        if st.button("📊 Voir les statistiques", key="show_stats"):
-            stats = asyncio.run(get_search_service().get_search_statistics())
-            with st.expander("Statistiques de recherche", expanded=True):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Recherches totales", stats['total_searches'])
-                    st.metric("Résultats moyens", f"{stats['average_results']:.1f}")
-                with col2:
-                    st.metric("Taille du cache", stats['cache_size'])
-                    if stats['popular_keywords']:
-                        st.write("**Mots-clés populaires:**")
-                        for keyword, count in list(stats['popular_keywords'].items())[:5]:
-                            st.write(f"• {keyword}: {count} fois")
-    
-    # Modal de document si nécessaire
-    if st.session_state.get('show_document_modal'):
-        show_document_modal()
-    
-    # Modal de configuration si demandé
-    if st.session_state.get('show_config_modal', False):
-        show_configuration_modal()
-    
-    # Footer avec informations
-    st.markdown("---")
-    st.caption(f"Dernière mise à jour : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+                st.write("**État système:**")
+                st.write(f"- Azure Blob: {'✅' if st.session_state.get('azure_blob_manager') else '❌'}")
+                st.write(f"- Azure Search: {'✅' if st.session_state.get('azure_search_manager') else '❌'}")
+                st.write(f"- Multi-IA: {'✅' if st.session_state.get('multi_ia_active') else '❌'}")
+                st.write(f"- Export Manager: {'✅' if modules_disponibles.get('export_manager') else '❌'}")
+                st.write(f"- Recherche IA unifiée: {'✅' if modules_disponibles.get('recherche_analyse_unifiee') else '❌'}")
+                st.write(f"- Jurisprudence: {'✅' if modules_disponibles.get('jurisprudence') else '❌'}")
+                st.write(f"- Préparation client: {'✅' if modules_disponibles.get('preparation_client') else '❌'}")
+                st.write(f"- Rédaction unifiée: {'✅' if modules_disponibles.get('redaction_unified') else '❌'}")
+                st.write(f"- Configurations: {'✅' if DOCUMENT_CONFIG_AVAILABLE else '❌'}")
+                st.write(f"- Vue actuelle: {st.session_state.get('current_view', 'N/A')}")
+                st.write(f"- Module actuel: {st.session_state.get('current_module', 'N/A')}")
+                
+                # Notes d'optimisation
+                st.write("\n**Notes d'optimisation:**")
+                st.success("""
+                ✅ recherche_analyse_unifiee remplace recherche + analyse_ia
+                ✅ redaction_unified remplace generation_juridique  
+                ✅ import_export unifie import et export
+                ✅ pieces_manager centralise la gestion des pièces
+                ✅ jurisprudence avec API Judilibre/Légifrance
+                ✅ preparation_client avec plans de séances détaillés
+                """)
 
 # Point d'entrée
 if __name__ == "__main__":
     try:
-        # Initialiser les états de session si nécessaire
-        if 'search_history' not in st.session_state:
-            st.session_state.search_history = []
-        
-        if 'azure_documents' not in st.session_state:
-            st.session_state.azure_documents = {}
-        
-        if 'imported_documents' not in st.session_state:
-            st.session_state.imported_documents = {}
-        
-        if 'pieces_selectionnees' not in st.session_state:
-            st.session_state.pieces_selectionnees = {}
-        
-        # Lancer l'application
         main()
     except Exception as e:
-        st.error("❌ ERREUR FATALE")
+        st.error("❌ Erreur critique")
         st.code(str(e))
-        st.code(traceback.format_exc())
-        print("ERREUR FATALE:")
-        print(traceback.format_exc())
+        with st.expander("Détails complets"):
+            st.code(traceback.format_exc())
