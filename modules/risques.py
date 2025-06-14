@@ -22,17 +22,8 @@ import streamlit as st
 
 # Import du manager multi-LLM existant dans le projet
 sys.path.append(str(Path(__file__).parent.parent))
-try:
-    from modules.multi_llm_manager import LLMModel, MultiLLMManager
-    from utils import clean_key, format_legal_date, truncate_text
-except ImportError:
-    # Fallback si les imports échouent
-    def truncate_text(text, max_length=100):
-        return text[:max_length] + "..." if len(text) > max_length else text
-    def clean_key(text):
-        return text.replace(" ", "_").lower()
-    def format_legal_date(date):
-        return date.strftime("%d/%m/%Y") if date else ""
+from modules.multi_llm_manager import LLMModel, MultiLLMManager
+from utils import clean_key, format_legal_date, truncate_text
 
 # Énumération des niveaux de risque pénal
 class RiskLevelPenal(Enum):

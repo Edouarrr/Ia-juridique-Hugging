@@ -38,22 +38,8 @@ except ImportError:
     logger.warning("plotly non disponible - les graphiques seront désactivés")
 
 # Gestion des imports de modules locaux
-try:
-    sys.path.append(str(Path(__file__).parent.parent))
-    from utils import clean_key, format_legal_date, truncate_text
-    UTILS_AVAILABLE = True
-except ImportError:
-    UTILS_AVAILABLE = False
-    logger.warning("utils non disponible - utilisation de fonctions intégrées")
-    
-    def truncate_text(text: str, max_length: int = 100) -> str:
-        return text[:max_length] + "..." if len(text) > max_length else text
-    
-    def clean_key(key: str) -> str:
-        return re.sub(r'[^a-zA-Z0-9_]', '_', str(key))
-    
-    def format_legal_date(date_str: str) -> str:
-        return date_str
+sys.path.append(str(Path(__file__).parent.parent))
+from utils import clean_key, format_legal_date, truncate_text
 
 # ============= CONFIGURATION DES MODÈLES IA =============
 
