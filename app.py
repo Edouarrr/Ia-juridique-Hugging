@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
+from services.universal_search_service import UniversalSearchService
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -441,14 +442,19 @@ def show_dashboard():
     st.markdown('<h1 class="main-header">⚖️ IA Juridique - Droit Pénal des Affaires</h1>', unsafe_allow_html=True)
 
     # Barre de recherche
-    query = st.text_input(
-        "Recherche",
+    search_query = st.text_input(
+        "🔍 Recherche de dossier ou commande",
         placeholder="Ex: @DOSSIER123",
         key="dashboard_search",
     )
-    if query.startswith("@") and len(query) > 1:
-        dossier = query[1:].split()[0]
-        st.info(f"Recherche dossier : {dossier}")
+    if search_query.startswith("@"):
+        st.info(f"Recherche dossier : {search_query[1:]}")
+
+    search_service = UniversalSearchService()
+
+    if search_query and not search_query.startswith("@") and not search_query.startswith("#"):
+        results = search_service.search(search_query)
+        st.table(results)
 
     # Métriques principales
     col1, col2, col3, col4 = st.columns(4)
