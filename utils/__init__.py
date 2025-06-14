@@ -57,15 +57,36 @@ from .file_utils import (
     EmailConfig,
 )
 # Formatters
-from .formatters import format_address, format_case_number, format_currency
+from .formatters import (
+    add_page_numbers,
+    apply_legal_numbering,
+    create_document_footer,
+    create_document_header,
+    create_formatted_docx,
+    create_letterhead_from_template,
+    create_table_of_contents,
+    format_annex_reference,
+    format_legal_list,
+    format_party_designation,
+    format_signature_block,
+    split_into_pages,
+    format_address,
+    format_case_number,
+    format_currency,
+)
 from .formatters import \
     format_date as format_date_formatter  # Éviter le conflit avec date_time
 from .formatters import format_date_long, format_datetime
 from .formatters import \
     format_duration as format_duration_formatter  # Éviter le conflit
-from .formatters import (format_file_path, format_legal_reference,
-                         format_list_items, format_name, format_percentage,
-                         format_phone)
+from .formatters import (
+    format_file_path,
+    format_legal_reference,
+    format_list_items,
+    format_name,
+    format_percentage,
+    format_phone,
+)
 # Helper functions from helpers.py (si ce fichier existe)
 from .helpers import (calculate_document_hash, clean_key, create_error_report,
                       estimate_reading_time, extract_date_from_filename,
@@ -116,12 +137,30 @@ except Exception:
     create_breadcrumb_styled = create_card = create_progress_bar = lambda *a, **k: None
     create_search_result = create_timeline_item = load_custom_css = lambda *a, **k: None
 # Text Processing
-from .text_processing import (clean_text, count_words, extract_keywords,
-                              extract_paragraphs, extract_sentences,
-                              fix_punctuation, highlight_text,
-                              normalize_quotes, normalize_whitespace,
-                              process_text, remove_html_tags,
-                              split_into_chunks)
+from .text_processing import (
+    calculate_read_time,
+    calculate_text_similarity,
+    chunk_text,
+    clean_legal_text,
+    extract_entities,
+    extract_key_phrases,
+    extract_monetary_amounts,
+    extract_section,
+    format_legal_citations,
+    generate_summary,
+    clean_text,
+    count_words,
+    extract_keywords,
+    extract_paragraphs,
+    extract_sentences,
+    fix_punctuation,
+    highlight_text,
+    normalize_quotes,
+    normalize_whitespace,
+    process_text,
+    remove_html_tags,
+    split_into_chunks,
+)
 # Validators
 from .validators import (validate_amount, validate_case_number,
                          validate_date_range, validate_document_reference,
@@ -162,29 +201,85 @@ __all__ = [
     'normalize_whitespace',
     'truncate_text',
     'clean_key',
+    'extract_section',
+    'chunk_text',
+    'calculate_text_similarity',
+    'highlight_text',
+    'extract_key_phrases',
+    'generate_summary',
+    'calculate_read_time',
+    'extract_entities',
+    'extract_monetary_amounts',
+    'clean_legal_text',
+    'format_legal_citations',
     
     # Date Time
     'format_date',
     'format_legal_date',
     'format_date_juridique',
     'format_duration',
+    'extract_dates',
+    'parse_date',
+    'is_business_day',
+    'get_next_business_day',
+    'calculate_business_days',
+    'add_business_days',
+    'format_relative_date',
     
     # Document Utils
     'generate_document_id',
     'merge_documents',
     'split_document',
+    'extract_document_metadata',
+    'create_document_index',
+    'compare_documents',
+    'create_document_summary',
+    'get_document_statistics',
+    'create_breadcrumb',
+
+    # Formatters
+    'create_letterhead_from_template',
+    'create_formatted_docx',
+    'format_party_designation',
+    'apply_legal_numbering',
+    'create_document_header',
+    'create_table_of_contents',
+    'split_into_pages',
+    'add_page_numbers',
+    'format_legal_list',
+    'format_signature_block',
+    'format_annex_reference',
+    'create_document_footer',
     
     # Legal Utils
     'extract_legal_references',
     'analyze_query_intent',
     'format_legal_amount',
+    'extract_query_entities',
+    'extract_intent_details',
+    'extract_legal_terms',
+    'validate_reference',
+    'categorize_legal_document',
+    'extract_parties',
+    'highlight_legal_terms',
     
     # File Utils
     'sanitize_filename',
     'clean_filename',
     'format_file_size',
+    'get_file_icon',
+    'get_file_extension',
+    'is_valid_filename',
+    'get_mime_type',
+    'is_text_file',
+    'is_document_file',
+    'is_image_file',
+    'create_unique_filename',
+    'organize_files_by_type',
     'is_valid_email',
     'validate_uploaded_file',
+    'get_file_info',
+    'split_path',
     'EmailConfig',
     'ATTACHMENT_MIME_TYPES',
     
@@ -192,19 +287,52 @@ __all__ = [
     'CacheJuridique',
     'get_cache',
     'cache_result',
+    'cache_streamlit',
+    'CacheActesJuridiques',
+    'show_cache_management',
     
     # Styles
     'load_custom_css',
+    'apply_button_style',
+    'create_card',
+    'create_timeline_item',
+    'create_search_result',
+    'create_progress_bar',
+    'create_alert',
     
     # Validators
     'validate_siren',
     'validate_siret',
     'validate_phone_number',
+    'validate_iban',
+    'validate_postal_code',
+    'validate_legal_form',
+    'validate_case_number',
+    'validate_infraction_code',
+    'validate_lawyer_bar_number',
+    'validate_document_reference',
+    'validate_date_range',
+    'validate_amount',
+    'validate_percentage',
+    'validate_juridiction_name',
+    'validate_fields',
     
     # Constants
     'DOCUMENT_TYPES',
+    'PHASES_PROCEDURE',
     'JURIDICTIONS',
+    'INFRACTIONS_COURANTES',
+    'FORMES_JURIDIQUES',
+    'QUALITES_PARTIES',
+    'BARREAUX',
+    'CURRENCIES',
+    'LIMITS',
+    'ACCEPTED_FILE_TYPES',
+    'ERROR_MESSAGES',
+    'REGEX_PATTERNS',
     'ICONS',
+    'COLORS',
+    'DEPARTEMENTS',
     'LEGAL_SUGGESTIONS',
 
     # Version
