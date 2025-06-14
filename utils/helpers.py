@@ -1,4 +1,5 @@
-"""Fonctions utilitaires pour l'application IA Juridique"""
+# utils/helpers.py
+"""Fonctions utilitaires générales pour l'application IA Juridique"""
 
 import re
 import unicodedata
@@ -62,22 +63,6 @@ def generate_unique_id(prefix: str = "") -> str:
     import uuid
     unique_id = str(uuid.uuid4())[:8]
     return f"{prefix}_{unique_id}" if prefix else unique_id
-
-def format_file_size(size_bytes: int) -> str:
-    """
-    Formate une taille de fichier en unité lisible
-    
-    Args:
-        size_bytes: Taille en octets
-        
-    Returns:
-        Taille formatée (ex: "1.5 MB")
-    """
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
 
 def extract_date_from_filename(filename: str) -> Optional[datetime]:
     """
@@ -152,37 +137,6 @@ def calculate_document_hash(content: bytes) -> str:
     """
     return hashlib.sha256(content).hexdigest()
 
-def is_valid_email(email: str) -> bool:
-    """
-    Vérifie si une adresse email est valide
-    
-    Args:
-        email: Adresse email à vérifier
-        
-    Returns:
-        True si l'email est valide
-    """
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return bool(re.match(pattern, email))
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Nettoie un nom de fichier pour le rendre sûr
-    
-    Args:
-        filename: Nom de fichier à nettoyer
-        
-    Returns:
-        Nom de fichier nettoyé
-    """
-    # Remplacer les caractères dangereux
-    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-    # Limiter la longueur
-    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
-    if len(name) > 200:
-        name = name[:200]
-    return f"{name}.{ext}" if ext else name
-
 def parse_search_query(query: str) -> Dict[str, Any]:
     """
     Parse une requête de recherche avancée
@@ -230,22 +184,6 @@ def parse_search_query(query: str) -> Dict[str, Any]:
     result['terms'].extend([t for t in remaining_terms if t not in ['ET', 'OU', 'SAUF']])
     
     return result
-
-def format_legal_date(date: datetime) -> str:
-    """
-    Formate une date au format juridique français
-    
-    Args:
-        date: Date à formater
-        
-    Returns:
-        Date formatée (ex: "15 janvier 2024")
-    """
-    months = [
-        'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-        'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
-    ]
-    return f"{date.day} {months[date.month - 1]} {date.year}"
 
 def estimate_reading_time(text: str, words_per_minute: int = 200) -> int:
     """
