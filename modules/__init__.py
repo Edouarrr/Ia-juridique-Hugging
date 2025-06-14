@@ -7,7 +7,9 @@ import logging
 import sys
 from typing import Any, Dict
 
-logger = logging.getLogger(__name__)
+from utils.logging import decorate_public_functions, setup_logger
+
+logger = setup_logger(__name__)
 
 # Définir __all__ pour les exports
 __all__ = [
@@ -39,6 +41,7 @@ for module_name, class_name in AVAILABLE_MODULES.items():
     try:
         # Utiliser importlib pour un import robuste
         module = importlib.import_module(f".{module_name}", package=__package__)
+        decorate_public_functions(module)
         
         # Extraire la classe et l'ajouter au namespace
         if hasattr(module, class_name):
@@ -131,5 +134,7 @@ def test_modules():
     return status
 
 # Test automatique si exécuté directement
+decorate_public_functions(sys.modules[__name__])
+
 if __name__ == "__main__":
     test_modules()
