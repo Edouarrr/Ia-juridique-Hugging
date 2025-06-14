@@ -47,6 +47,9 @@ Pour utiliser toutes les fonctionnalités, configurez vos clés API dans les Set
 - `AZURE_OPENAI_KEY`
 - `AZURE_OPENAI_DEPLOYMENT`
 - `AZURE_STORAGE_CONNECTION_STRING`
+- `AZURE_SEARCH_ENDPOINT`
+- `AZURE_SEARCH_KEY`
+- `AZURE_SEARCH_INDEX` *(optionnel, par défaut `juridique-index`)*
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
 - `GOOGLE_API_KEY`
@@ -58,6 +61,19 @@ Pour utiliser toutes les fonctionnalités, configurez vos clés API dans les Set
 2. **Analyser avec l'IA** : Tab "IA Multi-LLM" → Sélectionner LLMs → Poser votre question
 3. **Explorer Azure Blob** : Tab "Azure Blob" → Naviguer → Extraire → Analyser
 4. **Adapter des plaintes** : Tab "Rédaction" → Charger plainte → Ajouter victimes → Générer
+5. **Rechercher** : saisissez une requête dans la barre de recherche. Utilisez `@dossier` pour cibler un dossier précis et choisissez plusieurs IA pour comparer les réponses.
+6. **Uploader un dossier local** : depuis l'onglet "Documents", cliquez sur "Importer un dossier" puis sélectionnez votre dossier. Tous les fichiers seront analysés et indexés.
+
+Exemple rapide en code :
+
+```python
+from pathlib import Path
+from managers.document_manager import DocumentManager
+
+dm = DocumentManager()
+files = [open(f, "rb") for f in Path("mon_dossier").iterdir()]
+dm.batch_import(files)
+```
 
 ## 🛡️ Sécurité et Confidentialité
 

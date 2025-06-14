@@ -193,6 +193,7 @@ PAPPERS_API_KEY=xxx             # Enrichissement sociétés
 AZURE_STORAGE_CONNECTION_STRING=xxx
 AZURE_SEARCH_ENDPOINT=xxx
 AZURE_SEARCH_KEY=xxx
+AZURE_SEARCH_INDEX=juridique-index
 ```
 
 ### Dépendances principales
@@ -218,6 +219,8 @@ Tapez directement vos commandes :
 - La détection est automatique
 - Les parties et infractions sont extraites
 - Le bon type d'acte est identifié
+- Utilisez `@nom_dossier` pour limiter la recherche à un dossier
+- Sélectionnez plusieurs IA pour comparer les réponses
 
 ### 2. Via le bouton dédié
 
