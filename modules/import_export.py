@@ -17,55 +17,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import streamlit as st
+from config.ai_models import AI_MODELS
 
 # Imports des dépendances
 from modules.dataclasses import Document
 from modules.export_manager import ExportConfig, export_manager
 from utils.helpers import clean_key, format_legal_date, truncate_text
 
-# Configuration des modèles IA disponibles
-AI_MODELS = {
-    "gpt-4-turbo": {
-        "name": "GPT-4 Turbo",
-        "icon": "🧠",
-        "description": "Modèle le plus performant pour l'analyse juridique complexe",
-        "strengths": ["Analyse approfondie", "Contexte juridique", "Synthèse"],
-        "speed": "⚡⚡",
-        "accuracy": "⭐⭐⭐⭐⭐"
-    },
-    "claude-3-opus": {
-        "name": "Claude 3 Opus",
-        "icon": "🎯",
-        "description": "Excellence en raisonnement et analyse structurée",
-        "strengths": ["Logique juridique", "Structure", "Argumentation"],
-        "speed": "⚡⚡",
-        "accuracy": "⭐⭐⭐⭐⭐"
-    },
-    "gemini-pro": {
-        "name": "Gemini Pro",
-        "icon": "💎",
-        "description": "Polyvalent avec capacités multimodales",
-        "strengths": ["Documents mixtes", "Tableaux", "Images"],
-        "speed": "⚡⚡⚡",
-        "accuracy": "⭐⭐⭐⭐"
-    },
-    "llama-3-70b": {
-        "name": "Llama 3 70B",
-        "icon": "🦙",
-        "description": "Modèle open-source performant",
-        "strengths": ["Rapidité", "Fiabilité", "Coût réduit"],
-        "speed": "⚡⚡⚡⚡",
-        "accuracy": "⭐⭐⭐⭐"
-    },
-    "mistral-large": {
-        "name": "Mistral Large",
-        "icon": "🌊",
-        "description": "Optimisé pour le français et l'analyse juridique",
-        "strengths": ["Français natif", "Jurisprudence", "Efficacité"],
-        "speed": "⚡⚡⚡⚡",
-        "accuracy": "⭐⭐⭐⭐"
-    }
-}
+# Configuration des modèles IA importée depuis config.ai_models
 
 def run():
     """Fonction principale du module Import/Export avec IA"""

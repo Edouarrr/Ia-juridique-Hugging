@@ -15,6 +15,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from config.ai_models import AI_MODELS
 
 
 # Configuration du lazy loading
@@ -30,53 +31,7 @@ def lazy_load_components():
 
 # ========================= CONFIGURATION IA =========================
 
-AI_MODELS = {
-    'gpt4': {
-        'name': 'GPT-4 Turbo',
-        'provider': 'OpenAI',
-        'icon': '🧠',
-        'strengths': ['Raisonnement juridique complexe', 'Argumentation détaillée'],
-        'speed': 'Modéré',
-        'quality': 5,
-        'cost': 3
-    },
-    'claude3': {
-        'name': 'Claude 3 Opus',
-        'provider': 'Anthropic',
-        'icon': '🎓',
-        'strengths': ['Nuance et contexte', 'Conformité éthique'],
-        'speed': 'Rapide',
-        'quality': 5,
-        'cost': 3
-    },
-    'mistral': {
-        'name': 'Mistral Large',
-        'provider': 'Mistral AI',
-        'icon': '⚡',
-        'strengths': ['Vitesse', 'Efficacité'],
-        'speed': 'Très rapide',
-        'quality': 4,
-        'cost': 2
-    },
-    'gemini': {
-        'name': 'Gemini Pro',
-        'provider': 'Google',
-        'icon': '✨',
-        'strengths': ['Recherche intégrée', 'Multimodal'],
-        'speed': 'Rapide',
-        'quality': 4,
-        'cost': 2
-    },
-    'llama': {
-        'name': 'LLaMA 3',
-        'provider': 'Meta',
-        'icon': '🦙',
-        'strengths': ['Open source', 'Personnalisable'],
-        'speed': 'Rapide',
-        'quality': 3,
-        'cost': 1
-    }
-}
+# Configuration des modèles IA importée depuis config.ai_models
 
 # ========================= ANALYSEUR DE REQUÊTES JURIDIQUES =========================
 
