@@ -13,7 +13,7 @@ import re
 
 # Configuration de la page
 st.set_page_config(
-    page_title="Nexora Law IA - Assistant Juridique",
+    page_title="STERU BARATTE AARPI - Assistant Juridique",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -45,8 +45,9 @@ if 'initialized' not in st.session_state:
 # CSS professionnel avec dégradés de bleu - CORRIGÉ
 st.markdown("""
 <style>
-    /* Variables de couleurs */
+    /* Variables de couleurs - Bleu marine */
     :root {
+        --navy-blue: #0a1628;
         --primary-blue: #1e3a8a;
         --secondary-blue: #3b82f6;
         --light-blue: #dbeafe;
@@ -62,151 +63,209 @@ st.markdown("""
     
     /* Barre latérale stylisée */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+        background: linear-gradient(180deg, #1e3a8a 0%, #0a1628 100%);
     }
     
-    /* Conteneur principal */
+    /* Texte blanc dans la sidebar */
+    section[data-testid="stSidebar"] .stMarkdown {
+        color: white !important;
+    }
+    
+    section[data-testid="stSidebar"] label {
+        color: white !important;
+    }
+    
+    /* Conteneur principal avec gradient bleu marine */
     .search-container {
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 50%, #3b82f6 100%);
         border-radius: 20px;
         padding: 3rem;
         margin-bottom: 2rem;
-        box-shadow: 0 4px 20px rgba(30, 58, 138, 0.1);
+        box-shadow: 0 8px 32px rgba(10, 22, 40, 0.3);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .search-container::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+        animation: pulse-bg 10s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-bg {
+        0%, 100% { transform: scale(1) rotate(0deg); }
+        50% { transform: scale(1.1) rotate(180deg); }
     }
     
     /* Titre principal */
     .main-title {
-        font-size: 3rem;
+        font-size: 3.5rem;
         font-weight: 700;
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: white;
         text-align: center;
         margin-bottom: 1rem;
+        text-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        letter-spacing: 2px;
+        position: relative;
+        z-index: 1;
     }
     
     .subtitle {
-        font-size: 1.3rem;
-        color: var(--text-secondary);
+        font-size: 1.4rem;
+        color: rgba(255, 255, 255, 0.9);
         text-align: center;
         margin-bottom: 2rem;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        position: relative;
+        z-index: 1;
     }
     
     /* Zone de recherche principale */
     .stTextArea textarea {
         min-height: 120px !important;
         font-size: 16px !important;
-        border: 2px solid #e0f2fe !important;
+        border: 2px solid rgba(255, 255, 255, 0.3) !important;
         border-radius: 12px !important;
         padding: 1rem !important;
-        background: white !important;
+        background: rgba(255, 255, 255, 0.95) !important;
         transition: all 0.3s ease !important;
         line-height: 1.6 !important;
+        box-shadow: 0 4px 16px rgba(10, 22, 40, 0.1) !important;
     }
     
     .stTextArea textarea:focus {
-        border-color: var(--secondary-blue) !important;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3), 0 4px 16px rgba(10, 22, 40, 0.2) !important;
+        background: white !important;
     }
     
     /* Compteur de documents */
     .doc-counter {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 249, 255, 0.95) 100%);
+        border-radius: 16px;
+        padding: 2rem;
         margin: 2rem 0;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 2px 8px rgba(30, 58, 138, 0.05);
+        border: 1px solid rgba(30, 58, 138, 0.1);
+        box-shadow: 0 4px 20px rgba(10, 22, 40, 0.1);
+        backdrop-filter: blur(10px);
     }
     
     .doc-count-item {
         text-align: center;
-        padding: 1rem;
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-        border-radius: 8px;
-        border: 1px solid #dbeafe;
+        padding: 1.5rem;
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        border-radius: 12px;
+        border: 1px solid rgba(59, 130, 246, 0.3);
         cursor: pointer;
         transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(10, 22, 40, 0.2);
     }
     
     .doc-count-item:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.1);
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(10, 22, 40, 0.3);
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
     }
     
     .doc-count-number {
-        font-size: 2rem;
+        font-size: 2.5rem;
         font-weight: 700;
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: white;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
     
     .doc-count-label {
-        color: var(--text-secondary);
-        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 0.95rem;
         margin-top: 0.5rem;
+        font-weight: 500;
     }
     
     /* Badges de mode */
     .mode-badge {
         display: inline-block;
         padding: 0.5rem 1rem;
-        background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
-        border: 1px solid #bfdbfe;
+        background: linear-gradient(135deg, rgba(30, 58, 138, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+        border: 1px solid #1e3a8a;
         border-radius: 20px;
-        color: var(--primary-blue);
-        font-weight: 500;
+        color: #0a1628;
+        font-weight: 600;
         margin: 0.25rem;
     }
     
     .mode-badge.active {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
         color: white;
-        border-color: var(--primary-blue);
+        border-color: #0a1628;
+        box-shadow: 0 2px 8px rgba(10, 22, 40, 0.3);
     }
     
     /* Cartes de modules */
     .module-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        border: 1px solid var(--border-color);
+        background: linear-gradient(135deg, white 0%, #f0f9ff 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        border: 1px solid rgba(30, 58, 138, 0.2);
         transition: all 0.3s ease;
         cursor: pointer;
         height: 100%;
         position: relative;
         overflow: hidden;
+        box-shadow: 0 4px 16px rgba(10, 22, 40, 0.1);
+    }
+    
+    .module-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #0a1628 0%, #1e3a8a 50%, #3b82f6 100%);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+    }
+    
+    .module-card:hover::before {
+        transform: translateX(0);
     }
     
     .module-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 24px rgba(30, 58, 138, 0.12);
-        border-color: var(--secondary-blue);
+        transform: translateY(-6px);
+        box-shadow: 0 12px 32px rgba(10, 22, 40, 0.2);
+        border-color: #1e3a8a;
+        background: linear-gradient(135deg, white 0%, #e0f2fe 100%);
     }
     
     .module-card.selected {
-        border: 2px solid var(--secondary-blue);
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%);
+        border: 2px solid #0a1628;
+        background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 100%);
+        box-shadow: 0 8px 24px rgba(10, 22, 40, 0.15);
     }
     
     .module-icon {
-        font-size: 2.5rem;
+        font-size: 3rem;
         margin-bottom: 1rem;
         display: block;
+        filter: drop-shadow(0 2px 4px rgba(10, 22, 40, 0.2));
     }
     
     .module-title {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: var(--text-primary);
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #0a1628;
         margin-bottom: 0.5rem;
     }
     
     .module-description {
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-        line-height: 1.5;
+        color: #475569;
+        font-size: 0.95rem;
+        line-height: 1.6;
         margin-bottom: 1rem;
     }
     
@@ -217,7 +276,7 @@ st.markdown("""
     }
     
     .module-features li {
-        color: var(--text-secondary);
+        color: #64748b;
         font-size: 0.85rem;
         padding: 0.25rem 0;
         padding-left: 1.5rem;
@@ -228,7 +287,8 @@ st.markdown("""
         content: "→";
         position: absolute;
         left: 0;
-        color: var(--secondary-blue);
+        color: #1e3a8a;
+        font-weight: bold;
     }
     
     /* Indicateurs de statut */
@@ -241,16 +301,16 @@ st.markdown("""
     }
     
     .status-active {
-        background: linear-gradient(135deg, #3b82f6 0%, #1e3a8a 100%);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.2);
     }
     
     .status-ready {
-        background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%);
+        background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
     }
     
     .status-processing {
-        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        background: linear-gradient(135deg, #93c5fd 0%, #dbeafe 100%);
         animation: pulse 1.5s ease-in-out infinite;
     }
     
@@ -262,9 +322,9 @@ st.markdown("""
     
     /* Historique de recherche */
     .search-history-item {
-        background: white;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
+        background: linear-gradient(135deg, white 0%, #f0f9ff 100%);
+        border: 1px solid rgba(30, 58, 138, 0.2);
+        border-radius: 10px;
         padding: 1rem;
         margin-bottom: 0.5rem;
         cursor: pointer;
@@ -272,58 +332,45 @@ st.markdown("""
     }
     
     .search-history-item:hover {
-        background: var(--bg-blue);
-        border-color: var(--secondary-blue);
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border-color: #1e3a8a;
+        transform: translateX(4px);
     }
     
     /* Instructions de recherche */
     .search-instructions {
-        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-        border: 1px solid #dbeafe;
+        background: linear-gradient(135deg, rgba(240, 249, 255, 0.9) 0%, rgba(224, 242, 254, 0.9) 100%);
+        border: 1px solid rgba(30, 58, 138, 0.2);
         border-radius: 12px;
         padding: 1.5rem;
         margin-top: 1rem;
+        backdrop-filter: blur(10px);
     }
     
-    .instruction-item {
-        display: flex;
-        align-items: center;
-        margin-bottom: 0.75rem;
-        color: var(--text-secondary);
-    }
-    
-    .instruction-code {
-        background: white;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        font-family: monospace;
-        color: var(--primary-blue);
-        border: 1px solid #dbeafe;
-        margin: 0 0.5rem;
-    }
-    
-    /* Criticalité avec dégradés de bleu */
+    /* Criticalité avec dégradés de bleu marine */
     .criticality-high {
-        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
         color: white;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
         font-size: 0.85rem;
         display: inline-block;
+        font-weight: 600;
     }
     
     .criticality-medium {
-        background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         color: white;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
         font-size: 0.85rem;
         display: inline-block;
+        font-weight: 500;
     }
     
     .criticality-low {
-        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-        color: var(--primary-blue);
+        background: linear-gradient(135deg, #93c5fd 0%, #dbeafe 100%);
+        color: #0a1628;
         padding: 0.25rem 0.75rem;
         border-radius: 12px;
         font-size: 0.85rem;
@@ -336,52 +383,64 @@ st.markdown("""
         align-items: center;
         padding: 0.5rem 1rem;
         background: white;
-        border: 2px solid var(--border-color);
-        border-radius: 8px;
+        border: 2px solid rgba(30, 58, 138, 0.3);
+        border-radius: 10px;
         margin: 0.25rem;
         cursor: pointer;
         transition: all 0.2s ease;
     }
     
     .ai-model-badge.active {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
         color: white;
-        border-color: var(--primary-blue);
+        border-color: #0a1628;
+        box-shadow: 0 4px 12px rgba(10, 22, 40, 0.3);
     }
     
     .ai-model-badge:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(30, 58, 138, 0.1);
+        box-shadow: 0 4px 12px rgba(10, 22, 40, 0.2);
+        border-color: #1e3a8a;
     }
     
     /* Recherche guidée */
     .guided-search-container {
-        background: white;
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
+        background: linear-gradient(135deg, white 0%, #f0f9ff 100%);
+        border: 1px solid rgba(30, 58, 138, 0.2);
+        border-radius: 16px;
         padding: 2rem;
         margin-top: 1rem;
+        box-shadow: 0 4px 16px rgba(10, 22, 40, 0.1);
     }
     
-    /* Favoris */
-    .favorite-button {
-        position: absolute;
-        top: 1rem;
-        right: 1rem;
-        background: none;
+    /* Boutons personnalisés */
+    .stButton > button {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        color: white;
         border: none;
-        cursor: pointer;
-        font-size: 1.5rem;
-        color: var(--text-secondary);
-        transition: all 0.2s ease;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
     }
     
-    .favorite-button.active {
-        color: #f59e0b;
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(10, 22, 40, 0.4);
     }
     
-    .favorite-button:hover {
-        transform: scale(1.2);
+    /* Bouton primary */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #0a1628 0%, #1e3a8a 100%);
+        box-shadow: 0 4px 16px rgba(10, 22, 40, 0.4);
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(10, 22, 40, 0.5);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -594,7 +653,7 @@ async def multi_ia_search(query, models):
 
 # Barre latérale améliorée
 with st.sidebar:
-    st.markdown("## ⚖️ Nexora Law IA")
+    st.markdown("## ⚖️ STERU BARATTE AARPI")
     
     # Profil utilisateur
     with st.expander("👤 Profil", expanded=False):
@@ -750,8 +809,8 @@ if st.session_state.active_module:
         module.run()
 else:
     # Page d'accueil
-    st.markdown('<h1 class="main-title">Nexora Law IA</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Assistant juridique intelligent propulsé par l\'IA</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title">STERU BARATTE AARPI</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Cabinet d\'avocats - Assistant juridique intelligent</p>', unsafe_allow_html=True)
     
     # Conteneur de recherche principal
     st.markdown('<div class="search-container">', unsafe_allow_html=True)
@@ -1266,7 +1325,7 @@ else:
             - Alerte sur contradictions critiques
             - Rapport quotidien automatique
             
-            [Documentation complète →](https://docs.nexora-law.ai)
+            [Documentation complète →](https://docs.steru-baratte.fr)
             """)
 
 # Footer avec informations système
@@ -1275,7 +1334,7 @@ col1, col2, col3 = st.columns([1, 2, 1])
 
 with col1:
     # Version et statut
-    st.caption("v2.0.3 | Stable")
+    st.caption("v2.0.3 | Stable | STERU BARATTE AARPI")
 
 with col2:
     # Modèles actifs et performances
@@ -1295,10 +1354,10 @@ with col3:
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("💬 Support", use_container_width=True, key="footer_support"):
-            st.info("support@nexora-law.ai")
+            st.info("support@steru-baratte.fr")
     with col_b:
         if st.button("📖 Docs", use_container_width=True, key="footer_docs"):
-            st.info("docs.nexora-law.ai")
+            st.info("docs.steru-baratte.fr")
 
 # Script pour gérer l'appui sur Entrée
 st.markdown("""
