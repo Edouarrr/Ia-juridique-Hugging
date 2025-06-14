@@ -824,9 +824,13 @@ def fuse_ai_responses(responses: List[Dict], original_prompt: str) -> str:
         return responses[0]['content']
     
     # Analyser et extraire les meilleures parties
+    versions_text = chr(10).join([
+        f"VERSION {i+1} ({r['provider']}):\n{r['content']}\n" for i, r in enumerate(responses)
+    ])
+
     fusion_prompt = f"""Fusionne ces {len(responses)} versions de template en gardant le meilleur de chaque :
 
-{chr(10).join([f"VERSION {i+1} ({r['provider']}):\n{r['content']}\n" for i, r in enumerate(responses)])}
+{versions_text}
 
 INSTRUCTIONS DE FUSION :
 1. Garde la structure la plus complète et logique
@@ -1783,19 +1787,19 @@ def export_to_word(content: str) -> bytes:
     from docx import Document
 
     doc = Document()
-        
-        # Styles
-        for line in content.split('\n'):
-            if line.strip():
-                if line.isupper():
-                    doc.add_heading(line, level=1)
-                elif re.match(r'^[IVX]+\.', line):
-                    doc.add_heading(line, level=2)
-                else:
-                    doc.add_paragraph(line)
-        
-        # Sauvegarder en mémoire
-        doc_io = BytesIO()
+
+    # Styles
+    for line in content.split('\n'):
+        if line.strip():
+            if line.isupper():
+                doc.add_heading(line, level=1)
+            elif re.match(r'^[IVX]+\.', line):
+                doc.add_heading(line, level=2)
+            else:
+                doc.add_paragraph(line)
+
+    # Sauvegarder en mémoire
+    doc_io = BytesIO()
     doc.save(doc_io)
     doc_io.seek(0)
 
