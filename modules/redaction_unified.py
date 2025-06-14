@@ -20,6 +20,7 @@ from config.app_config import (DOCUMENT_TEMPLATES, LEGAL_PHRASES,
                                 REDACTION_STYLES, DocumentType, LLMProvider)
 from utils import clean_key, format_legal_date, truncate_text
 from utils.decorators import decorate_public_functions
+from utils.session import initialize_session_state
 
 # Enregistrement automatique des fonctions publiques pour le module
 decorate_public_functions(sys.modules[__name__])
@@ -123,6 +124,7 @@ def run():
     
     # Initialisation des variables de session
     initialize_session_state()
+    initialize_redaction_state()
     
     # Interface principale en onglets
     tabs = st.tabs([
@@ -148,8 +150,8 @@ def run():
     with tabs[4]:
         show_history_analytics()
 
-def initialize_session_state():
-    """Initialise toutes les variables de session nécessaires"""
+def initialize_redaction_state():
+    """Initialise les variables de session spécifiques au module"""
     
     defaults = {
         'redaction_state': {

@@ -28,6 +28,7 @@ from plotly.subplots import make_subplots
 sys.path.append(str(Path(__file__).parent.parent))
 from utils import clean_key, format_legal_date, truncate_text
 from utils.decorators import decorate_public_functions
+from utils.session import initialize_session_state
 
 # Enregistrement automatique des fonctions publiques pour le module
 decorate_public_functions(sys.modules[__name__])
@@ -151,6 +152,7 @@ def run():
     
     # Initialisation de l'état de session
     initialize_session_state()
+    initialize_comparison_state()
     
     # Menu principal avec onglets stylisés
     tabs = st.tabs([
@@ -186,8 +188,8 @@ def run():
 
 # ============= INITIALISATION =============
 
-def initialize_session_state():
-    """Initialise les variables de session nécessaires"""
+def initialize_comparison_state():
+    """Initialise les variables de session spécifiques au module"""
     defaults = {
         'comparison_history': [],
         'saved_comparisons': {},

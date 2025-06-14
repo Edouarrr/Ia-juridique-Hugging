@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 from config.ai_models import AI_MODELS
 from utils.decorators import decorate_public_functions
+from utils.session import initialize_session_state
 
 # Enregistrement automatique des fonctions publiques pour le module
 decorate_public_functions(sys.modules[__name__])
@@ -216,6 +217,7 @@ def run():
     
     # Initialisation de l'état
     initialize_session_state()
+    initialize_report_state()
     
     # Barre de progression globale
     if 'generation_progress' in st.session_state and st.session_state.generation_progress > 0:
@@ -251,8 +253,8 @@ def run():
     with tabs[5]:
         render_settings()
 
-def initialize_session_state():
-    """Initialise les variables de session"""
+def initialize_report_state():
+    """Initialise les variables de session spécifiques au module"""
     defaults = {
         'report_history': [],
         'custom_templates': {},
