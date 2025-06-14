@@ -16,6 +16,7 @@ from managers.azure_blob_manager import AzureBlobManager
 from managers.azure_search_manager import AzureSearchManager
 from services.universal_search_service import UniversalSearchService
 from managers.document_manager import DocumentManager
+from utils import LEGAL_SUGGESTIONS
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -448,7 +449,18 @@ def show_dashboard():
         placeholder="Ex: @DOSSIER123",
         key="dashboard_search",
     )
-    search_service = UniversalSearchService()
+if search_query.startswith("@"):
+    st.info(f"Recherche dossier : {search_query[1:]}")
+
+if search_query:
+    suggestion = next(
+        (s for s in LEGAL_SUGGESTIONS if s.lower().startswith(search_query.lower())),
+        None,
+    )
+    if suggestion:
+        st.markdown(f"💡 Suggestion : *{suggestion}*")
+
+search_service = UniversalSearchService()
 
     if search_query:
         query_to_use = search_query
