@@ -18,7 +18,6 @@ import pandas as pd
 import streamlit as st
 
 # Ajouter le chemin parent pour les imports
-sys.path.append(str(Path(__file__).parent.parent))
 
 from managers.azure_search_manager import AzureSearchManager
 from managers.export_manager import ExportManager
@@ -29,13 +28,14 @@ from models.dataclasses import (Document, ElementProcedure, ForceProbante,
                                 NaturePiece, PieceProcedurale,
                                 PieceSelectionnee)
 # Import des utilitaires
-from utils.file_utils import sanitize_filename
+from utils.file_utils import sanitize_filename, format_file_size
 from utils.text_processing import extract_key_phrases
 try:
-    from utils import clean_key, format_file_size, format_legal_date, truncate_text
+    from utils.helpers import clean_key, truncate_text
+    from utils.date_time import format_legal_date
 except Exception:  # pragma: no cover - fallback for standalone use
     from utils.fallback import clean_key, format_legal_date, truncate_text
-    from utils import format_file_size
+    from utils.file_utils import format_file_size
 from utils.decorators import decorate_public_functions
 
 # Enregistrement automatique des fonctions publiques pour le module

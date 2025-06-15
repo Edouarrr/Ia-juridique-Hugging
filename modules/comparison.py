@@ -25,8 +25,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-sys.path.append(str(Path(__file__).parent.parent))
-from utils import clean_key, format_legal_date, truncate_text
+from utils.helpers import clean_key, truncate_text
+from utils.date_time import format_legal_date
 from utils.decorators import decorate_public_functions
 from utils.session import initialize_session_state
 

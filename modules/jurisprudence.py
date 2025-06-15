@@ -17,14 +17,14 @@ import aiohttp
 import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
-sys.path.append(str(Path(__file__).parent.parent))
 from managers.jurisprudence_verifier import JurisprudenceVerifier
 from managers.legal_search import LegalSearchManager
 # Import des modèles après ajout du chemin
 from models.dataclasses import (JurisprudenceReference, SourceJurisprudence,
                                 TypeJuridiction, VerificationResult,
                                 get_all_juridictions)
-from utils import clean_key, format_legal_date, truncate_text
+from utils.helpers import clean_key, truncate_text
+from utils.date_time import format_legal_date
 from utils.text_processing import highlight_text
 from utils.session import initialize_session_state
 from config.ai_models import AI_MODELS

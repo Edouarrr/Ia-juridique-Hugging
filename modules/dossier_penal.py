@@ -20,26 +20,16 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
-sys.path.append(str(Path(__file__).parent.parent))
 
-from utils import clean_key, format_legal_date, truncate_text
-from utils import (
-    EmailConfig,
+from utils.helpers import clean_key, truncate_text
+from utils.date_time import format_legal_date
+from utils.file_utils import (
     is_valid_email,
     format_file_size,
     ATTACHMENT_MIME_TYPES,
 )
 from config.ai_models import AI_MODELS
 from utils.decorators import decorate_public_functions
-
-# Configuration des modèles IA importée depuis config.ai_models
-
-from utils import (clean_key, format_legal_date, truncate_text,
-                   is_valid_email, format_file_size)
-from config.ai_models import AI_MODELS
-
-# Configuration des modèles IA importée depuis config.ai_models
-
 from modules.dataclasses import EmailConfig
 
 # Enregistrement automatique des fonctions publiques pour le module
