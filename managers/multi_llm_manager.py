@@ -20,8 +20,17 @@ import anthropic
 import openai
 from openai import AzureOpenAI, OpenAI
 import google.generativeai as genai
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+
+try:
+    from mistralai.client import MistralClient
+    from mistralai.models.chat_completion import ChatMessage
+except ImportError:  # pragma: no cover - optional dependency
+    MistralClient = None
+    ChatMessage = None
+    logger.warning(
+        "Optional dependency 'mistralai' is not installed. Mistral support will be disabled."
+    )
+
 from groq import Groq
 
 # Import de la configuration
@@ -114,7 +123,7 @@ class MultiLLMManager:
                 logger.error(f"Erreur initialisation Google Gemini: {e}")
         
         # Mistral
-        if os.getenv("MISTRAL_API_KEY"):
+        if MistralClient is not None and os.getenv("MISTRAL_API_KEY"):
             try:
                 self.clients["mistral"] = MistralClient(
                     api_key=os.getenv("MISTRAL_API_KEY")
