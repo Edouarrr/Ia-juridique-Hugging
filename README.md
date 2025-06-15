@@ -56,6 +56,10 @@ Pour utiliser toutes les fonctionnalités, configurez vos clés API dans les Set
 - `MISTRAL_API_KEY`
 - `GROQ_API_KEY`
 
+**Note :** Le module `AzureOpenAIManager` fourni est pour l'instant un simple
+*placeholder* permettant de charger l'application sans erreur. Vous pouvez
+l'utiliser comme base pour une future intégration Azure OpenAI.
+
 ## 📚 Guide d'Utilisation
 
 1. **Créer un dossier** : Tab "Dossiers" → Nouveau dossier
