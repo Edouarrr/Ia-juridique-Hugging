@@ -196,62 +196,84 @@ REPORT_TEMPLATES = {
 # Modèles d'IA disponibles
 # Modèles IA importés depuis config.ai_models
 
+class ReportModule:
+    """Module de génération de rapports juridiques."""
+
+    def __init__(self) -> None:
+        self.name = "Génération de Rapports"
+        self.description = "Création automatique de rapports juridiques"
+        self.icon = "📄"
+        self.available = True
+
+    def run(self) -> None:
+        """Point d'entrée de la classe pour l'UI Streamlit."""
+        configure_page()
+
+        # Header avec animation
+        col1, col2, col3 = st.columns([1, 3, 1])
+        with col2:
+            st.markdown(
+                """
+                <div style="text-align: center; padding: 2rem 0;">
+                    <h1 style="font-size: 2.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                               -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                        📄 Génération de Rapports Juridiques
+                    </h1>
+                    <p style="font-size: 1.2rem; color: #666; margin-top: 1rem;">
+                        Créez automatiquement des rapports professionnels avec l'IA
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        # Initialisation de l'état
+        initialize_session_state()
+        initialize_report_state()
+
+        # Barre de progression globale
+        if "generation_progress" in st.session_state and st.session_state.generation_progress > 0:
+            progress_bar = st.progress(st.session_state.generation_progress)
+            progress_text = st.empty()
+            progress_text.text(
+                f"Génération en cours... {st.session_state.generation_progress}%"
+            )
+
+        # Navigation principale
+        tabs = st.tabs(
+            [
+                "🚀 Nouveau rapport",
+                "🤖 Modèles IA",
+                "📚 Bibliothèque",
+                "🔄 Fusion",
+                "📊 Historique",
+                "⚙️ Paramètres",
+            ]
+        )
+
+        with tabs[0]:
+            render_new_report()
+
+        with tabs[1]:
+            render_ai_models()
+
+        with tabs[2]:
+            render_templates_library()
+
+        with tabs[3]:
+            render_merge_reports()
+
+        with tabs[4]:
+            render_history()
+
+        with tabs[5]:
+            render_settings()
+
+
 def run():
-    """Fonction principale du module - Point d'entrée pour le lazy loading"""
-    configure_page()
-    
-    # Header avec animation
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col2:
-        st.markdown("""
-        <div style="text-align: center; padding: 2rem 0;">
-            <h1 style="font-size: 2.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                       -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                📄 Génération de Rapports Juridiques
-            </h1>
-            <p style="font-size: 1.2rem; color: #666; margin-top: 1rem;">
-                Créez automatiquement des rapports professionnels avec l'IA
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Initialisation de l'état
-    initialize_session_state()
-    initialize_report_state()
-    
-    # Barre de progression globale
-    if 'generation_progress' in st.session_state and st.session_state.generation_progress > 0:
-        progress_bar = st.progress(st.session_state.generation_progress)
-        progress_text = st.empty()
-        progress_text.text(f"Génération en cours... {st.session_state.generation_progress}%")
-    
-    # Navigation principale
-    tabs = st.tabs([
-        "🚀 Nouveau rapport",
-        "🤖 Modèles IA",
-        "📚 Bibliothèque",
-        "🔄 Fusion",
-        "📊 Historique",
-        "⚙️ Paramètres"
-    ])
-    
-    with tabs[0]:
-        render_new_report()
-    
-    with tabs[1]:
-        render_ai_models()
-    
-    with tabs[2]:
-        render_templates_library()
-    
-    with tabs[3]:
-        render_merge_reports()
-    
-    with tabs[4]:
-        render_history()
-    
-    with tabs[5]:
-        render_settings()
+    """Fonction principale du module utilisée pour le lazy loading."""
+    module = ReportModule()
+    module.run()
 
 def initialize_report_state():
     """Initialise les variables de session spécifiques au module"""
