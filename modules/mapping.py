@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
-sys.path.append(str(Path(__file__).parent.parent))
 from utils.text_processing import extract_entities
-from utils import clean_key, format_legal_date, truncate_text
+from utils.helpers import clean_key, truncate_text
+from utils.date_time import format_legal_date
 from utils.decorators import decorate_public_functions
 from utils.session import initialize_session_state
 

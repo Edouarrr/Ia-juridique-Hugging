@@ -18,13 +18,14 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 # Ajout du chemin parent pour importer utils
-sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from utils import clean_key, format_legal_date, truncate_text
+    from utils.helpers import clean_key, truncate_text
+    from utils.date_time import format_legal_date
 except ImportError:
     # Les utilitaires ne sont pas disponibles
     pass
-from utils import clean_key, format_legal_date, truncate_text
+from utils.helpers import clean_key, truncate_text
+from utils.date_time import format_legal_date
 from utils.decorators import decorate_public_functions
 
 # Enregistrement automatique des fonctions publiques pour le module

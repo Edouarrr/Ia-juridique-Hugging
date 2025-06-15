@@ -18,8 +18,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # Ajouter le chemin parent pour importer utils
-sys.path.append(str(Path(__file__).parent.parent))
-from utils import clean_key, format_legal_date, truncate_text
+from utils.helpers import clean_key, truncate_text
+from utils.date_time import format_legal_date
 from utils.file_utils import get_file_icon
 from config.ai_models import AI_MODELS
 from utils.decorators import decorate_public_functions
